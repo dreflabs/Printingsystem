@@ -45,7 +45,7 @@ STORAGE (Lantai 3)
 
 PICKUP (Lantai 1 Counter)
   ├── [SCAN 8] Admin Sales scan Job QR → Cari & verifikasi order konsumen
-  ├── [SCAN 9] Staff warehouse scan Job QR → Konfirmasi "Barang sudah di counter"
+  ├── [SCAN 9] Warehouse Staff scan Job QR → Konfirmasi "Barang sudah di counter"
   └── [SCAN 10] Admin Sales scan Job QR → Release final ke konsumen
 
 AUDIT
@@ -124,13 +124,13 @@ AUDIT
 ---
 
 ### 🟠 SCAN 4 — Mulai Finishing
-**Siapa:** Operator Finishing  
+**Siapa:** Finishing Staff  
 **Di mana:** Area finishing  
 **Kapan:** Setelah QC PASS  
 **QR yang di-scan:** Job QR  
 
 **Alur:**
-1. Operator Finishing buka halaman "Antrian Finishing"
+1. Finishing Staff buka halaman "Antrian Finishing"
 2. Scan Job QR
 3. Sistem tampilkan: spesifikasi finishing (laminating, cutting, welding, dll)
 4. Klik "MULAI FINISHING"
@@ -142,7 +142,7 @@ AUDIT
 ---
 
 ### 🟠 SCAN 5 — Selesai Finishing + Cetak Label
-**Siapa:** Operator Finishing  
+**Siapa:** Finishing Staff  
 **Di mana:** Area finishing  
 **Kapan:** Setelah proses finishing fisik selesai  
 **QR yang di-scan:** Job QR  
@@ -167,13 +167,13 @@ AUDIT
 ---
 
 ### 🟢 SCAN 6 — Scan Job QR untuk Simpan ke Storage
-**Siapa:** Staff Warehouse / Lantai 3  
+**Siapa:** Warehouse Staff / Lantai 3  
 **Di mana:** Area finishing (mengambil barang) atau pintu masuk gudang lantai 3  
 **Kapan:** Setelah label tertempel, barang siap disimpan  
 **QR yang di-scan:** Job QR (label yang baru ditempel)  
 
 **Alur:**
-1. Staff warehouse buka halaman "Simpan ke Gudang"
+1. Warehouse Staff buka halaman "Simpan ke Gudang"
 2. Scan Job QR dari label barang
 3. Sistem tampilkan: informasi job, konfirmasi "Mau simpan ke gudang?"
 4. Klik "Pilih Lokasi Penyimpanan"
@@ -186,7 +186,7 @@ AUDIT
 ---
 
 ### 🟢 SCAN 7 — Scan Location QR (Masuk Storage)
-**Siapa:** Staff Warehouse  
+**Siapa:** Warehouse Staff  
 **Di mana:** Depan rak penyimpanan di Lantai 3  
 **Kapan:** Setelah SCAN 6, saat barang diletakkan di rak  
 **QR yang di-scan:** Location QR (stiker di rak)  
@@ -196,7 +196,7 @@ AUDIT
 2. Scan QR yang tertempel di rak (misal: QR bertuliskan `LOC:LT3-A-01-01`)
 3. Sistem tampilkan: info lokasi, kapasitas tersedia
 4. Konfirmasi: "Simpan [Job Code] di [LT3-A-01-01]?"
-5. Klik "SIMPAN" → Status → `READY_FOR_PICKUP` atau `READY_FOR_DELIVERY`
+5. Klik "SIMPAN" → Status → `READY_FOR_PICKUP`
 6. Sistem otomatis trigger notifikasi WhatsApp ke konsumen
 
 **Validasi:**
@@ -228,7 +228,7 @@ AUDIT
 ---
 
 ### 🔴 SCAN 9 — Konfirmasi Barang di Counter
-**Siapa:** Staff Warehouse (yang mengambil barang dari lantai 3)  
+**Siapa:** Warehouse Staff (yang mengambil barang dari lantai 3)  
 **Di mana:** Counter Lantai 1  
 **Kapan:** Setelah mengambil barang dari gudang, tiba di counter  
 **QR yang di-scan:** Job QR (dari label barang)  
@@ -260,7 +260,7 @@ AUDIT
 **Validasi server (wajib semua terpenuhi):**
 - Status order adalah `READY_FOR_PICKUP`
 - Payment lunas ATAU ada override Owner yang tercatat
-- User adalah `admin_sales` atau `warehouse` yang berwenang
+- User adalah `admin_sales` (hanya Admin Sales yang berwenang melakukan release final)
 - Belum pernah di-release sebelumnya (cegah double release)
 
 ---
@@ -272,12 +272,12 @@ AUDIT
 | 1 | Operator | Area Mesin | Job QR | Mulai Produksi |
 | 2 | Operator | Area Mesin | Job QR | Selesai Produksi + input qty/waste |
 | 3 | QC Inspector | Area QC | Job QR | Isi checklist QC |
-| 4 | Operator Finishing | Area Finishing | Job QR | Mulai Finishing |
-| 5 | Operator Finishing | Area Finishing | Job QR | Selesai Finishing + Cetak Label |
-| 6 | Staff Warehouse | Pintu Gudang LT3 | Job QR | Inisiasi Simpan ke Gudang |
-| 7 | Staff Warehouse | Depan Rak LT3 | Location QR | Konfirmasi Lokasi Simpan |
+| 4 | Finishing Staff | Area Finishing | Job QR | Mulai Finishing |
+| 5 | Finishing Staff | Area Finishing | Job QR | Selesai Finishing + Cetak Label |
+| 6 | Warehouse Staff | Pintu Gudang LT3 | Job QR | Inisiasi Simpan ke Gudang |
+| 7 | Warehouse Staff | Depan Rak LT3 | Location QR | Konfirmasi Lokasi Simpan |
 | 8 | Admin Sales | Counter LT1 | Job QR / manual | Cari & verifikasi order |
-| 9 | Staff Warehouse | Counter LT1 | Job QR | Konfirmasi barang sudah di counter |
+| 9 | Warehouse Staff | Counter LT1 | Job QR | Konfirmasi barang sudah di counter |
 | 10 | Admin Sales | Counter LT1 | Job QR | Release final ke konsumen |
 
 ---

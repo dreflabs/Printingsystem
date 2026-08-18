@@ -13,7 +13,7 @@ Production Job 1:1 Finishing Job
 Production Job 1:N Storage Items
 Storage Location 1:N Storage Items
 Order 1:N Payments
-Order 1:1 Pickup or Delivery record
+Order 1:1 Pickup record
 Order 1:N Notification Events
 Order 1:N Audits
 Audit 1:N Audit Items

@@ -12,7 +12,7 @@ BELI BAHAN → TERIMA & INPUT STOK MASUK → TERSEDIA DI SISTEM
 
 ## Stok Masuk (Pembelian Bahan)
 
-**Siapa:** Admin Sales atau Owner (wajib login dengan akun sendiri)
+**Siapa:** Admin Sales, Warehouse Staff, atau Owner (wajib login dengan akun sendiri)
 
 **Input:**
 - Pilih bahan dari daftar (dikelompokkan per mesin)

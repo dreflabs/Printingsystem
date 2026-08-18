@@ -13,7 +13,7 @@ Membuat sistem percetakan yang transparan, mudah digunakan, dan sulit dimanipula
 - Tidak ada audit akhir yang konsisten.
 
 ## Kontrol barang jadi
-Setiap Job memiliki QR/Barcode. Finishing melakukan scan, warehouse melakukan scan lokasi, lalu sistem mengubah status menjadi READY_FOR_PICKUP/READY_FOR_DELIVERY.
+Setiap Job memiliki QR/Barcode. Finishing melakukan scan, warehouse melakukan scan lokasi, lalu sistem mengubah status menjadi READY_FOR_PICKUP.
 
 ## Notifikasi customer
 Setelah storage berhasil dikonfirmasi, sistem dapat otomatis mengirim WhatsApp kepada customer bahwa barang sudah selesai dan siap diambil/dikirim.

@@ -1,6 +1,4 @@
-# Pickup & Delivery Workflow
-
-## Pickup
+# Pickup
 
 READY_FOR_PICKUP
 -> Customer arrives
@@ -12,20 +10,16 @@ READY_FOR_PICKUP
 -> PICKED_UP
 -> Audit log
 
-## Delivery
-
-READY_FOR_DELIVERY
--> Verify payment/authorization
--> Pack
--> Record courier/tracking
--> Dispatch
--> DELIVERED
-
 ## Release protection
-The warehouse/release user must not release an order if:
+
+Only Admin Sales may perform the final release to the customer. Admin Sales must not release an order if:
 - order is not ready;
 - payment condition is not satisfied;
 - quantity does not match;
 - required approval is missing.
 
 Any override requires authorized supervisor/owner approval and creates an audit log.
+
+## Detail
+
+For the full step-by-step scan sequence (verify order → confirm barang di counter → final release), see `02-WORKFLOW/13-QR-SCAN-FLOW.md` (SCAN 8–10).

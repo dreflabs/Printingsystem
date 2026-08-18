@@ -16,7 +16,7 @@ QC PASS
   → FINISHING COMPLETE
   → JOB QR SCANNED (oleh finishing staff)
   → STORAGE LOCATION QR SCANNED (oleh warehouse)
-  → STORAGE CONFIRMED (status: READY_FOR_PICKUP / READY_FOR_DELIVERY)
+  → STORAGE CONFIRMED (status: READY_FOR_PICKUP)
   → SISTEM mengirim notifikasi otomatis
 ```
 
@@ -69,14 +69,6 @@ Pesanan [order_code] sudah selesai dan tersimpan di percetakan.
 Pesanan dapat diambil setelah pelunasan sesuai ketentuan percetakan.
 ```
 
-### Siap Dikirim
-```
-Pesanan [order_code] sudah selesai dan sedang diproses untuk pengiriman.
-
-Kurir: [nama kurir]
-Resi/Tracking: [nomor resi]
-```
-
 ---
 
 ## Penanganan Kegagalan (Failure Handling)
@@ -113,7 +105,7 @@ Resi/Tracking: [nomor resi]
 
 Tidak boleh dikirim ke konsumen:
 - Biaya produksi internal
-- Nama pegawai (kecuali kurir untuk delivery)
+- Nama pegawai
 - Temuan audit internal
 - Catatan bisnis sensitif
 - Lokasi penyimpanan internal (RAK-3A-01 dll)
@@ -125,7 +117,7 @@ Tidak boleh dikirim ke konsumen:
 Simpan di `notification_events`:
 - `order_id`
 - `customer_id`
-- `event_type` (READY_FOR_PICKUP / READY_FOR_DELIVERY / dll)
+- `event_type` (READY_FOR_PICKUP / dll)
 - `channel` (WHATSAPP / EMAIL_FALLBACK)
 - `recipient` (phone atau email — tersimpan tapi tidak ditampilkan ke role biasa)
 - `template_code`

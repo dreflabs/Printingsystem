@@ -5,7 +5,7 @@
 | Kode Produk | Nama Produk | Kategori Mesin | Satuan |
 |------------|------------|----------------|--------|
 | PRD-OUT-001 | Banner / Spanduk | Outdoor (M-OUT-01) | m² |
-| PRD-OUT-002 | Backdrop Backdrop | Outdoor (M-OUT-01) | m² |
+| PRD-OUT-002 | Backdrop Event | Outdoor (M-OUT-01) | m² |
 | PRD-OUT-003 | MMT / Baliho | Outdoor (M-OUT-01) | m² |
 | PRD-OUT-004 | Frontlit | Outdoor (M-OUT-01) | m² |
 | PRD-OUT-005 | Backlit | Outdoor (M-OUT-01) | m² |

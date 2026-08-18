@@ -48,10 +48,10 @@ Designer/Designer-Sales TIDAK DAPAT:
 ## Finished Goods Leakage
 
 Release barang membutuhkan:
-- order valid dengan status READY_FOR_PICKUP atau READY_FOR_DELIVERY
+- order valid dengan status READY_FOR_PICKUP
 - payment verified (cek apakah sudah lunas atau override disetujui)
-- user yang berwenang (warehouse atau admin sales)
-- pickup/delivery record yang lengkap
+- user yang berwenang (hanya Admin Sales)
+- pickup record yang lengkap
 
 Override aturan release hanya bisa dilakukan oleh Supervisor atau Owner dengan approval eksplisit dan tercatat di audit.
 

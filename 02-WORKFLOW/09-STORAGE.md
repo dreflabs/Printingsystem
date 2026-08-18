@@ -44,10 +44,10 @@ LT3-B-02-01  = Lantai 3, Zona B, Rak 02, Slot 01
 Finishing Complete
   → Staff finishing SCAN Job QR (via kamera HP/tablet browser)
   → Pilih "Simpan ke Gudang"
-  → Staff warehouse SCAN QR Lokasi (LT3-A-01-01)
+  → Warehouse Staff SCAN QR Lokasi (LT3-A-01-01)
   → Sistem validasi: job status sudah FINISHING_COMPLETE?
   → Sistem validasi: lokasi masih tersedia?
-  → SIMPAN → Status: READY_FOR_PICKUP / READY_FOR_DELIVERY
+  → SIMPAN → Status: READY_FOR_PICKUP
   → Notifikasi WhatsApp otomatis dikirim ke konsumen
 ```
 

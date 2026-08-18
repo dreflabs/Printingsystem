@@ -19,7 +19,7 @@ Supervisor mengelola jalannya produksi harian. Bertanggung jawab atas kelancaran
 | Lihat antrian produksi semua mesin | ✅ |
 | Lihat hasil QC | ✅ |
 | Approve rework (level Supervisor) | ✅ untuk rework ke-1 dan ke-2 |
-| Approve rework ke-3 | ❌ hanya Owner |
+| Approve/reject eskalasi rework setelah 2x QC FAIL berturut-turut | ❌ hanya Owner (bukan rework ketiga — wajib eskalasi ke Owner) |
 | Lihat laporan produksi | ✅ |
 | Lihat laporan material | ✅ |
 | Export laporan produksi | ✅ |

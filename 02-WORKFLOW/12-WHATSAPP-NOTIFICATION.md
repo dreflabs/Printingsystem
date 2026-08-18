@@ -2,7 +2,7 @@
 
 ## Objective
 
-Automatically notify the customer when the physical order has been completed, stored, and is genuinely ready for pickup/delivery.
+Automatically notify the customer when the physical order has been completed, stored, and is genuinely ready for pickup.
 
 ## Trigger
 
@@ -15,7 +15,7 @@ QC PASS
 -> JOB QR/BARCODE SCANNED
 -> STORAGE LOCATION QR SCANNED
 -> STORAGE SUCCESS
--> STATUS READY_FOR_PICKUP / READY_FOR_DELIVERY
+-> STATUS READY_FOR_PICKUP
 -> NOTIFICATION TRIGGER
 
 ## Pickup message
@@ -46,15 +46,6 @@ Pesanan ORD-260814-001 sudah selesai dan sudah tersimpan di percetakan.
 💰 Status pembayaran: MENUNGGU PELUNASAN
 
 Pesanan dapat diambil setelah proses pembayaran sesuai ketentuan percetakan.
-
-## Delivery message
-
-For delivery:
-
-Pesanan ORD-260814-001 sudah selesai dan sedang diproses untuk pengiriman.
-
-Kurir: [nama]
-Resi/Tracking: [nomor]
 
 ## Notification rules
 

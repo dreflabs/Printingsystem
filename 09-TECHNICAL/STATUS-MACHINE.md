@@ -79,7 +79,9 @@ FINAL_AUDIT_PENDING
   └─ Menunggu proses final audit oleh Auditor
 
 FINAL_AUDIT_COMPLETE
-  └─ Audit selesai dengan hasil GREEN atau YELLOW (supervisor approve)
+  └─ Audit selesai dengan hasil GREEN, YELLOW (butuh approval Supervisor/Owner), atau RED
+     (RED = order TIDAK bisa lanjut ke CLOSED — order dikembalikan ke ON_HOLD untuk
+     investigasi Owner, lihat cabang RED di diagram alur)
 
 CLOSED
   └─ Order sepenuhnya selesai. Tidak bisa diedit langsung.
@@ -108,6 +110,7 @@ PRODUCTION_COMPLETE → QC_PENDING → QC_PASSED → FINISHING_STARTED → FINIS
 FINISHING_COMPLETE → STORAGE_PENDING → STORED → READY_FOR_PICKUP
 READY_FOR_PICKUP → IN_TRANSIT → PICKED_UP
 PICKED_UP → FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE → CLOSED
+                                 ↘ (hasil RED) → ON_HOLD (investigasi Owner)
 
 *WAITING_APPROVAL hanya untuk tipe konsumen WhatsApp
 ```
@@ -152,12 +155,15 @@ PICKED_UP → FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE → CLOSED
 | QC_REWORK_PENDING → REWORK_APPROVED | Owner / Supervisor |
 | QC_PASSED → FINISHING_STARTED | Finishing Staff (via scan) |
 | FINISHING_STARTED → FINISHING_COMPLETE | Finishing Staff (via scan) |
-| FINISHING_COMPLETE → STORED | Warehouse (via scan) |
+| FINISHING_COMPLETE → STORAGE_PENDING | Finishing Staff (via scan, serah terima ke Warehouse) / Sistem otomatis |
+| STORAGE_PENDING → STORED | Warehouse Staff (via scan Job QR + Location QR) |
 | STORED → READY_FOR_PICKUP | Sistem otomatis |
 | READY_FOR_PICKUP → IN_TRANSIT | Warehouse (via scan) |
 | IN_TRANSIT → PICKED_UP | Admin Sales (via scan) |
 | PICKED_UP → FINAL_AUDIT_PENDING | Sistem otomatis |
-| FINAL_AUDIT_PENDING → CLOSED | Auditor / Owner |
+| FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE | Auditor (submit hasil GREEN/YELLOW/RED) |
+| FINAL_AUDIT_COMPLETE → CLOSED | Sistem otomatis jika GREEN; Supervisor / Owner approve jika YELLOW |
+| FINAL_AUDIT_COMPLETE → ON_HOLD | Sistem otomatis jika hasil RED (blokir CLOSED, wajib investigasi Owner) |
 | Kapan saja → ON_HOLD | Owner |
 | Sebelum produksi → CANCELLED | Admin Sales / Owner |
 | Setelah produksi → CANCELLED | Owner saja |

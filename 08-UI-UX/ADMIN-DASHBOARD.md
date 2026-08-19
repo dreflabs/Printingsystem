@@ -71,6 +71,8 @@ Kolom tabel:
 - Konfirmasi approval desain via WA (bukan Designer)
 - Input stok material masuk, tambah bahan material baru
 - Proses pickup konsumen: cari/scan order → verifikasi identitas & payment → serahkan barang (SCAN 8 & 10, warehouse yang mengonfirmasi barang sudah di counter pada SCAN 9)
+- **Cek Stok Gudang Real-time** (melihat isi lokasi storage LT3)
+- **Lakukan Final Audit Order** (submit hasil GREEN/YELLOW/RED sebelum order di-CLOSED)
 - Cancel order (hanya sebelum produksi berjalan)
 - Lihat nomor HP konsumen (khusus Admin Sales, tidak tampil di role lain)
 
@@ -78,7 +80,6 @@ Kolom tabel:
 
 - Tombol apply diskon langsung (hanya ajukan)
 - Tombol cancel order setelah produksi berjalan (hanya Owner)
-- Akses audit log
 - Edit laporan keuangan (hanya lihat)
 
 ---

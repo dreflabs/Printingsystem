@@ -49,7 +49,7 @@ PICKUP (Lantai 1 Counter)
   └── [SCAN 10] Admin Sales scan Job QR → Release final ke konsumen
 
 AUDIT
-  └── [SCAN opsional] Auditor scan Job QR → Lihat histori lengkap
+  └── [SCAN opsional] Admin Sales scan Job QR → Lihat histori lengkap untuk Audit
 ```
 
 ---

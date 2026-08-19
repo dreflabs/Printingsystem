@@ -10,7 +10,7 @@ deactivated_at (timestamptz), deactivated_by (uuid, FK → users.id), created_at
 
 ## roles
 id (uuid, PK), name (varchar)
-*(Values: owner, supervisor, admin_sales, designer_sales, operator, qc, finishing, warehouse, auditor)*
+*(Values: owner, supervisor, admin_sales, designer_sales, operator, qc, finishing, warehouse)*
 
 ## customers
 id (uuid, PK), customer_code (varchar, unique, CST-XXXXX), name (varchar), phone (varchar) [SENSITIVE], email (varchar) [SENSITIVE], address (text), company (varchar), notes (text), created_by (uuid, FK → users.id), created_at (timestamptz), updated_at (timestamptz)
@@ -159,7 +159,7 @@ is_resend (boolean), resent_by (uuid, FK → users.id), retry_count (integer), c
 ## AUDIT & REPORTING
 
 ## audits
-id (uuid, PK), order_id (uuid, FK → orders.id), auditor_id (uuid, FK → users.id), result (varchar, enum: GREEN/YELLOW/RED),
+id (uuid, PK), order_id (uuid, FK → orders.id), audited_by_id (uuid, FK → users.id — dilakukan oleh Admin Sales), result (varchar, enum: GREEN/YELLOW/RED),
 financial_status (varchar), material_status (varchar), quantity_status (varchar), production_status (varchar), storage_status (varchar),
 exception_count (integer), notes (text), audited_at (timestamptz), approved_at (timestamptz), approved_by (uuid, FK → users.id)
 
@@ -253,7 +253,7 @@ Index dipilih untuk mendukung pola akses paling sering: filter status per tahap 
 
 ### Foreign key (semua kolom `*_id` yang merujuk tabel lain)
 Semua kolom bertipe `FK →` pada daftar tabel di atas direkomendasikan memiliki index, termasuk namun tidak terbatas pada:
-`users.role_id`, `customers.created_by`, `products.default_material_id`, `machine_materials.machine_id` + `machine_materials.material_id` (composite unique index untuk mencegah duplikasi pasangan mesin-material), `material_movements.material_id` + `material_movements.machine_id` + `material_movements.job_id`, `orders.customer_id` + `orders.designer_id` + `orders.created_by`, `order_items.order_id` + `order_items.product_id` + `order_items.material_id`, `design_jobs.order_id` + `design_jobs.designer_id`, `design_versions.design_job_id`, `production_jobs.order_id` + `production_jobs.machine_id` + `production_jobs.operator_id` + `production_jobs.parent_job_id`, `qc_records.job_id` + `qc_records.inspector_id`, `finishing_jobs.job_id` + `finishing_jobs.operator_id`, `storage_items.job_id` + `storage_items.location_id` + `storage_items.transit_location_id`, `payments.order_id`, `pickup_records.order_id`, `notification_events.order_id` + `notification_events.customer_id`, `audits.order_id` + `audits.auditor_id`, `audit_items.audit_id`, `audit_logs.actor_id` + composite (`entity_type`, `entity_id`) untuk lookup riwayat per entitas, `corrections.order_id`, `deadline_alerts.order_id`, `attendance_records.import_id` + `attendance_records.user_id`.
+`users.role_id`, `customers.created_by`, `products.default_material_id`, `machine_materials.machine_id` + `machine_materials.material_id` (composite unique index untuk mencegah duplikasi pasangan mesin-material), `material_movements.material_id` + `material_movements.machine_id` + `material_movements.job_id`, `orders.customer_id` + `orders.designer_id` + `orders.created_by`, `order_items.order_id` + `order_items.product_id` + `order_items.material_id`, `design_jobs.order_id` + `design_jobs.designer_id`, `design_versions.design_job_id`, `production_jobs.order_id` + `production_jobs.machine_id` + `production_jobs.operator_id` + `production_jobs.parent_job_id`, `qc_records.job_id` + `qc_records.inspector_id`, `finishing_jobs.job_id` + `finishing_jobs.operator_id`, `storage_items.job_id` + `storage_items.location_id` + `storage_items.transit_location_id`, `payments.order_id`, `pickup_records.order_id`, `notification_events.order_id` + `notification_events.customer_id`, `audits.order_id` + `audits.audited_by_id`, `audit_items.audit_id`, `audit_logs.actor_id` + composite (`entity_type`, `entity_id`) untuk lookup riwayat per entitas, `corrections.order_id`, `deadline_alerts.order_id`, `attendance_records.import_id` + `attendance_records.user_id`.
 
 ### Index komposit tambahan yang berguna
 - `production_jobs (machine_id, status)` — antrian per mesin

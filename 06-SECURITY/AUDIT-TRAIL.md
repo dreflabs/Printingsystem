@@ -24,7 +24,6 @@ Setiap perubahan status, aksi sensitif, dan keputusan penting harus tercatat sec
 | Admin Sales | TIDAK BISA |
 | Designer | TIDAK BISA |
 | Operator | TIDAK BISA |
-| Auditor | TIDAK BISA (read-only) |
 | Sistem/API | TIDAK BISA (tidak ada endpoint DELETE) |
 
 > Penghapusan oleh Owner pun harus mengisi alasan dan dikonfirmasi ulang.
@@ -106,6 +105,5 @@ created_at    : timestamp (UTC, tidak bisa diubah)
 
 - **Owner**: Lihat semua, filter semua, export CSV/PDF
 - **Supervisor**: Lihat log terkait area mereka, tidak bisa export
-- **Auditor**: Read-only, bisa filter by date/order/actor
 - **Admin Sales**: Hanya lihat log terkait order dan notifikasi mereka sendiri
 - **Role lain**: Tidak bisa akses audit log

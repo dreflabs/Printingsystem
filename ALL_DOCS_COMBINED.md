@@ -84,7 +84,7 @@ FILE: 01-BUSINESS/BUSINESS-RULES.md
 15. Order yang dibatalkan setelah produksi berjalan: DP hangus, harus ada persetujuan Owner.
 16. Stok material tidak bisa dikurangi secara manual tanpa Job ID yang valid (kecuali Adjustment dengan alasan dan approval).
 17. Mesin yang sedang MAINTENANCE tidak bisa menerima assignment job baru.
-18. Data kontak konsumen (phone, email) tidak pernah tampil di layar untuk role Designer, Operator, QC, Finishing, Warehouse, Auditor.
+18. Data kontak konsumen (phone, email) tidak pernah tampil di layar untuk role Designer, Operator, QC, Finishing, Warehouse.
 19. Audit log bersifat immutable — tidak ada edit atau delete oleh siapapun kecuali Owner via panel khusus yang juga dicatat.
 20. Absensi (jam masuk dari fingerprint dan waktu istirahat dari sistem) tidak bisa diubah — Owner hanya bisa menambahkan catatan.
 
@@ -236,7 +236,7 @@ FILE: 06-SECURITY/ACCESS-CONTROL.md
 
 ## Prinsip Dasar
 
-Sistem menggunakan **Role-Based Access Control (RBAC)** dengan 10 role: Owner, Supervisor, Admin Sales, Designer Sales, Operator, QC Inspector, Finishing Staff, Warehouse Staff, Auditor. (User Management adalah fungsi yang hanya bisa dijalankan Owner, bukan role terpisah.)
+Sistem menggunakan **Role-Based Access Control (RBAC)** dengan 8 role: Owner, Supervisor, Admin Sales, Designer Sales, Operator, QC Inspector, Finishing Staff, Warehouse Staff. (User Management adalah fungsi yang hanya bisa dijalankan Owner, bukan role terpisah.)
 
 **RBAC diterapkan di server, bukan di UI.** Setiap API route/Server Action wajib memvalidasi `session.user.role` sebelum menjalankan logika apapun. Hidden button, disabled input, atau menu yang disembunyikan di frontend **bukan** kontrol akses — itu hanya kenyamanan tampilan. Tanpa pengecekan role di server, siapapun yang tahu endpoint-nya (via devtools, curl, script) bisa mem-bypass UI. Detail kontrak otorisasi per endpoint ada di `09-TECHNICAL/API.md`.
 
@@ -248,48 +248,48 @@ Rangkuman ini disusun dari definisi hak akses yang sudah tersebar di `03-ROLES/*
 
 Legenda: ✅ = akses penuh, 📖 = read-only / lihat saja, ❌ = tidak ada akses.
 
-| Modul / Aksi | Owner | Supervisor | Admin Sales | Designer Sales | Operator | QC Inspector | Finishing Staff | Warehouse Staff | Auditor |
-|---|---|---|---|---|---|---|---|---|---|
-| **Order** — buat/edit (DRAFT–CONFIRMED) | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Order** — lihat | ✅ | 📖 | ✅ | 📖 (order sendiri) | 📖 (job sendiri) | 📖 (job sendiri) | 📖 (job sendiri) | 📖 (job sendiri) | 📖 |
-| **Order** — approve diskon | ✅ | ❌ | ❌ (hanya ajukan) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Order** — cancel sebelum produksi | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Order** — cancel setelah produksi | ✅ | ❌ | ❌ (hanya ajukan) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Order** — freeze (ON_HOLD) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Design** — upload & approve walk-in/makloon | ❌ | ❌ | ❌ (approve WA saja) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Design** — approve via WhatsApp | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Payment** — konfirmasi DP/pelunasan | ❌ | 📖 (tanpa nominal detail) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Payment** — override DP di bawah 50% | ✅ (bebas %) | ❌ | ✅ (min 30%) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Production** — assign/reassign job | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Production** — scan mulai/selesai (job sendiri) | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Production** — approve rework ke-1 & ke-2 | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Production** — approve eskalasi rework setelah 2x FAIL | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Material** — input stok masuk | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| **Material** — tambah bahan baru | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Material** — input pemakaian per job | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **QC** — submit hasil (PASS/FAIL) | ❌ | 📖 | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| **Finishing** — scan mulai/selesai + cetak label | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| **Storage** — scan simpan (Job QR + Location QR) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| **Storage** — laporkan insiden | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| **Pickup** — release final ke konsumen | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ (hanya konfirmasi barang di counter) | ❌ |
-| **Audit** — submit hasil final audit (GREEN/YELLOW/RED) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **Audit** — approve hasil YELLOW sebelum CLOSED | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Audit** — lihat audit log | ✅ | 📖 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 📖 |
-| **Audit** — hapus audit log | ✅ (panel khusus, tercatat) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Reports** — keuangan | ✅ | 📖 | 📖 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ (hanya summary) |
-| **Reports** — produksi | ✅ | 📖 (+ export) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Reports** — material | ✅ | 📖 | 📖 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Reports** — pegawai/absensi | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Reports** — export semua laporan | ✅ | ✅ (produksi) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (laporan audit) |
-| **Data konsumen** — phone/email | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | 📖 (masked) |
-| **User Management** — buat/nonaktifkan/reset password/unlock | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **POS / Direct Sales** — buat transaksi RETAIL | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **POS / Direct Sales** — konfirmasi pembayaran RETAIL | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Retail Inventory** — lihat katalog & stok barang retail | ✅ | 📖 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Retail Inventory** — tambah/edit produk retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Retail Inventory** — input stok masuk barang retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Retail Inventory** — adjustment stok barang retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Reports** — laporan penjualan retail | ✅ | 📖 | 📖 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Modul / Aksi | Owner | Supervisor | Admin Sales | Designer Sales | Operator | QC Inspector | Finishing Staff | Warehouse Staff |
+|---|---|---|---|---|---|---|---|---|
+| **Order** — buat/edit (DRAFT–CONFIRMED) | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Order** — lihat | ✅ | 📖 | ✅ | 📖 (order sendiri) | 📖 (job sendiri) | 📖 (job sendiri) | 📖 (job sendiri) | 📖 (job sendiri) |
+| **Order** — approve diskon | ✅ | ❌ | ❌ (hanya ajukan) | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Order** — cancel sebelum produksi | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Order** — cancel setelah produksi | ✅ | ❌ | ❌ (hanya ajukan) | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Order** — freeze (ON_HOLD) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Design** — upload & approve walk-in/makloon | ❌ | ❌ | ❌ (approve WA saja) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Design** — approve via WhatsApp | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Payment** — konfirmasi DP/pelunasan | ❌ | 📖 (tanpa nominal detail) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Payment** — override DP di bawah 50% | ✅ (bebas %) | ❌ | ✅ (min 30%) | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Production** — assign/reassign job | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Production** — scan mulai/selesai (job sendiri) | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Production** — approve rework ke-1 & ke-2 | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Production** — approve eskalasi rework setelah 2x FAIL | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Material** — input stok masuk | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **Material** — tambah bahan baru | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Material** — input pemakaian per job | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **QC** — submit hasil (PASS/FAIL) | ❌ | 📖 | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| **Finishing** — scan mulai/selesai + cetak label | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Storage** — scan simpan (Job QR + Location QR) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **Storage** — laporkan insiden | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **Pickup** — release final ke konsumen | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ (hanya konfirmasi barang di counter) |
+| **Audit** — submit hasil final audit (GREEN/YELLOW/RED) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Audit** — approve hasil YELLOW sebelum CLOSED | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Audit** — lihat audit log | ✅ | 📖 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Audit** — hapus audit log | ✅ (panel khusus, tercatat) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Reports** — keuangan | ✅ | 📖 | 📖 | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Reports** — produksi | ✅ | 📖 (+ export) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Reports** — material | ✅ | 📖 | 📖 | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Reports** — pegawai/absensi | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Reports** — export semua laporan | ✅ | ✅ (produksi) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Data konsumen** — phone/email | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **User Management** — buat/nonaktifkan/reset password/unlock | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **POS / Direct Sales** — buat transaksi RETAIL | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **POS / Direct Sales** — konfirmasi pembayaran RETAIL | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — lihat katalog & stok barang retail | ✅ | 📖 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — tambah/edit produk retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — input stok masuk barang retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — adjustment stok barang retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Reports** — laporan penjualan retail | ✅ | 📖 | 📖 | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 <!-- perlu klarifikasi: 03-ROLES/OWNER.md tidak eksplisit menyebut Owner bisa submit QC atau scan produksi langsung — mengikuti prinsip "Owner akses penuh ke semua data" secara umum, tapi aksi operasional harian (scan QR, submit QC) di file per-role hanya didefinisikan untuk role eksekutor terkait (Operator/QC/Finishing/Warehouse). Matriks di atas menandai kolom Owner ❌ untuk aksi operasional harian tersebut karena tidak disebut eksplisit sebagai hak Owner di file manapun, meski secara praktik Owner mungkin bisa override lewat panel admin. -->
 
@@ -301,7 +301,7 @@ Legenda: ✅ = akses penuh, 📖 = read-only / lihat saja, ❌ = tidak ada akses
 
 - Setiap role hanya diberi akses **minimum yang dibutuhkan** untuk menjalankan tugasnya — bukan akses default luas yang dipersempit belakangan.
 - Operator, QC Inspector, dan Finishing Staff hanya melihat job yang relevan dengan tugasnya (job yang di-assign / dalam antrian tahap masing-masing), bukan seluruh data order.
-- Data sensitif konsumen (`phone`, `email`) hanya terbuka untuk role yang memang berinteraksi langsung dengan konsumen atau butuh data finansial (Admin Sales, Supervisor, Owner). Auditor mendapat versi masked meski perannya read-only atas seluruh sistem — read-only tidak berarti akses penuh ke data sensitif.
+- Data sensitif konsumen (`phone`, `email`) hanya terbuka untuk role yang memang berinteraksi langsung dengan konsumen atau butuh data finansial (Admin Sales, Supervisor, Owner). Data konsumen difilter berdasarkan role.
 - Penambahan hak akses baru ke suatu role harus eksplisit didokumentasikan di `03-ROLES/<ROLE>.md` dan direfleksikan ke matriks ini — tidak ada hak akses implisit "karena role tersebut senior".
 
 ---
@@ -425,7 +425,6 @@ Setiap perubahan status, aksi sensitif, dan keputusan penting harus tercatat sec
 | Admin Sales | TIDAK BISA |
 | Designer | TIDAK BISA |
 | Operator | TIDAK BISA |
-| Auditor | TIDAK BISA (read-only) |
 | Sistem/API | TIDAK BISA (tidak ada endpoint DELETE) |
 
 > Penghapusan oleh Owner pun harus mengisi alasan dan dikonfirmasi ulang.
@@ -507,7 +506,6 @@ created_at    : timestamp (UTC, tidak bisa diubah)
 
 - **Owner**: Lihat semua, filter semua, export CSV/PDF
 - **Supervisor**: Lihat log terkait area mereka, tidak bisa export
-- **Auditor**: Read-only, bisa filter by date/order/actor
 - **Admin Sales**: Hanya lihat log terkait order dan notifikasi mereka sendiri
 - **Role lain**: Tidak bisa akses audit log
 
@@ -566,9 +564,7 @@ restricted customer/financial data, backups and recovery.
 - Akses penuh ke semua data
 - Setiap akses ke data sensitif tercatat di audit log
 
-**AUDITOR:**
-- Read-only, hanya bisa lihat summary laporan
-- Phone/email konsumen ditampilkan dalam bentuk masked: `+6281****5678`
+
 
 ---
 
@@ -580,7 +576,7 @@ restricted customer/financial data, backups and recovery.
 - Gunakan serializer/transformer berbasis role di setiap API endpoint yang mengembalikan data konsumen
 
 ### Masking di UI
-- Untuk role yang tidak berhak (termasuk auditor): tampilkan `+6281****5678`
+- Untuk role yang tidak berhak (termasuk role read-only lainnya): tampilkan `+6281****5678`
 - Jangan hanya CSS hide — data tidak boleh ada di DOM
 
 ### WhatsApp — Nomor Tidak Boleh Dikirim Manual
@@ -1668,7 +1664,7 @@ Simpan di `notification_events`:
 FILE: 03-ROLES/ADMIN-SALES.md
 ==================================================
 
-﻿# ADMIN SALES
+# ADMIN SALES
 
 Mengelola order, pembayaran, pickup, notifikasi WA konsumen, dan stok material masuk.
 
@@ -1689,32 +1685,10 @@ Mengelola order, pembayaran, pickup, notifikasi WA konsumen, dan stok material m
 | Lihat nomor HP konsumen | ✅ |
 | Cancel order (sebelum produksi) | ✅ |
 | Cancel order (setelah produksi) | ❌ hanya Owner |
-| Lihat audit log | ❌ |
+| **Lihat stok gudang (Storage LT3) real-time** | ✅ |
+| **Submit hasil Final Audit (GREEN/YELLOW/RED)** | ✅ |
+| **Lihat audit log (read-only)** | ✅ |
 
-Semua aksi dicatat di audit log.
-
-
-==================================================
-FILE: 03-ROLES/AUDITOR.md
-==================================================
-
-﻿# AUDITOR
-
-Melakukan audit akhir sebelum order di-CLOSED dan menghasilkan laporan untuk Owner.
-
-## Hak Akses
-| Modul | Akses |
-|-------|-------|
-| Lihat semua order (read-only) | ✅ |
-| Lihat audit log (read-only) | ✅ |
-| Submit hasil audit (GREEN/YELLOW/RED) | ✅ |
-| Export laporan audit | ✅ |
-| Edit data apapun | ❌ |
-| Hapus data apapun | ❌ |
-| Akses laporan keuangan detail | ❌ |
-| Lihat nomor HP konsumen | ❌ |
-
-Auditor adalah role read-only terbatas — bisa submit audit tapi tidak bisa ubah data operasional.
 Semua aksi dicatat di audit log.
 
 
@@ -2126,6 +2100,8 @@ Kolom tabel:
 - Konfirmasi approval desain via WA (bukan Designer)
 - Input stok material masuk, tambah bahan material baru
 - Proses pickup konsumen: cari/scan order → verifikasi identitas & payment → serahkan barang (SCAN 8 & 10, warehouse yang mengonfirmasi barang sudah di counter pada SCAN 9)
+- **Cek Stok Gudang Real-time** (melihat isi lokasi storage LT3)
+- **Lakukan Final Audit Order** (submit hasil GREEN/YELLOW/RED sebelum order di-CLOSED)
 - Cancel order (hanya sebelum produksi berjalan)
 - Lihat nomor HP konsumen (khusus Admin Sales, tidak tampil di role lain)
 
@@ -2133,7 +2109,6 @@ Kolom tabel:
 
 - Tombol apply diskon langsung (hanya ajukan)
 - Tombol cancel order setelah produksi berjalan (hanya Owner)
-- Akses audit log
 - Edit laporan keuangan (hanya lihat)
 
 ---
@@ -3184,7 +3159,7 @@ Gunakan dokumen ini sebagai checklist saat testing sebelum sistem diserahkan unt
 | 12.1 | Semua aksi kritis dilakukan | Masing-masing muncul di audit log dengan detail lengkap |
 | 12.2 | Admin Sales coba hapus audit log | Tidak ada tombol hapus, API DELETE ditolak |
 | 12.3 | Owner ekspor laporan | File PDF/XLSX berhasil diunduh, ada catatan di audit log |
-| 12.4 | Auditor coba edit data order | Tidak ada akses edit, semua read-only |
+| 12.4 | Operator coba edit data order | Ditolak, operator hanya bisa update job |
 
 
 ==================================================
@@ -3433,10 +3408,10 @@ Validasi server: FAIL wajib disertai kategori masalah + deskripsi (min 20 karakt
 
 | Endpoint | Deskripsi | Role |
 |----------|-----------|------|
-| `GET /api/audit-logs` | Baca audit log (filter: actor, entity, tanggal, action) | Supervisor, Owner, Auditor (read-only) |
+| `GET /api/audit-logs` | Baca audit log (filter: actor, entity, tanggal, action) | Supervisor, Owner, Admin Sales (read-only) |
 | `DELETE /api/audit-logs/:id` | Hapus audit log (panel khusus, penghapusan sendiri tercatat) | Owner saja |
-| `GET /api/orders/:id/final-audit` | Detail final audit order | Auditor, Owner, Supervisor |
-| `POST /api/orders/:id/final-audit` | Submit hasil final audit (GREEN/YELLOW/RED) | Auditor |
+| `GET /api/orders/:id/final-audit` | Detail final audit order | Admin Sales, Owner, Supervisor |
+| `POST /api/orders/:id/final-audit` | Submit hasil final audit (GREEN/YELLOW/RED) | Admin Sales |
 | `POST /api/orders/:id/final-audit/approve` | Approve hasil audit YELLOW sebelum CLOSED | Supervisor, Owner |
 | `POST /api/orders/:id/corrections` | Catat correction/adjustment pasca-CLOSED | Owner, Supervisor (sesuai kategori) |
 
@@ -3691,7 +3666,7 @@ PICKED_UP
   └─ Barang sudah diserahkan ke konsumen (SCAN 10)
 
 FINAL_AUDIT_PENDING
-  └─ Menunggu proses final audit oleh Auditor
+  └─ Menunggu proses final audit oleh Admin Sales
 
 FINAL_AUDIT_COMPLETE
   └─ Audit selesai dengan hasil GREEN, YELLOW (butuh approval Supervisor/Owner), atau RED
@@ -3800,7 +3775,7 @@ NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED
 | READY_FOR_PICKUP → IN_TRANSIT | Warehouse (via scan) |
 | IN_TRANSIT → PICKED_UP | Admin Sales (via scan) |
 | PICKED_UP → FINAL_AUDIT_PENDING | Sistem otomatis |
-| FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE | Auditor (submit hasil GREEN/YELLOW/RED) |
+| FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE | Admin Sales (submit hasil GREEN/YELLOW/RED) |
 | FINAL_AUDIT_COMPLETE → CLOSED | Sistem otomatis jika GREEN; Supervisor / Owner approve jika YELLOW |
 | FINAL_AUDIT_COMPLETE → ON_HOLD | Sistem otomatis jika hasil RED (blokir CLOSED, wajib investigasi Owner) |
 | Kapan saja → ON_HOLD | Owner |
@@ -4918,7 +4893,7 @@ PICKUP (Lantai 1 Counter)
   └── [SCAN 10] Admin Sales scan Job QR → Release final ke konsumen
 
 AUDIT
-  └── [SCAN opsional] Auditor scan Job QR → Lihat histori lengkap
+  └── [SCAN opsional] Admin Sales scan Job QR → Lihat histori lengkap untuk Audit
 ```
 
 ---
@@ -6222,7 +6197,7 @@ FINAL AUDIT → CLOSED
 | QC | Inspeksi, PASS/FAIL, approve rework |
 | Finishing | Packing, label, scan QR |
 | Warehouse | Gudang, storage in/out, release |
-| Auditor | Read-only audit & laporan |
+
 
 ---
 
@@ -6355,7 +6330,7 @@ deactivated_at (timestamptz), deactivated_by (uuid, FK → users.id), created_at
 
 ## roles
 id (uuid, PK), name (varchar)
-*(Values: owner, supervisor, admin_sales, designer_sales, operator, qc, finishing, warehouse, auditor)*
+*(Values: owner, supervisor, admin_sales, designer_sales, operator, qc, finishing, warehouse)*
 
 ## customers
 id (uuid, PK), customer_code (varchar, unique, CST-XXXXX), name (varchar), phone (varchar) [SENSITIVE], email (varchar) [SENSITIVE], address (text), company (varchar), notes (text), created_by (uuid, FK → users.id), created_at (timestamptz), updated_at (timestamptz)
@@ -6504,7 +6479,7 @@ is_resend (boolean), resent_by (uuid, FK → users.id), retry_count (integer), c
 ## AUDIT & REPORTING
 
 ## audits
-id (uuid, PK), order_id (uuid, FK → orders.id), auditor_id (uuid, FK → users.id), result (varchar, enum: GREEN/YELLOW/RED),
+id (uuid, PK), order_id (uuid, FK → orders.id), audited_by_id (uuid, FK → users.id — dilakukan oleh Admin Sales), result (varchar, enum: GREEN/YELLOW/RED),
 financial_status (varchar), material_status (varchar), quantity_status (varchar), production_status (varchar), storage_status (varchar),
 exception_count (integer), notes (text), audited_at (timestamptz), approved_at (timestamptz), approved_by (uuid, FK → users.id)
 
@@ -6598,7 +6573,7 @@ Index dipilih untuk mendukung pola akses paling sering: filter status per tahap 
 
 ### Foreign key (semua kolom `*_id` yang merujuk tabel lain)
 Semua kolom bertipe `FK →` pada daftar tabel di atas direkomendasikan memiliki index, termasuk namun tidak terbatas pada:
-`users.role_id`, `customers.created_by`, `products.default_material_id`, `machine_materials.machine_id` + `machine_materials.material_id` (composite unique index untuk mencegah duplikasi pasangan mesin-material), `material_movements.material_id` + `material_movements.machine_id` + `material_movements.job_id`, `orders.customer_id` + `orders.designer_id` + `orders.created_by`, `order_items.order_id` + `order_items.product_id` + `order_items.material_id`, `design_jobs.order_id` + `design_jobs.designer_id`, `design_versions.design_job_id`, `production_jobs.order_id` + `production_jobs.machine_id` + `production_jobs.operator_id` + `production_jobs.parent_job_id`, `qc_records.job_id` + `qc_records.inspector_id`, `finishing_jobs.job_id` + `finishing_jobs.operator_id`, `storage_items.job_id` + `storage_items.location_id` + `storage_items.transit_location_id`, `payments.order_id`, `pickup_records.order_id`, `notification_events.order_id` + `notification_events.customer_id`, `audits.order_id` + `audits.auditor_id`, `audit_items.audit_id`, `audit_logs.actor_id` + composite (`entity_type`, `entity_id`) untuk lookup riwayat per entitas, `corrections.order_id`, `deadline_alerts.order_id`, `attendance_records.import_id` + `attendance_records.user_id`.
+`users.role_id`, `customers.created_by`, `products.default_material_id`, `machine_materials.machine_id` + `machine_materials.material_id` (composite unique index untuk mencegah duplikasi pasangan mesin-material), `material_movements.material_id` + `material_movements.machine_id` + `material_movements.job_id`, `orders.customer_id` + `orders.designer_id` + `orders.created_by`, `order_items.order_id` + `order_items.product_id` + `order_items.material_id`, `design_jobs.order_id` + `design_jobs.designer_id`, `design_versions.design_job_id`, `production_jobs.order_id` + `production_jobs.machine_id` + `production_jobs.operator_id` + `production_jobs.parent_job_id`, `qc_records.job_id` + `qc_records.inspector_id`, `finishing_jobs.job_id` + `finishing_jobs.operator_id`, `storage_items.job_id` + `storage_items.location_id` + `storage_items.transit_location_id`, `payments.order_id`, `pickup_records.order_id`, `notification_events.order_id` + `notification_events.customer_id`, `audits.order_id` + `audits.audited_by_id`, `audit_items.audit_id`, `audit_logs.actor_id` + composite (`entity_type`, `entity_id`) untuk lookup riwayat per entitas, `corrections.order_id`, `deadline_alerts.order_id`, `attendance_records.import_id` + `attendance_records.user_id`.
 
 ### Index komposit tambahan yang berguna
 - `production_jobs (machine_id, status)` — antrian per mesin
@@ -6744,7 +6719,7 @@ Tampil di **Owner Dashboard** dan **Laporan Bulanan Owner**:
 | Status Istirahat | NORMAL / BERLEBIH |
 | Keterangan Owner | Catatan opsional dari Owner |
 
-**Tidak tampil di dashboard Designer, Operator, Finishing, Warehouse, Auditor.**
+**Tidak tampil di dashboard Designer, Operator, Finishing, Warehouse.**
 Admin Sales hanya bisa **lihat** laporan absensi, tidak bisa edit.
 
 ---

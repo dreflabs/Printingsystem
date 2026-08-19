@@ -107,7 +107,7 @@ FINAL AUDIT → CLOSED
 | QC | Inspeksi, PASS/FAIL, approve rework |
 | Finishing | Packing, label, scan QR |
 | Warehouse | Gudang, storage in/out, release |
-| Auditor | Read-only audit & laporan |
+
 
 ---
 

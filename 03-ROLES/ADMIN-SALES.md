@@ -1,4 +1,4 @@
-﻿# ADMIN SALES
+# ADMIN SALES
 
 Mengelola order, pembayaran, pickup, notifikasi WA konsumen, dan stok material masuk.
 
@@ -19,6 +19,8 @@ Mengelola order, pembayaran, pickup, notifikasi WA konsumen, dan stok material m
 | Lihat nomor HP konsumen | ✅ |
 | Cancel order (sebelum produksi) | ✅ |
 | Cancel order (setelah produksi) | ❌ hanya Owner |
-| Lihat audit log | ❌ |
+| **Lihat stok gudang (Storage LT3) real-time** | ✅ |
+| **Submit hasil Final Audit (GREEN/YELLOW/RED)** | ✅ |
+| **Lihat audit log (read-only)** | ✅ |
 
 Semua aksi dicatat di audit log.

@@ -76,7 +76,7 @@ PICKED_UP
   └─ Barang sudah diserahkan ke konsumen (SCAN 10)
 
 FINAL_AUDIT_PENDING
-  └─ Menunggu proses final audit oleh Auditor
+  └─ Menunggu proses final audit oleh Admin Sales
 
 FINAL_AUDIT_COMPLETE
   └─ Audit selesai dengan hasil GREEN, YELLOW (butuh approval Supervisor/Owner), atau RED
@@ -185,7 +185,7 @@ NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED
 | READY_FOR_PICKUP → IN_TRANSIT | Warehouse (via scan) |
 | IN_TRANSIT → PICKED_UP | Admin Sales (via scan) |
 | PICKED_UP → FINAL_AUDIT_PENDING | Sistem otomatis |
-| FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE | Auditor (submit hasil GREEN/YELLOW/RED) |
+| FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE | Admin Sales (submit hasil GREEN/YELLOW/RED) |
 | FINAL_AUDIT_COMPLETE → CLOSED | Sistem otomatis jika GREEN; Supervisor / Owner approve jika YELLOW |
 | FINAL_AUDIT_COMPLETE → ON_HOLD | Sistem otomatis jika hasil RED (blokir CLOSED, wajib investigasi Owner) |
 | Kapan saja → ON_HOLD | Owner |

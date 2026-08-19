@@ -136,4 +136,4 @@ Gunakan dokumen ini sebagai checklist saat testing sebelum sistem diserahkan unt
 | 12.1 | Semua aksi kritis dilakukan | Masing-masing muncul di audit log dengan detail lengkap |
 | 12.2 | Admin Sales coba hapus audit log | Tidak ada tombol hapus, API DELETE ditolak |
 | 12.3 | Owner ekspor laporan | File PDF/XLSX berhasil diunduh, ada catatan di audit log |
-| 12.4 | Auditor coba edit data order | Tidak ada akses edit, semua read-only |
+| 12.4 | Operator coba edit data order | Ditolak, operator hanya bisa update job |

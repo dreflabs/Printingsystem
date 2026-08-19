@@ -131,7 +131,7 @@ Tampil di **Owner Dashboard** dan **Laporan Bulanan Owner**:
 | Status Istirahat | NORMAL / BERLEBIH |
 | Keterangan Owner | Catatan opsional dari Owner |
 
-**Tidak tampil di dashboard Designer, Operator, Finishing, Warehouse, Auditor.**
+**Tidak tampil di dashboard Designer, Operator, Finishing, Warehouse.**
 Admin Sales hanya bisa **lihat** laporan absensi, tidak bisa edit.
 
 ---

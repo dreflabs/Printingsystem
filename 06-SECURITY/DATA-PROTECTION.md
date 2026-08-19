@@ -48,9 +48,7 @@ restricted customer/financial data, backups and recovery.
 - Akses penuh ke semua data
 - Setiap akses ke data sensitif tercatat di audit log
 
-**AUDITOR:**
-- Read-only, hanya bisa lihat summary laporan
-- Phone/email konsumen ditampilkan dalam bentuk masked: `+6281****5678`
+
 
 ---
 
@@ -62,7 +60,7 @@ restricted customer/financial data, backups and recovery.
 - Gunakan serializer/transformer berbasis role di setiap API endpoint yang mengembalikan data konsumen
 
 ### Masking di UI
-- Untuk role yang tidak berhak (termasuk auditor): tampilkan `+6281****5678`
+- Untuk role yang tidak berhak (termasuk role read-only lainnya): tampilkan `+6281****5678`
 - Jangan hanya CSS hide — data tidak boleh ada di DOM
 
 ### WhatsApp — Nomor Tidak Boleh Dikirim Manual

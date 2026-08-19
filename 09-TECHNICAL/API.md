@@ -240,10 +240,10 @@ Validasi server: FAIL wajib disertai kategori masalah + deskripsi (min 20 karakt
 
 | Endpoint | Deskripsi | Role |
 |----------|-----------|------|
-| `GET /api/audit-logs` | Baca audit log (filter: actor, entity, tanggal, action) | Supervisor, Owner, Auditor (read-only) |
+| `GET /api/audit-logs` | Baca audit log (filter: actor, entity, tanggal, action) | Supervisor, Owner, Admin Sales (read-only) |
 | `DELETE /api/audit-logs/:id` | Hapus audit log (panel khusus, penghapusan sendiri tercatat) | Owner saja |
-| `GET /api/orders/:id/final-audit` | Detail final audit order | Auditor, Owner, Supervisor |
-| `POST /api/orders/:id/final-audit` | Submit hasil final audit (GREEN/YELLOW/RED) | Auditor |
+| `GET /api/orders/:id/final-audit` | Detail final audit order | Admin Sales, Owner, Supervisor |
+| `POST /api/orders/:id/final-audit` | Submit hasil final audit (GREEN/YELLOW/RED) | Admin Sales |
 | `POST /api/orders/:id/final-audit/approve` | Approve hasil audit YELLOW sebelum CLOSED | Supervisor, Owner |
 | `POST /api/orders/:id/corrections` | Catat correction/adjustment pasca-CLOSED | Owner, Supervisor (sesuai kategori) |
 

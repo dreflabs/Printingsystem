@@ -19,7 +19,7 @@
 15. Order yang dibatalkan setelah produksi berjalan: DP hangus, harus ada persetujuan Owner.
 16. Stok material tidak bisa dikurangi secara manual tanpa Job ID yang valid (kecuali Adjustment dengan alasan dan approval).
 17. Mesin yang sedang MAINTENANCE tidak bisa menerima assignment job baru.
-18. Data kontak konsumen (phone, email) tidak pernah tampil di layar untuk role Designer, Operator, QC, Finishing, Warehouse, Auditor.
+18. Data kontak konsumen (phone, email) tidak pernah tampil di layar untuk role Designer, Operator, QC, Finishing, Warehouse.
 19. Audit log bersifat immutable — tidak ada edit atau delete oleh siapapun kecuali Owner via panel khusus yang juga dicatat.
 20. Absensi (jam masuk dari fingerprint dan waktu istirahat dari sistem) tidak bisa diubah — Owner hanya bisa menambahkan catatan.
 

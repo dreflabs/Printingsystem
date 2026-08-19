@@ -6,12 +6,12 @@
 2. Admin Sales atau Designer yang membuat order resmi di sistem — konsumen tidak punya akses ke sistem.
 3. Semua transaksi keuangan (DP, pelunasan) adalah milik catatan keuangan perusahaan dan tidak bisa diedit setelah dikonfirmasi.
 4. Produksi hanya bisa dimulai jika desain sudah berstatus APPROVED dan ada Job ID yang valid.
-5. Semua pemakaian material harus terhubung ke Job ID — tidak ada pengeluaran material tanpa job.
+5. Semua pemakaian material PRINTING harus terhubung ke Job ID — tidak ada pengeluaran material produksi tanpa job. *(Pengecualian: pesanan `order_type = RETAIL` tidak memiliki Job ID; pemotongan stok barang jadi dicatat via `retail_stock_movements` dengan referensi ke `order_id`)*
 6. Waste (bahan terbuang) wajib dicatat dengan alasan.
 7. QC PASS wajib terpenuhi sebelum lanjut ke finishing dan penyimpanan.
 8. Barang selesai finishing wajib disimpan ke lokasi gudang yang terdaftar di sistem (LT3).
 9. Penyerahan barang ke konsumen wajib ada otorisasi release dan konfirmasi status payment lunas (atau override Owner).
-10. Final Audit wajib dilakukan sebelum order bisa di-CLOSED.
+10. Final Audit wajib dilakukan sebelum order PRINTING bisa di-CLOSED. *(Pengecualian: pesanan `order_type = RETAIL` tidak melalui Final Audit — alurnya langsung `PAYMENT_COMPLETED → CLOSED` setelah barang diserahkan)*
 11. Hasil audit RED memblokir penutupan order — harus diselesaikan dulu.
 12. Order yang sudah CLOSED tidak bisa diedit langsung — harus lewat workflow Correction/Adjustment.
 13. DP minimum 50% untuk konsumen walk-in. Override hanya oleh Admin (min 30%) atau Owner (bebas), dengan alasan wajib tercatat.
@@ -59,3 +59,17 @@
 - Login gagal 5 kali: akun terkunci 15 menit otomatis.
 - Tidak ada registrasi mandiri — akun dibuat hanya oleh Owner.
 - Password reset hanya oleh Owner secara offline.
+
+---
+
+## Aturan Direct Sales / Retail (POS)
+
+Aturan khusus untuk pesanan `order_type = RETAIL` (Penjualan Langsung Barang Jadi):
+
+- Pesanan RETAIL menggunakan "Fast-Track Workflow": `NEW_RETAIL_ORDER → PAYMENT_COMPLETED → CLOSED`.
+- Tidak ada proses Desain, Produksi, QC, Finishing, Gudang, atau Final Audit untuk pesanan RETAIL.
+- Stok barang jadi (`retail_products`) dipotong otomatis saat status mencapai `PAYMENT_COMPLETED`.
+- `customer_id` bersifat opsional (boleh `null`) untuk pelanggan walk-in/guest yang tidak terdaftar.
+- Diskon pada pesanan RETAIL mengikuti aturan yang sama dengan PRINTING — hanya bisa diapply oleh Owner.
+- Pesanan RETAIL dan PRINTING **tidak boleh digabung dalam satu nota** — jika pelanggan membeli keduanya, dibuat dua transaksi terpisah.
+- Pembatalan pesanan RETAIL hanya bisa dilakukan sebelum pembayaran dikonfirmasi; setelah `PAYMENT_COMPLETED` dianggap final.

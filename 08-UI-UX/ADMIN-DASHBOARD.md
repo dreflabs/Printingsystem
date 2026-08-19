@@ -38,7 +38,7 @@ Kolom tabel:
 |-------|-----------|
 | Kode Order | `ORD-YYYYMMDD-XXXX` |
 | Nama Konsumen | |
-| Tipe Order | Walk-in / Makloon / WhatsApp |
+| Tipe Order | Walk-in / Makloon / WhatsApp / **RETAIL** |
 | Status | Status pill sesuai `DESIGN-SYSTEM.md` |
 | Status Pembayaran | Belum DP / DP Terpenuhi / Lunas |
 | Total Order | |
@@ -50,7 +50,7 @@ Kolom tabel:
 ## Filter Tabel
 
 - Status order (dropdown multi-select, sesuai daftar status pill)
-- Tipe order (Walk-in / Makloon / WhatsApp)
+- Tipe order (Walk-in / Makloon / WhatsApp / **RETAIL**)
 - Tanggal order (dari–sampai)
 - Nama konsumen (search)
 - Kode order (search exact)
@@ -63,6 +63,7 @@ Kolom tabel:
 ## Aksi yang Bisa Dilakukan dari Dashboard
 
 - Buat order baru (Walk-in / Makloon / WhatsApp)
+- **Buka modul POS Kasir** (buat transaksi RETAIL barang jadi — tombol di pojok kanan atas bertuliskan "Kasir POS")
 - Edit order (hanya status DRAFT / DESIGNING / WAITING_APPROVAL, sesuai `02-ORDER.md`)
 - Konfirmasi penerimaan pembayaran (jumlah, metode, referensi, timestamp — lihat `04-PAYMENT.md`)
 - Ajukan diskon (pending approval Owner) — tidak bisa apply langsung
@@ -79,3 +80,9 @@ Kolom tabel:
 - Tombol cancel order setelah produksi berjalan (hanya Owner)
 - Akses audit log
 - Edit laporan keuangan (hanya lihat)
+
+---
+
+## Panel Shortcut POS (Kasir)
+
+Sebagai shortcut tambahan (bukan sub-halaman baru), di pojok kanan atas terdapat tombol **"Kasir POS"** yang membuka halaman `POS-DASHBOARD.md`. Panel ini bersifat terpisah dari daftar order PRINTING dan menangani seluruh siklus transaksi RETAIL.

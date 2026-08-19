@@ -71,12 +71,12 @@ FILE: 01-BUSINESS/BUSINESS-RULES.md
 2. Admin Sales atau Designer yang membuat order resmi di sistem — konsumen tidak punya akses ke sistem.
 3. Semua transaksi keuangan (DP, pelunasan) adalah milik catatan keuangan perusahaan dan tidak bisa diedit setelah dikonfirmasi.
 4. Produksi hanya bisa dimulai jika desain sudah berstatus APPROVED dan ada Job ID yang valid.
-5. Semua pemakaian material harus terhubung ke Job ID — tidak ada pengeluaran material tanpa job.
+5. Semua pemakaian material PRINTING harus terhubung ke Job ID — tidak ada pengeluaran material produksi tanpa job. *(Pengecualian: pesanan `order_type = RETAIL` tidak memiliki Job ID; pemotongan stok barang jadi dicatat via `retail_stock_movements` dengan referensi ke `order_id`)*
 6. Waste (bahan terbuang) wajib dicatat dengan alasan.
 7. QC PASS wajib terpenuhi sebelum lanjut ke finishing dan penyimpanan.
 8. Barang selesai finishing wajib disimpan ke lokasi gudang yang terdaftar di sistem (LT3).
 9. Penyerahan barang ke konsumen wajib ada otorisasi release dan konfirmasi status payment lunas (atau override Owner).
-10. Final Audit wajib dilakukan sebelum order bisa di-CLOSED.
+10. Final Audit wajib dilakukan sebelum order PRINTING bisa di-CLOSED. *(Pengecualian: pesanan `order_type = RETAIL` tidak melalui Final Audit — alurnya langsung `PAYMENT_COMPLETED → CLOSED` setelah barang diserahkan)*
 11. Hasil audit RED memblokir penutupan order — harus diselesaikan dulu.
 12. Order yang sudah CLOSED tidak bisa diedit langsung — harus lewat workflow Correction/Adjustment.
 13. DP minimum 50% untuk konsumen walk-in. Override hanya oleh Admin (min 30%) atau Owner (bebas), dengan alasan wajib tercatat.
@@ -124,6 +124,20 @@ FILE: 01-BUSINESS/BUSINESS-RULES.md
 - Login gagal 5 kali: akun terkunci 15 menit otomatis.
 - Tidak ada registrasi mandiri — akun dibuat hanya oleh Owner.
 - Password reset hanya oleh Owner secara offline.
+
+---
+
+## Aturan Direct Sales / Retail (POS)
+
+Aturan khusus untuk pesanan `order_type = RETAIL` (Penjualan Langsung Barang Jadi):
+
+- Pesanan RETAIL menggunakan "Fast-Track Workflow": `NEW_RETAIL_ORDER → PAYMENT_COMPLETED → CLOSED`.
+- Tidak ada proses Desain, Produksi, QC, Finishing, Gudang, atau Final Audit untuk pesanan RETAIL.
+- Stok barang jadi (`retail_products`) dipotong otomatis saat status mencapai `PAYMENT_COMPLETED`.
+- `customer_id` bersifat opsional (boleh `null`) untuk pelanggan walk-in/guest yang tidak terdaftar.
+- Diskon pada pesanan RETAIL mengikuti aturan yang sama dengan PRINTING — hanya bisa diapply oleh Owner.
+- Pesanan RETAIL dan PRINTING **tidak boleh digabung dalam satu nota** — jika pelanggan membeli keduanya, dibuat dua transaksi terpisah.
+- Pembatalan pesanan RETAIL hanya bisa dilakukan sebelum pembayaran dikonfirmasi; setelah `PAYMENT_COMPLETED` dianggap final.
 
 
 ==================================================
@@ -269,6 +283,13 @@ Legenda: ✅ = akses penuh, 📖 = read-only / lihat saja, ❌ = tidak ada akses
 | **Reports** — export semua laporan | ✅ | ✅ (produksi) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (laporan audit) |
 | **Data konsumen** — phone/email | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | 📖 (masked) |
 | **User Management** — buat/nonaktifkan/reset password/unlock | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **POS / Direct Sales** — buat transaksi RETAIL | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **POS / Direct Sales** — konfirmasi pembayaran RETAIL | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — lihat katalog & stok barang retail | ✅ | 📖 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — tambah/edit produk retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — input stok masuk barang retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — adjustment stok barang retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Reports** — laporan penjualan retail | ✅ | 📖 | 📖 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 <!-- perlu klarifikasi: 03-ROLES/OWNER.md tidak eksplisit menyebut Owner bisa submit QC atau scan produksi langsung — mengikuti prinsip "Owner akses penuh ke semua data" secara umum, tapi aksi operasional harian (scan QR, submit QC) di file per-role hanya didefinisikan untuk role eksekutor terkait (Operator/QC/Finishing/Warehouse). Matriks di atas menandai kolom Owner ❌ untuk aksi operasional harian tersebut karena tidak disebut eksplisit sebagai hak Owner di file manapun, meski secara praktik Owner mungkin bisa override lewat panel admin. -->
 
@@ -2072,7 +2093,7 @@ Kolom tabel:
 |-------|-----------|
 | Kode Order | `ORD-YYYYMMDD-XXXX` |
 | Nama Konsumen | |
-| Tipe Order | Walk-in / Makloon / WhatsApp |
+| Tipe Order | Walk-in / Makloon / WhatsApp / **RETAIL** |
 | Status | Status pill sesuai `DESIGN-SYSTEM.md` |
 | Status Pembayaran | Belum DP / DP Terpenuhi / Lunas |
 | Total Order | |
@@ -2084,7 +2105,7 @@ Kolom tabel:
 ## Filter Tabel
 
 - Status order (dropdown multi-select, sesuai daftar status pill)
-- Tipe order (Walk-in / Makloon / WhatsApp)
+- Tipe order (Walk-in / Makloon / WhatsApp / **RETAIL**)
 - Tanggal order (dari–sampai)
 - Nama konsumen (search)
 - Kode order (search exact)
@@ -2097,6 +2118,7 @@ Kolom tabel:
 ## Aksi yang Bisa Dilakukan dari Dashboard
 
 - Buat order baru (Walk-in / Makloon / WhatsApp)
+- **Buka modul POS Kasir** (buat transaksi RETAIL barang jadi — tombol di pojok kanan atas bertuliskan "Kasir POS")
 - Edit order (hanya status DRAFT / DESIGNING / WAITING_APPROVAL, sesuai `02-ORDER.md`)
 - Konfirmasi penerimaan pembayaran (jumlah, metode, referensi, timestamp — lihat `04-PAYMENT.md`)
 - Ajukan diskon (pending approval Owner) — tidak bisa apply langsung
@@ -2113,6 +2135,12 @@ Kolom tabel:
 - Tombol cancel order setelah produksi berjalan (hanya Owner)
 - Akses audit log
 - Edit laporan keuangan (hanya lihat)
+
+---
+
+## Panel Shortcut POS (Kasir)
+
+Sebagai shortcut tambahan (bukan sub-halaman baru), di pojok kanan atas terdapat tombol **"Kasir POS"** yang membuka halaman `POS-DASHBOARD.md`. Panel ini bersifat terpisah dari daftar order PRINTING dan menangani seluruh siklus transaksi RETAIL.
 
 
 ==================================================
@@ -3428,11 +3456,40 @@ Validasi server: FAIL wajib disertai kategori masalah + deskripsi (min 20 karakt
 
 ---
 
+## RETAIL POS (Direct Sales)
+
+Endpoint untuk modul Kasir Cepat / Penjualan Langsung barang retail (order_type = RETAIL).
+State machine RETAIL: `NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED` (lihat `09-TECHNICAL/STATUS-MACHINE.md`).
+
+| Endpoint | Deskripsi | Role |
+|----------|-----------|------|
+| `GET /api/retail-products` | Daftar katalog produk retail (nama, SKU, stok, harga) | Admin Sales, Owner |
+| `POST /api/retail-products` | Tambah produk retail baru | Admin Sales, Owner |
+| `PATCH /api/retail-products/:id` | Edit produk retail (nama, harga, kategori) | Admin Sales, Owner |
+| `PATCH /api/retail-products/:id/deactivate` | Nonaktifkan produk retail | Admin Sales, Owner |
+| `GET /api/retail-products/:id/movements` | Riwayat mutasi stok produk retail | Admin Sales, Owner |
+| `POST /api/retail-products/:id/movements` | Input stok masuk / adjustment stok retail (movement_type: IN/ADJUSTMENT) | Admin Sales, Owner |
+| `POST /api/retail/orders` | Buat transaksi RETAIL baru (pilih produk + qty, customer opsional) — status awal `NEW_RETAIL_ORDER` | Admin Sales, Owner |
+| `GET /api/retail/orders` | Daftar transaksi RETAIL (filter: tanggal, status, kasir) | Admin Sales, Owner |
+| `GET /api/retail/orders/:id` | Detail transaksi RETAIL | Admin Sales, Owner |
+| `POST /api/retail/orders/:id/payment` | Konfirmasi pembayaran RETAIL (method: CASH/QRIS) — memicu pemotongan stok otomatis & status → `RETAIL_PAYMENT_COMPLETED` | Admin Sales, Owner |
+| `POST /api/retail/orders/:id/close` | Tutup transaksi RETAIL setelah barang diserahkan — status → `CLOSED` | Admin Sales, Owner |
+| `POST /api/retail/orders/:id/cancel` | Batalkan transaksi RETAIL (hanya sebelum `RETAIL_PAYMENT_COMPLETED`) | Admin Sales, Owner |
+| `GET /api/reports/retail` | Laporan penjualan retail (harian/bulanan, per produk) | Admin Sales, Owner |
+
+**Catatan:**
+- Pemotongan `retail_products.stock_quantity` dan pencatatan `retail_stock_movements` dilakukan secara atomik dalam satu transaksi DB saat `RETAIL_PAYMENT_COMPLETED`.
+- Jika stok tidak mencukupi (stock_quantity < qty yang diminta), sistem mengembalikan `409 CONFLICT` — kasir harus melakukan adjustment stok dulu.
+- Transaksi RETAIL dicatat di `audit_logs` sama seperti transaksi PRINTING.
+
+---
+
 ## Catatan Implementasi
 
 - Semua endpoint yang menerima input numerik (qty, harga, waste) divalidasi terhadap aturan di `09-TECHNICAL/VALIDATION-RULES.md` sebelum menyentuh database.
 - Endpoint scan (`/scan/*`, `/storage/*confirm*`) menerima `job_code` atau `location_code` sebagai identitas — QR hanya membawa identitas, bukan otorisasi (lihat `02-WORKFLOW/13-QR-SCAN-FLOW.md`); server tetap memvalidasi ulang assignment/role/status setiap request.
 - Endpoint list mendukung pagination (`?page=&page_size=`), dan filter spesifik per domain (lihat dokumen workflow terkait untuk daftar filter yang dibutuhkan UI).
+
 
 
 ==================================================
@@ -3652,6 +3709,20 @@ CANCELLED
 
 INCIDENT
   └─ Barang tidak ditemukan di lokasi storage yang tercatat
+
+// ── STATUS KHUSUS RETAIL (order_type = RETAIL) ──
+
+NEW_RETAIL_ORDER
+  └─ Kasir/Admin Sales membuat pesanan Direct Sales (barang jadi)
+
+RETAIL_PAYMENT_COMPLETED
+  └─ Pembayaran dikonfirmasi lunas, stok barang dipotong otomatis
+
+CLOSED
+  └─ (sama dengan PRINTING) Transaksi selesai. Tidak bisa diedit langsung.
+
+CANCELLED
+  └─ (sama dengan PRINTING) Hanya berlaku sebelum RETAIL_PAYMENT_COMPLETED
 ```
 
 ---
@@ -3671,6 +3742,16 @@ PICKED_UP → FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE → CLOSED
                                  ↘ (hasil RED) → ON_HOLD (investigasi Owner)
 
 *WAITING_APPROVAL hanya untuk tipe konsumen WhatsApp
+```
+
+### Alur RETAIL (order_type = RETAIL)
+
+```
+NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED
+
+*Tidak ada Design, Production, QC, Finishing, Storage, atau Final Audit
+*customer_id opsional (boleh null untuk pelanggan guest/walk-in)
+*Pengurangan stok retail_products terjadi otomatis saat RETAIL_PAYMENT_COMPLETED
 ```
 
 ---
@@ -3725,6 +3806,17 @@ PICKED_UP → FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE → CLOSED
 | Kapan saja → ON_HOLD | Owner |
 | Sebelum produksi → CANCELLED | Admin Sales / Owner |
 | Setelah produksi → CANCELLED | Owner saja |
+
+---
+
+## Siapa yang Bisa Ubah Status (RETAIL)
+
+| Transisi | Role yang Berhak |
+|----------|-----------------|
+| Buat → NEW_RETAIL_ORDER | Admin Sales, Owner |
+| NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED | Admin Sales (konfirmasi pembayaran) |
+| RETAIL_PAYMENT_COMPLETED → CLOSED | Sistem otomatis (setelah barang diserahkan) |
+| NEW_RETAIL_ORDER → CANCELLED | Admin Sales, Owner (hanya sebelum pembayaran) |
 
 
 ==================================================
@@ -5328,8 +5420,10 @@ FILE: 07-REPORTS/DAILY-REPORT.md
 | Kolom | Keterangan |
 |-------|-----------|
 | Tanggal | |
-| Total Order Baru | Jumlah order dibuat hari itu |
-| Order Selesai (Picked Up) | Jumlah order status PICKED_UP hari itu |
+| Total Order Baru | Jumlah order dibuat hari itu (PRINTING + RETAIL digabung, bisa difilter terpisah) |
+| Order Selesai (Picked Up) | Jumlah order PRINTING status PICKED_UP hari itu |
+| Transaksi Retail Selesai | Jumlah pesanan RETAIL dengan status CLOSED hari itu |
+| Pendapatan Retail Hari Ini | Total nominal transaksi RETAIL yang CLOSED hari itu (hanya tampil ke Owner & Admin) |
 | Job Produksi Aktif | Job berstatus PRODUCTION_STARTED / FINISHING_STARTED pada hari itu |
 | Order Siap Diambil | Jumlah order READY_FOR_PICKUP belum diambil per akhir hari |
 | Order Overdue | Jumlah order dengan deadline lewat, belum selesai |
@@ -5343,13 +5437,13 @@ FILE: 07-REPORTS/DAILY-REPORT.md
 |-------|-----------|
 | Kode Order | |
 | Nama Konsumen | |
-| Tipe Order | Walk-in / Makloon / WhatsApp |
+| Tipe Order | Walk-in / Makloon / WhatsApp / RETAIL |
 | Status | Status pill sesuai `08-UI-UX/DESIGN-SYSTEM.md` |
 | Status Pembayaran | Belum DP / DP Terpenuhi / Lunas |
 | Deadline | |
 | Dibuat Oleh | |
 
-Filter: Semua / Draft / Produksi / Siap Diambil / Selesai / Overdue
+Filter: Semua / Draft / Produksi / Siap Diambil / Selesai / Overdue / **Retail**
 
 ---
 
@@ -5385,6 +5479,7 @@ Filter tersedia: tanggal, kategori, status tindak lanjut.
 ## Catatan Penting
 
 - Laporan Harian adalah ringkasan lintas modul untuk pemantauan cepat — detail lengkap per topik tetap ada di `EMPLOYEE-REPORT.md`, `FINANCIAL-REPORT.md`, `MATERIAL-REPORT.md`, `PRODUCTION-REPORT.md`
+- Laporan Harian mencakup **kedua jenis transaksi** (PRINTING dan RETAIL) — dapat difilter terpisah di halaman laporan lengkap
 - Data direfresh real-time selama hari berjalan; ringkasan final terkunci pada pukul 23:59 hari itu
 
 ---
@@ -5557,10 +5652,12 @@ FILE: 07-REPORTS/FINANCIAL-REPORT.md
 | Kolom | Keterangan |
 |-------|-----------|
 | Tanggal | |
-| Total Order Baru | Jumlah order dibuat hari itu |
-| Total DP Masuk | Jumlah rupiah DP yang dikonfirmasi |
-| Total Pelunasan Masuk | Jumlah rupiah pelunasan yang dikonfirmasi |
-| Total Pendapatan Hari Ini | DP + Pelunasan |
+| Total Order Baru | Jumlah order PRINTING dibuat hari itu |
+| Total DP Masuk | Jumlah rupiah DP yang dikonfirmasi (PRINTING) |
+| Total Pelunasan Masuk | Jumlah rupiah pelunasan yang dikonfirmasi (PRINTING) |
+| Total Pendapatan Printing | DP + Pelunasan (PRINTING) |
+| **Pendapatan Retail Hari Ini** | Total transaksi RETAIL yang CLOSED hari itu |
+| **Total Pendapatan Gabungan** | Pendapatan PRINTING + Pendapatan RETAIL |
 | Diskon yang Diberikan | Total nominal diskon yang di-approve |
 | DP Hangus (Cancel) | DP dari order yang dibatalkan saat produksi sudah jalan |
 | Piutang Baru | Order confirmed tapi belum lunas |
@@ -5592,22 +5689,49 @@ Filter: Semua / Overdue / Belum Siap / Siap Diambil Belum Lunas
 
 | Metrik | Keterangan |
 |--------|-----------|
-| Total Omset (bruto) | |
+| Total Omset (bruto) | Total nilai order PRINTING + nilai transaksi RETAIL |
 | Total Diskon | |
 | Total Omset (neto) | Bruto - Diskon |
-| Total Pendapatan Masuk | Uang yang benar-benar diterima (DP + pelunasan) |
-| Total Piutang Akhir Bulan | |
+| Total Pendapatan Masuk | Uang yang benar-benar diterima (DP + pelunasan PRINTING + RETAIL) |
+| **Pendapatan Retail Bulanan** | Total transaksi RETAIL yang CLOSED dalam periode |
+| **Persentase Retail vs Printing** | Perbandingan kontribusi dua lini bisnis |
+| Total Piutang Akhir Bulan | Khusus PRINTING (RETAIL tidak ada piutang — pembayaran langsung) |
 | Total DP Hangus | |
-| Jumlah Order | |
+| Jumlah Order | Jumlah order PRINTING |
+| **Jumlah Transaksi Retail** | Jumlah transaksi RETAIL yang CLOSED |
 | Order Selesai | |
 | Order Dibatalkan | |
-| Rata-rata Nilai Order | |
-| Produk Terlaris | Top 5 produk |
+| Rata-rata Nilai Order | Rata-rata nilai order PRINTING |
+| **Rata-rata Nilai Transaksi Retail** | Rata-rata nominal transaksi RETAIL |
+| Produk Terlaris | Top 5 produk PRINTING |
+| **Produk Retail Terlaris** | Top 5 barang retail yang paling banyak terjual |
 | Mesin Tersibuk | Berdasarkan jam produksi |
 
 ---
 
-## 4. Laporan Diskon
+## 5. Laporan Penjualan Retail
+
+**Akses:** Admin Sales (lihat), Owner (penuh + export)
+
+Rekap khusus untuk transaksi `order_type = RETAIL`. Dapat difilter per hari/bulan.
+
+| Kolom | Keterangan |
+|-------|-----------|
+| Tanggal Transaksi | |
+| Kode Transaksi | Kode order RETAIL |
+| Nama Pembeli | Nama konsumen atau "Guest" jika tidak terdaftar |
+| Kasir | Admin Sales yang memproses |
+| Produk Terjual | Nama produk retail + qty |
+| Subtotal | |
+| Diskon | Jika ada |
+| Total | |
+| Metode Pembayaran | TUNAI / QRIS |
+
+Filter: Tanggal (dari–sampai), Kasir, Produk, Metode Pembayaran.
+
+---
+
+## 6. Laporan Diskon
 
 Semua diskon yang pernah diberikan — untuk audit Owner.
 
@@ -5639,6 +5763,8 @@ Export dicatat di audit log: siapa yang export, kapan, laporan apa.
 
 - PrintFlow adalah **satu-satunya sumber kebenaran keuangan** — tidak ada rekap ke sistem lain
 - Semua angka berdasarkan transaksi yang dikonfirmasi oleh Admin Sales
+- **Laporan keuangan mencakup kedua lini:** PRINTING (DP/pelunasan) dan RETAIL (transaksi langsung). Keduanya dihitung dalam total pendapatan gabungan.
+- RETAIL tidak memiliki sistem piutang — pembayaran langsung saat transaksi. Laporan piutang hanya mencakup PRINTING.
 - Koreksi angka keuangan setelah CLOSED hanya lewat `02-WORKFLOW/15-CORRECTION-ADJUSTMENT.md`
 - Tidak ada fitur delete transaksi — hanya correction record baru
 

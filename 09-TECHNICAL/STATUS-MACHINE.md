@@ -94,6 +94,20 @@ CANCELLED
 
 INCIDENT
   └─ Barang tidak ditemukan di lokasi storage yang tercatat
+
+// ── STATUS KHUSUS RETAIL (order_type = RETAIL) ──
+
+NEW_RETAIL_ORDER
+  └─ Kasir/Admin Sales membuat pesanan Direct Sales (barang jadi)
+
+RETAIL_PAYMENT_COMPLETED
+  └─ Pembayaran dikonfirmasi lunas, stok barang dipotong otomatis
+
+CLOSED
+  └─ (sama dengan PRINTING) Transaksi selesai. Tidak bisa diedit langsung.
+
+CANCELLED
+  └─ (sama dengan PRINTING) Hanya berlaku sebelum RETAIL_PAYMENT_COMPLETED
 ```
 
 ---
@@ -113,6 +127,16 @@ PICKED_UP → FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE → CLOSED
                                  ↘ (hasil RED) → ON_HOLD (investigasi Owner)
 
 *WAITING_APPROVAL hanya untuk tipe konsumen WhatsApp
+```
+
+### Alur RETAIL (order_type = RETAIL)
+
+```
+NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED
+
+*Tidak ada Design, Production, QC, Finishing, Storage, atau Final Audit
+*customer_id opsional (boleh null untuk pelanggan guest/walk-in)
+*Pengurangan stok retail_products terjadi otomatis saat RETAIL_PAYMENT_COMPLETED
 ```
 
 ---
@@ -167,3 +191,14 @@ PICKED_UP → FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE → CLOSED
 | Kapan saja → ON_HOLD | Owner |
 | Sebelum produksi → CANCELLED | Admin Sales / Owner |
 | Setelah produksi → CANCELLED | Owner saja |
+
+---
+
+## Siapa yang Bisa Ubah Status (RETAIL)
+
+| Transisi | Role yang Berhak |
+|----------|-----------------|
+| Buat → NEW_RETAIL_ORDER | Admin Sales, Owner |
+| NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED | Admin Sales (konfirmasi pembayaran) |
+| RETAIL_PAYMENT_COMPLETED → CLOSED | Sistem otomatis (setelah barang diserahkan) |
+| NEW_RETAIL_ORDER → CANCELLED | Admin Sales, Owner (hanya sebelum pembayaran) |

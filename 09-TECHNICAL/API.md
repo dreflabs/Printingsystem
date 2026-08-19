@@ -263,8 +263,37 @@ Validasi server: FAIL wajib disertai kategori masalah + deskripsi (min 20 karakt
 
 ---
 
+## RETAIL POS (Direct Sales)
+
+Endpoint untuk modul Kasir Cepat / Penjualan Langsung barang retail (order_type = RETAIL).
+State machine RETAIL: `NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED` (lihat `09-TECHNICAL/STATUS-MACHINE.md`).
+
+| Endpoint | Deskripsi | Role |
+|----------|-----------|------|
+| `GET /api/retail-products` | Daftar katalog produk retail (nama, SKU, stok, harga) | Admin Sales, Owner |
+| `POST /api/retail-products` | Tambah produk retail baru | Admin Sales, Owner |
+| `PATCH /api/retail-products/:id` | Edit produk retail (nama, harga, kategori) | Admin Sales, Owner |
+| `PATCH /api/retail-products/:id/deactivate` | Nonaktifkan produk retail | Admin Sales, Owner |
+| `GET /api/retail-products/:id/movements` | Riwayat mutasi stok produk retail | Admin Sales, Owner |
+| `POST /api/retail-products/:id/movements` | Input stok masuk / adjustment stok retail (movement_type: IN/ADJUSTMENT) | Admin Sales, Owner |
+| `POST /api/retail/orders` | Buat transaksi RETAIL baru (pilih produk + qty, customer opsional) — status awal `NEW_RETAIL_ORDER` | Admin Sales, Owner |
+| `GET /api/retail/orders` | Daftar transaksi RETAIL (filter: tanggal, status, kasir) | Admin Sales, Owner |
+| `GET /api/retail/orders/:id` | Detail transaksi RETAIL | Admin Sales, Owner |
+| `POST /api/retail/orders/:id/payment` | Konfirmasi pembayaran RETAIL (method: CASH/QRIS) — memicu pemotongan stok otomatis & status → `RETAIL_PAYMENT_COMPLETED` | Admin Sales, Owner |
+| `POST /api/retail/orders/:id/close` | Tutup transaksi RETAIL setelah barang diserahkan — status → `CLOSED` | Admin Sales, Owner |
+| `POST /api/retail/orders/:id/cancel` | Batalkan transaksi RETAIL (hanya sebelum `RETAIL_PAYMENT_COMPLETED`) | Admin Sales, Owner |
+| `GET /api/reports/retail` | Laporan penjualan retail (harian/bulanan, per produk) | Admin Sales, Owner |
+
+**Catatan:**
+- Pemotongan `retail_products.stock_quantity` dan pencatatan `retail_stock_movements` dilakukan secara atomik dalam satu transaksi DB saat `RETAIL_PAYMENT_COMPLETED`.
+- Jika stok tidak mencukupi (stock_quantity < qty yang diminta), sistem mengembalikan `409 CONFLICT` — kasir harus melakukan adjustment stok dulu.
+- Transaksi RETAIL dicatat di `audit_logs` sama seperti transaksi PRINTING.
+
+---
+
 ## Catatan Implementasi
 
 - Semua endpoint yang menerima input numerik (qty, harga, waste) divalidasi terhadap aturan di `09-TECHNICAL/VALIDATION-RULES.md` sebelum menyentuh database.
 - Endpoint scan (`/scan/*`, `/storage/*confirm*`) menerima `job_code` atau `location_code` sebagai identitas — QR hanya membawa identitas, bukan otorisasi (lihat `02-WORKFLOW/13-QR-SCAN-FLOW.md`); server tetap memvalidasi ulang assignment/role/status setiap request.
 - Endpoint list mendukung pagination (`?page=&page_size=`), dan filter spesifik per domain (lihat dokumen workflow terkait untuk daftar filter yang dibutuhkan UI).
+

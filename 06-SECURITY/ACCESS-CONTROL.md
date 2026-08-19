@@ -49,6 +49,13 @@ Legenda: ✅ = akses penuh, 📖 = read-only / lihat saja, ❌ = tidak ada akses
 | **Reports** — export semua laporan | ✅ | ✅ (produksi) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (laporan audit) |
 | **Data konsumen** — phone/email | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | 📖 (masked) |
 | **User Management** — buat/nonaktifkan/reset password/unlock | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **POS / Direct Sales** — buat transaksi RETAIL | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **POS / Direct Sales** — konfirmasi pembayaran RETAIL | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — lihat katalog & stok barang retail | ✅ | 📖 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — tambah/edit produk retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — input stok masuk barang retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Retail Inventory** — adjustment stok barang retail | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Reports** — laporan penjualan retail | ✅ | 📖 | 📖 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 <!-- perlu klarifikasi: 03-ROLES/OWNER.md tidak eksplisit menyebut Owner bisa submit QC atau scan produksi langsung — mengikuti prinsip "Owner akses penuh ke semua data" secara umum, tapi aksi operasional harian (scan QR, submit QC) di file per-role hanya didefinisikan untuk role eksekutor terkait (Operator/QC/Finishing/Warehouse). Matriks di atas menandai kolom Owner ❌ untuk aksi operasional harian tersebut karena tidak disebut eksplisit sebagai hak Owner di file manapun, meski secara praktik Owner mungkin bisa override lewat panel admin. -->
 

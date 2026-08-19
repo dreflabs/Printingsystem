@@ -4,7 +4,7 @@
 
 1. QR adalah **identitas, bukan otorisasi** — scan tidak pernah langsung eksekusi aksi
 2. Setiap scan: sistem cek login + role + status sebelum memperbolehkan aksi
-3. Semua scan dilakukan via **browser di HP/tablet** — tidak butuh app tambahan
+3. Scan dilakukan via **Barcode Scanner 2D Fisik (USB/Bluetooth)** yang terhubung ke PC/Tablet (Utama), atau via browser HP (Cadangan).
 4. Dua jenis QR: **Job QR** (per order/job) dan **Location QR** (per slot di rak)
 
 ---
@@ -286,11 +286,11 @@ AUDIT
 
 | Stasiun | Perangkat Scan |
 |---------|---------------|
-| Area Produksi | HP Android/iOS operator (buka browser) |
-| Area QC | HP atau tablet QC inspector |
-| Area Finishing | HP atau tablet finishing staff |
-| Gudang Lantai 3 | HP warehouse staff (dibawa keliling) |
-| Counter Lantai 1 | Tablet yang dipasang tetap DI counter, atau HP Admin Sales |
+| Area Produksi | Tablet/PC + Barcode Scanner 2D (USB/Bluetooth) |
+| Area QC | Tablet/PC + Barcode Scanner 2D (USB/Bluetooth) |
+| Area Finishing | Tablet/PC + Barcode Scanner 2D (USB/Bluetooth) |
+| Gudang Lantai 3 | Tablet + Barcode Scanner 2D (Bluetooth) / HP Android (kamera browser) |
+| Counter Lantai 1 | PC Kasir + Barcode Scanner 2D (USB) |
 
-Semua via browser, tidak butuh install app.
+*Catatan: Semua interface berbasis browser. Scanner fisik berfungsi seperti input keyboard berkecepatan tinggi.*
 WiFi/LTE harus tersedia di semua area ini.

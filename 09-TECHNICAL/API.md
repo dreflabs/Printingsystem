@@ -1,6 +1,6 @@
 # API
 
-Dokumen ini mendefinisikan kontrak API level perencanaan untuk sistem manajemen percetakan. Tujuannya: cukup detail agar tim backend bisa mulai implementasi (Next.js 14 App Router — Route Handlers di `app/api/**/route.ts`, atau typed Server Actions) tanpa banyak pertanyaan susulan. Field-level detail (semua kolom request/response) tidak dicakup di sini — lihat `05-DATABASE/TABLES.md` untuk skema lengkap.
+Dokumen ini mendefinisikan kontrak API level perencanaan untuk sistem manajemen percetakan. Tujuannya: cukup detail agar tim backend bisa mulai implementasi (Next.js 16 App Router — Route Handlers di `app/api/**/route.ts`, atau typed Server Actions) tanpa banyak pertanyaan susulan. Field-level detail (semua kolom request/response) tidak dicakup di sini — lihat `05-DATABASE/TABLES.md` untuk skema lengkap.
 
 Semua endpoint di bawah adalah REST-style HTTP. Implementasi boleh memakai Server Actions untuk mutation yang dipicu dari form UI, selama kontrak otorisasi & error yang sama tetap berlaku.
 

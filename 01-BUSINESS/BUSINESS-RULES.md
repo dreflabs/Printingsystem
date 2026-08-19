@@ -22,6 +22,7 @@
 18. Data kontak konsumen (phone, email) tidak pernah tampil di layar untuk role Designer, Operator, QC, Finishing, Warehouse.
 19. Audit log bersifat immutable — tidak ada edit atau delete oleh siapapun kecuali Owner via panel khusus yang juga dicatat.
 20. Absensi (jam masuk dari fingerprint dan waktu istirahat dari sistem) tidak bisa diubah — Owner hanya bisa menambahkan catatan.
+21. Penentuan **Harga Total** untuk order cetak kustom (PRINTING) dikalkulasi secara manual oleh Admin Sales di luar sistem dan dimasukkan ke dalam form order. Sistem tidak memiliki *auto-calculate pricing engine* berdasarkan luas bahan.
 
 ---
 

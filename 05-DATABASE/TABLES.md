@@ -104,7 +104,7 @@ approval_method (varchar, enum: WALK_IN/MAKLOON/WHATSAPP), approval_notes (text)
 id (uuid, PK), order_id (uuid, FK → orders.id), job_code (varchar, unique, JOB-YYYYMMDD-XXXX), machine_id (uuid, FK → machines.id), operator_id (uuid, FK → users.id), status (varchar, enum), priority (integer),
 planned_start (timestamptz), planned_end (timestamptz), actual_start (timestamptz), actual_end (timestamptz),
 planned_qty (integer), actual_qty (integer), reprint_qty (integer), waste_qty (integer), waste_reason (text),
-parent_job_id (uuid, FK → production_jobs.id, untuk rework), rework_count (integer), rework_reason (text),
+parent_job_id (uuid, FK → production_jobs.id, untuk mengikat Child Job rework ke Job aslinya), rework_count (integer), rework_reason (text),
 notes (text), created_at (timestamptz), updated_at (timestamptz)
 
 ## qc_records

@@ -2,11 +2,11 @@
 
 ## Platform
 
-**Web Application** — diakses via browser di desktop maupun mobile.
-Bukan mobile app (tidak ada APK / App Store).
+**Web Application & PWA** — diakses via browser di desktop maupun mobile. 
+Aplikasi akan dikonfigurasi sebagai **Progressive Web App (PWA)** agar memiliki *Offline Mode Cache* (memastikan UI tidak *crash* jika koneksi internet pabrik terputus sesaat).
 
-Untuk scan QR Code: menggunakan **kamera HP/tablet via browser** (Web API `getUserMedia` + QR decoder library).
-Tidak memerlukan aplikasi terpisah — cukup buka browser dan scan.
+Untuk scan QR Code: direkomendasikan menggunakan **Barcode Scanner 2D Fisik (Bluetooth/USB)** yang terhubung ke PC/Tablet untuk kecepatan scan maksimal. 
+Sebagai cadangan (backup), tersedia fitur scan via **kamera HP/tablet via browser** (Web API `getUserMedia`).
 
 ---
 
@@ -14,13 +14,14 @@ Tidak memerlukan aplikasi terpisah — cukup buka browser dan scan.
 
 | Layer | Teknologi | Alasan |
 |-------|-----------|--------|
-| **Framework** | Next.js 14 (App Router) + TypeScript | Full-stack, SSR/SSG, API routes built-in, deployment fleksibel |
+| **Framework** | Next.js 16 (App Router) + TypeScript | Full-stack, SSR/SSG, Server Actions terbaru, deployment fleksibel |
 | **Database** | PostgreSQL | Relasional, ACID compliant, cocok untuk audit trail immutable |
 | **ORM** | Prisma | Type-safe, migration management, mudah schema change |
 | **Authentication** | NextAuth.js v5 (Auth.js) | RBAC support, session management, server-side validation |
 | **QR Generate** | `qrcode` npm | Generate QR di server, deliver sebagai PNG/SVG untuk dicetak |
-| **QR Scan (browser)** | `html5-qrcode` atau `zxing-js` | Scan via kamera HP di browser, tidak perlu install apapun |
-| **WhatsApp** | Abstraction layer (Fonnte/Wablas/WABA) | Provider dikonfigurasi via env var, bisa ganti tanpa ubah kode |
+| **QR Scan** | Hardware Scanner 2D (Primary) / `html5-qrcode` (Backup) | Kecepatan scan fisik jauh lebih cepat, fallback ke kamera HP |
+| **Background Jobs** | Inngest / Redis + BullMQ | Untuk antrian pengiriman WhatsApp agar UI tetap responsif (*non-blocking*) |
+| **WhatsApp** | Abstraction layer (Fonnte/Wablas/WABA) | Provider dikonfigurasi via env var, dieksekusi via Background Jobs |
 | **File Storage** | MinIO (self-hosted) atau Supabase Storage | Untuk file desain dan preview |
 | **PDF/Label** | Puppeteer atau `react-pdf` | Generate label QR untuk dicetak di stasiun kerja |
 | **Email (fallback)** | Nodemailer + SMTP / Resend | Notifikasi admin jika WhatsApp gagal |

@@ -46,13 +46,13 @@ QC_PASSED
   └─ QC lulus → bisa lanjut ke finishing
 
 QC_FAILED
-  └─ QC gagal → masuk rework workflow
+  └─ QC gagal → sistem generate **Child Job** baru (sufiks -R1) untuk mencegah tumpang tindih waktu. Masuk rework workflow.
 
 QC_REWORK_PENDING
-  └─ Menunggu penjelasan operator + approval Owner untuk rework
+  └─ Menunggu penjelasan operator + approval Owner untuk Child Job tersebut
 
 REWORK_APPROVED
-  └─ Owner setujui rework → kembali ke PRODUCTION_STARTED
+  └─ Owner setujui rework → Child Job diubah statusnya ke PRODUCTION_STARTED
 
 FINISHING_STARTED
   └─ Finishing Staff scan QR → mulai finishing (SCAN 4)
@@ -120,7 +120,7 @@ DRAFT → DESIGNING → WAITING_APPROVAL* → APPROVED
 APPROVED → WAITING_PAYMENT → CONFIRMED
 CONFIRMED → PRODUCTION_ASSIGNED → PRODUCTION_STARTED → PRODUCTION_COMPLETE
 PRODUCTION_COMPLETE → QC_PENDING → QC_PASSED → FINISHING_STARTED → FINISHING_COMPLETE
-                               ↘ QC_FAILED → QC_REWORK_PENDING → REWORK_APPROVED → PRODUCTION_STARTED (ulang)
+                               ↘ QC_FAILED (Auto-generate Child Job -R1) → QC_REWORK_PENDING → REWORK_APPROVED → PRODUCTION_STARTED (untuk Child Job)
 FINISHING_COMPLETE → STORAGE_PENDING → STORED → READY_FOR_PICKUP
 READY_FOR_PICKUP → IN_TRANSIT → PICKED_UP
 PICKED_UP → FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE → CLOSED

@@ -87,6 +87,7 @@ FILE: 01-BUSINESS/BUSINESS-RULES.md
 18. Data kontak konsumen (phone, email) tidak pernah tampil di layar untuk role Designer, Operator, QC, Finishing, Warehouse.
 19. Audit log bersifat immutable — tidak ada edit atau delete oleh siapapun kecuali Owner via panel khusus yang juga dicatat.
 20. Absensi (jam masuk dari fingerprint dan waktu istirahat dari sistem) tidak bisa diubah — Owner hanya bisa menambahkan catatan.
+21. Penentuan **Harga Total** untuk order cetak kustom (PRINTING) dikalkulasi secara manual oleh Admin Sales di luar sistem dan dimasukkan ke dalam form order. Sistem tidak memiliki *auto-calculate pricing engine* berdasarkan luas bahan.
 
 ---
 
@@ -3163,7 +3164,7 @@ FILE: 09-TECHNICAL/API.md
 
 # API
 
-Dokumen ini mendefinisikan kontrak API level perencanaan untuk sistem manajemen percetakan. Tujuannya: cukup detail agar tim backend bisa mulai implementasi (Next.js 14 App Router — Route Handlers di `app/api/**/route.ts`, atau typed Server Actions) tanpa banyak pertanyaan susulan. Field-level detail (semua kolom request/response) tidak dicakup di sini — lihat `05-DATABASE/TABLES.md` untuk skema lengkap.
+Dokumen ini mendefinisikan kontrak API level perencanaan untuk sistem manajemen percetakan. Tujuannya: cukup detail agar tim backend bisa mulai implementasi (Next.js 16 App Router — Route Handlers di `app/api/**/route.ts`, atau typed Server Actions) tanpa banyak pertanyaan susulan. Field-level detail (semua kolom request/response) tidak dicakup di sini — lihat `05-DATABASE/TABLES.md` untuk skema lengkap.
 
 Semua endpoint di bawah adalah REST-style HTTP. Implementasi boleh memakai Server Actions untuk mutation yang dipicu dari form UI, selama kontrak otorisasi & error yang sama tetap berlaku.
 
@@ -3631,13 +3632,13 @@ QC_PASSED
   └─ QC lulus → bisa lanjut ke finishing
 
 QC_FAILED
-  └─ QC gagal → masuk rework workflow
+  └─ QC gagal → sistem generate **Child Job** baru (sufiks -R1) untuk mencegah tumpang tindih waktu. Masuk rework workflow.
 
 QC_REWORK_PENDING
-  └─ Menunggu penjelasan operator + approval Owner untuk rework
+  └─ Menunggu penjelasan operator + approval Owner untuk Child Job tersebut
 
 REWORK_APPROVED
-  └─ Owner setujui rework → kembali ke PRODUCTION_STARTED
+  └─ Owner setujui rework → Child Job diubah statusnya ke PRODUCTION_STARTED
 
 FINISHING_STARTED
   └─ Finishing Staff scan QR → mulai finishing (SCAN 4)
@@ -3705,7 +3706,7 @@ DRAFT → DESIGNING → WAITING_APPROVAL* → APPROVED
 APPROVED → WAITING_PAYMENT → CONFIRMED
 CONFIRMED → PRODUCTION_ASSIGNED → PRODUCTION_STARTED → PRODUCTION_COMPLETE
 PRODUCTION_COMPLETE → QC_PENDING → QC_PASSED → FINISHING_STARTED → FINISHING_COMPLETE
-                               ↘ QC_FAILED → QC_REWORK_PENDING → REWORK_APPROVED → PRODUCTION_STARTED (ulang)
+                               ↘ QC_FAILED (Auto-generate Child Job -R1) → QC_REWORK_PENDING → REWORK_APPROVED → PRODUCTION_STARTED (untuk Child Job)
 FINISHING_COMPLETE → STORAGE_PENDING → STORED → READY_FOR_PICKUP
 READY_FOR_PICKUP → IN_TRANSIT → PICKED_UP
 PICKED_UP → FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE → CLOSED
@@ -3797,11 +3798,11 @@ FILE: 09-TECHNICAL/TECH-STACK.md
 
 ## Platform
 
-**Web Application** — diakses via browser di desktop maupun mobile.
-Bukan mobile app (tidak ada APK / App Store).
+**Web Application & PWA** — diakses via browser di desktop maupun mobile. 
+Aplikasi akan dikonfigurasi sebagai **Progressive Web App (PWA)** agar memiliki *Offline Mode Cache* (memastikan UI tidak *crash* jika koneksi internet pabrik terputus sesaat).
 
-Untuk scan QR Code: menggunakan **kamera HP/tablet via browser** (Web API `getUserMedia` + QR decoder library).
-Tidak memerlukan aplikasi terpisah — cukup buka browser dan scan.
+Untuk scan QR Code: direkomendasikan menggunakan **Barcode Scanner 2D Fisik (Bluetooth/USB)** yang terhubung ke PC/Tablet untuk kecepatan scan maksimal. 
+Sebagai cadangan (backup), tersedia fitur scan via **kamera HP/tablet via browser** (Web API `getUserMedia`).
 
 ---
 
@@ -3809,13 +3810,14 @@ Tidak memerlukan aplikasi terpisah — cukup buka browser dan scan.
 
 | Layer | Teknologi | Alasan |
 |-------|-----------|--------|
-| **Framework** | Next.js 14 (App Router) + TypeScript | Full-stack, SSR/SSG, API routes built-in, deployment fleksibel |
+| **Framework** | Next.js 16 (App Router) + TypeScript | Full-stack, SSR/SSG, Server Actions terbaru, deployment fleksibel |
 | **Database** | PostgreSQL | Relasional, ACID compliant, cocok untuk audit trail immutable |
 | **ORM** | Prisma | Type-safe, migration management, mudah schema change |
 | **Authentication** | NextAuth.js v5 (Auth.js) | RBAC support, session management, server-side validation |
 | **QR Generate** | `qrcode` npm | Generate QR di server, deliver sebagai PNG/SVG untuk dicetak |
-| **QR Scan (browser)** | `html5-qrcode` atau `zxing-js` | Scan via kamera HP di browser, tidak perlu install apapun |
-| **WhatsApp** | Abstraction layer (Fonnte/Wablas/WABA) | Provider dikonfigurasi via env var, bisa ganti tanpa ubah kode |
+| **QR Scan** | Hardware Scanner 2D (Primary) / `html5-qrcode` (Backup) | Kecepatan scan fisik jauh lebih cepat, fallback ke kamera HP |
+| **Background Jobs** | Inngest / Redis + BullMQ | Untuk antrian pengiriman WhatsApp agar UI tetap responsif (*non-blocking*) |
+| **WhatsApp** | Abstraction layer (Fonnte/Wablas/WABA) | Provider dikonfigurasi via env var, dieksekusi via Background Jobs |
 | **File Storage** | MinIO (self-hosted) atau Supabase Storage | Untuk file desain dan preview |
 | **PDF/Label** | Puppeteer atau `react-pdf` | Generate label QR untuk dicetak di stasiun kerja |
 | **Email (fallback)** | Nodemailer + SMTP / Resend | Notifikasi admin jika WhatsApp gagal |
@@ -4843,7 +4845,7 @@ FILE: 02-WORKFLOW/13-QR-SCAN-FLOW.md
 
 1. QR adalah **identitas, bukan otorisasi** — scan tidak pernah langsung eksekusi aksi
 2. Setiap scan: sistem cek login + role + status sebelum memperbolehkan aksi
-3. Semua scan dilakukan via **browser di HP/tablet** — tidak butuh app tambahan
+3. Scan dilakukan via **Barcode Scanner 2D Fisik (USB/Bluetooth)** yang terhubung ke PC/Tablet (Utama), atau via browser HP (Cadangan).
 4. Dua jenis QR: **Job QR** (per order/job) dan **Location QR** (per slot di rak)
 
 ---
@@ -5125,13 +5127,13 @@ AUDIT
 
 | Stasiun | Perangkat Scan |
 |---------|---------------|
-| Area Produksi | HP Android/iOS operator (buka browser) |
-| Area QC | HP atau tablet QC inspector |
-| Area Finishing | HP atau tablet finishing staff |
-| Gudang Lantai 3 | HP warehouse staff (dibawa keliling) |
-| Counter Lantai 1 | Tablet yang dipasang tetap DI counter, atau HP Admin Sales |
+| Area Produksi | Tablet/PC + Barcode Scanner 2D (USB/Bluetooth) |
+| Area QC | Tablet/PC + Barcode Scanner 2D (USB/Bluetooth) |
+| Area Finishing | Tablet/PC + Barcode Scanner 2D (USB/Bluetooth) |
+| Gudang Lantai 3 | Tablet + Barcode Scanner 2D (Bluetooth) / HP Android (kamera browser) |
+| Counter Lantai 1 | PC Kasir + Barcode Scanner 2D (USB) |
 
-Semua via browser, tidak butuh install app.
+*Catatan: Semua interface berbasis browser. Scanner fisik berfungsi seperti input keyboard berkecepatan tinggi.*
 WiFi/LTE harus tersedia di semua area ini.
 
 
@@ -5375,14 +5377,14 @@ FILE: 12-IMPLEMENTATION/01-FRONTEND-RERE.md
 
 # 🚀 ROADMAP IMPLEMENTASI FRONTEND & UI/UX (RERE)
 
-Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan menggunakan **Next.js 14 App Router, Tailwind CSS, dan Lucide Icons**. Fokus Anda adalah merealisasikan mockup dari `08-UI-UX` menjadi kode React yang interaktif, tanpa pusing memikirkan *database query*.
+Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan menggunakan **Next.js 16 App Router, Tailwind CSS, dan Lucide Icons**. Fokus Anda adalah merealisasikan mockup dari `08-UI-UX` menjadi kode React yang interaktif, tanpa pusing memikirkan *database query*.
 
 ---
 
 ## 🎨 SPRINT 1: Design System & Fondasi UI (Minggu 1)
 *Tujuan: Membangun blok-blok Lego yang akan dipakai di seluruh aplikasi.*
 
-- [ ] **Setup Tema:** Masukkan *color palette* dari `DESIGN-SYSTEM.md` ke dalam `tailwind.config.ts`.
+- [ ] **Setup Tema & PWA:** Masukkan *color palette* dari `DESIGN-SYSTEM.md` ke dalam `tailwind.config.ts`. Konfigurasi *Progressive Web App (PWA)* dengan Service Worker untuk mode *offline* sementara.
 - [ ] **Komponen UI Dasar (`src/components/ui`):**
   - [ ] `<Button>` (Varian: primary, secondary, outline, danger, ghost | Ukuran: sm, md, lg)
   - [ ] `<Input>`, `<Select>`, `<Textarea>` (Beserta *styling* saat error/fokus)
@@ -5422,6 +5424,7 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan m
   - [ ] Buat Tabel Daftar Order (lengkap dengan *search*, *filter* tanggal & status).
 - [ ] **Form Order PRINTING Baru:**
   - [ ] Buat modal/halaman *wizard* multi-step (Pilih Produk -> Isi Spesifikasi -> Hitung DP).
+  - [ ] Pastikan field "Harga Total" dibebaskan untuk diisi secara **manual** oleh Admin Sales (tidak dikalkulasi kaku oleh sistem).
 - [ ] **Modul POS/Kasir RETAIL (`src/app/(dashboard)/pos/page.tsx`):**
   - [ ] Buat tampilan ala kasir supermarket (kiri: daftar barang RETAIL, kanan: keranjang belanja).
   - [ ] Hitung total secara *real-time*.
@@ -5453,7 +5456,8 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan m
   - [ ] Tombol raksasa **PASS** (Hijau) dan **FAIL** (Merah).
 - [ ] **Fitur QR Code Scanner:**
   - [ ] Halaman khusus scanner: `/scan`
-  - [ ] Integrasikan library (seperti `html5-qrcode`) agar kamera HP menyala langsung di *browser*.
+  - [ ] **Utama:** Buat fungsi *listener* keyboard (menangkap input otomatis dari Hardware Scanner 2D USB/Bluetooth).
+  - [ ] **Cadangan:** Integrasikan library (seperti `html5-qrcode`) agar kamera HP menyala langsung di *browser* jika hardware rusak.
   - [ ] Tampilkan detail *job* yang baru di-scan secara elegan (seperti nota digital).
 
 ---
@@ -5503,7 +5507,7 @@ FILE: 12-IMPLEMENTATION/02-BACKEND-DREFAN.md
 
 # 🚀 ROADMAP IMPLEMENTASI BACKEND & DEVOPS (DREFAN)
 
-Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah memastikan integritas data, logika State Machine, pengamanan *route* (RBAC), API, dan skalabilitas sistem menggunakan **Next.js 14, Prisma, PostgreSQL, dan NextAuth v5**.
+Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah memastikan integritas data, logika State Machine, pengamanan *route* (RBAC), API, dan skalabilitas sistem menggunakan **Next.js 16, Prisma, PostgreSQL, dan NextAuth v5**.
 
 ---
 
@@ -5562,7 +5566,7 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah 
   - [ ] Implementasikan aturan `STATUS-MACHINE.md` secara *hardcoded* di server.
   - [ ] Fungsi `startProduction()`: Set status ke `PRODUCTION_STARTED`.
   - [ ] Fungsi `finishProduction()`: Catat `actual_qty`, `waste`, update stok di `material_movements` (WAJIB).
-  - [ ] Fungsi `submitQC()`: Jika FAIL, status balik ke `PRODUCTION_ASSIGNED` / Reprint. Jika PASS, oper ke `FINISHING`.
+  - [ ] Fungsi `submitQC()`: Jika FAIL, wajib memicu fungsi `createReworkJob()` yang akan melahirkan baris baru di `production_jobs` dengan *parent_job_id* terisi, agar bisa di-*scan* ulang tanpa merusak log lama. Jika PASS, oper ke `FINISHING`.
   - [ ] Fungsi `finishFinishing()`: Mengubah status ke `FINISHING_COMPLETE`.
 
 ---
@@ -5572,7 +5576,8 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah 
 
 - [ ] **Modul Warehouse:**
   - [ ] Fungsi `assignStorageLocation()` (SCAN 6 & 7): Cek kapasitas rak di Lantai 3. Cegah bentrok (jika lokasi penuh, tolak).
-  - [ ] *Trigger:* Begitu masuk rak, ubah status Order ke `READY_FOR_PICKUP`. (Buat notifikasi palsu / *console.log* untuk WA).
+  - [ ] *Trigger:* Begitu masuk rak, ubah status Order ke `READY_FOR_PICKUP`.
+  - [ ] **Background Job:** Kirim *event* notifikasi ke *Message Queue* (misal: Inngest/BullMQ) agar pesan WhatsApp dieksekusi di *background* tanpa mem-blok UI staf Gudang.
 - [ ] **Modul Serah Terima (Pickup):**
   - [ ] Fungsi `confirmItemAtCounter()` (SCAN 9).
   - [ ] Fungsi `releaseOrder()` (SCAN 10): Validasi keras -> Pastikan pembayaran lunas. Jika tidak, gagalkan eksekusi!
@@ -6655,7 +6660,7 @@ approval_method (varchar, enum: WALK_IN/MAKLOON/WHATSAPP), approval_notes (text)
 id (uuid, PK), order_id (uuid, FK → orders.id), job_code (varchar, unique, JOB-YYYYMMDD-XXXX), machine_id (uuid, FK → machines.id), operator_id (uuid, FK → users.id), status (varchar, enum), priority (integer),
 planned_start (timestamptz), planned_end (timestamptz), actual_start (timestamptz), actual_end (timestamptz),
 planned_qty (integer), actual_qty (integer), reprint_qty (integer), waste_qty (integer), waste_reason (text),
-parent_job_id (uuid, FK → production_jobs.id, untuk rework), rework_count (integer), rework_reason (text),
+parent_job_id (uuid, FK → production_jobs.id, untuk mengikat Child Job rework ke Job aslinya), rework_count (integer), rework_reason (text),
 notes (text), created_at (timestamptz), updated_at (timestamptz)
 
 ## qc_records

@@ -1,6 +1,6 @@
 # 🚀 ROADMAP IMPLEMENTASI BACKEND & DEVOPS (DREFAN)
 
-Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah memastikan integritas data, logika State Machine, pengamanan *route* (RBAC), API, dan skalabilitas sistem menggunakan **Next.js 14, Prisma, PostgreSQL, dan NextAuth v5**.
+Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah memastikan integritas data, logika State Machine, pengamanan *route* (RBAC), API, dan skalabilitas sistem menggunakan **Next.js 16, Prisma, PostgreSQL, dan NextAuth v5**.
 
 ---
 
@@ -59,7 +59,7 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah 
   - [ ] Implementasikan aturan `STATUS-MACHINE.md` secara *hardcoded* di server.
   - [ ] Fungsi `startProduction()`: Set status ke `PRODUCTION_STARTED`.
   - [ ] Fungsi `finishProduction()`: Catat `actual_qty`, `waste`, update stok di `material_movements` (WAJIB).
-  - [ ] Fungsi `submitQC()`: Jika FAIL, status balik ke `PRODUCTION_ASSIGNED` / Reprint. Jika PASS, oper ke `FINISHING`.
+  - [ ] Fungsi `submitQC()`: Jika FAIL, wajib memicu fungsi `createReworkJob()` yang akan melahirkan baris baru di `production_jobs` dengan *parent_job_id* terisi, agar bisa di-*scan* ulang tanpa merusak log lama. Jika PASS, oper ke `FINISHING`.
   - [ ] Fungsi `finishFinishing()`: Mengubah status ke `FINISHING_COMPLETE`.
 
 ---
@@ -69,7 +69,8 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah 
 
 - [ ] **Modul Warehouse:**
   - [ ] Fungsi `assignStorageLocation()` (SCAN 6 & 7): Cek kapasitas rak di Lantai 3. Cegah bentrok (jika lokasi penuh, tolak).
-  - [ ] *Trigger:* Begitu masuk rak, ubah status Order ke `READY_FOR_PICKUP`. (Buat notifikasi palsu / *console.log* untuk WA).
+  - [ ] *Trigger:* Begitu masuk rak, ubah status Order ke `READY_FOR_PICKUP`.
+  - [ ] **Background Job:** Kirim *event* notifikasi ke *Message Queue* (misal: Inngest/BullMQ) agar pesan WhatsApp dieksekusi di *background* tanpa mem-blok UI staf Gudang.
 - [ ] **Modul Serah Terima (Pickup):**
   - [ ] Fungsi `confirmItemAtCounter()` (SCAN 9).
   - [ ] Fungsi `releaseOrder()` (SCAN 10): Validasi keras -> Pastikan pembayaran lunas. Jika tidak, gagalkan eksekusi!

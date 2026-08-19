@@ -1,13 +1,13 @@
 # 🚀 ROADMAP IMPLEMENTASI FRONTEND & UI/UX (RERE)
 
-Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan menggunakan **Next.js 14 App Router, Tailwind CSS, dan Lucide Icons**. Fokus Anda adalah merealisasikan mockup dari `08-UI-UX` menjadi kode React yang interaktif, tanpa pusing memikirkan *database query*.
+Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan menggunakan **Next.js 16 App Router, Tailwind CSS, dan Lucide Icons**. Fokus Anda adalah merealisasikan mockup dari `08-UI-UX` menjadi kode React yang interaktif, tanpa pusing memikirkan *database query*.
 
 ---
 
 ## 🎨 SPRINT 1: Design System & Fondasi UI (Minggu 1)
 *Tujuan: Membangun blok-blok Lego yang akan dipakai di seluruh aplikasi.*
 
-- [ ] **Setup Tema:** Masukkan *color palette* dari `DESIGN-SYSTEM.md` ke dalam `tailwind.config.ts`.
+- [ ] **Setup Tema & PWA:** Masukkan *color palette* dari `DESIGN-SYSTEM.md` ke dalam `tailwind.config.ts`. Konfigurasi *Progressive Web App (PWA)* dengan Service Worker untuk mode *offline* sementara.
 - [ ] **Komponen UI Dasar (`src/components/ui`):**
   - [ ] `<Button>` (Varian: primary, secondary, outline, danger, ghost | Ukuran: sm, md, lg)
   - [ ] `<Input>`, `<Select>`, `<Textarea>` (Beserta *styling* saat error/fokus)
@@ -47,6 +47,7 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan m
   - [ ] Buat Tabel Daftar Order (lengkap dengan *search*, *filter* tanggal & status).
 - [ ] **Form Order PRINTING Baru:**
   - [ ] Buat modal/halaman *wizard* multi-step (Pilih Produk -> Isi Spesifikasi -> Hitung DP).
+  - [ ] Pastikan field "Harga Total" dibebaskan untuk diisi secara **manual** oleh Admin Sales (tidak dikalkulasi kaku oleh sistem).
 - [ ] **Modul POS/Kasir RETAIL (`src/app/(dashboard)/pos/page.tsx`):**
   - [ ] Buat tampilan ala kasir supermarket (kiri: daftar barang RETAIL, kanan: keranjang belanja).
   - [ ] Hitung total secara *real-time*.
@@ -78,7 +79,8 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan m
   - [ ] Tombol raksasa **PASS** (Hijau) dan **FAIL** (Merah).
 - [ ] **Fitur QR Code Scanner:**
   - [ ] Halaman khusus scanner: `/scan`
-  - [ ] Integrasikan library (seperti `html5-qrcode`) agar kamera HP menyala langsung di *browser*.
+  - [ ] **Utama:** Buat fungsi *listener* keyboard (menangkap input otomatis dari Hardware Scanner 2D USB/Bluetooth).
+  - [ ] **Cadangan:** Integrasikan library (seperti `html5-qrcode`) agar kamera HP menyala langsung di *browser* jika hardware rusak.
   - [ ] Tampilkan detail *job* yang baru di-scan secara elegan (seperti nota digital).
 
 ---

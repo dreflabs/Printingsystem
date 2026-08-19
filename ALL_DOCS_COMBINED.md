@@ -5370,113 +5370,113 @@ Berdasarkan keputusan desain, **pesanan hybrid tidak digabung dalam 1 nota**.
 
 
 ==================================================
-FILE: 12-IMPLEMENTATION/IMPLEMENTATION-PLAN.md
+FILE: 12-IMPLEMENTATION/01-FRONTEND-RERE.md
 ==================================================
 
-# 12 - IMPLEMENTATION PLAN (RERE & DREFAN)
+# IMPLEMENTASI FRONTEND (RERE)
 
-Dokumen ini adalah cetak biru teknis (technical blueprint) yang merinci langkah-langkah implementasi aplikasi PrintFlow. Pembagian kerja antara **Frontend (Rere)** dan **Backend (Drefan)** dipetakan dengan jelas pada arsitektur Next.js 14 App Router.
-
-## Arsitektur Aplikasi (Next.js 14 App Router)
-
-Aplikasi akan menggunakan pola **Server-First** untuk keamanan dan performa:
-- Akses ke database (Prisma) HANYA terjadi di Server Components dan Route Handlers.
-- State UI (interaktivitas pengguna) akan diisolasi pada Client Components (`"use client"`).
-
-### Struktur Folder Rekomendasi (`src/`)
-
-```text
-src/
-├── app/
-│   ├── (auth)/                # [Rere] Halaman Login UI
-│   ├── (dashboard)/           # [Rere] Layout utama (Sidebar, Header)
-│   │   ├── admin/             # Halaman Admin Sales
-│   │   ├── operator/          # Halaman Operator
-│   │   └── ...
-│   ├── api/                   # [Drefan] REST endpoints untuk eksternal/integrasi
-│   ├── layout.tsx             # Root layout (Provider NextAuth, Theme)
-│   └── page.tsx               # Redirect otomatis ke dashboard sesuai role
-├── components/                # [Rere] Reusable UI (DESIGN-SYSTEM.md)
-│   ├── ui/                    # Base components (Button, Input, Badge/StatusPill)
-│   ├── forms/                 # Form kompleks (Form Order Baru)
-│   └── shared/                # Layout komponen (Sidebar, Navbar)
-├── lib/                       # [Drefan] Konfigurasi Server
-│   ├── prisma.ts              # Prisma client singleton
-│   ├── auth.ts                # Konfigurasi NextAuth v5 & RBAC Validator
-│   └── utils.ts               # Helper functions (Tailwind merge, format uang)
-├── server/                    # [Drefan] Server Actions (Mutasi Data)
-│   ├── actions/               # Fungsi untuk Form Submit (createOrder, dll)
-│   └── queries/               # Fungsi pengambilan data (getOrders, getStock)
-└── types/                     # [Drefan & Rere] TypeScript interfaces
-```
+Dokumen ini merinci tugas dan arsitektur untuk pengembangan sisi **Frontend (UI/UX)** dari aplikasi PrintFlow. Seluruh antarmuka aplikasi akan menggunakan Next.js 14 App Router dengan Tailwind CSS, dibangun berdasarkan pedoman desain yang ada di `08-UI-UX/DESIGN-SYSTEM.md`.
 
 ---
 
-## Tahap 1: Setup Fondasi (Sprint 1)
-
-### Tugas Backend & DevOps (Drefan)
-1. **Inisialisasi Project:** Menjalankan `create-next-app`, install `prisma`, `next-auth`, dan setup environment variables (`.env`).
-2. **Database Schema:** 
-   - Konversi `05-DATABASE/TABLES.md` menjadi `prisma/schema.prisma`.
-   - Membuat *seeder* (`prisma/seed.ts`) untuk memasukkan akun Owner default dan data master dummy (kategori bahan).
-3. **Autentikasi (NextAuth):** 
-   - Implementasi Credentials Provider (Username/Password).
-   - Memasukkan `role` ke dalam JWT token agar bisa dibaca di middleware.
-4. **Middleware RBAC:** 
-   - Melindungi rute `/(dashboard)/*` berdasarkan otorisasi di `ACCESS-CONTROL.md`. (Contoh: `/admin` hanya bisa diakses `admin_sales` & `owner`).
-
-### Tugas Frontend & UI/UX (Rere)
-1. **Konfigurasi Tema:** 
-   - Setup `tailwind.config.ts` dan CSS variables sesuai warna di `08-UI-UX/DESIGN-SYSTEM.md`.
-2. **Komponen Dasar (UI Library):** 
-   - Membuat komponen inti: `<Button>`, `<Input>`, `<Card>`, dan `<StatusPill>` (dengan varian warna sesuai status: GREEN, YELLOW, RED, GRAY, BLUE).
-3. **Layouting Utama:** 
-   - Membuat komponen `<Sidebar>` dinamis yang menu-nya berubah tergantung `session.user.role`.
-   - Membuat halaman Login statis (mockup).
+## 🎨 Teritori Kerja (Folder)
+Sebagai spesialis Frontend, fokus kerja Anda berada secara eksklusif pada folder berikut:
+- `src/app/` (Khusus untuk Layout dan Halaman Client)
+- `src/components/` (Semua komponen UI yang dapat digunakan ulang)
+- `public/` (Untuk aset statis seperti logo atau gambar)
 
 ---
 
-## Tahap 2: Implementasi Modul Utama (Sprint 2-3)
-
-### Modul Order & Kasir POS (Fokus Pertama)
-*Karena Admin Sales memegang peranan penting di awal (Order Baru & POS).*
-
-**Drefan (Backend):**
-- Membuat `server/queries/orders.ts` untuk mem-fetch daftar order dengan filter.
-- Membuat Server Action `createOrderAction()` yang meng-handle transaksi insert order dan order_items.
-- Membuat Server Action `processRetailPayment()` yang memotong stok di tabel `retail_products` dan insert ke `retail_stock_movements`.
-
-**Rere (Frontend):**
-- Merakit `app/(dashboard)/admin/page.tsx` sesuai mockup `ADMIN-DASHBOARD.md`.
-- Membuat form modal "Tambah Order Baru" dan halaman Kasir POS (`POS-DASHBOARD.md`).
-- Menggabungkan UI dengan fungsi Server Actions yang sudah disiapkan Drefan.
-
-### Modul Produksi & QR Scan (Fokus Kedua)
-*Modul krusial untuk Operator dan QC.*
-
-**Drefan (Backend):**
-- Setup endpoint API untuk QR Generator.
-- Membuat logika perpindahan State Machine (validasi perpindahan status di server).
-
-**Rere (Frontend):**
-- Mendesain UI khusus mobile/tablet untuk halaman `/scan/job/[id]`.
-- Membuat UI Scanner QR Code di browser (bisa menggunakan library HTML5 QR Code).
-- Menyiapkan halaman Operator Dashboard dengan tombol besar (Mulai Produksi / Selesai Produksi).
+## 📍 Tahap 1: Persiapan UI Library (Sprint 1)
+Sebelum menyusun halaman yang rumit, bangunlah fondasi komponen (*design system*) Anda.
+1. **Tema Tailwind:** Konfigurasi warna, tipografi, dan *spacing* di `tailwind.config.ts`.
+2. **Komponen Inti (`src/components/ui/`):**
+   - `<Button>` (berbagai ukuran dan varian: primary, secondary, danger)
+   - `<Input>` dan `<Select>` (untuk form dasar)
+   - `<Card>` (sebagai wadah untuk widget dashboard)
+   - `<StatusPill>` (dengan warna dinamis berdasarkan prop status: GREEN, YELLOW, RED, dll)
+3. **Layout Dinamis (`src/components/shared/`):**
+   - `<Sidebar>` (Menu navigasi yang bisa dikondisikan sesuai role user)
+   - `<Header>` (Bagian atas yang menampilkan informasi nama/role dan tombol Logout)
 
 ---
 
-## Tahap 3: Laporan & Final Audit (Sprint 4)
-
-- **Drefan:** Menulis agregasi query SQL/Prisma rumit untuk Laporan Keuangan Harian & Bulanan, mengeksposnya via fungsi getReports().
-- **Rere:** Menampilkan data dalam bentuk Tabel Data Grid (dengan fitur ekspor jika memungkinkan), dan membuat form checklist Final Audit untuk Admin Sales.
+## 📍 Tahap 2: Perakitan Halaman (Sprint 2-3)
+Setelah komponen siap, rangkailah menjadi halaman fungsional.
+1. **Modul Login (`src/app/(auth)/login/page.tsx`):**
+   - Halaman statis awal untuk *username* dan *password*.
+2. **Dashboard Admin Sales (`src/app/(dashboard)/admin/page.tsx`):**
+   - Ubah `08-UI-UX/ADMIN-DASHBOARD.md` menjadi kode React.
+   - Siapkan UI untuk modal "Tambah Order" dan "Panel Final Audit".
+3. **Modul POS/Kasir:**
+   - Rancang halaman kasir cepat (Direct Sales) dengan keranjang belanja.
+4. **Halaman Operator & QC (`src/app/(dashboard)/scan/[id]/page.tsx`):**
+   - Desain antar-muka *mobile-first* yang besar agar mudah diklik oleh staf di pabrik.
+   - Integrasikan *library* scanner QR HTML5 ke dalam antarmuka.
 
 ---
 
-## Cara Rere & Drefan Berkomunikasi Secara Kode
+## 🔗 Cara Menghubungkan UI dengan Backend Drefan
+Anda tidak perlu menulis *query* database. Cukup fokus ke penyajian data.
+1. **Mengambil Data (GET):** Anda akan menerima data (seperti `orders` atau `products`) melalui tipe *Props* yang sudah didefinisikan oleh Drefan. Anda tinggal melakukan iterasi (`map`) untuk menampilkannya ke tabel.
+2. **Mengirim Data (POST/PUT):** Gunakan fungsi *Server Action* yang dibuat Drefan. Contoh: `<form action={processOrderAction}>`.
 
-1. **Pengambilan Data (GET):** Drefan menulis fungsi di `server/queries/` yang dipanggil langsung oleh *Server Component* milik Rere. Data mentah di-*passing* sebagai *props* ke *Client Component*.
-2. **Mutasi Data (POST/PUT/DELETE):** Rere memanggil fungsi *Server Action* bawaan Next.js yang dibuat oleh Drefan di dalam `<form action={drefanAction}>` atau melalui event `onClick`.
-3. **Branching Git:** Rere bekerja pada branch awalan `ui/` atau `frontend/`, sementara Drefan bekerja pada branch `api/` atau `backend/`. Keduanya berpatokan pada kontrak data yang ada di `API.md`.
+*Git Workflow:* Selalu gunakan penamaan *branch* dengan awalan `ui/` (contoh: `ui/admin-dashboard`) agar kode Anda tidak bertabrakan dengan Drefan.
+
+
+==================================================
+FILE: 12-IMPLEMENTATION/02-BACKEND-DREFAN.md
+==================================================
+
+# IMPLEMENTASI BACKEND & DEVOPS (DREFAN)
+
+Dokumen ini merinci tugas dan arsitektur untuk pengembangan sisi **Backend, Database, dan Server** dari aplikasi PrintFlow. Seluruh logika akan berjalan menggunakan pola **Server-First** di Next.js 14 App Router, dengan Prisma sebagai ORM utama.
+
+---
+
+## ⚙️ Teritori Kerja (Folder)
+Sebagai spesialis Backend dan DevOps, fokus kerja Anda berada pada folder berikut:
+- `prisma/` (Skema database dan migrasi)
+- `src/lib/` (Konfigurasi Prisma Client dan NextAuth)
+- `src/server/` (Logika mutasi data `actions` dan pengambilan data `queries`)
+- `src/app/api/` (Hanya jika perlu mengekspos endpoint REST publik/eksternal)
+
+---
+
+## 📍 Tahap 1: Setup Skema & Keamanan (Sprint 1)
+Fondasi data dan keamanan adalah tanggung jawab utama.
+1. **Prisma Schema (`prisma/schema.prisma`):**
+   - Transkripsikan semua spesifikasi dari `05-DATABASE/TABLES.md` menjadi model Prisma.
+   - Atur relasi Foreign Key, index komposit, dan hapus kolom-kolom untuk tipe RETAIL (ubah `deadline` menjadi opsional/nullable).
+   - Buat *seeder* awal untuk memastikan role "Owner" dan data material dasar tersedia saat *deploy*.
+2. **Konfigurasi NextAuth v5 (`src/lib/auth.ts`):**
+   - Implementasikan *CredentialsProvider* untuk memvalidasi *hash password* ke tabel `users`.
+   - Modifikasi *callback* JWT dan Session agar informasi `role_id` tersimpan dan dapat dibaca di semua halaman.
+3. **Middleware RBAC (`src/middleware.ts`):**
+   - Validasi akses rute berdasarkan matriks pada `06-SECURITY/ACCESS-CONTROL.md`.
+   - Cegah staf masuk ke halaman yang bukan porsinya sebelum merender UI.
+
+---
+
+## 📍 Tahap 2: Logika Mutasi & Data Flow (Sprint 2-3)
+Rere akan membuat form-nya, Anda yang akan memproses isinya (Server Actions).
+1. **Modul Transaksi (Order & POS):**
+   - Buat fungsi mutasi seperti `createOrderAction()` yang memastikan order tercatat sekaligus memvalidasi *down payment* (DP).
+   - Buat `processRetailTransaction()` yang bertanggung jawab mengurangi stok pada tabel `retail_stock_movements`.
+2. **Modul State Machine & Scan:**
+   - Implementasikan logika pergeseran status pesanan dari `STATUS-MACHINE.md`. Contoh: `READY_FOR_PICKUP` tidak bisa dilakukan sebelum `FINISHING_COMPLETE`.
+   - Pastikan setiap perpindahan status juga menambahkan entri ke tabel `audit_logs`.
+3. **Final Audit & Laporan:**
+   - Buat fungsi *aggregate query* untuk menyajikan data metrik Laporan Keuangan Harian/Bulanan secara cepat tanpa membebani *client*.
+
+---
+
+## 🔗 Cara Menghubungkan Backend ke UI Rere
+1. **Tipe Data Bersama:** Definisikan *interfaces* TypeScript dengan jelas di folder `src/types/` agar Rere tahu tipe data apa saja yang akan masuk ke komponennya.
+2. **Pembuatan Action:** Ekspor fungsi *Server Action* dengan menambahkan direktif `"use server"` di bagian paling atas.
+3. **Keamanan:** Ingat, selalu lakukan pengecekan otorisasi (`auth()`) *di dalam* setiap fungsi Server Action sebelum melakukan query `prisma.insert`, karena fungsi ini bisa di-*trigger* kapan saja.
+
+*Git Workflow:* Selalu gunakan penamaan *branch* dengan awalan `api/` atau `backend/` (contoh: `api/prisma-setup`) agar kode Anda tidak bertabrakan dengan Rere.
 
 
 ==================================================

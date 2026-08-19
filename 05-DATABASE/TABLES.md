@@ -62,7 +62,7 @@ performed_by (uuid, FK → users.id), reason (text), created_at (timestamptz)
 ## ORDERS
 
 ## orders
-id (uuid, PK), order_code (varchar, unique, ORD-YYYYMMDD-XXXX), customer_id (uuid, FK → customers.id), created_by (uuid, FK → users.id), designer_id (uuid, FK → users.id),
+id (uuid, PK), order_code (varchar, unique, ORD-YYYYMMDD-XXXX), order_type (varchar, enum: PRINTING/RETAIL), customer_id (uuid, FK → customers.id, nullable untuk RETAIL guest), created_by (uuid, FK → users.id), designer_id (uuid, FK → users.id, nullable untuk RETAIL),
 status (varchar, enum — lihat `09-TECHNICAL/STATUS-MACHINE.md`), subtotal (decimal), discount (decimal), discount_approved_by (uuid, FK → users.id), discount_approved_at (timestamptz), discount_reason (text),
 total (decimal), dp_required (decimal, total × 0.5), dp_override_pct (decimal), dp_override_by (uuid, FK → users.id), dp_override_reason (text),
 paid_amount (decimal), balance (decimal), deadline (timestamptz), notes (text),
@@ -71,7 +71,17 @@ dp_refund_amount (decimal), dp_refund_method (varchar),
 closed_at (timestamptz), created_at (timestamptz), updated_at (timestamptz)
 
 ## order_items
-id (uuid, PK), order_id (uuid, FK → orders.id), product_id (uuid, FK → products.id), description (text), quantity (integer), size (varchar), material_id (uuid, FK → materials.id), finishing (varchar), unit_price (decimal), total_price (decimal)
+id (uuid, PK), order_id (uuid, FK → orders.id), product_id (uuid, FK → products.id, nullable), retail_product_id (uuid, FK → retail_products.id, nullable), description (text), quantity (integer), size (varchar), material_id (uuid, FK → materials.id, nullable), finishing (varchar), unit_price (decimal), total_price (decimal)
+
+---
+
+## RETAIL & POS
+
+## retail_products
+id (uuid, PK), sku (varchar, unique), name (varchar), category (varchar), price (decimal), stock_quantity (integer), min_stock (integer), active (boolean), created_at (timestamptz), updated_at (timestamptz)
+
+## retail_stock_movements
+id (uuid, PK), retail_product_id (uuid, FK → retail_products.id), order_id (uuid, FK → orders.id, nullable), movement_type (varchar, enum: IN/OUT/ADJUSTMENT), quantity_change (integer), before_stock (integer), after_stock (integer), performed_by (uuid, FK → users.id), reason (text), created_at (timestamptz)
 
 ---
 

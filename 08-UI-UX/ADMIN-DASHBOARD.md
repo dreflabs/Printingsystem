@@ -87,3 +87,24 @@ Kolom tabel:
 ## Panel Shortcut POS (Kasir)
 
 Sebagai shortcut tambahan (bukan sub-halaman baru), di pojok kanan atas terdapat tombol **"Kasir POS"** yang membuka halaman `POS-DASHBOARD.md`. Panel ini bersifat terpisah dari daftar order PRINTING dan menangani seluruh siklus transaksi RETAIL.
+
+---
+
+## Panel Final Audit
+
+Untuk melakukan aksi **Final Audit Order**, sistem menyediakan checklist (berupa modal atau halaman terpisah khusus Admin Sales) yang harus dilengkapi sebelum order bisa berstatus CLOSED:
+
+- FINANCE: PASS/FAIL
+- MATERIAL: PASS/FAIL
+- QUANTITY: PASS/FAIL
+- PRODUCTION: PASS/FAIL
+- QC: PASS/FAIL
+- FINISHING: PASS/FAIL
+- STORAGE: PASS/FAIL
+- NOTIFICATION: INFO (Riwayat notifikasi ditampilkan untuk operasional, tapi tidak menjadi bukti penerimaan mutlak oleh konsumen)
+- PICKUP: PASS/FAIL
+
+**Hasil Akhir:**
+- **GREEN** = Semua PASS (langsung CLOSED)
+- **YELLOW** = Approved variance (membutuhkan approval Supervisor/Owner)
+- **RED** = Unresolved / Ada anomali (Order ditahan dan diinvestigasi)

@@ -218,7 +218,7 @@ Validasi server: FAIL wajib disertai kategori masalah + deskripsi (min 20 karakt
 
 | Endpoint | Deskripsi | Role |
 |----------|-----------|------|
-| `GET /api/storage/locations` | Peta lokasi storage + kapasitas | Warehouse, Supervisor, Owner |
+| `GET /api/storage/locations` | Peta lokasi storage + kapasitas | Warehouse, Supervisor, Owner, Admin Sales |
 | `POST /api/storage/locations` | Daftarkan lokasi storage baru | Owner, Supervisor |
 | `POST /api/production-jobs/:id/storage/initiate` | SCAN 6 — inisiasi simpan (validasi status `FINISHING_COMPLETE`) | Warehouse Staff |
 | `POST /api/storage/locations/:code/confirm` | SCAN 7 — konfirmasi lokasi penyimpanan (validasi kapasitas & duplikasi) | Warehouse Staff |

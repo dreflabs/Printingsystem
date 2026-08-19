@@ -2117,31 +2117,26 @@ Kolom tabel:
 
 Sebagai shortcut tambahan (bukan sub-halaman baru), di pojok kanan atas terdapat tombol **"Kasir POS"** yang membuka halaman `POS-DASHBOARD.md`. Panel ini bersifat terpisah dari daftar order PRINTING dan menangani seluruh siklus transaksi RETAIL.
 
+---
 
-==================================================
-FILE: 08-UI-UX/AUDIT-DASHBOARD.md
-==================================================
+## Panel Final Audit
 
-# Audit Dashboard
+Untuk melakukan aksi **Final Audit Order**, sistem menyediakan checklist (berupa modal atau halaman terpisah khusus Admin Sales) yang harus dilengkapi sebelum order bisa berstatus CLOSED:
 
-Show checklist:
+- FINANCE: PASS/FAIL
+- MATERIAL: PASS/FAIL
+- QUANTITY: PASS/FAIL
+- PRODUCTION: PASS/FAIL
+- QC: PASS/FAIL
+- FINISHING: PASS/FAIL
+- STORAGE: PASS/FAIL
+- NOTIFICATION: INFO (Riwayat notifikasi ditampilkan untuk operasional, tapi tidak menjadi bukti penerimaan mutlak oleh konsumen)
+- PICKUP: PASS/FAIL
 
-FINANCE        PASS/FAIL
-MATERIAL       PASS/FAIL
-QUANTITY       PASS/FAIL
-PRODUCTION     PASS/FAIL
-QC             PASS/FAIL
-FINISHING      PASS/FAIL
-STORAGE        PASS/FAIL
-NOTIFICATION   INFO
-PICKUP         PASS/FAIL
-
-Final result:
-GREEN = pass
-YELLOW = approved variance
-RED = unresolved
-
-Show notification history for operational traceability, but notification delivery itself must not be treated as proof that the customer has received the message.
+**Hasil Akhir:**
+- **GREEN** = Semua PASS (langsung CLOSED)
+- **YELLOW** = Approved variance (membutuhkan approval Supervisor/Owner)
+- **RED** = Unresolved / Ada anomali (Order ditahan dan diinvestigasi)
 
 
 ==================================================
@@ -3386,7 +3381,7 @@ Validasi server: FAIL wajib disertai kategori masalah + deskripsi (min 20 karakt
 
 | Endpoint | Deskripsi | Role |
 |----------|-----------|------|
-| `GET /api/storage/locations` | Peta lokasi storage + kapasitas | Warehouse, Supervisor, Owner |
+| `GET /api/storage/locations` | Peta lokasi storage + kapasitas | Warehouse, Supervisor, Owner, Admin Sales |
 | `POST /api/storage/locations` | Daftarkan lokasi storage baru | Owner, Supervisor |
 | `POST /api/production-jobs/:id/storage/initiate` | SCAN 6 — inisiasi simpan (validasi status `FINISHING_COMPLETE`) | Warehouse Staff |
 | `POST /api/storage/locations/:code/confirm` | SCAN 7 — konfirmasi lokasi penyimpanan (validasi kapasitas & duplikasi) | Warehouse Staff |
@@ -6383,9 +6378,9 @@ performed_by (uuid, FK → users.id), reason (text), created_at (timestamptz)
 
 ## orders
 id (uuid, PK), order_code (varchar, unique, ORD-YYYYMMDD-XXXX), order_type (varchar, enum: PRINTING/RETAIL), customer_id (uuid, FK → customers.id, nullable untuk RETAIL guest), created_by (uuid, FK → users.id), designer_id (uuid, FK → users.id, nullable untuk RETAIL),
-status (varchar, enum — lihat `09-TECHNICAL/STATUS-MACHINE.md`), subtotal (decimal), discount (decimal), discount_approved_by (uuid, FK → users.id), discount_approved_at (timestamptz), discount_reason (text),
-total (decimal), dp_required (decimal, total × 0.5), dp_override_pct (decimal), dp_override_by (uuid, FK → users.id), dp_override_reason (text),
-paid_amount (decimal), balance (decimal), deadline (timestamptz), notes (text),
+status (varchar, enum: DRAFT, DESIGNING, ..., NEW_RETAIL_ORDER, RETAIL_PAYMENT_COMPLETED, CLOSED — lihat `09-TECHNICAL/STATUS-MACHINE.md`), subtotal (decimal), discount (decimal), discount_approved_by (uuid, FK → users.id), discount_approved_at (timestamptz), discount_reason (text),
+total (decimal), dp_required (decimal, total × 0.5, nullable untuk RETAIL), dp_override_pct (decimal), dp_override_by (uuid, FK → users.id), dp_override_reason (text),
+paid_amount (decimal), balance (decimal), deadline (timestamptz, nullable untuk RETAIL), notes (text),
 cancelled_at (timestamptz), cancelled_by (uuid, FK → users.id), cancellation_reason (text), cancellation_approved_by (uuid, FK → users.id),
 dp_refund_amount (decimal), dp_refund_method (varchar),
 closed_at (timestamptz), created_at (timestamptz), updated_at (timestamptz)

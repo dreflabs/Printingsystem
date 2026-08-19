@@ -63,9 +63,9 @@ performed_by (uuid, FK → users.id), reason (text), created_at (timestamptz)
 
 ## orders
 id (uuid, PK), order_code (varchar, unique, ORD-YYYYMMDD-XXXX), order_type (varchar, enum: PRINTING/RETAIL), customer_id (uuid, FK → customers.id, nullable untuk RETAIL guest), created_by (uuid, FK → users.id), designer_id (uuid, FK → users.id, nullable untuk RETAIL),
-status (varchar, enum — lihat `09-TECHNICAL/STATUS-MACHINE.md`), subtotal (decimal), discount (decimal), discount_approved_by (uuid, FK → users.id), discount_approved_at (timestamptz), discount_reason (text),
-total (decimal), dp_required (decimal, total × 0.5), dp_override_pct (decimal), dp_override_by (uuid, FK → users.id), dp_override_reason (text),
-paid_amount (decimal), balance (decimal), deadline (timestamptz), notes (text),
+status (varchar, enum: DRAFT, DESIGNING, ..., NEW_RETAIL_ORDER, RETAIL_PAYMENT_COMPLETED, CLOSED — lihat `09-TECHNICAL/STATUS-MACHINE.md`), subtotal (decimal), discount (decimal), discount_approved_by (uuid, FK → users.id), discount_approved_at (timestamptz), discount_reason (text),
+total (decimal), dp_required (decimal, total × 0.5, nullable untuk RETAIL), dp_override_pct (decimal), dp_override_by (uuid, FK → users.id), dp_override_reason (text),
+paid_amount (decimal), balance (decimal), deadline (timestamptz, nullable untuk RETAIL), notes (text),
 cancelled_at (timestamptz), cancelled_by (uuid, FK → users.id), cancellation_reason (text), cancellation_approved_by (uuid, FK → users.id),
 dp_refund_amount (decimal), dp_refund_method (varchar),
 closed_at (timestamptz), created_at (timestamptz), updated_at (timestamptz)

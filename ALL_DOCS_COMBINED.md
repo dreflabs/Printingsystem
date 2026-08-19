@@ -5373,110 +5373,236 @@ Berdasarkan keputusan desain, **pesanan hybrid tidak digabung dalam 1 nota**.
 FILE: 12-IMPLEMENTATION/01-FRONTEND-RERE.md
 ==================================================
 
-# IMPLEMENTASI FRONTEND (RERE)
+# 🚀 ROADMAP IMPLEMENTASI FRONTEND & UI/UX (RERE)
 
-Dokumen ini merinci tugas dan arsitektur untuk pengembangan sisi **Frontend (UI/UX)** dari aplikasi PrintFlow. Seluruh antarmuka aplikasi akan menggunakan Next.js 14 App Router dengan Tailwind CSS, dibangun berdasarkan pedoman desain yang ada di `08-UI-UX/DESIGN-SYSTEM.md`.
-
----
-
-## 🎨 Teritori Kerja (Folder)
-Sebagai spesialis Frontend, fokus kerja Anda berada secara eksklusif pada folder berikut:
-- `src/app/` (Khusus untuk Layout dan Halaman Client)
-- `src/components/` (Semua komponen UI yang dapat digunakan ulang)
-- `public/` (Untuk aset statis seperti logo atau gambar)
+Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan menggunakan **Next.js 14 App Router, Tailwind CSS, dan Lucide Icons**. Fokus Anda adalah merealisasikan mockup dari `08-UI-UX` menjadi kode React yang interaktif, tanpa pusing memikirkan *database query*.
 
 ---
 
-## 📍 Tahap 1: Persiapan UI Library (Sprint 1)
-Sebelum menyusun halaman yang rumit, bangunlah fondasi komponen (*design system*) Anda.
-1. **Tema Tailwind:** Konfigurasi warna, tipografi, dan *spacing* di `tailwind.config.ts`.
-2. **Komponen Inti (`src/components/ui/`):**
-   - `<Button>` (berbagai ukuran dan varian: primary, secondary, danger)
-   - `<Input>` dan `<Select>` (untuk form dasar)
-   - `<Card>` (sebagai wadah untuk widget dashboard)
-   - `<StatusPill>` (dengan warna dinamis berdasarkan prop status: GREEN, YELLOW, RED, dll)
-3. **Layout Dinamis (`src/components/shared/`):**
-   - `<Sidebar>` (Menu navigasi yang bisa dikondisikan sesuai role user)
-   - `<Header>` (Bagian atas yang menampilkan informasi nama/role dan tombol Logout)
+## 🎨 SPRINT 1: Design System & Fondasi UI (Minggu 1)
+*Tujuan: Membangun blok-blok Lego yang akan dipakai di seluruh aplikasi.*
+
+- [ ] **Setup Tema:** Masukkan *color palette* dari `DESIGN-SYSTEM.md` ke dalam `tailwind.config.ts`.
+- [ ] **Komponen UI Dasar (`src/components/ui`):**
+  - [ ] `<Button>` (Varian: primary, secondary, outline, danger, ghost | Ukuran: sm, md, lg)
+  - [ ] `<Input>`, `<Select>`, `<Textarea>` (Beserta *styling* saat error/fokus)
+  - [ ] `<Card>` (Container standar dengan bayangan lembut)
+  - [ ] `<StatusPill>` (Badge dinamis yang berubah warna sesuai status: GREEN, YELLOW, RED, GRAY, BLUE)
+  - [ ] `<Modal>` (Komponen popup dialog yang *reusable*)
+  - [ ] `<Toast>` (Untuk notifikasi sukses/gagal di pojok layar)
+- [ ] **Komponen Layout (`src/components/shared`):**
+  - [ ] `<Sidebar>` (Dinamis, menampilkan menu berdasarkan `role` user yang sedang login)
+  - [ ] `<Header>` (Menampilkan nama user, role, dan tombol Hamburger untuk *mobile view*)
 
 ---
 
-## 📍 Tahap 2: Perakitan Halaman (Sprint 2-3)
-Setelah komponen siap, rangkailah menjadi halaman fungsional.
-1. **Modul Login (`src/app/(auth)/login/page.tsx`):**
-   - Halaman statis awal untuk *username* dan *password*.
-2. **Dashboard Admin Sales (`src/app/(dashboard)/admin/page.tsx`):**
-   - Ubah `08-UI-UX/ADMIN-DASHBOARD.md` menjadi kode React.
-   - Siapkan UI untuk modal "Tambah Order" dan "Panel Final Audit".
-3. **Modul POS/Kasir:**
-   - Rancang halaman kasir cepat (Direct Sales) dengan keranjang belanja.
-4. **Halaman Operator & QC (`src/app/(dashboard)/scan/[id]/page.tsx`):**
-   - Desain antar-muka *mobile-first* yang besar agar mudah diklik oleh staf di pabrik.
-   - Integrasikan *library* scanner QR HTML5 ke dalam antarmuka.
+## 🔐 SPRINT 2: Autentikasi & Halaman Dasar (Minggu 2)
+*Tujuan: Gerbang masuk aplikasi dan halaman "blank" untuk setiap role.*
+
+- [ ] **Halaman Login (`src/app/(auth)/login/page.tsx`):**
+  - [ ] Buat form dengan *username* dan *password*.
+  - [ ] Tambahkan animasi *loading* saat tombol ditekan.
+  - [ ] Tangkap pesan *error* jika login gagal.
+- [ ] **Layout Dashboard (`src/app/(dashboard)/layout.tsx`):**
+  - [ ] Gabungkan `<Sidebar>` dan `<Header>`.
+  - [ ] Buat layout *responsive* (Sidebar tersembunyi di layar kecil).
+- [ ] **Halaman Kosong Berdasarkan Role:**
+  - [ ] `/admin` (Admin Sales Dashboard)
+  - [ ] `/designer` (Designer Sales Dashboard)
+  - [ ] `/operator`, `/qc`, `/finishing`, `/warehouse`, `/supervisor`, `/owner`
 
 ---
 
-## 🔗 Cara Menghubungkan UI dengan Backend Drefan
-Anda tidak perlu menulis *query* database. Cukup fokus ke penyajian data.
-1. **Mengambil Data (GET):** Anda akan menerima data (seperti `orders` atau `products`) melalui tipe *Props* yang sudah didefinisikan oleh Drefan. Anda tinggal melakukan iterasi (`map`) untuk menampilkannya ke tabel.
-2. **Mengirim Data (POST/PUT):** Gunakan fungsi *Server Action* yang dibuat Drefan. Contoh: `<form action={processOrderAction}>`.
+## 🛍️ SPRINT 3: Modul Penjualan & Kasir (Minggu 3-4)
+*Tujuan: Membuat antarmuka pemesanan untuk Admin Sales dan Kasir.*
 
-*Git Workflow:* Selalu gunakan penamaan *branch* dengan awalan `ui/` (contoh: `ui/admin-dashboard`) agar kode Anda tidak bertabrakan dengan Drefan.
+- [ ] **Dashboard Admin Sales (`src/app/(dashboard)/admin/page.tsx`):**
+  - [ ] Buat 6 Widget Angka (KPI) di bagian atas.
+  - [ ] Buat Panel Prioritas (Order Siap Diambil, Notifikasi Gagal, dll).
+  - [ ] Buat Tabel Daftar Order (lengkap dengan *search*, *filter* tanggal & status).
+- [ ] **Form Order PRINTING Baru:**
+  - [ ] Buat modal/halaman *wizard* multi-step (Pilih Produk -> Isi Spesifikasi -> Hitung DP).
+- [ ] **Modul POS/Kasir RETAIL (`src/app/(dashboard)/pos/page.tsx`):**
+  - [ ] Buat tampilan ala kasir supermarket (kiri: daftar barang RETAIL, kanan: keranjang belanja).
+  - [ ] Hitung total secara *real-time*.
+  - [ ] Buat modal "Bayar & Lunas".
+- [ ] **Panel Final Audit (Khusus Admin Sales):**
+  - [ ] Buat form *checklist* dengan tombol hasil GREEN/YELLOW/RED.
+
+---
+
+## 🎨 SPRINT 4: Modul Desain (Minggu 5)
+*Tujuan: Halaman khusus untuk tim desain mengerjakan pesanan.*
+
+- [ ] **Dashboard Designer (`src/app/(dashboard)/designer/page.tsx`):**
+  - [ ] Tabel antrian desain (Urut berdasarkan deadline dan status `DESIGNING`).
+  - [ ] Form *upload* file desain (dummy upload) dan form URL *preview*.
+- [ ] **Alur Approval Desain:**
+  - [ ] Buat UI untuk merekam konfirmasi ACC desain (Walk-in, Makloon, WhatsApp).
+
+---
+
+## 🏭 SPRINT 5: Produksi, Finishing & QC (Minggu 6-7)
+*Tujuan: UI untuk pekerja di pabrik (Mobile First).*
+
+- [ ] **Dashboard Operator & Finishing:**
+  - [ ] UI berupa antrian pekerjaan yang besar dan mudah diklik (*Mobile/Tablet Friendly*).
+  - [ ] Form Selesai Produksi (Input jumlah berhasil dan jumlah *waste*).
+- [ ] **Dashboard QC (`src/app/(dashboard)/qc/page.tsx`):**
+  - [ ] Buat form *checklist* inspeksi (Ukuran, Warna, Material).
+  - [ ] Tombol raksasa **PASS** (Hijau) dan **FAIL** (Merah).
+- [ ] **Fitur QR Code Scanner:**
+  - [ ] Halaman khusus scanner: `/scan`
+  - [ ] Integrasikan library (seperti `html5-qrcode`) agar kamera HP menyala langsung di *browser*.
+  - [ ] Tampilkan detail *job* yang baru di-scan secara elegan (seperti nota digital).
+
+---
+
+## 📦 SPRINT 6: Gudang & Serah Terima (Minggu 8)
+*Tujuan: Pengecekan stok dan penyerahan ke konsumen.*
+
+- [ ] **Dashboard Warehouse (`src/app/(dashboard)/warehouse/page.tsx`):**
+  - [ ] Tabel rak penyimpanan Lantai 3.
+  - [ ] Alur SCAN 6 & 7 (Simpan barang ke rak).
+  - [ ] Alur SCAN 9 (Konfirmasi barang turun ke counter).
+- [ ] **Fitur Pickup / Serah Terima (SCAN 8 & 10):**
+  - [ ] Form verifikasi pembayaran konsumen yang datang.
+  - [ ] Layar peringatan jika status pembayaran masih "Belum Lunas".
+
+---
+
+## 📈 SPRINT 7: Laporan & Manajemen Data (Minggu 9-10)
+*Tujuan: Kebutuhan Supervisor dan Owner.*
+
+- [ ] **Dashboard Owner & Supervisor:**
+  - [ ] Buat *Chart* (grafik) sederhana omset bulanan (opsional, gunakan `recharts`).
+  - [ ] Tabel persetujuan diskon dan pembatalan order (Tombol Approve/Reject).
+- [ ] **Laporan:**
+  - [ ] Tabel Laporan Keuangan Harian/Bulanan.
+  - [ ] Tabel Laporan Kinerja Operator/Mesin.
+  - [ ] Tampilan halaman *Audit Log* (read-only).
+- [ ] **Master Data Management:**
+  - [ ] Halaman CRUD sederhana untuk mengelola Produk, Mesin, dan Bahan (Material).
+
+---
+
+## 🤝 KONTRAK KERJA DENGAN BACKEND (DREFAN)
+
+Untuk setiap poin di atas, langkah kerja Anda:
+1. Buat UI menggunakan **data palsu (dummy JSON)** terlebih dahulu. 
+2. Fokus pada estetika, *state* lokal (buka/tutup modal), dan *responsiveness*.
+3. Setelah UI jadi, tanya ke Drefan: *"Fungsi `action` apa yang harus dipanggil saat form ini di-submit?"* atau *"Props apa yang akan dilempar dari Server Component untuk tabel ini?"*
+4. Ganti data palsu Anda dengan data asli dari Drefan.
+
+**Tips:** Gunakan *branch* dengan format `ui/[nama-fitur]` (Contoh: `ui/pos-kasir`). Jangan koding di `main`.
 
 
 ==================================================
 FILE: 12-IMPLEMENTATION/02-BACKEND-DREFAN.md
 ==================================================
 
-# IMPLEMENTASI BACKEND & DEVOPS (DREFAN)
+# 🚀 ROADMAP IMPLEMENTASI BACKEND & DEVOPS (DREFAN)
 
-Dokumen ini merinci tugas dan arsitektur untuk pengembangan sisi **Backend, Database, dan Server** dari aplikasi PrintFlow. Seluruh logika akan berjalan menggunakan pola **Server-First** di Next.js 14 App Router, dengan Prisma sebagai ORM utama.
-
----
-
-## ⚙️ Teritori Kerja (Folder)
-Sebagai spesialis Backend dan DevOps, fokus kerja Anda berada pada folder berikut:
-- `prisma/` (Skema database dan migrasi)
-- `src/lib/` (Konfigurasi Prisma Client dan NextAuth)
-- `src/server/` (Logika mutasi data `actions` dan pengambilan data `queries`)
-- `src/app/api/` (Hanya jika perlu mengekspos endpoint REST publik/eksternal)
+Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah memastikan integritas data, logika State Machine, pengamanan *route* (RBAC), API, dan skalabilitas sistem menggunakan **Next.js 14, Prisma, PostgreSQL, dan NextAuth v5**.
 
 ---
 
-## 📍 Tahap 1: Setup Skema & Keamanan (Sprint 1)
-Fondasi data dan keamanan adalah tanggung jawab utama.
-1. **Prisma Schema (`prisma/schema.prisma`):**
-   - Transkripsikan semua spesifikasi dari `05-DATABASE/TABLES.md` menjadi model Prisma.
-   - Atur relasi Foreign Key, index komposit, dan hapus kolom-kolom untuk tipe RETAIL (ubah `deadline` menjadi opsional/nullable).
-   - Buat *seeder* awal untuk memastikan role "Owner" dan data material dasar tersedia saat *deploy*.
-2. **Konfigurasi NextAuth v5 (`src/lib/auth.ts`):**
-   - Implementasikan *CredentialsProvider* untuk memvalidasi *hash password* ke tabel `users`.
-   - Modifikasi *callback* JWT dan Session agar informasi `role_id` tersimpan dan dapat dibaca di semua halaman.
-3. **Middleware RBAC (`src/middleware.ts`):**
-   - Validasi akses rute berdasarkan matriks pada `06-SECURITY/ACCESS-CONTROL.md`.
-   - Cegah staf masuk ke halaman yang bukan porsinya sebelum merender UI.
+## ⚙️ SPRINT 1: Setup Skema Data & Autentikasi (Minggu 1)
+*Tujuan: Membangun fondasi database dan tembok keamanan aplikasi.*
+
+- [ ] **Database Setup & Prisma:**
+  - [ ] Inisialisasi PostgreSQL.
+  - [ ] Terjemahkan seluruh tabel dari `05-DATABASE/TABLES.md` ke dalam `prisma/schema.prisma`.
+  - [ ] Buat skrip `prisma/seed.ts` (masukkan 8 Role, 1 Akun Owner default, dan status pesanan).
+  - [ ] Jalankan `npx prisma migrate dev`.
+- [ ] **NextAuth & Middleware:**
+  - [ ] Setup `src/lib/auth.ts` dengan `CredentialsProvider` (Bcrypt untuk hash password).
+  - [ ] *Inject* `role`, `id`, dan `name` ke dalam token JWT dan *Session object*.
+  - [ ] Setup `src/middleware.ts` untuk memblokir akses rute (Misal: rute `/operator` akan me- *redirect* user jika yang login adalah Designer).
+- [ ] **Utility Backend:**
+  - [ ] Siapkan `errorHandler` global untuk menangkap *error* Prisma.
+  - [ ] Siapkan *logger* sederhana untuk `audit_logs` agar mudah dipanggil (contoh: `logAction(actorId, action, entity)`).
 
 ---
 
-## 📍 Tahap 2: Logika Mutasi & Data Flow (Sprint 2-3)
-Rere akan membuat form-nya, Anda yang akan memproses isinya (Server Actions).
-1. **Modul Transaksi (Order & POS):**
-   - Buat fungsi mutasi seperti `createOrderAction()` yang memastikan order tercatat sekaligus memvalidasi *down payment* (DP).
-   - Buat `processRetailTransaction()` yang bertanggung jawab mengurangi stok pada tabel `retail_stock_movements`.
-2. **Modul State Machine & Scan:**
-   - Implementasikan logika pergeseran status pesanan dari `STATUS-MACHINE.md`. Contoh: `READY_FOR_PICKUP` tidak bisa dilakukan sebelum `FINISHING_COMPLETE`.
-   - Pastikan setiap perpindahan status juga menambahkan entri ke tabel `audit_logs`.
-3. **Final Audit & Laporan:**
-   - Buat fungsi *aggregate query* untuk menyajikan data metrik Laporan Keuangan Harian/Bulanan secara cepat tanpa membebani *client*.
+## 💼 SPRINT 2: Order Management & POS Engine (Minggu 2-3)
+*Tujuan: Jantung finansial aplikasi. Fungsi pembuatan pesanan baik Cetak maupun Eceran.*
+
+- [ ] **CRUD Master Data:**
+  - [ ] Buat *Server Actions* untuk manajemen `customers`, `products`, `materials`, `machines`, dan `retail_products`.
+- [ ] **Modul POS (Retail):**
+  - [ ] Buat fungsi `processRetailOrder(items, total, paymentInfo)`.
+  - [ ] *Transaction block:* Insert `orders`, insert `order_items`, update `retail_products.stock_quantity`, dan catat `retail_stock_movements`.
+- [ ] **Modul Order (Printing):**
+  - [ ] Buat fungsi `createPrintingOrder()`. Kalkulasi otomatis `dp_required` = 50%.
+  - [ ] Buat sistem *Approval* Diskon (Status menggantung jika Admin mengajukan diskon).
+- [ ] **Modul Pembayaran:**
+  - [ ] Fungsi `addPayment()`. Validasi otomatis: Jika `paid_amount` >= `total`, set status menjadi "Lunas". 
 
 ---
 
-## 🔗 Cara Menghubungkan Backend ke UI Rere
-1. **Tipe Data Bersama:** Definisikan *interfaces* TypeScript dengan jelas di folder `src/types/` agar Rere tahu tipe data apa saja yang akan masuk ke komponennya.
-2. **Pembuatan Action:** Ekspor fungsi *Server Action* dengan menambahkan direktif `"use server"` di bagian paling atas.
-3. **Keamanan:** Ingat, selalu lakukan pengecekan otorisasi (`auth()`) *di dalam* setiap fungsi Server Action sebelum melakukan query `prisma.insert`, karena fungsi ini bisa di-*trigger* kapan saja.
+## 🎨 SPRINT 3: Modul Desain (Minggu 4)
+*Tujuan: Orkestrasi versi desain dan approval.*
 
-*Git Workflow:* Selalu gunakan penamaan *branch* dengan awalan `api/` atau `backend/` (contoh: `api/prisma-setup`) agar kode Anda tidak bertabrakan dengan Rere.
+- [ ] **Manajemen Desain:**
+  - [ ] Saat Order PRINTING dibuat, fungsi backend harus otomatis membuat baris kosong di tabel `design_jobs`.
+  - [ ] Fungsi *upload* file desain (`uploadDesignVersion()`). (Sementara simpan *path* file ke folder lokal atau S3 palsu).
+  - [ ] Logika *Approval* (Walk-in, Makloon, WhatsApp).
+  - [ ] *Trigger:* Jika desain di-ACC, otomatis buatkan antrian ke tabel `production_jobs` dengan status `PRODUCTION_ASSIGNED`.
+
+---
+
+## 🏭 SPRINT 4: Core State Machine & Scan Engine (Minggu 5-6)
+*Tujuan: Mesin penggerak utama pesanan pabrik (Aturan Validasi Ketat).*
+
+- [ ] **Logika QR Code:**
+  - [ ] Buat API endpoint `/api/scan` yang menerima `job_id` dan `user_id`.
+  - [ ] *Router Scan:* Berdasarkan `role` pengguna yang melakukan scan, arahkan *action* apa yang terjadi. (Contoh: Operator scan -> Tampilkan form Produksi. QC scan -> Tampilkan form Checklist).
+- [ ] **Transisi Status (State Machine):**
+  - [ ] Implementasikan aturan `STATUS-MACHINE.md` secara *hardcoded* di server.
+  - [ ] Fungsi `startProduction()`: Set status ke `PRODUCTION_STARTED`.
+  - [ ] Fungsi `finishProduction()`: Catat `actual_qty`, `waste`, update stok di `material_movements` (WAJIB).
+  - [ ] Fungsi `submitQC()`: Jika FAIL, status balik ke `PRODUCTION_ASSIGNED` / Reprint. Jika PASS, oper ke `FINISHING`.
+  - [ ] Fungsi `finishFinishing()`: Mengubah status ke `FINISHING_COMPLETE`.
+
+---
+
+## 📦 SPRINT 5: Storage & Serah Terima (Minggu 7)
+*Tujuan: Manajemen inventori rak dan keamanan pelepasan barang.*
+
+- [ ] **Modul Warehouse:**
+  - [ ] Fungsi `assignStorageLocation()` (SCAN 6 & 7): Cek kapasitas rak di Lantai 3. Cegah bentrok (jika lokasi penuh, tolak).
+  - [ ] *Trigger:* Begitu masuk rak, ubah status Order ke `READY_FOR_PICKUP`. (Buat notifikasi palsu / *console.log* untuk WA).
+- [ ] **Modul Serah Terima (Pickup):**
+  - [ ] Fungsi `confirmItemAtCounter()` (SCAN 9).
+  - [ ] Fungsi `releaseOrder()` (SCAN 10): Validasi keras -> Pastikan pembayaran lunas. Jika tidak, gagalkan eksekusi!
+
+---
+
+## 📈 SPRINT 6: Final Audit, Reports & Corrections (Minggu 8-9)
+*Tujuan: Rekapitulasi, laporan, dan keamanan anti-fraud akhir.*
+
+- [ ] **Final Audit Engine:**
+  - [ ] Fungsi `submitFinalAudit()` oleh Admin Sales.
+  - [ ] Jika hasil GREEN -> ubah status order ke `CLOSED`.
+  - [ ] Jika hasil YELLOW/RED -> hold status, kirim ke dashboard Owner.
+- [ ] **Laporan Finansial & Operasional:**
+  - [ ] Query agregasi kompleks menggunakan Prisma `groupBy` atau raw SQL untuk: Laporan Pemasukan Harian, Kinerja Operator (jumlah waste), dan Laporan Piutang (*Overdue*).
+- [ ] **Corrections & Audit Logs:**
+  - [ ] Pastikan tidak ada fungsi `DELETE` untuk data transaksi. Semua perubahan pasca-`CLOSED` dimasukkan ke tabel `corrections`.
+  - [ ] Buat API Endpoint `/api/audit-logs` (read-only) untuk menarik riwayat sistem.
+
+---
+
+## 🤝 KONTRAK KERJA DENGAN FRONTEND (RERE)
+
+Untuk setiap tugas Anda, langkah kerjanya:
+1. Pikirkan struktur tabel dan alur validasinya terlebih dahulu.
+2. Buat fungsi `export async function myAction(formData)` (Server Action) atau *Query Getter* (untuk *Server Components*).
+3. Buat dan ekspor **TypeScript Interface** di `src/types/` agar Rere tahu bentuk data yang akan ia terima.
+4. Beri tahu Rere: *"Re, fungsi `createOrder` sudah siap dipakai. Form milikmu tinggal panggil fungsi ini."*
+
+**Tips:** Gunakan *branch* dengan format `api/[nama-fitur]` atau `backend/[nama-fitur]`. Pastikan setiap *pull request* dites secara mandiri menggunakan `console.log` sebelum diserahkan ke Rere.
 
 
 ==================================================

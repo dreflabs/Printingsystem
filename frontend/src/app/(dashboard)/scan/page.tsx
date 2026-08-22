@@ -4,8 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import { ScanLine, Camera, Package, CreditCard, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { useWorkflowStore } from "@/store/useWorkflowStore";
 
-// Dummy job data yang akan "ditemukan" saat scan
+// Dummy job fallback jika tidak ada yang cocok di store
 const MOCK_JOB = {
   jobCode: "JOB-20260820-0041",
   orderCode: "ORD-20260820-0021",
@@ -32,6 +33,9 @@ export default function ScanPage() {
   const [result, setResult] = useState<typeof MOCK_JOB | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const jobs = useWorkflowStore(s => s.jobs);
+  const orders = useWorkflowStore(s => s.orders);
+
   // Auto-focus keyboard scanner input
   useEffect(() => {
     if (mode === "keyboard") inputRef.current?.focus();
@@ -41,8 +45,34 @@ export default function ScanPage() {
     if (!code.trim()) return;
     setState("scanning");
     setTimeout(() => {
-      // Simulasi: kode apapun dianggap ketemu (demo)
-      if (code.length > 3) {
+      const searchCode = code.trim().toLowerCase();
+      const matchedJob = jobs.find(j => j.id.toLowerCase().includes(searchCode) || j.orderId.toLowerCase().includes(searchCode));
+      const matchedOrder = matchedJob ? orders.find(o => o.id === matchedJob.orderId) : orders.find(o => o.id.toLowerCase().includes(searchCode));
+
+      if (matchedJob || matchedOrder) {
+        const order = matchedOrder || orders[0];
+        const job = matchedJob || jobs[0];
+        const totalNum = Number(order.totalPrice || 0);
+        const dpNum = Number(order.dpAmount || 0);
+        const sisaNum = Math.max(0, totalNum - dpNum);
+
+        setState("found");
+        setResult({
+          jobCode: job.id,
+          orderCode: order.id,
+          customerName: order.customerName,
+          product: `${job.product} — ${job.material}`,
+          qty: job.qty,
+          deadline: order.deadline || "-",
+          machine: "Mesin Cetak 1",
+          operator: "Operator Staff",
+          currentStatus: order.status as any,
+          paymentStatus: order.paymentStatus === "PAID" ? "Lunas" : dpNum > 0 ? "DP Terpenuhi" : "Belum DP",
+          totalAmount: `Rp ${totalNum.toLocaleString("id-ID")}`,
+          remainingAmount: sisaNum <= 0 ? "Lunas" : `Rp ${sisaNum.toLocaleString("id-ID")}`,
+          availableActions: ["PROSES ACTION (SCAN)", "LIHAT DETAIL"],
+        });
+      } else if (code.length > 3) {
         setState("found");
         setResult(MOCK_JOB);
       } else {
@@ -214,7 +244,7 @@ export default function ScanPage() {
               </div>
               <div className="text-right">
                 <p className="text-xs text-muted">Sisa Tagihan</p>
-                <p className="text-base font-bold text-status-orange">{result.remainingAmount}</p>
+                <p className="text-base font-bold text-status-yellow">{result.remainingAmount}</p>
               </div>
             </div>
 

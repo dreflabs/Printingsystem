@@ -16,15 +16,15 @@ Kebijakan pembatalan order berbeda tergantung pada seberapa jauh produksi sudah 
   - Biaya desain yang dipotong harus disepakati dan dicatat
 - Jika belum ada DP: tidak ada pengembalian apapun
 
-**Siapa yang bisa approve:** Admin Sales atau Owner
+**Siapa yang bisa approve:** Admin atau Owner
 
 **Alur:**
 ```
-Konsumen / Admin Sales request cancel
-  → Admin Sales klik "Ajukan Pembatalan"
+Konsumen / Admin request cancel
+  → Admin klik "Ajukan Pembatalan"
   → Pilih alasan: Konsumen berubah pikiran / Desain tidak cocok / Lainnya
   → Sistem cek status order → Sebelum produksi? → Bisa dicancel
-  → Admin Sales atau Owner klik "Konfirmasi Cancel"
+  → Admin atau Owner klik "Konfirmasi Cancel"
   → Jika ada DP:
       Input jumlah yang dikembalikan (bisa penuh atau dikurangi biaya desain)
       Catat metode pengembalian (cash / transfer)
@@ -46,12 +46,12 @@ Alasannya:
 - Mesin sudah digunakan
 - Biaya produksi sudah keluar
 
-**Siapa yang bisa approve:** **Owner SAJA** (tidak bisa dicancel oleh Admin Sales sendiri)
+**Siapa yang bisa approve:** **Owner SAJA** (tidak bisa dicancel oleh Admin sendiri)
 
 **Alur:**
 ```
-Konsumen / Admin Sales request cancel
-  → Admin Sales klik "Ajukan Pembatalan"
+Konsumen / Admin request cancel
+  → Admin klik "Ajukan Pembatalan"
   → Sistem detect: order sudah dalam produksi
   → Sistem tampilkan peringatan: "DP HANGUS jika cancel dilanjutkan"
   → Request dikirim ke Owner untuk disetujui

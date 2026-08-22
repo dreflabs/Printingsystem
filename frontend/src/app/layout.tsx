@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "PrintFlow - Sistem Manajemen Percetakan",
+  title: "Print Pilot - Sistem Manajemen Percetakan",
   description: "Sistem Manajemen Percetakan Digital Premium",
 };
 

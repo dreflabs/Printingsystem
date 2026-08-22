@@ -2,8 +2,7 @@
 
 ## Akses
 - Owner: akses penuh + export
-- Supervisor: akses penuh + export
-- Admin Sales: akses penuh + export (karena yang input stok masuk)
+- Admin: akses penuh + export
 - Role lain: tidak ada akses
 
 ---

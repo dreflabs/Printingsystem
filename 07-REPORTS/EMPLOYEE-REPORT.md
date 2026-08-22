@@ -2,7 +2,7 @@
 
 ## Akses
 - Owner: akses penuh + export
-- Supervisor: akses ringkasan (tanpa data gaji/absensi detail)
+- Admin: akses ringkasan (tanpa data gaji/absensi detail)
 - Role lain: tidak ada akses
 
 > ⚠️ Laporan ini hanya untuk evaluasi kinerja operasional. Bukan sebagai satu-satunya bukti kesalahan atau pelanggaran disiplin.
@@ -21,10 +21,10 @@ Periode: harian / mingguan / bulanan
 | Jumlah Hari Terlambat | |
 | Rata-rata Jam Masuk | |
 | Pelanggaran Istirahat | Jumlah istirahat melebihi 60 menit |
-| Total Job Dikerjakan | (untuk operator/finishing/QC) |
+| Total Job Dikerjakan | (untuk Operator/Gudang) |
 | Total Qty Produksi | (untuk operator) |
 | Total Waste | (untuk operator) |
-| Jumlah QC Fail | (untuk QC inspector — fail yang ditemukan) |
+| Jumlah QC Fail | (untuk Gudang — fail yang ditemukan) |
 | Jumlah Rework | (untuk operator — job yang harus diulang) |
 
 ---
@@ -38,8 +38,8 @@ Periode: harian / mingguan / bulanan
 | Jam Masuk | Dari fingerprint |
 | Status Masuk | TEPAT WAKTU / TERLAMBAT |
 | Menit Terlambat | |
-| Jam Mulai Istirahat | Dari PrintFlow |
-| Jam Selesai Istirahat | Dari PrintFlow |
+| Jam Mulai Istirahat | Dari Print Pilot |
+| Jam Selesai Istirahat | Dari Print Pilot |
 | Durasi Istirahat | |
 | Status Istirahat | NORMAL / BERLEBIH |
 | Catatan Owner | (jika ada) |

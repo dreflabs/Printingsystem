@@ -11,7 +11,7 @@
 - READY_FOR_PICKUP requires successful storage confirmation.
 - Pickup/release requires payment condition and authorization.
 - Final Audit required before close.
-- RED audit blocks close — order is moved to `ON_HOLD` for Owner investigation instead of CLOSED (see `09-TECHNICAL/STATUS-MACHINE.md`). YELLOW requires Supervisor/Owner approval before CLOSED. Only GREEN closes automatically.
+- RED audit blocks close — order is moved to `ON_HOLD` for Owner investigation instead of CLOSED (see `09-TECHNICAL/STATUS-MACHINE.md`). YELLOW requires Owner approval before CLOSED (Admin submits the audit result, so Admin cannot also approve it). Only GREEN closes automatically.
 - CLOSED records cannot be silently edited.
 - READY_FOR_PICKUP notification can trigger only after storage confirmation.
 - Duplicate notification events are prevented unless authorized resend.
@@ -42,7 +42,7 @@
 ## Required Field Minimal per Entitas Utama
 
 **Order** (`orders`)
-- `customer_id`, `created_by`, minimal 1 `order_item`, `deadline`
+- `created_by`, minimal 1 `order_item`. (`customer_id` dan `deadline` WAJIB untuk order PRINTING, tapi boleh kosong/nullable untuk order RETAIL)
 - Status awal wajib `DRAFT`; `total`/`subtotal` dihitung sistem dari `order_items`, tidak diinput manual
 
 **Customer** (`customers`)
@@ -57,3 +57,4 @@
 - `order_id`, `machine_id`, `operator_id`, `planned_qty` (> 0)
 - `job_code` auto-generate sistem; `actual_qty` wajib diisi saat SCAN 2 (selesai produksi), tidak boleh 0
 - `waste_reason` wajib jika `waste_qty > 0`
+- `pause_reason` wajib diisi saat job dijeda (status → `PRODUCTION_PAUSED`) — request pause tanpa `pause_reason` ditolak (lihat `02-WORKFLOW/05-PRODUCTION.md` "Jeda Produksi")

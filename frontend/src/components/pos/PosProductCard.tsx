@@ -23,39 +23,45 @@ export function PosProductCard({ product, onClick }: PosProductCardProps) {
     <div
       onClick={() => !isOutOfStock && onClick(product)}
       className={cn(
-        "relative flex flex-col justify-between overflow-hidden rounded-xl border bg-card p-4 transition-all duration-200 cursor-pointer group",
+        "relative flex items-center justify-between overflow-hidden rounded-xl border bg-card p-3 transition-all duration-200 cursor-pointer group",
         isOutOfStock 
           ? "opacity-60 cursor-not-allowed border-border grayscale-[0.5]" 
-          : "hover:border-status-orange/50 hover:shadow-md hover:-translate-y-1 active:scale-[0.98] border-border"
+          : "hover:border-status-yellow/50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] border-border"
       )}
     >
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex flex-col">
-          <span className="text-xs font-medium text-muted uppercase tracking-wider">{product.category}</span>
-          <h3 className="font-semibold text-primary mt-1 line-clamp-2 leading-tight">{product.name}</h3>
+      <div className="flex items-center flex-1 min-w-0 pr-4 gap-4">
+        {/* Kolom Nama & Kategori (Kiri) */}
+        <div className="flex flex-col flex-1 min-w-0">
+          <span className="text-[10px] font-bold text-muted uppercase tracking-wider mb-0.5">{product.category}</span>
+          <h3 className="font-semibold text-primary line-clamp-1 leading-tight text-sm">{product.name}</h3>
         </div>
-        {product.isCustom ? (
-          <div className="h-8 w-8 rounded-full bg-status-purple/10 flex items-center justify-center shrink-0">
-            <span className="text-status-purple font-bold text-xs">⭐</span>
+
+        {/* Kolom Harga & Stok (Kanan) */}
+        <div className="flex flex-col items-end shrink-0 gap-1">
+          <div className="font-mono font-bold text-base text-primary tracking-tight">
+            {product.isCustom ? "Rp ???" : new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(product.price)}
           </div>
-        ) : (
-          <div className={cn(
-            "px-2 py-1 rounded-md text-xs font-medium",
-            isOutOfStock ? "bg-status-red/10 text-status-red" : "bg-status-green/10 text-status-green"
-          )}>
-            Stok: {product.stock}
-          </div>
-        )}
+          {product.isCustom ? (
+            <span className="text-status-purple font-bold text-xs bg-status-purple/10 px-2 py-0.5 rounded">⭐ Custom</span>
+          ) : (
+            <div className={cn(
+              "px-2 py-0.5 rounded text-[10px] font-bold",
+              isOutOfStock ? "bg-status-red/10 text-status-red" : "bg-status-green/10 text-status-green"
+            )}>
+              Stok: {product.stock}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center justify-between mt-auto">
-        <div className="font-mono font-bold text-lg text-primary">
-          {product.isCustom ? "Rp ???" : new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(product.price)}
-        </div>
-        
-        {!isOutOfStock && (
-          <div className="h-8 w-8 rounded-full bg-status-orange/10 group-hover:bg-status-orange flex items-center justify-center transition-colors">
-            <Plus className="h-4 w-4 text-status-orange group-hover:text-white transition-colors" />
+      <div className="shrink-0 pl-2 border-l border-border/50">
+        {!isOutOfStock ? (
+          <div className="h-10 w-10 rounded-full bg-status-yellow/10 group-hover:bg-status-yellow flex items-center justify-center transition-colors">
+            <Plus className="h-5 w-5 text-status-yellow group-hover:text-white transition-colors" />
+          </div>
+        ) : (
+          <div className="h-10 w-10 flex items-center justify-center">
+            <span className="text-xs font-bold text-status-red">Habis</span>
           </div>
         )}
       </div>

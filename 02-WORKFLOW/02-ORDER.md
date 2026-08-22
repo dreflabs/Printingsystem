@@ -2,11 +2,11 @@
 
 ## Langkah 1 — Buat Order Baru
 
-**Siapa:** Admin Sales atau Designer Sales
+**Siapa:** Admin atau Designer Sales
 
 **Data yang wajib diisi:**
 - Konsumen (pilih dari database atau buat baru)
-- Tipe order: Walk-in / Makloon / WhatsApp
+- Tipe order: Walk-in / Makloon / Online
 - Produk + spesifikasi (ukuran, jumlah, bahan)
 - Deadline
 - Catatan khusus (opsional)
@@ -43,7 +43,7 @@ Setiap item mengisi:
 
 - Walk-in: Designer buat desain di hadapan konsumen, upload ke sistem
 - Makloon: Admin upload file dari konsumen
-- WhatsApp: Designer upload preview desain, menunggu konfirmasi Admin
+- Online: Designer upload preview desain, menunggu konfirmasi Admin
 
 Lihat detail di: `02-WORKFLOW/03-DESIGN-APPROVAL.md`
 
@@ -53,7 +53,7 @@ Lihat detail di: `02-WORKFLOW/03-DESIGN-APPROVAL.md`
 
 Sistem otomatis hitung DP minimum berdasarkan total order:
 - Walk-in: **50% dari total**
-- Makloon / WhatsApp: minimal 50%, bisa di-override dengan approval
+- Makloon / Online: minimal 50%, bisa di-override dengan approval
 
 Status order berubah ke WAITING_PAYMENT setelah desain APPROVED.
 
@@ -61,10 +61,10 @@ Status order berubah ke WAITING_PAYMENT setelah desain APPROVED.
 
 ## Langkah 5 — Konfirmasi Order
 
-Setelah DP diterima dan dikonfirmasi Admin Sales:
+Setelah DP diterima dan dikonfirmasi Admin:
 - Status berubah ke CONFIRMED
 - Order masuk antrian produksi
-- Supervisor bisa assign job ke mesin dan operator
+- Admin bisa assign job ke mesin dan operator
 
 ---
 
@@ -72,8 +72,8 @@ Setelah DP diterima dan dikonfirmasi Admin Sales:
 
 | Kondisi | Bisa Edit? | Oleh Siapa |
 |---------|-----------|-----------|
-| Status DRAFT | ✅ Ya | Admin Sales, Designer |
-| Status DESIGNING / WAITING_APPROVAL | ✅ Ya (terbatas) | Admin Sales |
+| Status DRAFT | ✅ Ya | Admin, Designer |
+| Status DESIGNING / WAITING_APPROVAL | ✅ Ya (terbatas) | Admin |
 | Status CONFIRMED ke atas | ❌ Tidak bisa edit langsung | — |
 | Status CLOSED | ❌ Tidak | Hanya Correction/Adjustment |
 

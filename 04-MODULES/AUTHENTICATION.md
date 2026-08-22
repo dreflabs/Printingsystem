@@ -46,3 +46,11 @@ Fitur opsional, khusus untuk akun dengan role `owner` (tidak berlaku untuk role 
 - Menonaktifkan 2FA memerlukan re-autentikasi password (dan kode TOTP aktif, jika masih tersedia)
 - Field tambahan di tabel `users`: `totp_secret` (terenkripsi), `totp_enabled` (boolean), `totp_recovery_codes` (hashed, array)
 - Setiap login dengan 2FA (berhasil maupun gagal) tercatat di `audit_logs`
+
+## Autentikasi Super Admin (Terpisah Total dari Tenant)
+
+Super Admin **bukan** bagian dari sistem auth tenant di atas — beda tabel (`super_admins`, bukan `users`), beda domain login (`printpilot.id`, bukan subdomain tenant), dan beda kebijakan:
+
+- **MFA wajib** (bukan opsional seperti Owner tenant) untuk semua sub-level (SUPER_ADMIN/SUPPORT/FINANCE) — metode TOTP, sama seperti mekanisme Owner 2FA di atas, tapi tidak bisa dinonaktifkan.
+- Sesi Super Admin **tidak pernah** bisa dipakai untuk otentikasi langsung ke data tenant manapun — akses ke data tenant cuma lewat mekanisme impersonate yang tercatat (lihat `03-ROLES/SUPER-ADMIN.md`), bukan sesi auth yang sama dipakai lintas domain.
+- Detail lengkap hak akses per sub-level: `03-ROLES/SUPER-ADMIN.md`. Detail fitur panel: `13-SAAS/SUPER-ADMIN.md`.

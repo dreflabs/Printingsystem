@@ -2,8 +2,8 @@
 
 ## Akses
 - Owner: akses penuh + export
-- Supervisor: lihat saja (tanpa nominal detail, hanya ringkasan)
-- Admin Sales, Designer, Operator, dll: tidak ada akses
+- Admin: lihat saja (tanpa nominal detail, hanya ringkasan)
+- Designer, Operator, Gudang: tidak ada akses
 
 ---
 
@@ -71,9 +71,9 @@ Filter: Semua / Overdue / Belum Siap / Siap Diambil Belum Lunas
 
 ---
 
-## 5. Laporan Penjualan Retail
+## 4. Laporan Penjualan Retail
 
-**Akses:** Admin Sales (lihat), Owner (penuh + export)
+**Akses:** Owner (penuh + export), Admin (lihat saja, sesuai `06-SECURITY/ACCESS-CONTROL.md`)
 
 Rekap khusus untuk transaksi `order_type = RETAIL`. Dapat difilter per hari/bulan.
 
@@ -82,7 +82,7 @@ Rekap khusus untuk transaksi `order_type = RETAIL`. Dapat difilter per hari/bula
 | Tanggal Transaksi | |
 | Kode Transaksi | Kode order RETAIL |
 | Nama Pembeli | Nama konsumen atau "Guest" jika tidak terdaftar |
-| Kasir | Admin Sales yang memproses |
+| Kasir | Admin yang memproses |
 | Produk Terjual | Nama produk retail + qty |
 | Subtotal | |
 | Diskon | Jika ada |
@@ -93,7 +93,7 @@ Filter: Tanggal (dari–sampai), Kasir, Produk, Metode Pembayaran.
 
 ---
 
-## 6. Laporan Diskon
+## 5. Laporan Diskon
 
 Semua diskon yang pernah diberikan — untuk audit Owner.
 
@@ -110,7 +110,7 @@ Semua diskon yang pernah diberikan — untuk audit Owner.
 
 ---
 
-## 5. Export
+## 6. Export
 
 Semua laporan keuangan bisa diexport ke:
 - **PDF** (untuk arsip dan print)
@@ -123,8 +123,8 @@ Export dicatat di audit log: siapa yang export, kapan, laporan apa.
 
 ## Catatan Penting
 
-- PrintFlow adalah **satu-satunya sumber kebenaran keuangan** — tidak ada rekap ke sistem lain
-- Semua angka berdasarkan transaksi yang dikonfirmasi oleh Admin Sales
+- Print Pilot adalah **satu-satunya sumber kebenaran keuangan** — tidak ada rekap ke sistem lain
+- Semua angka berdasarkan transaksi yang dikonfirmasi oleh Admin
 - **Laporan keuangan mencakup kedua lini:** PRINTING (DP/pelunasan) dan RETAIL (transaksi langsung). Keduanya dihitung dalam total pendapatan gabungan.
 - RETAIL tidak memiliki sistem piutang — pembayaran langsung saat transaksi. Laporan piutang hanya mencakup PRINTING.
 - Koreksi angka keuangan setelah CLOSED hanya lewat `02-WORKFLOW/15-CORRECTION-ADJUSTMENT.md`

@@ -209,7 +209,7 @@ Sistem otomatis konversi: misalnya saat operator input 2.5 meter pemakaian Flexy
 
 ## Bahan yang Dapat Ditambahkan Admin
 
-Selain daftar bahan di atas, Admin Sales atau Owner dapat **menambahkan bahan baru** langsung di sistem tanpa perlu update kode.
+Selain daftar bahan di atas, Admin atau Owner dapat **menambahkan bahan baru** langsung di sistem tanpa perlu update kode.
 
 Saat menambahkan bahan baru, Admin mengisi:
 - Nama bahan (bebas)

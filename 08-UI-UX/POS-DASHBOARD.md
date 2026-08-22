@@ -17,7 +17,7 @@ Modul Kasir Cepat (Direct Sales) dirancang khusus untuk mempercepat penjualan ba
 ## 3. Manajemen Stok (Inventory)
 - Tab atau menu sekunder untuk melihat daftar barang retail.
 - Opsi untuk "Tambah Stok Masuk" (IN) atau "Penyesuaian Stok" (ADJUSTMENT).
-- Hanya bisa diakses oleh Supervisor/Admin/Owner, atau kasir yang diberi hak akses.
+- Hanya bisa diakses oleh Owner dan Admin (Sesuai dengan matriks ACCESS-CONTROL.md).
 
 ## 4. Riwayat Transaksi Retail
 - Daftar pesanan khusus tipe `RETAIL` yang sudah `CLOSED`.

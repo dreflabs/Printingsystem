@@ -26,7 +26,7 @@ Gunakan dokumen ini sebagai checklist saat testing sebelum sistem diserahkan unt
 |---|----------|----------------------|
 | 2.1 | Designer buka halaman detail order | Nama konsumen tampil, nomor HP **tidak tampil sama sekali** |
 | 2.2 | API response untuk Designer yang request data konsumen | Field `phone` dan `email` **tidak ada** dalam JSON response |
-| 2.3 | Admin Sales buka halaman detail order | Nama + nomor HP tampil normal |
+| 2.3 | Admin buka halaman detail order | Nama + nomor HP tampil normal |
 | 2.4 | Operator buka halaman job | Nama konsumen tampil, nomor HP tidak tampil |
 
 ---
@@ -47,7 +47,7 @@ Gunakan dokumen ini sebagai checklist saat testing sebelum sistem diserahkan unt
 | # | Skenario | Hasil yang Diharapkan |
 |---|----------|----------------------|
 | 4.1 | Designer approve desain walk-in | Status desain → APPROVED, method: WALK_IN |
-| 4.2 | Admin Sales konfirmasi approval WA | Status desain → APPROVED, method: WHATSAPP |
+| 4.2 | Admin konfirmasi approval Online | Status desain → APPROVED, method: ONLINE |
 | 4.3 | Makloon: file diupload | Status desain → APPROVED otomatis, method: MAKLOON |
 | 4.4 | Coba kirim order ke produksi tanpa desain APPROVED | Sistem menolak |
 
@@ -58,7 +58,7 @@ Gunakan dokumen ini sebagai checklist saat testing sebelum sistem diserahkan unt
 | # | Skenario | Hasil yang Diharapkan |
 |---|----------|----------------------|
 | 5.1 | Order walk-in, DP < 50% | Tidak bisa lanjut ke produksi |
-| 5.2 | Admin Sales coba apply diskon tanpa Owner | Tombol apply diskon tidak ada, hanya tombol "Ajukan" |
+| 5.2 | Admin coba apply diskon tanpa Owner | Tombol apply diskon tidak ada, hanya tombol "Ajukan" |
 | 5.3 | Owner apply diskon | Harga order berubah, audit log tercatat |
 | 5.4 | Designer coba konfirmasi payment | Tidak ada akses/tombol, ditolak server-side |
 
@@ -73,6 +73,10 @@ Gunakan dokumen ini sebagai checklist saat testing sebelum sistem diserahkan unt
 | 6.3 | Scan Job QR yang status bukan PRODUCTION_ASSIGNED | Tombol "Mulai Produksi" tidak tampil |
 | 6.4 | Operator submit selesai tanpa isi actual_qty | Sistem menolak |
 | 6.5 | Operator input waste > 0 tanpa alasan | Sistem menolak |
+| 6.6 | Operator klik "Jeda Produksi" tanpa isi alasan | Sistem menolak |
+| 6.7 | Operator jeda job PRODUCTION_STARTED | Status job → PRODUCTION_PAUSED, timer berhenti terlihat, `paused_at` tercatat |
+| 6.8 | Operator klik "Lanjutkan Produksi" setelah jeda | Status job kembali PRODUCTION_STARTED, `resumed_at` tercatat, durasi jeda dikurangi dari total waktu produksi di laporan |
+| 6.9 | Operator coba scan mulai job baru selagi masih ada job PRODUCTION_STARTED/PRODUCTION_PAUSED lain | Sistem menolak — 1 job aktif per Operator |
 
 ---
 
@@ -80,8 +84,8 @@ Gunakan dokumen ini sebagai checklist saat testing sebelum sistem diserahkan unt
 
 | # | Skenario | Hasil yang Diharapkan |
 |---|----------|----------------------|
-| 7.1 | QC Inspector submit FAIL tanpa foto/keterangan | Sistem menolak (keterangan wajib) |
-| 7.2 | QC FAIL | Notifikasi muncul di dashboard Owner dan Supervisor |
+| 7.1 | Gudang submit FAIL tanpa foto/keterangan | Sistem menolak (keterangan wajib) |
+| 7.2 | QC FAIL | Notifikasi muncul di dashboard Owner dan Admin |
 | 7.3 | Owner approve rework | Status → REWORK_APPROVED, operator bisa mulai ulang |
 | 7.4 | Job sudah 2x rework, QC FAIL lagi | Sistem blokir rework ke-3, tampil eskalasi ke Owner |
 
@@ -102,9 +106,9 @@ Gunakan dokumen ini sebagai checklist saat testing sebelum sistem diserahkan unt
 
 | # | Skenario | Hasil yang Diharapkan |
 |---|----------|----------------------|
-| 9.1 | Admin Sales scan Job QR saat pickup | Tampil nama konsumen, status payment, lokasi gudang |
+| 9.1 | Admin scan Job QR saat pickup | Tampil nama konsumen, status payment, lokasi gudang |
 | 9.2 | Coba release dengan sisa payment tanpa override Owner | Sistem menolak |
-| 9.3 | Admin Sales berhasil release | Status → PICKED_UP, storage item dilepas |
+| 9.3 | Admin berhasil release | Status → PICKED_UP, storage item dilepas |
 | 9.4 | Coba release job yang sama dua kali | Sistem menolak "Sudah di-release" |
 
 ---
@@ -123,9 +127,9 @@ Gunakan dokumen ini sebagai checklist saat testing sebelum sistem diserahkan unt
 
 | # | Skenario | Hasil yang Diharapkan |
 |---|----------|----------------------|
-| 11.1 | Cancel order sebelum produksi | Bisa dilakukan Admin Sales, DP bisa dikembalikan |
+| 11.1 | Cancel order sebelum produksi | Bisa dilakukan Admin, DP bisa dikembalikan |
 | 11.2 | Cancel order saat produksi sudah berjalan | Harus tunggu approval Owner, DP hangus |
-| 11.3 | Admin Sales coba cancel order yang sudah produksi tanpa Owner | Tombol langsung cancel tidak ada, hanya "Ajukan Cancel" |
+| 11.3 | Admin coba cancel order yang sudah produksi tanpa Owner | Tombol langsung cancel tidak ada, hanya "Ajukan Cancel" |
 
 ---
 
@@ -134,6 +138,6 @@ Gunakan dokumen ini sebagai checklist saat testing sebelum sistem diserahkan unt
 | # | Skenario | Hasil yang Diharapkan |
 |---|----------|----------------------|
 | 12.1 | Semua aksi kritis dilakukan | Masing-masing muncul di audit log dengan detail lengkap |
-| 12.2 | Admin Sales coba hapus audit log | Tidak ada tombol hapus, API DELETE ditolak |
+| 12.2 | Admin coba hapus audit log | Tidak ada tombol hapus, API DELETE ditolak |
 | 12.3 | Owner ekspor laporan | File PDF/XLSX berhasil diunduh, ada catatan di audit log |
 | 12.4 | Operator coba edit data order | Ditolak, operator hanya bisa update job |

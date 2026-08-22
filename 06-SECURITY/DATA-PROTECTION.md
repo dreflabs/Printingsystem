@@ -27,21 +27,17 @@ restricted customer/financial data, backups and recovery.
 - DILARANG KERAS: export atau download data konsumen
 - DILARANG KERAS: akses daftar semua konsumen (hanya boleh lihat konsumen dari order yang ditanganinya)
 
-**OPERATOR / QC / FINISHING:**
+**OPERATOR:**
 - BOLEH: lihat nama konsumen (sebatas info job), Job ID, spesifikasi produk
 - DILARANG KERAS: akses phone, email, alamat konsumen
 
-**WAREHOUSE:**
-- BOLEH: lihat nama konsumen, Job ID, lokasi storage, status
-- DILARANG KERAS: akses phone, email konsumen
+**GUDANG** (QC, Finishing, Storage):
+- BOLEH: lihat nama konsumen (sebatas info job), Job ID, lokasi storage, spesifikasi produk, status
+- DILARANG KERAS: akses phone, email, alamat konsumen
 
-**ADMIN SALES:**
+**ADMIN** (termasuk tugas eks-Supervisor — kelola produksi harian):
 - BOLEH: lihat semua data konsumen termasuk phone dan email
 - BOLEH: kirim notifikasi manual jika WhatsApp gagal
-- TIDAK BOLEH: export data konsumen tanpa log
-
-**SUPERVISOR:**
-- BOLEH: lihat semua data konsumen termasuk phone dan email
 - TIDAK BOLEH: export data konsumen tanpa log
 
 **OWNER:**
@@ -55,7 +51,7 @@ restricted customer/financial data, backups and recovery.
 ## Implementasi Teknis
 
 ### Server-Side Enforcement
-- Field `phone` dan `email` HANYA di-include dalam API response jika role requester adalah: `admin_sales`, `supervisor`, `owner`
+- Field `phone` dan `email` HANYA di-include dalam API response jika role requester adalah: `admin`, `owner`
 - Bukan hanya hidden di UI — field ini tidak boleh ada dalam response JSON untuk role lain
 - Gunakan serializer/transformer berbasis role di setiap API endpoint yang mengembalikan data konsumen
 
@@ -87,7 +83,7 @@ restricted customer/financial data, backups and recovery.
 
 - Database backup harian (otomatis)
 - Backup disimpan di lokasi terpisah dari server utama
-- Retention backup: minimum 90 hari
+- Retention backup: minimum 30 hari
 - Recovery test: wajib diuji setiap 30 hari
 
 ---
@@ -125,7 +121,7 @@ restricted customer/financial data, backups and recovery.
 
 ## Retensi Data Pelanggan
 
-- Data konsumen (`customers`) dan riwayat order (`orders`, `order_items`, `payments`, dll) **disimpan permanen** selama tidak ada permintaan penghapusan eksplisit dari pemilik data — bukan dihapus otomatis setelah order selesai atau setelah periode tidak aktif tertentu.
+- Data konsumen (`customers`) dan riwayat order (`orders`, `order_items`, `payments`, dll) **disimpan permanen** selama tidak ada permintaan penghapusan eksplisit dari pemilik data — bukan dihapus otomatis setelah order selesai atau setelah periode tidak aktif tertentu. *(Pengecualian: Kebijakan retensi pembersihan infrastruktur SaaS 30 hari TIDAK BERLAKU untuk data transaksional konsumen, data ini dipertahankan secara permanen atau soft-delete demi analitik).*
 - Alasan: sistem memakai PostgreSQL dengan jaminan ACID justru untuk mendukung audit trail dan riwayat transaksi yang harus bisa ditelusuri (final audit, laporan keuangan, sengketa konsumen) kapan pun diperlukan — penghapusan otomatis berisiko merusak integritas laporan historis.
 - Tidak ada soft-delete untuk tabel inti (`active = false` dipakai untuk menonaktifkan, bukan menghapus) — konsisten dengan aturan di `05-DATABASE/TABLES.md`.
 - Jika konsumen meminta datanya dihapus (lihat bagian UU PDP di bawah), penghapusan dilakukan lewat proses khusus yang tetap meninggalkan jejak di `audit_logs` (siapa yang menghapus, kapan, atas dasar permintaan siapa) — bukan penghapusan diam-diam yang membuat riwayat transaksi bolong tanpa jejak.
@@ -134,4 +130,4 @@ restricted customer/financial data, backups and recovery.
 
 ## Kepatuhan UU PDP (Undang-Undang Pelindungan Data Pribadi)
 
-Sistem ini berkomitmen mengikuti prinsip dasar UU PDP Indonesia dalam pemrosesan data pribadi konsumen dan pegawai: pemrosesan data (nama, telepon, email, alamat) dilakukan berdasarkan kebutuhan pelaksanaan transaksi (dasar kontraktual — memproses pesanan cetak), pemilik data berhak meminta **akses** ke datanya sendiri, **koreksi** jika data tidak akurat, dan **penghapusan** (right to erasure) jika tidak ada dasar hukum lain yang mengharuskan data tersebut tetap disimpan (mis. kewajiban pembukuan). Permintaan semacam ini ditangani lewat Admin Sales/Owner secara manual pada tahap awal sistem, dicatat di `audit_logs`, dan diproses lewat mekanisme correction/deactivation yang sudah ada — dokumen ini tidak membahas detail hukum lebih lanjut; untuk kasus kompleks (mis. permintaan hapus total riwayat transaksi yang bersinggungan dengan kewajiban pembukuan pajak) perlu konsultasi terpisah dengan pihak legal.
+Sistem ini berkomitmen mengikuti prinsip dasar UU PDP Indonesia dalam pemrosesan data pribadi konsumen dan pegawai: pemrosesan data (nama, telepon, email, alamat) dilakukan berdasarkan kebutuhan pelaksanaan transaksi (dasar kontraktual — memproses pesanan cetak), pemilik data berhak meminta **akses** ke datanya sendiri, **koreksi** jika data tidak akurat, dan **penghapusan** (right to erasure) jika tidak ada dasar hukum lain yang mengharuskan data tersebut tetap disimpan (mis. kewajiban pembukuan). Permintaan semacam ini ditangani lewat Admin/Owner secara manual pada tahap awal sistem, dicatat di `audit_logs`, dan diproses lewat mekanisme correction/deactivation yang sudah ada — dokumen ini tidak membahas detail hukum lebih lanjut; untuk kasus kompleks (mis. permintaan hapus total riwayat transaksi yang bersinggungan dengan kewajiban pembukuan pajak) perlu konsultasi terpisah dengan pihak legal.

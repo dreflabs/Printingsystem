@@ -135,7 +135,7 @@ function Step1({ form, onChange }: { form: OrderForm; onChange: (k: keyof OrderF
         onChange={(e) => onChange("orderType", e.target.value)}
         options={[
           { label: "Walk-in (Langsung datang)", value: "walkin" },
-          { label: "WhatsApp (Remote / Chat)", value: "whatsapp" },
+          { label: "Online (WA / Media Sosial)", value: "online" },
           { label: "Makloon (Film/File dari konsumen)", value: "makloon" },
         ]}
       />
@@ -309,7 +309,7 @@ function Step3({ form, onChange, role }: { form: OrderForm; onChange: (k: keyof 
               </div>
               <div className="border-t border-border pt-2 flex justify-between">
                 <span className="text-primary font-semibold">Sisa Tagihan</span>
-                <span className={cn("font-bold text-base", sisa > 0 ? "text-status-orange" : "text-status-green")}>
+                <span className={cn("font-bold text-base", sisa > 0 ? "text-status-yellow" : "text-status-green")}>
                   Rp {sisa.toLocaleString("id-ID")}
                 </span>
               </div>

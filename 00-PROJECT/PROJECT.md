@@ -26,7 +26,7 @@ Membangun sistem manajemen workflow digital untuk percetakan yang mencakup:
 - Inventory material
 - Laporan & dashboard per role
 - Audit trail real-time
-- Manajemen user & RBAC (8 role)
+- Manajemen user & RBAC (5 role)
 
 ### Yang Tidak Dicakup (Out-of-Scope)
 - Pengiriman via kurir (delivery) — semua konsumen datang langsung ke toko
@@ -71,7 +71,7 @@ FINAL AUDIT → CLOSED
 |------|-----------|----------------|
 | **Walk-in** | Datang langsung ke toko | Langsung di tempat — tidak perlu digital |
 | **Makloon** | Bawa file desain sendiri | File langsung dicetak, tidak butuh approval |
-| **WhatsApp** | Order via WA | Admin Sales konfirmasi di sistem |
+| **Online** | Konsumen menghubungi via online (WA maupun media sosial) | Admin konfirmasi di sistem |
 
 ---
 
@@ -97,16 +97,27 @@ FINAL AUDIT → CLOSED
 
 ## Role yang Ada
 
+### Role Tenant (5 role — dipakai oleh percetakan/pelanggan SaaS)
+
 | Role | Fungsi Utama |
 |------|-------------|
 | Owner | Akses penuh, laporan, approve exception |
-| Supervisor | Kelola produksi, approve rework, monitor |
-| Admin Sales | Order, payment, pickup, notifikasi |
+| Admin | Order, payment, pickup, notifikasi, **plus kelola produksi harian (eks-Supervisor)** — assign job, reassign, laporan produksi/material |
 | Designer Sales | Desain, versioning, approval |
 | Operator | Produksi, scan QR, input qty/waste |
-| QC | Inspeksi, PASS/FAIL, approve rework |
-| Finishing | Packing, label, scan QR |
-| Warehouse | Gudang, storage in/out, release |
+| Gudang | QC (inspeksi PASS/FAIL), Finishing (packing, label), Storage (gudang, storage in/out) |
+
+> Role **Supervisor sudah dihapus** — sebagian besar tugasnya (assign/reassign job, monitor produksi, laporan produksi/material) dipindahkan ke role **Admin**. Dua hal sengaja **tidak** ikut dipindahkan, tetap eksklusif Owner: (1) approval Final Audit hasil YELLOW — karena Admin sendiri yang submit hasil audit, self-approval tidak boleh terjadi; (2) approve rework (ke-1, ke-2, maupun eskalasi) — rework berdampak langsung ke biaya material & waktu produksi.
+>
+> Role **Gudang** menggabungkan 3 tahap akhir produksi (QC, Finishing, Storage) menjadi satu role — cocok untuk percetakan kecil/menengah yang tidak punya staf khusus terpisah untuk tiap tahap. Detail: `03-ROLES/GUDANG.md`.
+
+### Role Platform (di luar 5 role tenant — dipakai oleh pengelola SaaS)
+
+| Role | Fungsi Utama |
+|------|-------------|
+| Super Admin | Kelola seluruh tenant (suspend/activate/delete), monitor MRR & system health, billing override, impersonate tenant untuk debugging |
+
+> **Penting:** Super Admin **bukan** role tambahan di dalam 5 role tenant di atas. Akunnya tersimpan di tabel terpisah (`super_admins`, bukan `users`) dan login di domain utama (`printpilot.id`), bukan di subdomain tenant manapun — supaya tidak ada jalur eskalasi privilege dari sisi tenant ke level platform. Super Admin sendiri punya 3 sub-level (SUPER_ADMIN/SUPPORT/FINANCE) dengan batasan akses berbeda — lihat `03-ROLES/SUPER-ADMIN.md` untuk definisi hak akses, `13-SAAS/SUPER-ADMIN.md` untuk spesifikasi fitur & UI.
 
 
 ---

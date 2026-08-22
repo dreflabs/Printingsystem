@@ -40,11 +40,6 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
                   onScan(result[0].rawValue);
                 }
               }}
-              onError={(err: any) => setError(err?.message || "Unknown error")}
-              components={{
-                audio: false,
-                tracker: true,
-              }}
               allowMultiple={false}
               scanDelay={500}
             />
@@ -57,7 +52,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
               <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-[1px] bg-gradient-to-r from-transparent via-accent-teal to-transparent opacity-50" />
               
               {/* Animated Laser line */}
-              <div className="absolute left-0 right-0 h-[2px] bg-accent-teal shadow-[0_0_10px_#0EA5E9] animate-[scan_2s_ease-in-out_infinite]" />
+              <div className="absolute left-0 right-0 h-[2px] bg-accent-teal shadow-[0_0_10px_#0891B2] animate-[scan_2s_ease-in-out_infinite]" />
             </div>
           </div>
         </div>

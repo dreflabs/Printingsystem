@@ -34,7 +34,7 @@ export function PosCartItem({ item, onUpdateQty, onRemove, onUpdatePrice, onUpda
               type="text"
               value={item.name}
               onChange={(e) => onUpdateName && onUpdateName(item.id, e.target.value)}
-              className="w-full bg-transparent border-b border-dashed border-status-orange/50 font-semibold text-sm text-primary outline-none focus:border-status-orange truncate"
+              className="w-full bg-transparent border-b border-dashed border-status-yellow/50 font-semibold text-sm text-primary outline-none focus:border-status-yellow truncate"
             />
           ) : (
             <h4 className="font-semibold text-sm text-primary truncate">
@@ -49,7 +49,7 @@ export function PosCartItem({ item, onUpdateQty, onRemove, onUpdatePrice, onUpda
                   value={item.price === 0 ? '' : item.price}
                   onChange={(e) => onUpdatePrice && onUpdatePrice(item.id, Number(e.target.value))}
                   placeholder="0"
-                  className="w-24 bg-background border border-border rounded px-2 py-1 text-xs font-mono text-primary outline-none focus:border-status-orange"
+                  className="w-24 bg-background border border-border rounded px-2 py-1 text-xs font-mono text-primary outline-none focus:border-status-yellow"
                 />
              </div>
           ) : (
@@ -87,7 +87,7 @@ export function PosCartItem({ item, onUpdateQty, onRemove, onUpdatePrice, onUpda
           value={item.notes || ''}
           onChange={(e) => onUpdateNotes && onUpdateNotes(item.id, e.target.value)}
           placeholder="Catatan item khusus..."
-          className="w-full text-xs bg-background/50 border border-border rounded px-2 py-1.5 outline-none focus:border-status-orange"
+          className="w-full text-xs bg-background/50 border border-border rounded px-2 py-1.5 outline-none focus:border-status-yellow"
         />
       )}
     </div>

@@ -20,8 +20,7 @@ Setiap perubahan status, aksi sensitif, dan keputusan penting harus tercatat sec
 | Role | Hapus Audit Log |
 |------|----------------|
 | Owner | **YA, dengan konfirmasi 2 langkah** (hanya dalam keadaan sangat khusus, seperti data PII yang harus dihapus karena regulasi) |
-| Supervisor | TIDAK BISA |
-| Admin Sales | TIDAK BISA |
+| Admin | TIDAK BISA |
 | Designer | TIDAK BISA |
 | Operator | TIDAK BISA |
 | Sistem/API | TIDAK BISA (tidak ada endpoint DELETE) |
@@ -104,6 +103,5 @@ created_at    : timestamp (UTC, tidak bisa diubah)
 ## Akses ke Audit Log
 
 - **Owner**: Lihat semua, filter semua, export CSV/PDF
-- **Supervisor**: Lihat log terkait area mereka, tidak bisa export
-- **Admin Sales**: Hanya lihat log terkait order dan notifikasi mereka sendiri
+- **Admin**: Lihat log terkait order, notifikasi, dan area operasional yang mereka tangani (produksi, material) — tidak bisa export
 - **Role lain**: Tidak bisa akses audit log

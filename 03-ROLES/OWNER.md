@@ -10,7 +10,10 @@ Owner adalah level akses tertinggi dalam sistem. Owner memiliki visibilitas penu
 
 | Aksi | Keterangan |
 |------|-----------|
-| Approve / Reject rework setelah QC FAIL | |
+| Approve / Reject rework **ke-1 dan ke-2** setelah QC FAIL | Sengaja tidak dipindah ke Admin saat penggabungan role Supervisor→Admin — rework berdampak langsung ke biaya material & waktu produksi (lihat `02-WORKFLOW/05-PRODUCTION.md` & `07-QC.md`) |
+| Approve/reject eskalasi rework setelah 2x QC FAIL berturut-turut (bukan rework ketiga — job yang gagal 2x rework wajib eskalasi ke Owner untuk keputusan lanjutan: rework ulang dengan izin khusus, atau batalkan/tangani sebagai kasus khusus) | |
+| **Approve reassignment job produksi ke-3 dst dalam 24 jam** untuk Job ID yang sama | Admin dibatasi maksimal 2x reassign mandiri per 24 jam; percobaan ke-3 otomatis diblokir sistem dan wajib eskalasi ke Owner (lihat `02-WORKFLOW/05-PRODUCTION.md` "Aturan Tegas — Reassignment Berulang") |
+| **Approve hasil Final Audit YELLOW** sebelum order CLOSED | Admin yang submit hasil audit tidak boleh juga jadi approver-nya sendiri (separation of duties) |
 | Approve cancel order yang produksi sudah berjalan | |
 | Approve / Apply diskon ke order | |
 | Freeze order (ON_HOLD) | |
@@ -19,7 +22,6 @@ Owner adalah level akses tertinggi dalam sistem. Owner memiliki visibilitas penu
 | Buat / nonaktifkan user | |
 | Reset password user | |
 | Override batas DP (bebas persentase) | |
-| Approve/reject eskalasi rework setelah 2x QC FAIL berturut-turut (bukan rework ketiga — job yang gagal 2x rework wajib eskalasi ke Owner untuk keputusan lanjutan: rework ulang dengan izin khusus, atau batalkan/tangani sebagai kasus khusus) | |
 | Unlock akun yang terkunci permanen (>3 kali terkunci dalam sehari) | |
 | Export semua laporan | |
 

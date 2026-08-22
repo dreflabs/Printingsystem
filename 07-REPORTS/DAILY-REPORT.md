@@ -2,8 +2,7 @@
 
 ## Akses
 - Owner: akses penuh + export
-- Supervisor: akses penuh + export (produksi & material, tanpa nominal keuangan detail)
-- Admin Sales: akses ringkasan order & pickup + export
+- Admin: akses penuh + export (order, pickup, produksi & material, tanpa nominal keuangan detail)
 - Role lain: tidak ada akses
 
 ---
@@ -32,7 +31,7 @@
 |-------|-----------|
 | Kode Order | |
 | Nama Konsumen | |
-| Tipe Order | Walk-in / Makloon / WhatsApp / RETAIL |
+| Tipe Order | Walk-in / Makloon / Online / RETAIL |
 | Status | Status pill sesuai `08-UI-UX/DESIGN-SYSTEM.md` |
 | Status Pembayaran | Belum DP / DP Terpenuhi / Lunas |
 | Deadline | |

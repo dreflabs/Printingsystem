@@ -10,7 +10,7 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah 
 - [ ] **Database Setup & Prisma:**
   - [ ] Inisialisasi PostgreSQL.
   - [ ] Terjemahkan seluruh tabel dari `05-DATABASE/TABLES.md` ke dalam `prisma/schema.prisma`.
-  - [ ] Buat skrip `prisma/seed.ts` (masukkan 8 Role, 1 Akun Owner default, dan status pesanan).
+  - [ ] Buat skrip `prisma/seed.ts` (masukkan 5 Role, 1 Akun Owner default, dan status pesanan).
   - [ ] Jalankan `npx prisma migrate dev`.
 - [ ] **NextAuth & Middleware:**
   - [ ] Setup `src/lib/auth.ts` dengan `CredentialsProvider` (Bcrypt untuk hash password).
@@ -44,7 +44,7 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah 
 - [ ] **Manajemen Desain:**
   - [ ] Saat Order PRINTING dibuat, fungsi backend harus otomatis membuat baris kosong di tabel `design_jobs`.
   - [ ] Fungsi *upload* file desain (`uploadDesignVersion()`). (Sementara simpan *path* file ke folder lokal atau S3 palsu).
-  - [ ] Logika *Approval* (Walk-in, Makloon, WhatsApp).
+  - [ ] Logika *Approval* (Walk-in, Makloon, Online).
   - [ ] *Trigger:* Jika desain di-ACC, otomatis buatkan antrian ke tabel `production_jobs` dengan status `PRODUCTION_ASSIGNED`.
 
 ---
@@ -81,7 +81,7 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Drefan. Fokus Anda adalah 
 *Tujuan: Rekapitulasi, laporan, dan keamanan anti-fraud akhir.*
 
 - [ ] **Final Audit Engine:**
-  - [ ] Fungsi `submitFinalAudit()` oleh Admin Sales.
+  - [ ] Fungsi `submitFinalAudit()` oleh Admin.
   - [ ] Jika hasil GREEN -> ubah status order ke `CLOSED`.
   - [ ] Jika hasil YELLOW/RED -> hold status, kirim ke dashboard Owner.
 - [ ] **Laporan Finansial & Operasional:**

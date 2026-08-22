@@ -23,7 +23,7 @@ Kolom tabel:
 |-------|-----------|
 | Kode Order | |
 | Nama Konsumen | (identitas dasar untuk konteks kerja, bukan kontak) |
-| Tipe Order | Walk-in / Makloon / WhatsApp |
+| Tipe Order | Walk-in / Makloon / Online |
 | Produk | Ringkasan item order |
 | Versi Desain Terakhir | V1, V2, V3... |
 | Status Desain | DRAFT / DESIGNING / WAITING_APPROVAL / APPROVED (status pill) |
@@ -33,7 +33,7 @@ Kolom tabel:
 ## Filter Tabel
 
 - Status desain (dropdown)
-- Tipe order (Walk-in / Makloon / WhatsApp)
+- Tipe order (Walk-in / Makloon / Online)
 - Tanggal order (dari–sampai)
 - Kode order (search)
 - Deadline (dari–sampai)
@@ -55,7 +55,7 @@ Kolom tabel:
 - Upload file/versi desain baru
 - Tandai desain disetujui untuk konsumen **Walk-in** (approval lisan di hadapan konsumen — input nama versi, catatan, tanggal)
 - Untuk **Makloon**: upload file print-ready dari konsumen, status otomatis APPROVED
-- Untuk **WhatsApp**: upload preview desain — approval final tetap dilakukan Admin Sales, Designer hanya menunggu status berubah
+- Untuk **Online**: upload preview desain — approval final tetap dilakukan Admin, Designer hanya menunggu status berubah
 - Catat permintaan revisi dan buat versi baru
 - Lihat status order yang dibuat
 
@@ -65,4 +65,4 @@ Kolom tabel:
 - Nominal harga/pembayaran detail (hanya status terpenuhi/belum)
 - Edit harga order
 - Akses laporan keuangan atau laporan produksi
-- Approve desain via WhatsApp (hanya Admin Sales yang berwenang, Designer hanya upload preview)
+- Approve desain via Online (hanya Admin yang berwenang, Designer hanya upload preview)

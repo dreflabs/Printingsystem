@@ -12,7 +12,7 @@ BELI BAHAN → TERIMA & INPUT STOK MASUK → TERSEDIA DI SISTEM
 
 ## Stok Masuk (Pembelian Bahan)
 
-**Siapa:** Admin Sales, Warehouse Staff, atau Owner (wajib login dengan akun sendiri)
+**Siapa:** Admin, Gudang, atau Owner (wajib login dengan akun sendiri)
 
 **Input:**
 - Pilih bahan dari daftar (dikelompokkan per mesin)
@@ -48,7 +48,7 @@ BELI BAHAN → TERIMA & INPUT STOK MASUK → TERSEDIA DI SISTEM
 
 **Kapan:** Saat stock opname, ditemukan selisih antara sistem dan fisik.
 
-**Siapa:** Admin Sales atau Owner
+**Siapa:** Admin atau Owner
 
 **Input:**
 - Pilih bahan
@@ -63,5 +63,5 @@ BELI BAHAN → TERIMA & INPUT STOK MASUK → TERSEDIA DI SISTEM
 
 Cek dilakukan setiap kali ada movement OUT atau ADJUSTMENT.
 Jika `current_stock ≤ min_stock`:
-- Badge merah di dashboard Owner dan Admin Sales
+- Badge merah di dashboard Owner dan Admin
 - WhatsApp ke Owner: *"Stok [nama bahan] ([mesin]) menipis: [jumlah] [satuan]. Min: [min_stock]."*

@@ -6,7 +6,7 @@
 ORDER DIBUAT
   → Payment Request dibuat
   → Konsumen bayar DP
-  → Admin Sales konfirmasi DP
+  → Admin konfirmasi DP
   → Status: PARTIAL (jika DP)
   → Produksi bisa dimulai (jika DP sudah memenuhi syarat)
   → Pelunasan saat pickup atau sebelumnya
@@ -20,19 +20,19 @@ ORDER DIBUAT
 ### Konsumen Datang Langsung (Walk-in)
 - DP minimum: **50% dari total order**
 - Tidak ada pengecualian tanpa persetujuan Owner
-- Admin Sales TIDAK BISA override tanpa Owner
+- Admin TIDAK BISA override tanpa Owner
 - Jika konsumen tidak mau DP 50%: order tidak bisa diproses ke produksi
 
-### Konsumen Remote (via WhatsApp / Email / Online)
+### Konsumen Remote (Online / Makloon)
 - DP minimum default: **50% dari total order**
 - Namun terdapat tombol **"Setujui Pengecualian DP"** yang hanya bisa diakses oleh:
-  - Admin Sales (dengan batas minimal DP 30%)
+  - Admin (dengan batas minimal DP 30%)
   - Owner (bisa approve berapapun termasuk 0% jika ada alasan kuat)
 - Setiap pengecualian DP wajib disertai alasan dan tercatat di audit log
 - Konsumen remote yang belum bayar DP tidak bisa masuk antrian produksi
 
 ### Override / Pengecualian Khusus
-- Tombol "Override DP" hanya tampil untuk role: `admin_sales`, `owner`
+- Tombol "Override DP" hanya tampil untuk role: `admin`, `owner`
 - Tidak ada override diam-diam — semua exception tercatat di `audit_logs`
 - Format log: `actor_id | action=DP_OVERRIDE | order_id | original_dp_pct | approved_dp_pct | reason | timestamp`
 
@@ -40,12 +40,12 @@ ORDER DIBUAT
 
 ## Konfirmasi Payment
 
-- Admin Sales yang menerima pembayaran wajib mencatat:
+- Admin yang menerima pembayaran wajib mencatat:
   - Jumlah yang diterima
   - Metode pembayaran (cash, transfer bank, QRIS)
   - Nomor referensi (jika transfer)
   - Timestamp penerimaan
-- Designer/Operator/Warehouse TIDAK DAPAT mengkonfirmasi payment
+- Designer/Operator/Gudang TIDAK DAPAT mengkonfirmasi payment
 
 ---
 
@@ -65,7 +65,7 @@ Simpan di tabel `payments`:
 - `method` (CASH / TRANSFER / QRIS)
 - `reference` (nomor referensi transfer)
 - `status` (PENDING / CONFIRMED / REJECTED)
-- `received_by` (user_id Admin Sales)
+- `received_by` (user_id Admin)
 - `paid_at`
 - `notes`
 

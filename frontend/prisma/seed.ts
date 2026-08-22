@@ -1,62 +1,178 @@
-import { PrismaClient } from "@prisma/client";
-import * as bcrypt from "bcryptjs";
+import { PrismaClient } from '@prisma/client'
+import bcrypt from 'bcryptjs'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
 async function main() {
-  console.log("Starting seed...");
+  console.log('Seeding SaaS database...')
 
-  // 1. Seed Roles
-  const roles = [
-    "owner",
-    "supervisor",
-    "admin_sales",
-    "designer_sales",
-    "operator",
-    "qc",
-    "finishing",
-    "warehouse"
-  ];
+  // 1. Bersihkan database
+  await prisma.auditItem.deleteMany()
+  await prisma.audit.deleteMany()
+  await prisma.auditLog.deleteMany()
+  await prisma.correction.deleteMany()
+  await prisma.deadlineAlert.deleteMany()
+  await prisma.notificationEvent.deleteMany()
+  await prisma.pickupRecord.deleteMany()
+  await prisma.payment.deleteMany()
+  await prisma.storageItem.deleteMany()
+  await prisma.storageLocation.deleteMany()
+  await prisma.finishingJob.deleteMany()
+  await prisma.qcRecord.deleteMany()
+  await prisma.designVersion.deleteMany()
+  await prisma.designJob.deleteMany()
+  await prisma.retailStockMovement.deleteMany()
+  await prisma.retailProduct.deleteMany()
+  await prisma.orderItem.deleteMany()
+  await prisma.order.deleteMany()
+  await prisma.materialMovement.deleteMany()
+  await prisma.machineMaterial.deleteMany()
+  await prisma.material.deleteMany()
+  await prisma.machine.deleteMany()
+  await prisma.product.deleteMany()
+  await prisma.customer.deleteMany()
+  await prisma.attendanceRecord.deleteMany()
+  await prisma.attendanceImport.deleteMany()
+  
+  await prisma.user.deleteMany()
+  await prisma.role.deleteMany()
+  
+  await prisma.onboardingStep.deleteMany()
+  await prisma.tenantAuditLog.deleteMany()
+  await prisma.invoice.deleteMany()
+  await prisma.tenantSubscription.deleteMany()
+  await prisma.subscriptionPlan.deleteMany()
+  await prisma.tenant.deleteMany()
+  await prisma.superAdmin.deleteMany()
 
-  for (const roleName of roles) {
-    await prisma.role.upsert({
-      where: { name: roleName },
-      update: {},
-      create: { name: roleName },
-    });
-  }
-  console.log("Roles seeded successfully.");
+  // 2. Buat Super Admin
+  const hashedAdminPassword = await bcrypt.hash('superadmin123', 10)
+  const superAdmin = await prisma.superAdmin.create({
+    data: {
+      name: 'Super Admin',
+      email: 'admin@printpilot.id',
+      password_hash: hashedAdminPassword,
+      role: 'SUPER_ADMIN'
+    }
+  })
 
-  // 2. Seed Default Owner
-  const ownerRole = await prisma.role.findUnique({
-    where: { name: "owner" }
-  });
+  // 3. Buat Subscription Plans
+  const planStarter = await prisma.subscriptionPlan.create({
+    data: {
+      name: 'Starter',
+      slug: 'starter',
+      price_monthly: 299000,
+      max_users: 5,
+      max_orders_per_month: 200,
+      features_json: JSON.stringify(['dashboard', 'kanban', 'qc'])
+    }
+  })
 
-  if (ownerRole) {
-    const defaultPassword = await bcrypt.hash("owner123", 10);
-    
-    await prisma.user.upsert({
-      where: { username: "owner" },
-      update: {},
-      create: {
-        name: "Sistem Owner",
-        username: "owner",
-        email: "owner@printflow.local",
+  // 4. Buat Tenant Pertama (Dummy)
+  const tenant1 = await prisma.tenant.create({
+    data: {
+      name: 'Maju Jaya Print',
+      slug: 'majujayaprint',
+      plan: 'STARTER',
+      status: 'ACTIVE',
+      owner_name: 'Hendra',
+      owner_phone: '081234567890'
+    }
+  })
+
+  // Langganan Tenant
+  await prisma.tenantSubscription.create({
+    data: {
+      tenant_id: tenant1.id,
+      plan_id: planStarter.id,
+      status: 'ACTIVE',
+      started_at: new Date()
+    }
+  })
+
+  // 5. Buat Roles (Default)
+  const roleNames = ['owner', 'admin', 'designer_sales', 'operator', 'gudang']
+  const roles = await Promise.all(
+    roleNames.map(name => prisma.role.create({ data: { name } }))
+  )
+  
+  const getRoleId = (name: string) => roles.find(r => r.name === name)!.id
+
+  // 6. Buat Users untuk Tenant 1
+  const defaultPassword = await bcrypt.hash('password123', 10)
+  
+  const usersToCreate = [
+    { username: 'hendra_owner', email: 'owner@majujaya.com', name: 'Hendra', role: 'owner' },
+    { username: 'gunawan_admin', email: 'gunawan@majujaya.com', name: 'Gunawan', role: 'admin' },
+    { username: 'rere_admin', email: 'admin@majujaya.com', name: 'Rere', role: 'admin' },
+    { username: 'ayu_desain', email: 'desain@majujaya.com', name: 'Ayu', role: 'designer_sales' },
+    { username: 'budi_print', email: 'print@majujaya.com', name: 'Budi', role: 'operator' },
+    { username: 'fajar_gudang', email: 'gudang@majujaya.com', name: 'Fajar', role: 'gudang' }
+  ]
+
+  for (const u of usersToCreate) {
+    await prisma.user.create({
+      data: {
+        tenant_id: tenant1.id,
+        username: u.username,
+        email: u.email,
+        name: u.name,
         password_hash: defaultPassword,
-        role_id: ownerRole.id,
-      },
-    });
-    console.log("Default owner account seeded successfully (username: owner, password: owner123).");
+        role_id: getRoleId(u.role)
+      }
+    })
   }
 
-  console.log("Seeding finished.");
+  // 7. Buat Produk Cetak (Printing)
+  const products = [
+    { name: 'Kartu Nama 2 Sisi', category: 'KERTAS' },
+    { name: 'Brosur A4 Lipat 3', category: 'KERTAS' },
+    { name: 'Spanduk Outdoor', category: 'OUTDOOR' },
+    { name: 'Stiker Viny A3', category: 'INDOOR' },
+    { name: 'Lanyard Custom', category: 'MERCHANDISE' },
+  ]
+
+  for (const p of products) {
+    await prisma.product.create({
+      data: {
+        tenant_id: tenant1.id,
+        name: p.name,
+        category: p.category,
+        active: true
+      }
+    })
+  }
+
+  // 8. Buat Produk Retail (Eceran)
+  const retailProducts = [
+    { name: 'Lakban Bening', sku: 'RET-001', category: 'STATIONERY', price: 15000, stock: 50 },
+    { name: 'Double Tape 3M', sku: 'RET-002', category: 'STATIONERY', price: 25000, stock: 30 },
+    { name: 'Tinta Printer A', sku: 'RET-003', category: 'CONSUMABLES', price: 75000, stock: 20 },
+  ]
+
+  for (const rp of retailProducts) {
+    await prisma.retailProduct.create({
+      data: {
+        tenant_id: tenant1.id,
+        name: rp.name,
+        sku: rp.sku,
+        category: rp.category,
+        price: rp.price,
+        stock_quantity: rp.stock,
+        min_stock: 5,
+        active: true
+      }
+    })
+  }
+
+  console.log('✅ Seeding completed! Created tenant: majujayaprint.printpilot.id')
 }
 
 main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
+  .catch(e => {
+    console.error(e)
+    process.exit(1)
   })
   .finally(async () => {
-    await prisma.$disconnect();
-  });
+    await prisma.$disconnect()
+  })

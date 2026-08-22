@@ -1,6 +1,6 @@
 # Owner Dashboard
 
-Dashboard visibilitas penuh untuk **Owner**: penjualan, produksi, gudang, keuangan, dan seluruh antrian approval kritis. Mengacu ke `DESIGN-SYSTEM.md` untuk warna, status pill, dan gaya card (glassmorphism, glow teal untuk item aktif).
+Dashboard visibilitas penuh untuk **Owner**: penjualan, produksi, gudang, keuangan, dan seluruh antrian approval kritis. Mengacu ke `DESIGN-SYSTEM.md` untuk warna (Paper Studio Light — light mode), status pill, dan gaya card.
 
 ---
 
@@ -19,15 +19,17 @@ Card KPI angka besar (36px/700), sesuai `03-ROLES/OWNER.md`:
 
 ## Panel Alert Kritis (baris kedua, prioritas tinggi)
 
-Ditampilkan dengan badge merah/oranye/kuning sesuai urgensi:
+Ditampilkan dengan badge merah (status-red) atau kuning (status-yellow) sesuai urgensi:
 
-1. **QC FAIL Menunggu Keputusan** — job dengan rework tereskalasi (2x FAIL berturut) menunggu approve/reject Owner
-2. **Permintaan Cancel Order** — cancel order yang produksi sudah berjalan, menunggu approve Owner
-3. **Permintaan Diskon** — diskon diajukan Admin Sales, menunggu approve Owner
-4. **Order OVERDUE** — daftar order lewat deadline (badge merah)
-5. **Notifikasi WA Gagal Terkirim** — daftar pesan gagal, dengan status tindak lanjut Admin Sales
-6. **Stok Material Menipis** — bahan dengan status 🔴 MENIPIS
-7. **Anomali & Kecurangan** — waste tinggi (>20%), bahan keluar tanpa Job ID, adjustment tanpa alasan (dari `07-REPORTS/MATERIAL-REPORT.md` §4)
+1. **QC FAIL Menunggu Keputusan** — semua rework (ke-1, ke-2, maupun eskalasi setelah 2x FAIL berturut) menunggu approve/reject Owner — bukan cuma yang tereskalasi
+2. **Final Audit YELLOW Menunggu Approval** — hasil Final Audit yang disubmit Admin dengan status YELLOW, menunggu keputusan Owner sebelum order bisa CLOSED
+3. **Job Perlu Reassignment (Limit Tercapai)** — job produksi yang sudah 2x direassign Admin dalam 24 jam, percobaan ke-3 otomatis diblokir dan butuh keputusan Owner
+4. **Permintaan Cancel Order** — cancel order yang produksi sudah berjalan, menunggu approve Owner
+5. **Permintaan Diskon** — diskon diajukan Admin, menunggu approve Owner
+6. **Order OVERDUE** — daftar order lewat deadline (badge merah)
+7. **Notifikasi WA Gagal Terkirim** — daftar pesan gagal, dengan status tindak lanjut Admin
+8. **Stok Material Menipis** — bahan dengan status 🔴 MENIPIS
+9. **Anomali & Kecurangan** — waste tinggi (>20%), bahan keluar tanpa Job ID, adjustment tanpa alasan (dari `07-REPORTS/MATERIAL-REPORT.md` §4)
 
 ---
 
@@ -64,7 +66,9 @@ Tombol "Lihat Semua Audit Log" mengarah ke halaman audit log penuh (real-time, t
 
 ## Aksi yang Bisa Dilakukan dari Dashboard
 
-- Approve/Reject rework setelah QC FAIL (termasuk eskalasi 2x FAIL berturut)
+- Approve/Reject rework setelah QC FAIL (ke-1, ke-2, dan eskalasi 2x FAIL berturut — semua tingkat)
+- Approve hasil Final Audit YELLOW sebelum order CLOSED
+- Approve reassignment job produksi ke-3 dst dalam 24 jam untuk Job ID yang sama
 - Approve cancel order yang produksi sudah berjalan
 - Approve/Apply diskon ke order
 - Freeze order (ON_HOLD)

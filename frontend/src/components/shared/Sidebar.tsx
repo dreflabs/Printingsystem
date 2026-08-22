@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   Palette,
   Settings2,
-  CheckSquare,
   Package,
   BarChart2,
   ShoppingCart,
@@ -17,6 +16,7 @@ import {
   ChevronRight,
   Tag,
   LogOut,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,10 +24,7 @@ type UserRole =
   | "admin"
   | "designer"
   | "operator"
-  | "qc"
-  | "finishing"
-  | "warehouse"
-  | "supervisor"
+  | "gudang"
   | "owner"
   | "pos";
 
@@ -76,34 +73,28 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["operator"],
   },
   {
-    label: "Quality Control",
-    href: "/qc",
-    icon: <CheckSquare className="h-5 w-5" />,
-    roles: ["qc"],
-  },
-  {
-    label: "Finishing",
-    href: "/finishing",
-    icon: <Package className="h-5 w-5" />,
-    roles: ["finishing"],
-  },
-  {
     label: "Gudang",
-    href: "/warehouse",
+    href: "/gudang",
     icon: <Package className="h-5 w-5" />,
-    roles: ["warehouse"],
+    roles: ["gudang"],
   },
   {
-    label: "Laporan",
-    href: "/supervisor",
+    label: "Produksi & Laporan",
+    href: "/admin/production",
     icon: <BarChart2 className="h-5 w-5" />,
-    roles: ["supervisor", "owner"],
+    roles: ["admin", "owner"],
   },
   {
     label: "Scan QR",
     href: "/scan",
     icon: <ScanLine className="h-5 w-5" />,
-    roles: ["admin", "operator", "qc", "finishing", "warehouse"],
+    roles: ["admin", "operator", "gudang"],
+  },
+  {
+    label: "Pegawai & Akses",
+    href: "/owner/users",
+    icon: <Users className="h-5 w-5" />,
+    roles: ["owner"],
   },
 ];
 
@@ -140,12 +131,12 @@ export function Sidebar({ role, isOpen, onClose }: SidebarProps) {
         {/* Logo */}
         <div className="flex items-center justify-between px-5 py-5 border-b border-border">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-accent-teal to-blue-500">
-              <Printer className="h-5 w-5 text-white" />
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden shrink-0">
+              <img src="/PRINT_PILOT_LOGO.png" alt="Print Pilot" className="h-full w-full object-contain" />
             </div>
             <div>
               <span className="text-base font-bold text-primary tracking-tight">
-                PrintFlow
+                Print Pilot
               </span>
               <p className="text-[10px] text-muted -mt-0.5">Manajemen Percetakan</p>
             </div>

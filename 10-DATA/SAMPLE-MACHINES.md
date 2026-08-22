@@ -31,5 +31,5 @@
 | MAINTENANCE | Sedang diperbaiki/servis |
 | INACTIVE | Tidak digunakan sementara |
 
-Perubahan status mesin hanya bisa dilakukan oleh Supervisor atau Owner.
+Perubahan status mesin hanya bisa dilakukan oleh Admin atau Owner.
 Jika mesin di-set MAINTENANCE, job yang sudah di-assign harus di-reassign ke mesin lain.

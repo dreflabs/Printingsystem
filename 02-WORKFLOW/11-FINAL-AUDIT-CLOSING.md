@@ -16,7 +16,7 @@ Check:
 
 Result:
 GREEN -> close
-YELLOW -> supervisor approval
+YELLOW -> owner approval
 RED -> cannot close
 
 After CLOSED, direct edits are forbidden. Use correction/adjustment workflow.

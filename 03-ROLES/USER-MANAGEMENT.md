@@ -42,7 +42,7 @@
 
 **Yang terjadi saat nonaktifkan:**
 - User tidak bisa login lagi
-- Job yang sedang dikerjakan user tersebut muncul di dashboard Supervisor sebagai "Perlu Reassign"
+- Job yang sedang dikerjakan user tersebut muncul di dashboard Admin sebagai "Perlu Reassign"
 - Semua data historis user tetap tersimpan (tidak dihapus)
 - Nama user tetap muncul di riwayat job yang sudah selesai
 
@@ -52,12 +52,11 @@
 
 ## Reset Password
 
-**Self-service:** Tidak ada — keamanan lebih diutamakan
-**Cara reset:**
-- Pegawai minta ke Owner
-- Owner reset password dari panel user management
-- Password baru diberikan langsung (offline), bukan via email
-- Pegawai wajib ganti password setelah login
+- **Untuk Owner:** Memiliki akses alur *self-service* "Lupa Password" via verifikasi tautan email (lihat `06-SECURITY/FORGOT-PASSWORD.md`).
+- **Untuk Pegawai:** Tidak ada opsi lupa password mandiri. Jika lupa:
+  - Owner reset password dari panel user management
+  - Password baru diberikan langsung (offline), bukan via email
+  - Pegawai wajib ganti password setelah login
 
 ---
 
@@ -70,9 +69,9 @@
 
 ---
 
-## Dashboard Supervisor — Tambahan
+## Dashboard Admin — Tambahan (Produksi)
 
-Supervisor melihat:
+Admin melihat:
 - Semua job yang sedang dalam antrian produksi
 - Job yang belum di-assign ke operator
 - Job yang overdue (melebihi deadline)

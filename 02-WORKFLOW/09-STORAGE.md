@@ -44,7 +44,7 @@ LT3-B-02-01  = Lantai 3, Zona B, Rak 02, Slot 01
 Finishing Complete
   → Staff finishing SCAN Job QR (via kamera HP/tablet browser)
   → Pilih "Simpan ke Gudang"
-  → Warehouse Staff SCAN QR Lokasi (LT3-A-01-01)
+  → Gudang SCAN QR Lokasi (LT3-A-01-01)
   → Sistem validasi: job status sudah FINISHING_COMPLETE?
   → Sistem validasi: lokasi masih tersedia?
   → SIMPAN → Status: READY_FOR_PICKUP
@@ -67,19 +67,19 @@ Bukan gudang permanen. Ini adalah **area transit sementara** saat konsumen sudah
 ```
 Konsumen datang ke counter
   ↓
-Admin Sales cari order (by nama / order_code) atau SCAN Job QR konsumen
+Admin cari order (by nama / order_code) atau SCAN Job QR konsumen
   ↓
 Sistem tampilkan: nama konsumen, produk, jumlah, status payment, lokasi di gudang
   ↓
-Admin Sales minta staff ambil barang dari LT3-[lokasi]
+Admin minta staff ambil barang dari LT3-[lokasi]
   ↓
 Staff ambil barang dari Lantai 3
   ↓
 Staff SCAN Job QR di Counter Lantai 1 (konfirmasi "Barang sudah di counter")
   ↓
-Admin Sales verifikasi: identitas konsumen + payment lunas?
+Admin verifikasi: identitas konsumen + payment lunas?
   ↓ (jika payment ada sisa tagihan → proses payment dulu)
-Admin Sales klik "Serahkan" → SCAN Job QR (konfirmasi final)
+Admin klik "Serahkan" → SCAN Job QR (konfirmasi final)
   ↓
 Konsumen tanda tangan / konfirmasi (opsional, bisa foto bukti)
   ↓
@@ -102,9 +102,9 @@ Jika barang yang dicari di lokasi yang tercatat tidak ada secara fisik:
 1. Staff melaporkan "Barang tidak ditemukan" di sistem
 2. Sistem menampilkan last scan location dan last scan timestamp
 3. Dibuat incident report otomatis
-4. Notifikasi ke Owner dan Supervisor
+4. Notifikasi ke Owner dan Admin
 5. Order status berubah ke INCIDENT — tidak bisa diserahkan sampai diselesaikan
-6. Admin Sales tidak memberitahu konsumen sebelum ada kejelasan dari Owner
+6. Admin tidak memberitahu konsumen sebelum ada kejelasan dari Owner
 
 ---
 

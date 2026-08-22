@@ -2,6 +2,7 @@
 
 import { X, CreditCard, Banknote, QrCode } from "lucide-react";
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 
 interface PaymentModalProps {
   open: boolean;
@@ -14,7 +15,7 @@ interface PaymentModalProps {
 const PAYMENT_METHODS = [
   { id: "cash", label: "Tunai (Cash)", icon: Banknote, color: "text-status-green", bg: "bg-status-green/10", border: "border-status-green/50" },
   { id: "transfer", label: "Transfer Bank", icon: CreditCard, color: "text-status-blue", bg: "bg-status-blue/10", border: "border-status-blue/50" },
-  { id: "qris", label: "QRIS", icon: QrCode, color: "text-accent-purple", bg: "bg-accent-purple/10", border: "border-accent-purple/50" },
+  { id: "qris", label: "QRIS", icon: QrCode, color: "text-accent-teal", bg: "bg-accent-teal/10", border: "border-accent-teal/50" },
 ];
 
 export function PaymentModal({ open, onClose, orderId, sisaTagihan, onSuccess }: PaymentModalProps) {
@@ -54,9 +55,9 @@ export function PaymentModal({ open, onClose, orderId, sisaTagihan, onSuccess }:
         {!success ? (
           <div className="p-5 space-y-5">
             {/* Tagihan */}
-            <div className="bg-status-orange/5 border border-status-orange/20 rounded-xl p-4 text-center">
+            <div className="bg-status-yellow/5 border border-status-yellow/20 rounded-xl p-4 text-center">
               <p className="text-xs text-muted mb-1">Total Tagihan</p>
-              <p className="text-3xl font-bold font-mono text-status-orange">{fmt(sisaTagihan)}</p>
+              <p className="text-3xl font-bold font-mono text-status-yellow">{fmt(sisaTagihan)}</p>
             </div>
 
             {/* Metode Pembayaran */}
@@ -71,7 +72,7 @@ export function PaymentModal({ open, onClose, orderId, sisaTagihan, onSuccess }:
                       "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all cursor-pointer",
                       method === m.id 
                         ? `${m.border} ${m.bg}` 
-                        : "border-border hover:border-accent-purple/30 bg-elevated"
+                        : "border-border hover:border-accent-teal/30 bg-elevated"
                     )}
                   >
                     <m.icon className={cn("h-6 w-6", method === m.id ? m.color : "text-muted")} />
@@ -92,7 +93,7 @@ export function PaymentModal({ open, onClose, orderId, sisaTagihan, onSuccess }:
                   type="number"
                   value={amount}
                   onChange={e => setAmount(Number(e.target.value))}
-                  className="w-full pl-10 pr-4 py-3 bg-background border border-border rounded-xl text-lg font-mono font-bold text-primary outline-none focus:border-status-orange"
+                  className="w-full pl-10 pr-4 py-3 bg-background border border-border rounded-xl text-lg font-mono font-bold text-primary outline-none focus:border-status-yellow"
                 />
               </div>
               {method === "cash" && kembalian > 0 && (
@@ -114,7 +115,7 @@ export function PaymentModal({ open, onClose, orderId, sisaTagihan, onSuccess }:
                   <button
                     key={v}
                     onClick={() => setAmount(v)}
-                    className="px-3 py-1.5 rounded-lg bg-elevated border border-border text-xs font-medium hover:border-status-orange/50 transition-colors"
+                    className="px-3 py-1.5 rounded-lg bg-elevated border border-border text-xs font-medium hover:border-status-yellow/50 transition-colors"
                   >
                     {fmt(v)}
                   </button>

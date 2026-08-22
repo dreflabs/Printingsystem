@@ -7,6 +7,7 @@ Menjalankan produksi di mesin, scan QR, dan input pemakaian material.
 |-------|-------|
 | Lihat job yang di-assign ke dirinya | ✅ |
 | Scan QR Job (mulai & selesai produksi) | ✅ |
+| Jeda & lanjutkan produksi (dengan alasan wajib) | ✅ |
 | Input actual qty & waste saat selesai | ✅ |
 | Input pemakaian material per job | ✅ |
 | Lihat spesifikasi produk pada job | ✅ |

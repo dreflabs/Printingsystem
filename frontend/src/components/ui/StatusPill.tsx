@@ -23,30 +23,31 @@ type OrderStatus =
 
 interface StatusConfig {
   label: string;
-  emoji: string;
   color: string;
+  dotColor: string;
+  pulse?: boolean;
 }
 
 const STATUS_MAP: Record<OrderStatus, StatusConfig> = {
-  DRAFT: { label: "Draft", emoji: "📝", color: "bg-muted/20 text-muted border-muted/30" },
-  DESIGNING: { label: "Desain", emoji: "🎨", color: "bg-status-blue/20 text-status-blue border-status-blue/30" },
-  WAITING_APPROVAL: { label: "Menunggu Acc", emoji: "⏳", color: "bg-status-yellow/20 text-status-yellow border-status-yellow/30" },
-  APPROVED: { label: "Disetujui", emoji: "✅", color: "bg-status-green/20 text-status-green border-status-green/30" },
-  WAITING_PAYMENT: { label: "Menunggu DP", emoji: "💳", color: "bg-status-orange/20 text-status-orange border-status-orange/30" },
-  CONFIRMED: { label: "Konfirmasi", emoji: "✅", color: "bg-status-green/20 text-status-green border-status-green/30" },
-  PRODUCTION_STARTED: { label: "Produksi", emoji: "🔵", color: "bg-status-blue/20 text-status-blue border-status-blue/30" },
-  QC_PENDING: { label: "QC", emoji: "🔍", color: "bg-status-yellow/20 text-status-yellow border-status-yellow/30" },
-  QC_PASSED: { label: "QC Lulus", emoji: "✅", color: "bg-status-green/20 text-status-green border-status-green/30" },
-  QC_FAILED: { label: "QC Gagal", emoji: "❌", color: "bg-status-red/20 text-status-red border-status-red/30" },
-  QC_REWORK_PENDING: { label: "Menunggu Rework", emoji: "🔄", color: "bg-status-orange/20 text-status-orange border-status-orange/30" },
-  FINISHING_STARTED: { label: "Finishing", emoji: "🔧", color: "bg-accent-purple/20 text-accent-purple border-accent-purple/30" },
-  READY_FOR_PICKUP: { label: "Siap Diambil", emoji: "📦", color: "bg-status-green/20 text-status-green border-status-green/30" },
-  PICKED_UP: { label: "Selesai", emoji: "✅", color: "bg-status-green/20 text-status-green border-status-green/30" },
-  OVERDUE: { label: "Terlambat", emoji: "🔴", color: "bg-status-red/20 text-status-red border-status-red/30" },
-  ON_HOLD: { label: "Ditahan", emoji: "⏸️", color: "bg-status-yellow/20 text-status-yellow border-status-yellow/30" },
-  CANCELLED: { label: "Dibatalkan", emoji: "✖️", color: "bg-muted/20 text-muted border-muted/30" },
-  INCIDENT: { label: "Insiden", emoji: "⚠️", color: "bg-status-red/20 text-status-red border-status-red/30" },
-  CLOSED: { label: "Ditutup", emoji: "🔒", color: "bg-accent-purple/20 text-accent-purple border-accent-purple/30" },
+  DRAFT: { label: "Draft", color: "bg-muted/15 text-muted border-muted/30", dotColor: "bg-muted" },
+  DESIGNING: { label: "Desain", color: "bg-status-blue/15 text-status-blue border-status-blue/30", dotColor: "bg-status-blue", pulse: true },
+  WAITING_APPROVAL: { label: "Menunggu Acc", color: "bg-status-yellow/15 text-status-yellow border-status-yellow/30", dotColor: "bg-status-yellow" },
+  APPROVED: { label: "Disetujui", color: "bg-status-green/15 text-status-green border-status-green/30", dotColor: "bg-status-green" },
+  WAITING_PAYMENT: { label: "Menunggu DP", color: "bg-status-yellow/15 text-status-yellow border-status-yellow/30", dotColor: "bg-status-yellow", pulse: true },
+  CONFIRMED: { label: "Konfirmasi", color: "bg-status-green/15 text-status-green border-status-green/30", dotColor: "bg-status-green" },
+  PRODUCTION_STARTED: { label: "Produksi", color: "bg-status-blue/15 text-status-blue border-status-blue/30", dotColor: "bg-status-blue", pulse: true },
+  QC_PENDING: { label: "QC", color: "bg-status-yellow/15 text-status-yellow border-status-yellow/30", dotColor: "bg-status-yellow" },
+  QC_PASSED: { label: "QC Lulus", color: "bg-status-green/15 text-status-green border-status-green/30", dotColor: "bg-status-green" },
+  QC_FAILED: { label: "QC Gagal", color: "bg-status-red/15 text-status-red border-status-red/30", dotColor: "bg-status-red", pulse: true },
+  QC_REWORK_PENDING: { label: "Menunggu Rework", color: "bg-status-yellow/15 text-status-yellow border-status-yellow/30", dotColor: "bg-status-yellow" },
+  FINISHING_STARTED: { label: "Finishing", color: "bg-accent-teal/15 text-accent-teal border-accent-teal/30", dotColor: "bg-accent-teal", pulse: true },
+  READY_FOR_PICKUP: { label: "Siap Diambil", color: "bg-status-green/15 text-status-green border-status-green/30", dotColor: "bg-status-green", pulse: true },
+  PICKED_UP: { label: "Selesai", color: "bg-status-green/20 text-status-green border-status-green/40", dotColor: "bg-status-green" },
+  OVERDUE: { label: "Terlambat", color: "bg-status-red/15 text-status-red border-status-red/30", dotColor: "bg-status-red", pulse: true },
+  ON_HOLD: { label: "Ditahan", color: "bg-status-yellow/15 text-status-yellow border-status-yellow/30", dotColor: "bg-status-yellow" },
+  CANCELLED: { label: "Dibatalkan", color: "bg-muted/15 text-muted border-muted/30", dotColor: "bg-muted" },
+  INCIDENT: { label: "Insiden", color: "bg-status-red/20 text-status-red border-status-red/40", dotColor: "bg-status-red", pulse: true },
+  CLOSED: { label: "Ditutup", color: "bg-accent-teal/15 text-accent-teal border-accent-teal/30", dotColor: "bg-accent-teal" },
 };
 
 interface StatusPillProps {
@@ -55,22 +56,28 @@ interface StatusPillProps {
   showEmoji?: boolean;
 }
 
-export function StatusPill({ status, className, showEmoji = true }: StatusPillProps) {
+export function StatusPill({ status, className }: StatusPillProps) {
   const config = STATUS_MAP[status] ?? {
     label: status,
-    emoji: "⬜",
-    color: "bg-muted/20 text-muted border-muted/30",
+    color: "bg-muted/15 text-muted border-muted/30",
+    dotColor: "bg-muted",
   };
 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border",
+        "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all backdrop-blur-md",
         config.color,
         className
       )}
     >
-      {showEmoji && <span>{config.emoji}</span>}
+      <span
+        className={cn(
+          "h-1.5 w-1.5 rounded-full shrink-0",
+          config.dotColor,
+          config.pulse && "animate-pulse"
+        )}
+      />
       {config.label}
     </span>
   );

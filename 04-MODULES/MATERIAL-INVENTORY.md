@@ -6,7 +6,7 @@ Mengelola semua bahan baku dan tinta percetakan:
 - Pencatatan stok masuk dan keluar
 - Stok dikelompokkan per mesin
 - Alert stok minimum otomatis
-- Admin dapat menambahkan bahan baru secara mandiri
+- Gudang (atau Owner) dapat menambahkan bahan baru secara mandiri
 - Laporan penggunaan material per job/mesin
 
 ---
@@ -35,9 +35,9 @@ Setiap material memiliki:
 
 ---
 
-## Fitur Tambah Bahan Baru oleh Admin
+## Fitur Tambah Bahan Baru oleh Gudang
 
-Admin Sales atau Owner dapat menambahkan bahan baru kapan saja langsung dari sistem:
+Gudang atau Owner dapat menambahkan bahan baru kapan saja langsung dari sistem:
 
 ```
 Halaman: Inventori → Kelola Bahan → Tambah Bahan Baru
@@ -54,7 +54,7 @@ Form input:
 
 Bahan yang ditambahkan langsung:
 - Aktif dan muncul di dropdown saat operator input pemakaian
-- Bisa di-edit atau dinonaktifkan oleh Admin/Owner
+- Bisa di-edit atau dinonaktifkan oleh Gudang/Owner
 - Tidak bisa dihapus permanen (hanya nonaktifkan) untuk menjaga histori
 
 ---
@@ -62,7 +62,7 @@ Bahan yang ditambahkan langsung:
 ## Alur Stok Masuk (Pembelian Bahan)
 
 ```
-Admin Sales / Warehouse
+Gudang
   → Halaman Inventori → Stok Masuk
   → Pilih Bahan (dari daftar sesuai mesin)
   → Input:
@@ -77,10 +77,9 @@ Admin Sales / Warehouse
 ```
 
 **Siapa yang bisa input stok masuk:**
-- Admin Sales ✅
 - Owner ✅
-- Warehouse ✅
-- Operator, Designer, QC, Finishing ❌
+- Gudang ✅ (tugas fisik menerima & mencatat bahan masuk)
+- Admin, Operator, Designer Sales ❌
 
 ---
 
@@ -99,16 +98,16 @@ Operator saat selesai produksi
 
 **Aturan penting:**
 - Material OUT **selalu harus ada Job ID** — tidak bisa keluar tanpa terhubung ke produksi resmi
-- Jika operator tidak input pemakaian saat selesai produksi → sistem memblokir status PRODUCTION_COMPLETE
+- **TIDAK BLOCKING:** Operator disarankan menginput pemakaian bahan saat selesai produksi, namun jika dilewati, sistem **tidak memblokir** status `PRODUCTION_COMPLETE` (Sesuai `13-QR-SCAN-FLOW.md`). Admin dapat melakukan adjustment stok di kemudian hari jika diperlukan.
 
 ---
 
 ## Alert Stok Minimum
 
 Saat stok suatu bahan mencapai atau di bawah `min_stock`:
-- Badge merah muncul di dashboard Owner dan Supervisor
+- Badge merah muncul di dashboard Owner dan Admin
 - Notifikasi WhatsApp ke Owner: *"Stok [nama bahan] untuk [nama mesin] tinggal [X] [satuan]. Segera lakukan pembelian."*
-- Admin Sales juga mendapat badge di dashboard (lihat saja, tidak ada aksi otomatis)
+- Admin juga mendapat badge di dashboard (lihat saja, tidak ada aksi otomatis)
 
 **Alert tidak memblokir produksi** — produksi tetap bisa jalan, tapi Owner sudah diperingatkan.
 
@@ -129,7 +128,7 @@ Owner/Admin
   → Dicatat di audit_log
 ```
 
-**Siapa yang bisa adjustment:** Admin Sales dan Owner.
+**Siapa yang bisa adjustment:** Admin dan Owner.
 
 ---
 

@@ -1,15 +1,18 @@
+> [!IMPORTANT]
+> Fitur ini telah dinaikkan statusnya menjadi **Fitur Inti (Fase 1)** dan sudah dispesifikasikan di matriks RBAC dan struktur database utama.
+
 # ABSENSI — Aturan & Workflow
 
 ## Model Hybrid
 
-Sistem menggunakan pendekatan hybrid antara mesin fingerprint dan PrintFlow:
+Sistem menggunakan pendekatan hybrid antara mesin fingerprint dan Print Pilot:
 
 | Aktivitas | Dicatat di | Keterangan |
 |-----------|-----------|-----------|
-| Masuk kerja | Mesin Fingerprint | Import CSV ke PrintFlow |
-| Pulang kerja | Mesin Fingerprint | Import CSV ke PrintFlow |
-| Mulai Istirahat | PrintFlow (tombol di HP/browser) | Real-time tracking |
-| Selesai Istirahat | PrintFlow (tombol di HP/browser) | Real-time tracking |
+| Masuk kerja | Mesin Fingerprint | Import CSV ke Print Pilot |
+| Pulang kerja | Mesin Fingerprint | Import CSV ke Print Pilot |
+| Mulai Istirahat | Print Pilot (tombol di HP/browser) | Real-time tracking |
+| Selesai Istirahat | Print Pilot (tombol di HP/browser) | Real-time tracking |
 
 ---
 
@@ -23,12 +26,12 @@ Sistem menggunakan pendekatan hybrid antara mesin fingerprint dan PrintFlow:
 - Saat data fingerprint diimport, sistem otomatis memberi label per pegawai
 - Laporan keterlambatan langsung muncul di:
   - Dashboard Owner (notifikasi real-time setelah import)
-  - Dashboard Admin Sales (tampilan saja, tidak bisa diubah)
+  - Dashboard Admin (tampilan saja, tidak bisa diubah)
 
 ### 2. Istirahat
 
 - **Durasi maksimal istirahat:** 60 menit (1 jam)
-- Pegawai klik **"Mulai Istirahat"** di PrintFlow saat akan istirahat
+- Pegawai klik **"Mulai Istirahat"** di Print Pilot saat akan istirahat
 - Pegawai klik **"Selesai Istirahat"** saat kembali kerja
 
 #### Peringatan 15 Menit Sebelum Selesai
@@ -61,7 +64,7 @@ Owner **tidak bisa menghapus atau mengedit** data absensi — hanya bisa menamba
 
 ---
 
-## Tombol di PrintFlow (Per Pegawai)
+## Tombol di Print Pilot (Per Pegawai)
 
 Di halaman dashboard masing-masing pegawai (Operator, Finishing, QC, dll):
 
@@ -125,14 +128,14 @@ Tampil di **Owner Dashboard** dan **Laporan Bulanan Owner**:
 | Tanggal | |
 | Jam Masuk | Dari fingerprint |
 | Status Masuk | TEPAT WAKTU / TERLAMBAT |
-| Jam Mulai Istirahat | Dari PrintFlow |
-| Jam Selesai Istirahat | Dari PrintFlow |
+| Jam Mulai Istirahat | Dari Print Pilot |
+| Jam Selesai Istirahat | Dari Print Pilot |
 | Durasi Istirahat | Dihitung otomatis |
 | Status Istirahat | NORMAL / BERLEBIH |
 | Keterangan Owner | Catatan opsional dari Owner |
 
 **Tidak tampil di dashboard Designer, Operator, Finishing, Warehouse.**
-Admin Sales hanya bisa **lihat** laporan absensi, tidak bisa edit.
+Admin hanya bisa **lihat** laporan absensi, tidak bisa edit.
 
 ---
 
@@ -147,8 +150,8 @@ check_in              (dari import fingerprint)
 check_out             (dari import fingerprint)
 check_in_status       (ON_TIME / LATE)
 late_minutes          (selisih dari 09:15)
-break_start           (dari tombol PrintFlow)
-break_end             (dari tombol PrintFlow)
+break_start           (dari tombol Print Pilot)
+break_end             (dari tombol Print Pilot)
 break_duration_min    (dihitung otomatis)
 break_status          (NORMAL / EXCEEDED)
 warning_sent_at       (timestamp kirim peringatan 15 menit)

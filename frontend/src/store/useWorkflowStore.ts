@@ -37,7 +37,7 @@ export interface Order {
   id: string;
   customerName: string;
   customerPhone: string;
-  orderType: string; // 'Walk-in' | 'WhatsApp' | 'Makloon'
+  orderType: string; // 'Walk-in' | 'Online' | 'Makloon'
   productId: string;
   product: string;
   qty: number;
@@ -120,7 +120,7 @@ const INITIAL_ORDERS: Order[] = [
   },
   {
     id: "ORD-20260820-0023", customerName: "Budi Santoso", customerPhone: "081234567002",
-    orderType: "WhatsApp", productId: "brosur", product: "Brosur A5", qty: 1000,
+    orderType: "Online", productId: "brosur", product: "Brosur A5", qty: 1000,
     material: "ArtPaper 120g", finishing: "Lipat", notes: "",
     deadline: "2026-08-20", totalPrice: "450000", dpAmount: "450000", dpMethod: "Transfer",
     status: "READY_FOR_PICKUP", paymentStatus: "PAID", createdAt: new Date().toISOString(), createdBy: "Admin Rere", overdue: false
@@ -141,7 +141,7 @@ const INITIAL_ORDERS: Order[] = [
   },
   {
     id: "ORD-20260819-0055", customerName: "Rizky Pratama", customerPhone: "081234567005",
-    orderType: "WhatsApp", productId: "x-banner", product: "X-Banner", qty: 3,
+    orderType: "Online", productId: "x-banner", product: "X-Banner", qty: 3,
     material: "Albatros", finishing: "Dengan Stand", notes: "",
     deadline: "2026-08-21", totalPrice: "620000", dpAmount: "0", dpMethod: "",
     status: "WAITING_PAYMENT", paymentStatus: "UNPAID", createdAt: new Date().toISOString(), createdBy: "Admin Rere", overdue: false

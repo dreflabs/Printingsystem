@@ -10,7 +10,7 @@ const KPI = [
   { label: "Job Aktif Saya", value: "1", color: "text-status-blue", bg: "bg-status-blue/10", icon: Settings2 },
   { label: "Antrian Berikutnya", value: "3", color: "text-status-yellow", bg: "bg-status-yellow/10", icon: Timer },
   { label: "Selesai Hari Ini", value: "4", color: "text-status-green", bg: "bg-status-green/10", icon: CheckCircle2 },
-  { label: "Total Waste Hari Ini", value: "12 lbr", color: "text-status-orange", bg: "bg-status-orange/10", icon: AlertCircle },
+  { label: "Total Waste Hari Ini", value: "12 lbr", color: "text-status-yellow", bg: "bg-status-yellow/10", icon: AlertCircle },
 ];
 
 // Hapus dummy data ACTIVE_JOB dan QUEUE
@@ -52,14 +52,14 @@ function DoneModal({ job, onClose }: { job: Job; onClose: () => void }) {
             <label className="text-xs text-muted font-medium mb-1.5 block">Qty Waste</label>
             <input type="number" min="0" value={waste} onChange={(e) => setWaste(e.target.value)}
               placeholder="0"
-              className="w-full h-12 rounded-xl bg-elevated border border-border text-primary text-lg font-bold px-4 outline-none focus:border-status-orange focus:ring-2 focus:ring-status-orange/20 transition-all" />
+              className="w-full h-12 rounded-xl bg-elevated border border-border text-primary text-lg font-bold px-4 outline-none focus:border-status-yellow focus:ring-2 focus:ring-status-yellow/20 transition-all" />
           </div>
           {needReason && (
             <div>
-              <label className="text-xs text-status-orange font-medium mb-1.5 block">Alasan Waste * (wajib jika &gt; 0)</label>
+              <label className="text-xs text-status-yellow font-medium mb-1.5 block">Alasan Waste * (wajib jika &gt; 0)</label>
               <textarea value={wasteReason} onChange={(e) => setWasteReason(e.target.value)}
                 placeholder="Jelaskan penyebab waste..."
-                className="w-full min-h-[80px] rounded-xl bg-elevated border border-status-orange text-primary text-sm px-4 py-3 outline-none focus:ring-2 focus:ring-status-orange/20 transition-all resize-none" />
+                className="w-full min-h-[80px] rounded-xl bg-elevated border border-status-yellow text-primary text-sm px-4 py-3 outline-none focus:ring-2 focus:ring-status-yellow/20 transition-all resize-none" />
             </div>
           )}
         </div>
@@ -96,9 +96,21 @@ export default function OperatorPage() {
   const operatorJobs = jobs.filter(j => j.status === "WAITING_PRINT" || j.status === "PRINTING");
   const activeJob = operatorJobs.length > 0 ? operatorJobs[0] : null;
   const queueJobs = operatorJobs.slice(1);
-  
-  const timer = useTimer(new Date()); // Mock timer
+  const timer = useTimer(new Date());
   const [showDone, setShowDone] = useState(false);
+
+  const [queueFilter, setQueueFilter] = useState<"SEMUA" | "HARI_INI" | "OVERDUE">("SEMUA");
+  
+  const completedJobsCount = jobs.filter(j => 
+    j.status === "WAITING_QC" || j.status === "QC_PASSED" || j.status === "FINISHING" || j.status === "STORED" || j.status === "PICKED_UP"
+  ).length;
+
+  const dynamicKPI = [
+    { label: "Job Aktif Saya", value: activeJob ? "1" : "0", color: "text-status-blue", bg: "bg-status-blue/10", icon: Settings2 },
+    { label: "Antrian Berikutnya", value: queueJobs.length.toString(), color: "text-status-yellow", bg: "bg-status-yellow/10", icon: Timer },
+    { label: "Selesai Hari Ini", value: completedJobsCount.toString(), color: "text-status-green", bg: "bg-status-green/10", icon: CheckCircle2 },
+    { label: "Total Waste Hari Ini", value: "0 lbr", color: "text-status-yellow", bg: "bg-status-yellow/10", icon: AlertCircle },
+  ];
 
   return (
     <div className="space-y-5">
@@ -111,7 +123,7 @@ export default function OperatorPage() {
 
       {/* KPI */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {KPI.map((k) => (
+        {dynamicKPI.map((k) => (
           <div key={k.label} className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
             <div className={cn("inline-flex p-2 rounded-xl mb-3", k.bg)}>
               <k.icon className={cn("h-5 w-5", k.color)} />
@@ -127,9 +139,15 @@ export default function OperatorPage() {
         <div className="bg-gradient-to-br from-status-blue/10 to-accent-teal/5 border border-status-blue/30 rounded-2xl p-5 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="h-2 w-2 rounded-full bg-status-blue animate-pulse" />
-                <span className="text-xs font-semibold text-status-blue uppercase tracking-wide">Job Aktif Sekarang</span>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-status-blue animate-pulse" />
+                  <span className="text-xs font-semibold text-status-blue uppercase tracking-wide">Job Aktif Sekarang</span>
+                </div>
+                <div className="px-2 py-1 rounded-md bg-elevated border border-border text-[10px] font-bold text-muted flex items-center gap-1.5">
+                  <Settings2 className="h-3 w-3" />
+                  MESIN ROLAND A
+                </div>
               </div>
               <h2 className="text-xl font-bold text-primary">{activeJob.product}</h2>
               <p className="text-sm text-muted mt-0.5">{activeJob.material} · {activeJob.finishing} · {activeJob.qty} pcs</p>
@@ -176,13 +194,32 @@ export default function OperatorPage() {
 
       {/* Queue */}
       <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
-        <div className="flex items-center gap-2 p-5 border-b border-border">
-          <Timer className="h-5 w-5 text-status-yellow" />
-          <h2 className="text-base font-semibold text-primary">Antrian Job Berikutnya</h2>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/10 text-status-yellow border border-status-yellow/30">{queueJobs.length}</span>
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Timer className="h-5 w-5 text-status-yellow" />
+            <h2 className="text-base font-semibold text-primary">Antrian Job Berikutnya</h2>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/10 text-status-yellow border border-status-yellow/30">{queueJobs.length}</span>
+          </div>
+          <select 
+            value={queueFilter} 
+            onChange={(e) => setQueueFilter(e.target.value as any)}
+            className="h-8 bg-elevated border border-border rounded-lg text-xs font-medium text-primary px-2 outline-none focus:border-accent-teal"
+          >
+            <option value="SEMUA">Semua Antrian</option>
+            <option value="HARI_INI">Deadline Hari Ini</option>
+            <option value="OVERDUE">Overdue</option>
+          </select>
         </div>
         <div className="divide-y divide-border/50">
-          {queueJobs.map((j, i) => {
+          {queueJobs.filter(j => {
+            const order = orders.find(o => o.id === j.orderId);
+            if (queueFilter === "HARI_INI") {
+              const today = new Date().toISOString().split("T")[0];
+              return order?.deadline === today;
+            }
+            if (queueFilter === "OVERDUE") return order?.overdue;
+            return true;
+          }).map((j, i) => {
             const order = orders.find(o => o.id === j.orderId);
             return (
             <div key={j.id} className={cn("flex items-center gap-4 p-4 hover:bg-elevated/30 transition-colors")}>

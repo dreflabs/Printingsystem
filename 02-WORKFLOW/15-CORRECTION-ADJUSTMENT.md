@@ -21,16 +21,16 @@ Setelah order berstatus CLOSED:
 ## Siapa yang Bisa Buat Correction
 
 - **Owner** — untuk semua jenis correction
-- **Supervisor** — hanya untuk correction operasional (qty, material) bukan keuangan
+- **Admin** — hanya untuk correction operasional (qty, material) bukan keuangan
 
-Admin Sales dan Designer **tidak bisa** buat correction pada order yang sudah CLOSED.
+Designer **tidak bisa** buat correction pada order yang sudah CLOSED.
 
 ---
 
 ## Alur Correction
 
 ```
-Owner/Supervisor masuk ke halaman order (status: CLOSED)
+Owner/Admin masuk ke halaman order (status: CLOSED)
   → Klik "Buat Koreksi"
   → Pilih kategori: Keuangan / Material / Quantity / Lainnya
   → Isi form:
@@ -69,6 +69,6 @@ new_value
 reason            (wajib)
 created_by        (user_id)
 created_at
-approved_by       (user_id Owner jika correction oleh Supervisor)
+approved_by       (user_id Owner jika correction oleh Admin)
 approved_at
 ```

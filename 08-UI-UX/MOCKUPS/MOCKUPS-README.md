@@ -1,4 +1,4 @@
-# 🎨 UI/UX Mockups — PrintFlow
+# 🎨 UI/UX Mockups — Print Pilot
 > Semua file gambar ada di folder ini: `08-UI-UX/MOCKUPS/`
 
 ---
@@ -7,7 +7,7 @@
 
 ![Login Page](./01-LOGIN.png)
 
-**Konsep:** Split screen. Kiri: logo + tagline di background navy gelap. Kanan: card glassmorphism dengan form login, tombol "Masuk" gradient teal.
+**Konsep:** Split screen. Kiri: logo + tagline di background off-white lembut. Kanan: card putih flat dengan form login, tombol "Masuk" gradient teal. Sesuai tema light mode "Paper Studio Light" — bukan lagi dark mode/glassmorphism (gambar mockup ini adalah referensi versi lama, perlu diperbarui menyesuaikan tema saat ini).
 
 ---
 
@@ -23,7 +23,7 @@
 
 ![Order Management](./03-ORDER-MANAGEMENT.png)
 
-**Elemen:** Filter chip (Semua/Draft/Produksi/Siap Ambil/Selesai), baris OVERDUE merah, baris Deadline Besok oranye, status pills per baris, mini stats panel kanan.
+**Elemen:** Filter chip (Semua/Draft/Produksi/Siap Ambil/Selesai), baris OVERDUE merah, baris Deadline Besok kuning, status pills per baris, mini stats panel kanan.
 
 ---
 
@@ -35,9 +35,9 @@
 
 ---
 
-## 05 — Admin Sales Dashboard
+## 05 — Admin Dashboard
 
-![Admin Sales Dashboard](./05-ADMIN-SALES-DASHBOARD.png)
+![Admin Dashboard](./05-ADMIN-DASHBOARD.png)
 
 **Elemen:** Order Siap Diambil (hijau, tombol Proses Pickup), Notifikasi WA Gagal (merah, tombol Kirim Ulang), Order Baru/Draft tabel, Antrian Persetujuan Diskon (menunggu Owner).
 
@@ -51,9 +51,11 @@
 
 ---
 
-## 07 — Warehouse Dashboard (Tablet)
+## 07 — Gudang Dashboard, Tab Storage (Tablet)
 
-![Warehouse Dashboard](./07-WAREHOUSE-DASHBOARD.png)
+![Gudang Dashboard — Storage](./07-WAREHOUSE-DASHBOARD.png)
+
+> Ini salah satu dari 3 tab di dashboard role **Gudang** (QC / Finishing / Storage) — lihat `GUDANG-DASHBOARD.md`.
 
 **Elemen:** 4 tombol besar (SIMPAN JOB / CARI JOB / SCAN QR / PINDAH KE COUNTER), daftar barang menunggu disimpan, peta gudang visual per zona (hijau=kosong, biru=terisi, merah=penuh), popup info saat klik slot.
 

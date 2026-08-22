@@ -110,7 +110,7 @@ export function ProductFormModal({ open, onClose, onSave }: ProductFormModalProp
         
         <div className="pt-4 border-t border-border flex justify-end gap-3 shrink-0">
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium hover:bg-elevated transition-colors">Batal</button>
-          <button type="submit" form="productForm" className="px-6 py-2 rounded-lg text-sm font-bold bg-blue-600 text-white hover:bg-blue-500 transition-all shadow-md shadow-blue-500/20">Simpan Produk</button>
+          <button type="submit" form="productForm" className="px-6 py-2 rounded-lg text-sm font-bold bg-accent-teal text-white hover:bg-accent-teal/90 transition-all shadow-md shadow-accent-teal/20">Simpan Produk</button>
         </div>
       </div>
     </div>

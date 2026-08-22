@@ -138,7 +138,7 @@ export function OrderDetailModal({ open, onClose, order, onBayar }: OrderDetailM
               </div>
               <div className="flex justify-between text-sm pt-2 border-t border-border">
                 <span className="font-semibold text-primary">Sisa Tagihan</span>
-                <span className={`font-mono font-bold text-lg ${isLunas ? "text-status-green" : "text-status-orange"}`}>
+                <span className={`font-mono font-bold text-lg ${isLunas ? "text-status-green" : "text-status-yellow"}`}>
                   {isLunas ? "LUNAS" : fmt(sisa)}
                 </span>
               </div>

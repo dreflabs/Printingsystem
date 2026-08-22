@@ -1,18 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Search, Filter, MoreHorizontal, ArrowUpDown } from "lucide-react";
 import { ProductFormModal } from "@/components/admin/ProductFormModal";
 import { cn } from "@/lib/utils";
-import { useWorkflowStore } from "@/store/useWorkflowStore";
+import { getRetailProducts, createRetailProduct } from "@/actions/master-data";
 
 export default function AdminProductsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [retailProducts, setRetailProducts] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Store as single source of truth
-  const retailProducts = useWorkflowStore((s) => s.retailProducts);
-  const addRetailProduct = useWorkflowStore((s) => s.addRetailProduct);
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  const loadProducts = async () => {
+    setIsLoading(true);
+    const result = await getRetailProducts();
+    if (result.success && result.data) {
+      setRetailProducts(result.data);
+    }
+    setIsLoading(false);
+  };
 
   const filteredProducts = retailProducts.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -23,17 +34,22 @@ export default function AdminProductsPage() {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
   };
 
-  const handleSaveProduct = (newProduct: any) => {
-    addRetailProduct({
-      id: Math.random().toString(36).substr(2, 9),
+  const handleSaveProduct = async (newProduct: any) => {
+    const result = await createRetailProduct({
       sku: newProduct.sku || "SKU-AUTO",
       name: newProduct.name,
-      category: newProduct.category,
-      cogs: Number(newProduct.cogs) || 0,
+      category: newProduct.category || "GENERAL",
       price: Number(newProduct.price) || 0,
-      stock: Number(newProduct.stock) || 0,
-      minStock: Number(newProduct.minStock) || 0,
+      stock_quantity: Number(newProduct.stock) || 0,
+      min_stock: Number(newProduct.minStock) || 0,
     });
+    
+    if (result.success) {
+      setIsModalOpen(false);
+      loadProducts();
+    } else {
+      alert("Gagal menyimpan produk: " + result.error);
+    }
   };
 
   return (
@@ -46,7 +62,7 @@ export default function AdminProductsPage() {
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-blue-500 shadow-lg shadow-blue-500/20 transition-all"
+          className="flex items-center gap-2 bg-accent-teal text-white px-5 py-2.5 rounded-xl font-bold hover:bg-accent-teal/90 shadow-lg shadow-accent-teal/20 transition-all"
         >
           <Plus className="h-5 w-5" />
           Tambah Produk Baru
@@ -104,22 +120,22 @@ export default function AdminProductsPage() {
                     <div className="text-xs text-muted mt-1">{product.category}</div>
                   </td>
                   <td className="px-6 py-4 font-mono">
-                    {formatRupiah(product.cogs)}
+                    -
                   </td>
                   <td className="px-6 py-4 font-mono font-medium text-status-blue">
-                    {formatRupiah(product.price)}
+                    {formatRupiah(Number(product.price))}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <div className={cn(
                         "h-2.5 w-2.5 rounded-full",
-                        product.stock === 0 ? "bg-status-red" : product.stock <= product.minStock ? "bg-status-yellow" : "bg-status-green"
+                        product.stock_quantity === 0 ? "bg-status-red" : product.stock_quantity <= product.min_stock ? "bg-status-yellow" : "bg-status-green"
                       )} />
                       <span className={cn(
                         "font-medium",
-                        product.stock === 0 ? "text-status-red" : "text-primary"
+                        product.stock_quantity === 0 ? "text-status-red" : "text-primary"
                       )}>
-                        {product.stock}
+                        {product.stock_quantity}
                       </span>
                     </div>
                   </td>

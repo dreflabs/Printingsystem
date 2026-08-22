@@ -14,8 +14,8 @@ Notifikasi HANYA boleh dikirim setelah urutan ini selesai:
 ```
 QC PASS
   → FINISHING COMPLETE
-  → JOB QR SCANNED (oleh finishing staff)
-  → STORAGE LOCATION QR SCANNED (oleh warehouse)
+  → JOB QR SCANNED (oleh Gudang)
+  → STORAGE LOCATION QR SCANNED (oleh Gudang)
   → STORAGE CONFIRMED (status: READY_FOR_PICKUP)
   → SISTEM mengirim notifikasi otomatis
 ```
@@ -52,7 +52,7 @@ Pesanan Anda dengan nomor [order_code] sudah selesai dan siap diambil.
 📦 Jumlah: [quantity] pcs
 ✅ Status: SIAP DIAMBIL
 
-Silakan datang ke percetakan untuk pengambilan pesanan.
+Silakan datang ke percetakan dan sebutkan Nomor Order `[order_code]` atau Nomor HP Anda kepada petugas kami untuk pengambilan pesanan.
 
 Terima kasih 🙏
 ```
@@ -66,7 +66,7 @@ Pesanan [order_code] sudah selesai dan tersimpan di percetakan.
 🖨️ Pesanan: [deskripsi produk]
 💳 Status pembayaran: MENUNGGU PELUNASAN
 
-Pesanan dapat diambil setelah pelunasan sesuai ketentuan percetakan.
+Pesanan dapat diambil setelah pelunasan sesuai ketentuan percetakan. Saat pengambilan, sebutkan Nomor Order `[order_code]` atau Nomor HP Anda.
 ```
 
 ---
@@ -77,8 +77,8 @@ Pesanan dapat diambil setelah pelunasan sesuai ketentuan percetakan.
 
 1. **Status order TIDAK BERUBAH** — order tetap READY_FOR_PICKUP
 2. **Sistem mencatat kegagalan** di tabel `notification_events` dengan status FAILED + error message dari provider
-3. **Notifikasi otomatis ke Admin Sales** muncul di dashboard (badge/alert merah)
-4. **Email fallback** dikirim ke email Admin Sales dengan informasi:
+3. **Notifikasi otomatis ke Admin** muncul di dashboard (badge/alert merah)
+4. **Email fallback** dikirim ke email Admin dengan informasi:
    - Nama konsumen
    - Order code
    - Nomor HP konsumen (hanya untuk Admin, bukan untuk role lain)
@@ -96,7 +96,7 @@ Pesanan dapat diambil setelah pelunasan sesuai ketentuan percetakan.
 ## Aturan Duplikasi
 
 - Event yang sama (READY_FOR_PICKUP untuk order X) tidak boleh mengirim duplikat pesan
-- Resend hanya bisa dilakukan oleh Admin Sales atau Owner melalui tombol eksplisit di dashboard
+- Resend hanya bisa dilakukan oleh Admin atau Owner melalui tombol eksplisit di dashboard
 - Setiap resend dicatat di `notification_events` dengan flag `is_resend: true`
 
 ---

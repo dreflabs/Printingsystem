@@ -21,11 +21,11 @@ export default function PrintLabelPage() {
   if (!mounted) return null;
 
   return (
-    <div className="w-full flex justify-center bg-gray-100 min-h-screen pt-10 print:bg-white print:pt-0">
+    <div className="w-full flex justify-center bg-elevated min-h-screen pt-10 print:bg-white print:pt-0">
       {/* Tombol Print Manual (Sembunyi saat print) */}
       <button 
         onClick={() => window.print()} 
-        className="fixed top-4 right-4 print:hidden flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow-lg hover:bg-blue-700"
+        className="fixed top-4 right-4 print:hidden flex items-center gap-2 bg-accent-teal text-white px-4 py-2 rounded-lg font-bold shadow-lg hover:bg-accent-teal/90"
       >
         <Printer className="h-5 w-5" /> Cetak Sekarang
       </button>
@@ -34,7 +34,7 @@ export default function PrintLabelPage() {
       <div className="w-[100mm] h-[150mm] bg-white text-black p-4 border border-gray-300 print:border-none shadow-xl print:shadow-none relative">
         {/* Header Percetakan */}
         <div className="text-center border-b-2 border-black pb-2 mb-3">
-          <h1 className="text-xl font-extrabold uppercase">PrintFlow</h1>
+          <h1 className="text-xl font-extrabold uppercase">Print Pilot</h1>
           <p className="text-[10px] font-medium">Jl. Pahlawan No. 123, Bandung - 08123456789</p>
         </div>
 

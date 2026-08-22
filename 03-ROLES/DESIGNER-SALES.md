@@ -1,4 +1,4 @@
-﻿# DESIGNER SALES
+# DESIGNER SALES
 
 Membuat desain, mengelola versi desain, dan memproses approval desain konsumen walk-in dan makloon.
 
@@ -8,10 +8,10 @@ Membuat desain, mengelola versi desain, dan memproses approval desain konsumen w
 | Buat order baru | ✅ |
 | Upload file desain | ✅ |
 | Approve desain walk-in & makloon | ✅ |
-| Approve desain via WhatsApp | ❌ hanya Admin Sales |
+| Approve desain via Online | ❌ hanya Admin |
 | Lihat nomor HP / email konsumen | ❌ DILARANG |
 | Lihat status order yang dibuat | ✅ |
-| Lihat pembayaran / harga | ✅ (baca saja) |
+| Lihat pembayaran / harga | ❌ DILARANG |
 | Edit harga order | ❌ |
 | Akses laporan keuangan | ❌ |
 | Akses laporan produksi | ❌ |

@@ -34,7 +34,7 @@ Konsumen duduk dengan Designer
 **Alur:**
 ```
 Konsumen kirim file (bawa langsung / kirim via WA ke Admin / upload link)
-  → Admin Sales atau Designer upload file ke sistem
+  → Admin atau Designer upload file ke sistem
   → Pilih tipe: "Makloon — file dari konsumen"
   → Tidak perlu proses approval desain
   → Status desain → APPROVED (otomatis karena file dari konsumen sendiri)
@@ -46,30 +46,30 @@ Jika hasil cetak tidak sesuai karena kesalahan file konsumen, sistem punya bukti
 
 ---
 
-## Tipe 3 — WhatsApp / Remote
+## Tipe 3 — Online (WhatsApp / Media Sosial)
 
-**Kondisi:** Konsumen minta desain dari toko, tapi tidak datang langsung. Komunikasi via WhatsApp.
+**Kondisi:** Konsumen minta desain dari toko, tapi tidak datang langsung. Komunikasi via online — WhatsApp maupun media sosial lain (Instagram DM, Facebook, dsb).
 
 **Alur:**
 ```
 Designer buat desain → upload preview/draft ke sistem
-  → Admin Sales melihat preview di sistem
-  → Admin Sales kirim preview ke konsumen via WhatsApp (di luar sistem)
+  → Admin melihat preview di sistem
+  → Admin kirim preview ke konsumen via kanal online yang dipakai (di luar sistem)
   → Konsumen reply setuju/minta revisi
   → Jika setuju:
-      Admin Sales klik "Konfirmasi Persetujuan via WA" di sistem
+      Admin klik "Konfirmasi Persetujuan Online" di sistem
       → Input: keterangan singkat ("Konsumen konfirmasi setuju via WA jam 14:30")
       → Status desain → APPROVED
   → Jika minta revisi:
-      Admin Sales catat permintaan revisi di sistem
+      Admin catat permintaan revisi di sistem
       → Designer buat versi baru
       → Proses diulang
 ```
 
 **Catatan penting:**
-- Admin Sales yang mengkonfirmasi — bukan Designer
+- Admin yang mengkonfirmasi — bukan Designer
 - Preview desain yang dikirim ke konsumen tidak boleh mengandung watermark atau identitas yang memungkinkan konsumen print sendiri tanpa bayar
-- Persetujuan "via WA" dicatat sebagai teks di sistem (screenshot WA bisa dilampirkan sebagai bukti opsional)
+- Persetujuan "online" dicatat sebagai teks di sistem beserta kanal yang dipakai (screenshot chat bisa dilampirkan sebagai bukti opsional)
 
 ---
 
@@ -78,7 +78,7 @@ Designer buat desain → upload preview/draft ke sistem
 - Setiap desain disimpan dengan versi (V1, V2, V3...)
 - Hanya versi yang sudah APPROVED yang bisa masuk produksi
 - Jika konsumen minta revisi setelah APPROVED, butuh re-approval sebelum bisa lanjut
-- Designer tidak bisa meng-approve desainnya sendiri untuk tipe WA (harus Admin Sales)
+- Designer tidak bisa meng-approve desainnya sendiri untuk tipe Online (harus Admin)
 - File desain disimpan di sistem dan tidak bisa dihapus oleh Designer setelah order masuk produksi
 
 ---
@@ -93,6 +93,6 @@ Tabel `design_versions`:
 - `uploaded_at`
 - `approval_status`: PENDING / APPROVED / REJECTED
 - `approved_at`
-- `approved_by`: user_id Admin Sales (untuk WA) atau Designer (untuk walk-in/makloon)
-- `approval_method`: WALK_IN / MAKLOON / WHATSAPP
+- `approved_by`: user_id Admin (untuk Online) atau Designer (untuk walk-in/makloon)
+- `approval_method`: WALK_IN / MAKLOON / ONLINE
 - `approval_notes`: catatan singkat

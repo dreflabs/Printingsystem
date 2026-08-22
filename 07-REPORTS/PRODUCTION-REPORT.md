@@ -2,15 +2,14 @@
 
 ## Akses
 - Owner: akses penuh + export
-- Supervisor: akses penuh + export
-- Admin Sales: lihat ringkasan saja
-- Operator, QC, Finishing: tidak ada akses laporan
+- Admin: akses penuh + export
+- Operator, Gudang: tidak ada akses laporan
 
 ---
 
 ## 1. Laporan Harian Produksi
 
-**Tampil di:** Dashboard Supervisor + Owner
+**Tampil di:** Dashboard Admin + Owner
 
 | Kolom | Keterangan |
 |-------|-----------|
@@ -60,7 +59,7 @@
 | Jumlah QC Fail di Job Mereka | |
 | Jumlah Rework | |
 
-> ⚠️ Laporan ini hanya untuk evaluasi kinerja — bukan sebagai satu-satunya bukti kesalahan. Gunakan bersama data audit log dan catatan supervisor.
+> ⚠️ Laporan ini hanya untuk evaluasi kinerja — bukan sebagai satu-satunya bukti kesalahan. Gunakan bersama data audit log dan catatan admin.
 
 ---
 
@@ -87,7 +86,7 @@ Waste yang tinggi bisa menandakan masalah teknis mesin, skill operator, atau kua
 | Kolom | Keterangan |
 |-------|-----------|
 | Job Code | |
-| QC Inspector | |
+| Petugas Gudang | Nama staf Gudang yang melakukan inspeksi |
 | Tanggal Inspeksi | |
 | Hasil | PASS / FAIL |
 | Kategori Masalah | (jika FAIL) |

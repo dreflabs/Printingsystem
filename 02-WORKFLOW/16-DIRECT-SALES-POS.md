@@ -7,27 +7,27 @@ Fitur Direct Sales (Point of Sale) dirancang untuk memfasilitasi penjualan baran
 Jika pesanan dibuat dengan `order_type = RETAIL`, sistem akan menggunakan "Fast-Track Workflow":
 
 ```
-[ NEW_RETAIL_ORDER ] --> [ PAYMENT_COMPLETED ] --> [ CLOSED ]
+[ NEW_RETAIL_ORDER ] --> [ RETAIL_PAYMENT_COMPLETED ] --> [ CLOSED ]
 ```
 
 ### 1. NEW_RETAIL_ORDER
-- **Aktor:** Kasir / Admin Sales (via modul POS)
+- **Aktor:** Kasir / Admin (via modul POS)
 - **Proses:** 
   - Kasir men-scan barcode atau memilih barang dari katalog `retail_products`.
   - Sistem membuat baris di tabel `orders` dengan `order_type = RETAIL`.
   - Item disimpan di `order_items` dengan merujuk pada `retail_product_id` (bukan `product_id`).
   - (Opsional) `customer_id` bisa diisi, atau dibiarkan `null` untuk pelanggan Walk-in/Guest.
 
-### 2. PAYMENT_COMPLETED
+### 2. RETAIL_PAYMENT_COMPLETED
 - **Aktor:** Kasir
 - **Proses:**
   - Kasir menerima pembayaran (Tunai/QRIS).
   - Saat pembayaran dikonfirmasi lunas:
-    - Status pesanan langsung menjadi `PAYMENT_COMPLETED` (atau langsung `CLOSED`).
+    - Status pesanan langsung menjadi `RETAIL_PAYMENT_COMPLETED` (atau langsung `CLOSED`).
     - **Trigger Otomatis:** Sistem langsung memotong stok di tabel `retail_products` dan mencatat mutasi stok di `retail_stock_movements`.
 
 ### 3. CLOSED (Handover)
-- **Aktor:** Kasir / Warehouse
+- **Aktor:** Kasir / Gudang
 - **Proses:**
   - Barang langsung diserahkan kepada pelanggan saat itu juga.
   - Pesanan dianggap ditutup dan masuk ke pelaporan pendapatan tanpa perlu melalui proses Design, Production, QC, atau Finishing.

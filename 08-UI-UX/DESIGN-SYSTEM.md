@@ -1,31 +1,33 @@
-# DESIGN SYSTEM — PrintFlow
+# DESIGN SYSTEM — Print Pilot (Light Edition)
 
 ## Identitas Visual
 
-**Nama Sistem:** PrintFlow  
-**Tagline:** Sistem Manajemen Percetakan Digital  
-**Tema:** Dark Mode Premium (tidak ada light mode)  
-**Feel:** Professional, modern, industrial — cocok untuk lingkungan percetakan
+**Nama Sistem:** Print Pilot  
+**Tagline:** Modern SaaS Printing Management System  
+**Tema:** Paper Studio Light — Clean Precision White Mode (bukan dark mode)  
+**Feel:** Professional, bersih, mudah dibaca di lantai produksi/gudang dengan pencahayaan terang  
 
 ---
 
-## Palet Warna
+## Palet Warna (Color Tokens)
 
-| Token | Hex | Digunakan untuk |
-|-------|-----|----------------|
-| `bg-base` | `#0F172A` | Background utama semua halaman |
-| `bg-card` | `#1E293B` | Card, sidebar, panel |
-| `bg-elevated` | `#2D3748` | Input, hover state |
-| `accent-teal` | `#0EA5E9` | Aksi utama, CTA, menu aktif |
-| `accent-purple` | `#7C3AED` | Highlight Owner, badge premium |
-| `status-green` | `#10B981` | SELESAI, SIAP AMBIL, PASS |
-| `status-yellow` | `#F59E0B` | MENUNGGU, peringatan |
-| `status-orange` | `#F97316` | DEADLINE BESOK, PARTIAL |
-| `status-red` | `#EF4444` | OVERDUE, FAIL, ERROR |
-| `status-blue` | `#3B82F6` | PRODUKSI, AKTIF |
-| `text-primary` | `#F8FAFC` | Teks utama |
-| `text-muted` | `#94A3B8` | Label, placeholder |
-| `border` | `#334155` | Garis pemisah |
+Hanya **5 warna kromatik** (1 accent + 4 status semantik) agar konsisten dan tidak ramai. Warna lain (orange, purple/neon) sengaja dihapus dari sistem — semua kebutuhan warna di seluruh dashboard, komponen, dan modul WAJIB memakai token di bawah ini, tidak boleh menambah hue baru.
+
+| Token | Hex | Konsep & Peruntukan |
+|-------|-----|-------------------|
+| `bg-base` | `#F7F8FA` | **Off-White** — Background utama seluruh halaman (bukan putih murni, mengurangi silau) |
+| `bg-card` | `#FFFFFF` | **Pure White** — Background card, kontras jelas dari base |
+| `bg-elevated` | `#EEF1F5` | **Light Slate** — Area Input, Hover, dan Modal |
+| `accent-teal` | `#0891B2` | **Cyan Dark** — CTA Utama, Menu Aktif, Premium/Executive Action (menggantikan accent-purple lama) |
+| `status-green` | `#059669` | **Emerald** — SELESAI, SIAP AMBIL, PASS |
+| `status-yellow` | `#D97706` | **Amber** — MENUNGGU, Pending Approval, DEADLINE BESOK, PARTIAL Payment (menggantikan status-orange lama) |
+| `status-red` | `#E11D48` | **Rose** — OVERDUE, QC FAIL, ERROR |
+| `status-blue` | `#0284C7` | **Cobalt** — PRODUKSI BERJALAN, Status Aktif |
+| `text-primary` | `#0F172A` | **Near Black** — Teks utama & judul |
+| `text-muted` | `#64748B` | **Slate** — Subtitle & label |
+| `border` | `#E2E8F0` | **Light Border** — Garis pemisah halus |
+
+> **Riwayat perubahan:** Versi sebelumnya (dark mode "Midnight Glassmorphism") memakai 7 warna kromatik (teal, purple, green, yellow, orange, red, blue). Disederhanakan jadi 5 warna: `accent-purple` digantikan oleh `accent-teal`, `status-orange` digantikan oleh `status-yellow`. Semua dokumen dan kode di sistem ini sudah diselaraskan ke palet baru.
 
 ---
 
@@ -45,49 +47,43 @@
 
 ---
 
-## Status Pills
+## Status Pills (Pulse Dot Badges)
 
-| Status | Label | Warna |
-|--------|-------|-------|
-| DRAFT | 📝 Draft | Abu-abu |
-| DESIGNING | 🎨 Desain | Biru muda |
-| WAITING_APPROVAL | ⏳ Menunggu Acc | Kuning |
-| APPROVED | ✅ Disetujui | Hijau |
-| WAITING_PAYMENT | 💳 Menunggu DP | Oranye |
-| CONFIRMED | ✅ Konfirmasi | Hijau |
-| PRODUCTION_STARTED | 🔵 Produksi | Biru |
-| QC_PENDING | 🔍 QC | Kuning |
-| QC_PASSED | ✅ QC Lulus | Hijau |
-| QC_FAILED | ❌ QC Gagal | Merah |
-| QC_REWORK_PENDING | 🔄 Menunggu Rework | Oranye gelap |
-| FINISHING_STARTED | 🔧 Finishing | Ungu muda |
-| READY_FOR_PICKUP | 📦 Siap Diambil | Hijau terang |
-| PICKED_UP | ✅ Selesai | Hijau solid |
-| OVERDUE | 🔴 Terlambat | Merah |
-| ON_HOLD | ⏸️ Ditahan | Kuning gelap |
-| CANCELLED | ✖️ Dibatalkan | Abu-abu gelap |
-| INCIDENT | ⚠️ Insiden | Merah tua |
-| CLOSED | 🔒 Ditutup | Ungu |
+| Status | Label | Skema Warna & Indikator |
+|--------|-------|-------------------------|
+| DRAFT | Draft | Slate (`bg-muted/15 text-muted border-muted/30`) |
+| DESIGNING | Desain | Cobalt + Pulse Dot (`bg-status-blue/15 text-status-blue border-status-blue/30`) |
+| WAITING_APPROVAL | Menunggu Acc | Amber (`bg-status-yellow/15 text-status-yellow border-status-yellow/30`) |
+| APPROVED | Disetujui | Emerald (`bg-status-green/15 text-status-green border-status-green/30`) |
+| WAITING_PAYMENT | Menunggu DP | Amber + Pulse Dot (`bg-status-yellow/15 text-status-yellow border-status-yellow/30`) |
+| CONFIRMED | Konfirmasi | Emerald (`bg-status-green/15 text-status-green border-status-green/30`) |
+| PRODUCTION_STARTED | Produksi | Cobalt + Pulse Dot (`bg-status-blue/15 text-status-blue border-status-blue/30`) |
+| QC_PENDING | QC | Amber (`bg-status-yellow/15 text-status-yellow border-status-yellow/30`) |
+| QC_PASSED | QC Lulus | Emerald (`bg-status-green/15 text-status-green border-status-green/30`) |
+| QC_FAILED | QC Gagal | Rose + Pulse Dot (`bg-status-red/15 text-status-red border-status-red/30`) |
+| QC_REWORK_PENDING | Menunggu Rework | Amber (`bg-status-yellow/15 text-status-yellow border-status-yellow/30`) |
+| FINISHING_STARTED | Finishing | Cyan Dark + Pulse Dot (`bg-accent-teal/15 text-accent-teal border-accent-teal/30`) |
+| READY_FOR_PICKUP | Siap Diambil | Emerald + Pulse Dot (`bg-status-green/15 text-status-green border-status-green/30`) |
+| PICKED_UP | Selesai | Emerald Solid (`bg-status-green/20 text-status-green border-status-green/40`) |
+| OVERDUE | Terlambat | Rose + Pulse Dot (`bg-status-red/15 text-status-red border-status-red/30`) |
+| ON_HOLD | Ditahan | Amber (`bg-status-yellow/15 text-status-yellow border-status-yellow/30`) |
+| CANCELLED | Dibatalkan | Slate (`bg-muted/15 text-muted border-muted/30`) |
+| INCIDENT | Insiden | Rose + Pulse Dot (`bg-status-red/20 text-status-red border-status-red/40`) |
+| CLOSED | Ditutup | Cyan Dark (`bg-accent-teal/15 text-accent-teal border-accent-teal/30`) |
 
 ---
 
 ## Komponen UI
 
 ### Tombol
-- **Primary:** Gradient teal-blue, rounded-full, tinggi 48px
-- **Danger:** Gradient orange-red
-- **Outline:** Border teal, bg transparent
-- **Ghost:** Teks teal tanpa border
+- **Primary:** Gradient Cyan Dark (`from-[#0891B2] to-[#0EA5E9]`), rounded-xl, font-bold, shadow-lg shadow-[#0891B2]/20
+- **Danger:** Solid/Gradient Rose (`from-[#E11D48] to-red-700`)
+- **Outline:** Border teal 40%, bg transparent, text teal
 
-### Card
-- Glassmorphism: `rgba(30,41,59,0.7)` + blur 12px + border `rgba(51,65,85,0.8)` + radius 16px
-- Glow aktif: border teal 40% opacity
-- Shadow: `0 4px 24px rgba(0,0,0,0.4)`
-
-### Input
-- Background: `bg-elevated`
-- Border: `border` default, teal saat focused
-- Error: border merah + teks error kecil
+### Card (Flat White)
+- Background: `bg-card` + `border border-border` + `rounded-2xl`
+- Shadow: `shadow-sm` (bayangan abu-abu tipis, tanpa efek glow neon — glow tidak terlihat di background terang)
+- Aktif saat Hover: `hover:border-accent-teal/40`
 
 ---
 
@@ -97,38 +93,4 @@
 Desktop (1280px+):
   Sidebar: 240px fixed
   Content: flex-grow, max-width 1440px, padding 24px
-
-Tablet (768px–1279px):
-  Sidebar: 64px (icon only)
-  Content: full width
-
-Mobile (< 768px):
-  Sidebar: hidden (hamburger menu)
-  Content: full width, padding 16px
 ```
-
----
-
-## Aturan UI Global
-
-| Aturan | Ketentuan |
-|--------|-----------|
-| Nomor HP konsumen | Tidak pernah tampil kecuali di halaman khusus Admin |
-| Tombol berbahaya | Selalu ada popup konfirmasi |
-| Error message | Harus spesifik dan jelas dalam Bahasa Indonesia |
-| Loading state | Wajib ada spinner/skeleton untuk setiap request |
-| Tombol tidak diizinkan | Jangan tampilkan sama sekali (bukan disabled) |
-| Mobile scan halaman | Responsif, minimum button height 56px |
-| Feedback sukses | Toast hijau pojok kanan bawah |
-| Sesi berakhir | Redirect login dengan pesan jelas |
-| Bahasa | Semua Bahasa Indonesia natural |
-
----
-
-## Breakpoints
-
-| Perangkat | Lebar | Utama untuk |
-|-----------|-------|------------|
-| Mobile | 360–430px | Scan QR, Operator |
-| Tablet | 768–1024px | Warehouse, QC |
-| Desktop | 1280px+ | Owner, Admin, Designer |

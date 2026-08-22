@@ -36,5 +36,5 @@
 
 - Harga per produk bisa berbeda tergantung ukuran, bahan, dan quantity
 - Harga bukan bagian dari tabel `products` — harga diinput saat buat order item
-- Admin Sales dapat menambahkan produk baru langsung di sistem jika ada jenis baru
+- Admin dapat menambahkan produk baru langsung di sistem jika ada jenis baru
 - Kode produk mengikuti format: `PRD-[KATEGORI]-[NOMOR]`

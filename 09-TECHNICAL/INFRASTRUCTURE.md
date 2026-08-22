@@ -5,7 +5,7 @@
 ### Area Desain & Sales (Meja Depan / Office)
 | Perangkat | Jumlah | Keterangan |
 |-----------|--------|-----------|
-| Komputer/Laptop | 2 unit | Untuk Admin Sales + Designer |
+| Komputer/Laptop | 2 unit | Untuk Admin + Designer |
 | Monitor | 2 unit | Minimal 22 inci untuk kerja desain |
 | WiFi / LAN | ✅ | Harus terhubung ke server/internet |
 
@@ -33,7 +33,7 @@
 ### Counter Penyerahan — Lantai 1
 | Perangkat | Jumlah | Keterangan |
 |-----------|--------|-----------|
-| Komputer/Tablet | 1 unit | Untuk Admin Sales proses pickup |
+| Komputer/Tablet | 1 unit | Untuk Admin proses pickup |
 | WiFi / LAN | ✅ | |
 
 ---
@@ -105,7 +105,7 @@ Printer label digunakan untuk cetak label QR yang ditempel di setiap produk sele
 ## Prosedur Darurat Jika Sistem Down
 
 1. Operator mencatat job secara manual di kertas (formulir cadangan)
-2. Supervisor menandai job yang belum diinput ke sistem
-3. Setelah sistem kembali online, Admin/Supervisor input data manual
+2. Admin menandai job yang belum diinput ke sistem
+3. Setelah sistem kembali online, Admin input data manual
 4. Semua input manual wajib ada keterangan "input manual — sistem down [tanggal]"
 5. Dicatat di audit log sebagai input tertunda

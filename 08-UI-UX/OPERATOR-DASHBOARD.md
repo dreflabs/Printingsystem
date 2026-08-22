@@ -29,8 +29,11 @@ Saat ada job PRODUCTION_STARTED:
 - Mesin yang digunakan
 - Quantity target
 - Deadline
-- Timer berjalan (durasi sejak `actual_start`)
+- Timer berjalan (durasi sejak `actual_start`, berhenti terlihat saat job dijeda)
 - Tombol "Selesai Produksi"
+- Tombol "Jeda Produksi" — pilih alasan wajib (Mesin Macet / Menunggu Material / Lainnya), job jadi status jeda sampai Operator klik "Lanjutkan Produksi" (lihat `02-WORKFLOW/05-PRODUCTION.md` bagian "Jeda Produksi")
+
+Karena sistem membatasi **1 job aktif per Operator**, tombol "SCAN QR MULAI JOB" otomatis nonaktif selama masih ada job berstatus PRODUCTION_STARTED atau PRODUCTION_PAUSED yang belum diselesaikan.
 
 ---
 
@@ -44,7 +47,7 @@ Kolom (list card, bukan tabel padat — sesuai gaya mobile):
 | Nama Produk | Spesifikasi ringkas |
 | Mesin | |
 | Jumlah Target | |
-| Deadline | Highlight oranye/merah sesuai urgensi |
+| Deadline | Highlight kuning/merah sesuai urgensi |
 | Status | PRODUCTION_ASSIGNED (status pill biru) |
 
 ## Filter
@@ -66,6 +69,7 @@ Kolom (list card, bukan tabel padat — sesuai gaya mobile):
 
 - Lihat job yang di-assign ke dirinya sendiri
 - Scan QR Job untuk mulai & selesai produksi
+- Jeda & lanjutkan produksi (dengan alasan wajib)
 - Input actual qty & waste saat selesai
 - Input pemakaian material per job
 - Lihat spesifikasi produk dan nama konsumen pada job

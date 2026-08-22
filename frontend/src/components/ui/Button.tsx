@@ -14,13 +14,13 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-gradient-to-r from-accent-teal to-blue-500 text-white shadow-lg shadow-accent-teal/20 hover:shadow-accent-teal/40 hover:brightness-110",
+    "bg-accent-teal text-white shadow-lg shadow-accent-teal/20 hover:shadow-accent-teal/40 hover:brightness-110",
   secondary:
     "bg-elevated text-primary border border-border hover:bg-card hover:border-accent-teal/50",
   outline:
     "border border-accent-teal text-accent-teal bg-transparent hover:bg-accent-teal/10",
   danger:
-    "bg-gradient-to-r from-status-orange to-status-red text-white shadow-lg shadow-status-red/20 hover:brightness-110",
+    "bg-status-red text-white shadow-lg shadow-status-red/20 hover:brightness-110",
   ghost: "text-accent-teal bg-transparent hover:bg-accent-teal/10",
 };
 

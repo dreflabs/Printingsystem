@@ -7,7 +7,7 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan m
 ## 🎨 SPRINT 1: Design System & Fondasi UI (Minggu 1)
 *Tujuan: Membangun blok-blok Lego yang akan dipakai di seluruh aplikasi.*
 
-- [ ] **Setup Tema & PWA:** Masukkan *color palette* dari `DESIGN-SYSTEM.md` ke dalam `tailwind.config.ts`. Konfigurasi *Progressive Web App (PWA)* dengan Service Worker untuk mode *offline* sementara.
+- [ ] **Setup Tema & PWA:** Masukkan *color palette* dari `DESIGN-SYSTEM.md` ke dalam `tailwind.config.ts`. Konfigurasi *Progressive Web App (PWA)* dengan Service Worker untuk mode *offline* (Catatan: Offline PWA hanya sebatas *UX Enhancement* agar web tidak langsung *crash*, SOP resmi saat koneksi/sistem lumpuh tetap menggunakan *Kertas Manual* sesuai panduan `09-TECHNICAL/INFRASTRUCTURE.md`).
 - [ ] **Komponen UI Dasar (`src/components/ui`):**
   - [ ] `<Button>` (Varian: primary, secondary, outline, danger, ghost | Ukuran: sm, md, lg)
   - [ ] `<Input>`, `<Select>`, `<Textarea>` (Beserta *styling* saat error/fokus)
@@ -32,27 +32,27 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan m
   - [ ] Gabungkan `<Sidebar>` dan `<Header>`.
   - [ ] Buat layout *responsive* (Sidebar tersembunyi di layar kecil).
 - [ ] **Halaman Kosong Berdasarkan Role:**
-  - [ ] `/admin` (Admin Sales Dashboard)
+  - [ ] `/admin` (Admin Dashboard)
   - [ ] `/designer` (Designer Sales Dashboard)
-  - [ ] `/operator`, `/qc`, `/finishing`, `/warehouse`, `/supervisor`, `/owner`
+  - [ ] `/operator`, `/gudang` (gabungan QC+Finishing+Storage), `/admin/production` (eks-Supervisor), `/owner`
 
 ---
 
 ## 🛍️ SPRINT 3: Modul Penjualan & Kasir (Minggu 3-4)
-*Tujuan: Membuat antarmuka pemesanan untuk Admin Sales dan Kasir.*
+*Tujuan: Membuat antarmuka pemesanan untuk Admin dan Kasir.*
 
-- [ ] **Dashboard Admin Sales (`src/app/(dashboard)/admin/page.tsx`):**
+- [ ] **Dashboard Admin (`src/app/(dashboard)/admin/page.tsx`):**
   - [ ] Buat 6 Widget Angka (KPI) di bagian atas.
   - [ ] Buat Panel Prioritas (Order Siap Diambil, Notifikasi Gagal, dll).
   - [ ] Buat Tabel Daftar Order (lengkap dengan *search*, *filter* tanggal & status).
 - [ ] **Form Order PRINTING Baru:**
   - [ ] Buat modal/halaman *wizard* multi-step (Pilih Produk -> Isi Spesifikasi -> Hitung DP).
-  - [ ] Pastikan field "Harga Total" dibebaskan untuk diisi secara **manual** oleh Admin Sales (tidak dikalkulasi kaku oleh sistem).
+  - [ ] Pastikan field "Harga Total" dibebaskan untuk diisi secara **manual** oleh Admin (tidak dikalkulasi kaku oleh sistem).
 - [ ] **Modul POS/Kasir RETAIL (`src/app/(dashboard)/pos/page.tsx`):**
   - [ ] Buat tampilan ala kasir supermarket (kiri: daftar barang RETAIL, kanan: keranjang belanja).
   - [ ] Hitung total secara *real-time*.
   - [ ] Buat modal "Bayar & Lunas".
-- [ ] **Panel Final Audit (Khusus Admin Sales):**
+- [ ] **Panel Final Audit (Khusus Admin):**
   - [ ] Buat form *checklist* dengan tombol hasil GREEN/YELLOW/RED.
 
 ---
@@ -64,7 +64,7 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan m
   - [ ] Tabel antrian desain (Urut berdasarkan deadline dan status `DESIGNING`).
   - [ ] Form *upload* file desain (dummy upload) dan form URL *preview*.
 - [ ] **Alur Approval Desain:**
-  - [ ] Buat UI untuk merekam konfirmasi ACC desain (Walk-in, Makloon, WhatsApp).
+  - [ ] Buat UI untuk merekam konfirmasi ACC desain (Walk-in, Makloon, Online).
 
 ---
 
@@ -74,7 +74,7 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan m
 - [ ] **Dashboard Operator & Finishing:**
   - [ ] UI berupa antrian pekerjaan yang besar dan mudah diklik (*Mobile/Tablet Friendly*).
   - [ ] Form Selesai Produksi (Input jumlah berhasil dan jumlah *waste*).
-- [ ] **Dashboard QC (`src/app/(dashboard)/qc/page.tsx`):**
+- [ ] **Dashboard Gudang — Tab QC (`src/app/(dashboard)/gudang/QCTab.tsx`):**
   - [ ] Buat form *checklist* inspeksi (Ukuran, Warna, Material).
   - [ ] Tombol raksasa **PASS** (Hijau) dan **FAIL** (Merah).
 - [ ] **Fitur QR Code Scanner:**
@@ -88,7 +88,7 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan m
 ## 📦 SPRINT 6: Gudang & Serah Terima (Minggu 8)
 *Tujuan: Pengecekan stok dan penyerahan ke konsumen.*
 
-- [ ] **Dashboard Warehouse (`src/app/(dashboard)/warehouse/page.tsx`):**
+- [ ] **Dashboard Gudang — Tab Storage (`src/app/(dashboard)/gudang/StorageTab.tsx`):**
   - [ ] Tabel rak penyimpanan Lantai 3.
   - [ ] Alur SCAN 6 & 7 (Simpan barang ke rak).
   - [ ] Alur SCAN 9 (Konfirmasi barang turun ke counter).
@@ -99,9 +99,9 @@ Dokumen ini adalah panduan kerja **END-TO-END** untuk Rere. Semua pengembangan m
 ---
 
 ## 📈 SPRINT 7: Laporan & Manajemen Data (Minggu 9-10)
-*Tujuan: Kebutuhan Supervisor dan Owner.*
+*Tujuan: Kebutuhan Admin dan Owner.*
 
-- [ ] **Dashboard Owner & Supervisor:**
+- [ ] **Dashboard Owner & Admin:**
   - [ ] Buat *Chart* (grafik) sederhana omset bulanan (opsional, gunakan `recharts`).
   - [ ] Tabel persetujuan diskon dan pembatalan order (Tombol Approve/Reject).
 - [ ] **Laporan:**

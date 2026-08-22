@@ -44,7 +44,7 @@ export default function DesignSystemPage() {
             <Printer className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-primary">PrintFlow</h1>
+            <h1 className="text-3xl font-bold text-primary">Print Pilot</h1>
             <p className="text-sm text-muted">Design System Preview — Sprint 1</p>
           </div>
         </div>

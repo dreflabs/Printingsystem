@@ -5,7 +5,7 @@
 ### Aturan Kontak Konsumen
 - Designer/Sales boleh berkomunikasi langsung dengan konsumen untuk keperluan desain
 - Namun setelah data masuk sistem, designer TIDAK DAPAT mengakses nomor HP atau email konsumen
-- Nomor HP konsumen hanya tersedia untuk Admin Sales, Supervisor, dan Owner
+- Nomor HP konsumen hanya tersedia untuk Admin dan Owner
 - Sistem WhatsApp dikirim otomatis — tidak ada manual copy-paste nomor ke luar sistem
 - Pelanggaran: designer yang mencoba akses data kontak lewat cara apapun harus tercatat dan dilaporkan
 
@@ -50,10 +50,10 @@ Designer/Designer-Sales TIDAK DAPAT:
 Release barang membutuhkan:
 - order valid dengan status READY_FOR_PICKUP
 - payment verified (cek apakah sudah lunas atau override disetujui)
-- user yang berwenang (hanya Admin Sales)
+- user yang berwenang (hanya Admin)
 - pickup record yang lengkap
 
-Override aturan release hanya bisa dilakukan oleh Supervisor atau Owner dengan approval eksplisit dan tercatat di audit.
+Override aturan release hanya bisa dilakukan oleh Admin atau Owner dengan approval eksplisit dan tercatat di audit.
 
 ---
 
@@ -71,5 +71,5 @@ Setelah QR di-scan, sistem masih melakukan pengecekan:
 
 - Notifikasi konsumen hanya dipicu setelah STORAGE_CONFIRMED
 - Mengirim pesan tidak mengubah status order
-- Nomor HP konsumen tidak pernah ditampilkan kepada operator, designer, atau finishing staff
+- Nomor HP konsumen tidak pernah ditampilkan kepada operator, designer, atau Gudang
 - Jika pengiriman gagal: alert ke Admin, notifikasi tidak otomatis diulang tanpa perintah manual dari Admin

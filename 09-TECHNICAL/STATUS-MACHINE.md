@@ -28,13 +28,14 @@ WAITING_PAYMENT
   └─ Menunggu DP 50% dari konsumen
 
 CONFIRMED
-  └─ DP sudah masuk, order dikonfirmasi Admin Sales
+  └─ DP sudah masuk, order dikonfirmasi Admin
 
 PRODUCTION_ASSIGNED
-  └─ Supervisor assign job ke operator & mesin
+  └─ Admin assign job ke operator & mesin
 
 PRODUCTION_STARTED
   └─ Operator scan QR → mulai produksi (SCAN 1)
+  └─ Sub-status di level `production_jobs` (bukan status order): Operator bisa "Jeda Produksi" → job jadi PRODUCTION_PAUSED sementara, order tetap PRODUCTION_STARTED. Lihat `02-WORKFLOW/05-PRODUCTION.md` bagian "Jeda Produksi".
 
 PRODUCTION_COMPLETE
   └─ Operator scan QR → selesai produksi, input qty & waste (SCAN 2)
@@ -55,7 +56,7 @@ REWORK_APPROVED
   └─ Owner setujui rework → Child Job diubah statusnya ke PRODUCTION_STARTED
 
 FINISHING_STARTED
-  └─ Finishing Staff scan QR → mulai finishing (SCAN 4)
+  └─ Gudang scan QR → mulai finishing (SCAN 4)
 
 FINISHING_COMPLETE
   └─ Finishing selesai, label dicetak (SCAN 5)
@@ -76,10 +77,10 @@ PICKED_UP
   └─ Barang sudah diserahkan ke konsumen (SCAN 10)
 
 FINAL_AUDIT_PENDING
-  └─ Menunggu proses final audit oleh Admin Sales
+  └─ Menunggu proses final audit oleh Admin
 
 FINAL_AUDIT_COMPLETE
-  └─ Audit selesai dengan hasil GREEN, YELLOW (butuh approval Supervisor/Owner), atau RED
+  └─ Audit selesai dengan hasil GREEN, YELLOW (butuh approval Owner), atau RED
      (RED = order TIDAK bisa lanjut ke CLOSED — order dikembalikan ke ON_HOLD untuk
      investigasi Owner, lihat cabang RED di diagram alur)
 
@@ -98,7 +99,7 @@ INCIDENT
 // ── STATUS KHUSUS RETAIL (order_type = RETAIL) ──
 
 NEW_RETAIL_ORDER
-  └─ Kasir/Admin Sales membuat pesanan Direct Sales (barang jadi)
+  └─ Kasir/Admin membuat pesanan Direct Sales (barang jadi)
 
 RETAIL_PAYMENT_COMPLETED
   └─ Pembayaran dikonfirmasi lunas, stok barang dipotong otomatis
@@ -126,7 +127,7 @@ READY_FOR_PICKUP → IN_TRANSIT → PICKED_UP
 PICKED_UP → FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE → CLOSED
                                  ↘ (hasil RED) → ON_HOLD (investigasi Owner)
 
-*WAITING_APPROVAL hanya untuk tipe konsumen WhatsApp
+*WAITING_APPROVAL hanya untuk tipe konsumen Online
 ```
 
 ### Alur RETAIL (order_type = RETAIL)
@@ -146,8 +147,8 @@ NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED
 | Status | Kapan | Siapa yang Bisa Set |
 |--------|-------|---------------------|
 | ON_HOLD | Kapan saja, untuk investigasi | Owner saja |
-| CANCELLED | Sebelum produksi dimulai (DP dikembalikan) atau setelah produksi (DP hangus) | Owner / Admin Sales |
-| INCIDENT | Saat barang tidak ditemukan di storage | Warehouse (report) |
+| CANCELLED | Sebelum produksi dimulai (DP dikembalikan) atau setelah produksi (DP hangus) | Owner / Admin |
+| INCIDENT | Saat barang tidak ditemukan di storage | Gudang (report) |
 
 ---
 
@@ -166,30 +167,30 @@ NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED
 |----------|-----------------|
 | DRAFT → DESIGNING | Designer Sales |
 | DESIGNING → WAITING_APPROVAL | Designer Sales |
-| WAITING_APPROVAL → APPROVED | Admin Sales |
+| WAITING_APPROVAL → APPROVED | Admin |
 | Walk-in/Makloon → APPROVED | Designer Sales |
 | APPROVED → WAITING_PAYMENT | Sistem otomatis |
-| WAITING_PAYMENT → CONFIRMED | Admin Sales |
-| CONFIRMED → PRODUCTION_ASSIGNED | Supervisor |
+| WAITING_PAYMENT → CONFIRMED | Admin |
+| CONFIRMED → PRODUCTION_ASSIGNED | Admin |
 | PRODUCTION_ASSIGNED → PRODUCTION_STARTED | Operator (via scan) |
 | PRODUCTION_STARTED → PRODUCTION_COMPLETE | Operator (via scan) |
 | PRODUCTION_COMPLETE → QC_PENDING | Sistem otomatis |
-| QC_PENDING → QC_PASSED / QC_FAILED | QC Inspector |
+| QC_PENDING → QC_PASSED / QC_FAILED | Gudang |
 | QC_FAILED → QC_REWORK_PENDING | Sistem otomatis |
-| QC_REWORK_PENDING → REWORK_APPROVED | Owner / Supervisor |
-| QC_PASSED → FINISHING_STARTED | Finishing Staff (via scan) |
-| FINISHING_STARTED → FINISHING_COMPLETE | Finishing Staff (via scan) |
-| FINISHING_COMPLETE → STORAGE_PENDING | Finishing Staff (via scan, serah terima ke Warehouse) / Sistem otomatis |
-| STORAGE_PENDING → STORED | Warehouse Staff (via scan Job QR + Location QR) |
+| QC_REWORK_PENDING → REWORK_APPROVED | Owner saja |
+| QC_PASSED → FINISHING_STARTED | Gudang (via scan) |
+| FINISHING_STARTED → FINISHING_COMPLETE | Gudang (via scan) |
+| FINISHING_COMPLETE → STORAGE_PENDING | Gudang (via scan) / Sistem otomatis |
+| STORAGE_PENDING → STORED | Gudang (via scan Job QR + Location QR) |
 | STORED → READY_FOR_PICKUP | Sistem otomatis |
-| READY_FOR_PICKUP → IN_TRANSIT | Warehouse (via scan) |
-| IN_TRANSIT → PICKED_UP | Admin Sales (via scan) |
+| READY_FOR_PICKUP → IN_TRANSIT | Gudang (via scan) |
+| IN_TRANSIT → PICKED_UP | Admin (via scan) |
 | PICKED_UP → FINAL_AUDIT_PENDING | Sistem otomatis |
-| FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE | Admin Sales (submit hasil GREEN/YELLOW/RED) |
-| FINAL_AUDIT_COMPLETE → CLOSED | Sistem otomatis jika GREEN; Supervisor / Owner approve jika YELLOW |
+| FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE | Admin (submit hasil GREEN/YELLOW/RED) |
+| FINAL_AUDIT_COMPLETE → CLOSED | Sistem otomatis jika GREEN; Owner approve jika YELLOW (Admin submit hasil audit, jadi tidak bisa juga approve) |
 | FINAL_AUDIT_COMPLETE → ON_HOLD | Sistem otomatis jika hasil RED (blokir CLOSED, wajib investigasi Owner) |
 | Kapan saja → ON_HOLD | Owner |
-| Sebelum produksi → CANCELLED | Admin Sales / Owner |
+| Sebelum produksi → CANCELLED | Admin / Owner |
 | Setelah produksi → CANCELLED | Owner saja |
 
 ---
@@ -198,7 +199,7 @@ NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED
 
 | Transisi | Role yang Berhak |
 |----------|-----------------|
-| Buat → NEW_RETAIL_ORDER | Admin Sales, Owner |
-| NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED | Admin Sales (konfirmasi pembayaran) |
+| Buat → NEW_RETAIL_ORDER | Admin, Owner |
+| NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED | Admin (konfirmasi pembayaran) |
 | RETAIL_PAYMENT_COMPLETED → CLOSED | Sistem otomatis (setelah barang diserahkan) |
-| NEW_RETAIL_ORDER → CANCELLED | Admin Sales, Owner (hanya sebelum pembayaran) |
+| NEW_RETAIL_ORDER → CANCELLED | Admin, Owner (hanya sebelum pembayaran) |

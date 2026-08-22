@@ -1,0 +1,216 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  Palette,
+  Settings2,
+  CheckSquare,
+  Package,
+  BarChart2,
+  ShoppingCart,
+  ScanLine,
+  X,
+  Printer,
+  ChevronRight,
+  Tag,
+  LogOut,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+type UserRole =
+  | "admin"
+  | "designer"
+  | "operator"
+  | "qc"
+  | "finishing"
+  | "warehouse"
+  | "supervisor"
+  | "owner"
+  | "pos";
+
+interface NavItem {
+  label: string;
+  href: string;
+  icon: React.ReactNode;
+  roles: UserRole[];
+}
+
+const NAV_ITEMS: NavItem[] = [
+  {
+    label: "Dashboard",
+    href: "/admin",
+    icon: <LayoutDashboard className="h-5 w-5" />,
+    roles: ["admin"],
+  },
+  {
+    label: "Laporan",
+    href: "/admin/reports",
+    icon: <BarChart2 className="h-5 w-5" />,
+    roles: ["admin"],
+  },
+  {
+    label: "POS / Kasir",
+    href: "/pos",
+    icon: <ShoppingCart className="h-5 w-5" />,
+    roles: ["admin"],
+  },
+  {
+    label: "Katalog & Harga",
+    href: "/admin/products",
+    icon: <Tag className="h-5 w-5" />,
+    roles: ["admin"],
+  },
+  {
+    label: "Dashboard",
+    href: "/designer",
+    icon: <Palette className="h-5 w-5" />,
+    roles: ["designer"],
+  },
+  {
+    label: "Dashboard",
+    href: "/operator",
+    icon: <Settings2 className="h-5 w-5" />,
+    roles: ["operator"],
+  },
+  {
+    label: "Quality Control",
+    href: "/qc",
+    icon: <CheckSquare className="h-5 w-5" />,
+    roles: ["qc"],
+  },
+  {
+    label: "Finishing",
+    href: "/finishing",
+    icon: <Package className="h-5 w-5" />,
+    roles: ["finishing"],
+  },
+  {
+    label: "Gudang",
+    href: "/warehouse",
+    icon: <Package className="h-5 w-5" />,
+    roles: ["warehouse"],
+  },
+  {
+    label: "Laporan",
+    href: "/supervisor",
+    icon: <BarChart2 className="h-5 w-5" />,
+    roles: ["supervisor", "owner"],
+  },
+  {
+    label: "Scan QR",
+    href: "/scan",
+    icon: <ScanLine className="h-5 w-5" />,
+    roles: ["admin", "operator", "qc", "finishing", "warehouse"],
+  },
+];
+
+interface SidebarProps {
+  role: UserRole;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function Sidebar({ role, isOpen, onClose }: SidebarProps) {
+  const pathname = usePathname();
+  const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(role));
+
+  return (
+    <>
+      {/* Mobile Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-base/70 backdrop-blur-sm lg:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Sidebar Panel */}
+      <aside
+        className={cn(
+          "fixed top-0 left-0 z-40 h-full w-60 flex flex-col",
+          "bg-card/95 border-r border-border backdrop-blur-xl",
+          "transition-transform duration-300 ease-in-out",
+          isOpen ? "translate-x-0" : "-translate-x-full",
+          "lg:relative lg:translate-x-0 lg:flex"
+        )}
+      >
+        {/* Logo */}
+        <div className="flex items-center justify-between px-5 py-5 border-b border-border">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-accent-teal to-blue-500">
+              <Printer className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <span className="text-base font-bold text-primary tracking-tight">
+                PrintFlow
+              </span>
+              <p className="text-[10px] text-muted -mt-0.5">Manajemen Percetakan</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="lg:hidden text-muted hover:text-primary transition-colors"
+            aria-label="Tutup menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+          {visibleItems.map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onClose}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
+                  isActive
+                    ? "bg-accent-teal/15 text-accent-teal border border-accent-teal/30"
+                    : "text-muted hover:text-primary hover:bg-elevated"
+                )}
+              >
+                <span
+                  className={cn(
+                    "transition-colors",
+                    isActive ? "text-accent-teal" : "text-muted group-hover:text-primary"
+                  )}
+                >
+                  {item.icon}
+                </span>
+                <span className="flex-1">{item.label}</span>
+                {isActive && <ChevronRight className="h-4 w-4 text-accent-teal" />}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Role Badge at Bottom */}
+        <div className="p-4 border-t border-border">
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-elevated">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-status-green animate-pulse" />
+              <span className="text-xs text-muted capitalize">{role}</span>
+            </div>
+            <button 
+              onClick={() => {
+                localStorage.removeItem("userName");
+                localStorage.removeItem("userRole");
+                window.location.href = "/login";
+              }}
+              title="Logout / Ganti User"
+              className="p-1.5 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors cursor-pointer"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+}

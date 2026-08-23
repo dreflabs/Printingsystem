@@ -8,6 +8,9 @@ import { StatusPill } from "@/components/ui";
 
 export default function GudangPage() {
   const jobs = useWorkflowStore(s => s.jobs);
+  const orders = useWorkflowStore(s => s.orders);
+  const updateJobStatus = useWorkflowStore(s => s.updateJobStatus);
+  const updateOrderStatus = useWorkflowStore(s => s.updateOrderStatus);
   
   // Pisahkan data menjadi 2 kelompok utama (sangat simpel)
   // Kiri: Barang yang baru keluar mesin dan perlu di-QC/Finishing
@@ -23,7 +26,7 @@ export default function GudangPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 shrink-0">
         <div>
           <h1 className="text-3xl font-black text-primary tracking-tight">Monitor Finishing</h1>
-          <p className="text-sm text-muted mt-1">Papan antrian visual. Gunakan HP Anda untuk scan & proses barang.</p>
+          <p className="text-sm text-muted mt-1">Papan antrian visual. Gunakan HP Anda untuk scan atau klik tombol di bawah.</p>
         </div>
 
         <Link href="/scan" className="group">
@@ -48,7 +51,7 @@ export default function GudangPage() {
               </div>
               <div>
                 <h2 className="text-xl font-black text-status-yellow">1. MASUK DARI MESIN</h2>
-                <p className="text-xs text-muted font-bold">Ambil Fisik ➔ Scan Barcode di HP</p>
+                <p className="text-xs text-muted font-bold">Proses & Selesaikan Barang</p>
               </div>
             </div>
             <span className="text-3xl font-black text-status-yellow bg-status-yellow/10 px-4 py-1 rounded-2xl border border-status-yellow/30">
@@ -64,7 +67,9 @@ export default function GudangPage() {
                 <p className="font-bold">Tidak ada antrian masuk</p>
               </div>
             ) : (
-              masukQueue.map((job) => (
+              masukQueue.map((job) => {
+                const order = orders.find(o => o.id === job.orderId);
+                return (
                 <div key={job.id} className={cn(
                   "p-5 rounded-2xl border bg-elevated shadow-sm hover:scale-[1.02] transition-transform",
                   job.status === "FINISHING" ? "border-accent-teal shadow-accent-teal/10" :
@@ -77,17 +82,48 @@ export default function GudangPage() {
                     <StatusPill status={job.status} />
                   </div>
                   
+                  <p className="text-[10px] font-bold text-muted uppercase tracking-wider mb-0.5">{order?.customerName || "Tanpa Nama"}</p>
                   <p className="text-xl font-black text-primary leading-tight mb-1">{job.product}</p>
                   <p className="text-sm text-muted font-bold">{job.material} • {job.qty} pcs</p>
                   
-                  <div className="mt-4 p-3 bg-base border border-border rounded-xl">
+                  <div className="mt-4 p-3 bg-base border border-border rounded-xl mb-4">
                     <p className="text-[10px] uppercase font-bold text-status-yellow tracking-wider mb-1 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" /> Instruksi Finishing
                     </p>
                     <p className="font-semibold text-primary">{job.finishing}</p>
                   </div>
+                  
+                  <div className="flex gap-2">
+                    {job.status === "WAITING_QC" && (
+                      <>
+                        <button 
+                          onClick={() => updateJobStatus(job.id, "FINISHING")}
+                          className="flex-1 h-10 bg-accent-teal text-white rounded-lg text-xs font-bold hover:brightness-110 transition-all"
+                        >
+                          Lolos QC
+                        </button>
+                        <button 
+                          onClick={() => updateJobStatus(job.id, "QC_FAILED")}
+                          className="flex-1 h-10 bg-status-red/10 text-status-red border border-status-red/30 rounded-lg text-xs font-bold hover:bg-status-red/20 transition-all"
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
+                    {(job.status === "FINISHING" || job.status === "QC_FAILED") && (
+                      <button 
+                        onClick={() => {
+                          updateJobStatus(job.id, "STORED");
+                          if (order) updateOrderStatus(order.id, "READY_FOR_PICKUP");
+                        }}
+                        className="w-full h-10 bg-gradient-to-r from-status-green to-emerald-500 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:brightness-110 active:scale-95 transition-all"
+                      >
+                        <CheckCircle2 className="h-4 w-4" /> SELESAI & SERAHKAN
+                      </button>
+                    )}
+                  </div>
                 </div>
-              ))
+              )})
             )}
           </div>
         </div>
@@ -120,7 +156,9 @@ export default function GudangPage() {
                 <p className="font-bold">Belum ada barang selesai</p>
               </div>
             ) : (
-              selesaiQueue.map((job) => (
+              selesaiQueue.map((job) => {
+                const order = orders.find(o => o.id === job.orderId);
+                return (
                 <div key={job.id} className="p-4 rounded-2xl border border-status-green/30 bg-status-green/5 shadow-sm flex items-center gap-4">
                   <div className="h-12 w-12 rounded-full bg-status-green/20 flex items-center justify-center shrink-0">
                     <CheckCircle2 className="h-6 w-6 text-status-green" />
@@ -132,11 +170,12 @@ export default function GudangPage() {
                         <span className="text-[9px] font-bold bg-status-green text-white px-1.5 py-0.5 rounded-full">BARU</span>
                       )}
                     </div>
+                    <p className="text-[10px] font-bold text-muted uppercase tracking-wider">{order?.customerName || "Tanpa Nama"}</p>
                     <p className="text-base font-bold text-primary truncate">{job.product}</p>
                     <p className="text-xs text-muted font-semibold">{job.qty} pcs • Selesai Finishing</p>
                   </div>
                 </div>
-              ))
+              )})
             )}
           </div>
         </div>

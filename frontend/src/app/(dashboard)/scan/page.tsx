@@ -126,7 +126,7 @@ export default function ScanPage() {
     
     if (s === "FINISHING") {
       return (
-        <button onClick={() => executeAction("STORED", undefined, "Selesai Finishing, Serahkan ke Admin")} className="w-full h-16 rounded-2xl bg-gradient-to-r from-status-green to-emerald-500 text-white font-black text-lg shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2">
+        <button onClick={() => executeAction("STORED", "READY_FOR_PICKUP", "Selesai Finishing, Serahkan ke Admin")} className="w-full h-16 rounded-2xl bg-gradient-to-r from-status-green to-emerald-500 text-white font-black text-lg shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2">
           <CheckCircle2 className="h-6 w-6" /> SELESAI & SERAHKAN ADMIN
         </button>
       );

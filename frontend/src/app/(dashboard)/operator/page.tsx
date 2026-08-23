@@ -333,7 +333,89 @@ export default function OperatorPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Kolom Kiri: Active Jobs (Batch) */}
+        {/* Kolom Kiri: Antrian */}
+        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-3xl shadow-sm flex flex-col h-full max-h-[800px] overflow-hidden">
+          <div className="p-5 border-b border-border bg-card/50">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Timer className="h-5 w-5 text-status-yellow" />
+                <h2 className="text-lg font-bold text-primary">Antrian Masuk</h2>
+                <span className="px-2.5 py-1 rounded-full text-xs font-black bg-status-yellow text-black">{queueJobs.length}</span>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <select 
+                value={queueFilter} onChange={(e) => setQueueFilter(e.target.value as any)}
+                className="flex-1 h-10 bg-elevated border border-border rounded-xl text-xs font-bold text-primary px-3 outline-none focus:border-accent-teal cursor-pointer"
+              >
+                <option value="SEMUA">Semua Antrian</option>
+                <option value="HARI_INI">Deadline Hari Ini</option>
+              </select>
+              
+              {selectedQueueIds.length > 0 && (
+                <button 
+                  onClick={handleStartBatch}
+                  disabled={printingJobs.length > 0} // Can only start if machine is empty
+                  className="px-4 bg-accent-teal text-white rounded-xl text-xs font-black hover:brightness-110 disabled:opacity-40 disabled:grayscale transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  GABUNG ({selectedQueueIds.length})
+                </button>
+              )}
+            </div>
+            {printingJobs.length > 0 && selectedQueueIds.length > 0 && (
+               <p className="text-[10px] text-status-red mt-2 font-medium">* Selesaikan batch aktif terlebih dahulu sebelum memulai yang baru.</p>
+            )}
+          </div>
+          
+          <div className="overflow-y-auto flex-1 p-2 space-y-2 custom-scrollbar">
+            {queueJobs.filter(j => {
+              if (queueFilter === "HARI_INI") {
+                const order = orders.find(o => o.id === j.orderId);
+                const today = new Date().toISOString().split("T")[0];
+                return order?.deadline === today;
+              }
+              return true;
+            }).map((j) => {
+              const isSelected = selectedQueueIds.includes(j.id);
+              const order = orders.find(o => o.id === j.orderId);
+              return (
+              <div 
+                key={j.id} 
+                onClick={() => toggleSelect(j.id)}
+                className={cn(
+                  "bg-base border rounded-2xl p-4 flex items-start gap-4 cursor-pointer transition-all",
+                  isSelected ? "border-accent-teal bg-accent-teal/5" : "border-border/50 hover:border-accent-teal/50"
+                )}
+              >
+                <div className={cn(
+                  "h-6 w-6 mt-1 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors",
+                  isSelected ? "border-accent-teal bg-accent-teal text-white" : "border-muted/50 bg-base text-transparent"
+                )}>
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-bold text-muted uppercase tracking-wider mb-0.5">{order?.customerName || "Tanpa Nama"}</p>
+                  <p className={cn("font-bold text-base truncate leading-tight mb-1", isSelected ? "text-accent-teal" : "text-primary")}>{j.product}</p>
+                  <p className="text-xs font-medium text-muted truncate">{j.material} • {j.width}x{j.height}cm</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xl font-black text-primary">{j.qty} <span className="text-[10px] font-medium text-muted">pcs</span></p>
+                </div>
+              </div>
+              );
+            })}
+            
+            {queueJobs.length === 0 && (
+              <div className="p-8 text-center text-muted text-sm flex flex-col items-center">
+                <Timer className="h-10 w-10 opacity-20 mb-2" />
+                Tidak ada antrian lain.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Kolom Kanan: Active Jobs (Batch) */}
         <div className="lg:col-span-2 space-y-6">
           {printingJobs.length > 0 ? (
             <div className="bg-card border-2 border-status-blue/30 rounded-3xl overflow-hidden shadow-lg shadow-status-blue/5">
@@ -353,125 +435,49 @@ export default function OperatorPage() {
               
               <div className="p-6">
                 <div className="space-y-3 mb-8">
-                  {printingJobs.map(job => (
-                    <div key={job.id} className="bg-base border border-border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                  {printingJobs.map(job => {
+                    const order = orders.find(o => o.id === job.orderId);
+                    return (
+                    <div key={job.id} className="bg-base border border-border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-4 hover:border-status-blue/30 transition-colors">
                       <div className="h-12 w-12 rounded-xl bg-elevated flex items-center justify-center shrink-0 border border-border">
                         <ImageIcon className="h-5 w-5 text-muted" />
                       </div>
                       <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-bold text-status-blue uppercase tracking-wider mb-0.5">{order?.customerName || "Tanpa Nama"}</p>
                         <p className="font-bold text-primary text-base truncate">{job.product}</p>
                         <p className="text-xs font-medium text-muted mt-1">{job.id} · {job.material} · {job.finishing}</p>
                       </div>
-                      <div className="text-left sm:text-right shrink-0">
-                        <p className="text-sm font-medium text-muted">Target Qty</p>
-                        <p className="text-xl font-black text-primary">{job.qty} <span className="text-sm">pcs</span></p>
+                      <div className="text-left sm:text-right shrink-0 bg-elevated p-3 rounded-xl border border-border">
+                        <p className="text-[10px] font-bold text-muted uppercase">Target Qty</p>
+                        <p className="text-2xl font-black text-primary">{job.qty} <span className="text-sm">pcs</span></p>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
 
                 <button
                   onClick={() => setShowDoneModal(true)}
-                  className="w-full h-16 rounded-2xl bg-gradient-to-r from-status-green to-emerald-500 text-white text-lg font-black shadow-lg shadow-status-green/20 hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-2"
+                  className="w-full h-16 rounded-2xl bg-gradient-to-r from-status-green to-emerald-500 text-white text-lg font-black shadow-lg shadow-status-green/20 hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
                   <CheckCircle2 className="h-6 w-6" />
-                  SELESAI CETAK SEMUA
+                  SELESAI CETAK BATCH INI
                 </button>
               </div>
             </div>
           ) : (
             <div className="bg-card/70 backdrop-blur-xl border border-border rounded-3xl p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
-              <div className="w-20 h-20 bg-elevated rounded-full flex items-center justify-center mb-4">
-                <Layers className="h-10 w-10 text-muted" />
+              <div className="w-20 h-20 bg-elevated rounded-full flex items-center justify-center mb-4 border border-dashed border-border">
+                <Layers className="h-10 w-10 text-muted/50" />
               </div>
-              <h2 className="text-xl font-bold text-primary mb-2">Mesin Sedang Nganggur</h2>
-              <p className="text-muted max-w-sm">Pilih pesanan dari antrian di samping dan klik "Gabung Cetak" untuk mulai bekerja.</p>
+              <h2 className="text-xl font-bold text-primary mb-2">Mesin Sedang Berhenti</h2>
+              <p className="text-muted max-w-sm">Pilih pesanan dari antrian di sebelah kiri lalu klik tombol <strong className="text-accent-teal">Gabung</strong> untuk mulai bekerja.</p>
             </div>
           )}
 
           {/* Scan CTA */}
           <button className="w-full h-16 rounded-2xl bg-elevated border-2 border-dashed border-accent-teal/40 text-accent-teal font-bold text-lg flex items-center justify-center gap-3 hover:bg-accent-teal/10 hover:border-accent-teal transition-all cursor-pointer shadow-sm">
-            <ScanLine className="h-6 w-6" /> SCAN TIKET SPK
+            <ScanLine className="h-6 w-6" /> SCAN TIKET SPK MANUAL
           </button>
-        </div>
-
-        {/* Kolom Kanan: Antrian */}
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-3xl shadow-sm flex flex-col h-full max-h-[800px] overflow-hidden">
-          <div className="p-5 border-b border-border bg-card/50">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Timer className="h-5 w-5 text-status-yellow" />
-                <h2 className="text-lg font-bold text-primary">Antrian</h2>
-                <span className="px-2.5 py-1 rounded-full text-xs font-black bg-status-yellow text-black">{queueJobs.length}</span>
-              </div>
-            </div>
-            
-            <div className="flex gap-2">
-              <select 
-                value={queueFilter} onChange={(e) => setQueueFilter(e.target.value as any)}
-                className="flex-1 h-10 bg-elevated border border-border rounded-xl text-xs font-bold text-primary px-3 outline-none focus:border-accent-teal cursor-pointer"
-              >
-                <option value="SEMUA">Semua Antrian</option>
-                <option value="HARI_INI">Deadline Hari Ini</option>
-              </select>
-              
-              {selectedQueueIds.length > 0 && (
-                <button 
-                  onClick={handleStartBatch}
-                  disabled={printingJobs.length > 0} // Can only start if machine is empty
-                  className="px-4 bg-accent-teal text-white rounded-xl text-xs font-black hover:brightness-110 disabled:opacity-40 disabled:grayscale transition-all flex items-center gap-1"
-                >
-                  GABUNG ({selectedQueueIds.length})
-                </button>
-              )}
-            </div>
-            {printingJobs.length > 0 && selectedQueueIds.length > 0 && (
-               <p className="text-[10px] text-status-red mt-2 font-medium">* Selesaikan batch aktif terlebih dahulu sebelum memulai yang baru.</p>
-            )}
-          </div>
-          
-          <div className="overflow-y-auto flex-1 p-2 space-y-2">
-            {queueJobs.filter(j => {
-              if (queueFilter === "HARI_INI") {
-                const order = orders.find(o => o.id === j.orderId);
-                const today = new Date().toISOString().split("T")[0];
-                return order?.deadline === today;
-              }
-              return true;
-            }).map((j) => {
-              const isSelected = selectedQueueIds.includes(j.id);
-              return (
-              <div 
-                key={j.id} 
-                onClick={() => toggleSelect(j.id)}
-                className={cn(
-                  "bg-base border rounded-2xl p-4 flex items-center gap-4 cursor-pointer transition-all",
-                  isSelected ? "border-accent-teal bg-accent-teal/5" : "border-border/50 hover:border-accent-teal/50"
-                )}
-              >
-                <div className={cn(
-                  "h-6 w-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors",
-                  isSelected ? "border-accent-teal bg-accent-teal text-white" : "border-muted/50 bg-base text-transparent"
-                )}>
-                  <CheckCircle2 className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className={cn("font-bold text-base truncate mb-1", isSelected ? "text-accent-teal" : "text-primary")}>{j.product}</p>
-                  <p className="text-xs font-medium text-muted truncate">{j.material}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-black text-primary">{j.qty} <span className="text-[10px] font-medium text-muted">pcs</span></p>
-                </div>
-              </div>
-              );
-            })}
-            
-            {queueJobs.length === 0 && (
-              <div className="p-8 text-center text-muted text-sm">
-                Tidak ada antrian lain.
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </div>

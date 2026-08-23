@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 // ─── Status Types ─────────────────────────────────────────────────────────────
 export type JobStatus = 
@@ -199,17 +200,19 @@ const INITIAL_RETAIL_PRODUCTS: RetailProduct[] = [
 ];
 
 // ─── Store ────────────────────────────────────────────────────────────────────
-export const useWorkflowStore = create<WorkflowState>((set) => ({
-  orders: INITIAL_ORDERS,
-  jobs: INITIAL_JOBS,
-  inventory: INITIAL_INVENTORY,
-  retailProducts: INITIAL_RETAIL_PRODUCTS,
+export const useWorkflowStore = create<WorkflowState>()(
+  persist(
+    (set) => ({
+      orders: INITIAL_ORDERS,
+      jobs: INITIAL_JOBS,
+      inventory: INITIAL_INVENTORY,
+      retailProducts: INITIAL_RETAIL_PRODUCTS,
 
-  addOrderAndJob: (order, job) =>
-    set((state) => ({
-      orders: [order, ...state.orders],
-      jobs: [job, ...state.jobs]
-    })),
+      addOrderAndJob: (order, job) =>
+        set((state) => ({
+          orders: [order, ...state.orders],
+          jobs: [job, ...state.jobs]
+        })),
 
   updateOrderStatus: (orderId, status) =>
     set((state) => ({
@@ -290,4 +293,8 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
         ...state.logs
       ]
     }))
-}));
+  }),
+  {
+    name: 'printpilot-workflow-storage', // name of item in the storage (must be unique)
+  }
+));

@@ -134,9 +134,9 @@ function Step1({ form, onChange }: { form: OrderForm; onChange: (k: keyof OrderF
         value={form.orderType}
         onChange={(e) => onChange("orderType", e.target.value)}
         options={[
-          { label: "Walk-in (Langsung datang)", value: "walkin" },
-          { label: "Online (WA / Media Sosial)", value: "online" },
-          { label: "Makloon (Film/File dari konsumen)", value: "makloon" },
+          { label: "Walk-in (Langsung datang)", value: "Walk-in" },
+          { label: "Online (WA / Media Sosial)", value: "Online" },
+          { label: "Makloon (Film/File dari konsumen)", value: "Makloon" },
         ]}
       />
       <Select

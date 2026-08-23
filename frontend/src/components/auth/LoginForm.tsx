@@ -6,11 +6,11 @@ import Link from "next/link";
 import { signIn } from "next-auth/react";
 
 const DEMO_ACCOUNTS = [
-  { role: "owner", name: "Pak Hendra", title: "Owner", user: "owner", pass: "owner123", path: "/owner", color: "border-accent-teal/40 text-accent-teal bg-accent-teal/10" },
+  { role: "owner", name: "Pak Hendra", title: "Owner / Pimpinan", user: "owner", pass: "owner123", path: "/owner", color: "border-status-purple/40 text-status-purple bg-status-purple/10" },
   { role: "admin", name: "Rere", title: "Admin", user: "admin", pass: "admin123", path: "/admin", color: "border-accent-teal/40 text-accent-teal bg-accent-teal/10" },
   { role: "designer", name: "Ayu", title: "Designer", user: "designer", pass: "designer123", path: "/designer", color: "border-status-blue/40 text-status-blue bg-status-blue/10" },
-  { role: "operator", name: "Budi", title: "Operator", user: "operator", pass: "operator123", path: "/operator", color: "border-status-blue/40 text-status-blue bg-status-blue/10" },
-  { role: "gudang", name: "Fajar", title: "Gudang (QC, Finishing & Storage)", user: "gudang", pass: "gudang123", path: "/gudang", color: "border-status-green/40 text-status-green bg-status-green/10" },
+  { role: "operator", name: "Budi", title: "Operator (Cetak Mesin Besar)", user: "operator", pass: "operator123", path: "/operator", color: "border-status-blue/40 text-status-blue bg-status-blue/10" },
+  { role: "gudang", name: "Fajar", title: "Finishing (QC & Storage)", user: "gudang", pass: "gudang123", path: "/gudang", color: "border-status-green/40 text-status-green bg-status-green/10" },
 ];
 
 export function LoginForm() {

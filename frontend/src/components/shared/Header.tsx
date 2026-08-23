@@ -9,8 +9,8 @@ import { ProfileModal } from "./ProfileModal";
 const ROLE_OPTIONS = [
   { role: "admin", label: "Admin", user: "Rere (Admin)", path: "/admin" },
   { role: "designer_sales", label: "Designer Sales", user: "Ayu (Designer)", path: "/designer" },
-  { role: "operator", label: "Operator Mesin", user: "Budi (Operator)", path: "/operator" },
-  { role: "gudang", label: "Gudang", user: "Fajar (Gudang)", path: "/gudang" },
+  { role: "operator", label: "Operator Cetak", user: "Budi (Operator)", path: "/operator" },
+  { role: "gudang", label: "Finishing", user: "Fajar (Finishing)", path: "/gudang" },
   { role: "owner", label: "Owner", user: "Pak Hendra (Owner)", path: "/owner" },
 ];
 

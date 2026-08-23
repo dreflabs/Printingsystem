@@ -113,6 +113,7 @@ export default function OwnerPage() {
   const jobs = useWorkflowStore((s) => s.jobs);
   const inventory = useWorkflowStore((s) => s.inventory);
   const updateJobStatus = useWorkflowStore((s) => s.updateJobStatus);
+  const logs = useWorkflowStore((s) => s.logs);
 
   // KPI — sesuai dokumen DASHBOARD.md
   const today = new Date().toDateString();
@@ -126,7 +127,15 @@ export default function OwnerPage() {
   // Alert data
   const qcFailed = jobs.filter((j) => j.status === "QC_FAILED");
   const overdue = orders.filter((o) => o.overdue);
-  const lowStock = inventory.filter((i) => i.stock < 100);
+  
+  const lowStock = inventory.filter((i) => {
+    // Abaikan bahan serep/potongan (yang bukan gulungan master 3m) dari peringatan stok menipis
+    if (i.unit === "roll" && !i.name.includes("3m")) return false;
+    
+    // Threshold berbeda: Roll beri alert jika < 2, satuan lain jika < 100
+    if (i.unit === "roll") return i.stock < 2;
+    return i.stock < 100;
+  });
 
   // Pipeline counts
   const pipeline = [
@@ -134,7 +143,7 @@ export default function OwnerPage() {
     { label: "Cetak", count: jobs.filter((j) => j.status === "WAITING_PRINT" || j.status === "PRINTING").length, color: "bg-accent-teal" },
     { label: "QC", count: jobs.filter((j) => j.status === "WAITING_QC").length, color: "bg-status-yellow" },
     { label: "Finishing", count: jobs.filter((j) => j.status === "QC_PASSED" || j.status === "FINISHING").length, color: "bg-accent-teal" },
-    { label: "Gudang", count: jobs.filter((j) => j.status === "STORED").length, color: "bg-status-green" },
+    { label: "Finishing & QC", count: jobs.filter((j) => j.status === "STORED").length, color: "bg-status-green" },
     { label: "Siap Ambil", count: readyPickup, color: "bg-status-green", glow: true },
   ];
 
@@ -341,7 +350,7 @@ export default function OwnerPage() {
             <p className="text-muted truncate">· Kertas Art Carton 260g (15 lbr) oleh <span className="font-semibold text-primary">Fajar</span></p>
             <p className="text-muted truncate">· Tinta Cyan (500ml) oleh <span className="font-semibold text-primary">Deni</span></p>
             <button className="w-full py-1.5 rounded-lg bg-status-red/10 text-status-red font-bold hover:bg-status-red/20 transition-all cursor-pointer">
-              Tinjau Audit Gudang
+              Tinjau Audit Finishing
             </button>
           </div>
 
@@ -360,9 +369,9 @@ export default function OwnerPage() {
 
           {/* Anomaly: Manual Adjustment */}
           <div className="p-3 bg-status-yellow/5 border border-status-yellow/30 rounded-xl text-xs space-y-2">
-            <span className="font-bold text-status-yellow flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5" /> Manual Adjustment (Gudang)</span>
+            <span className="font-bold text-status-yellow flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5" /> Manual Adjustment (Finishing)</span>
             <p className="text-muted">· HVS A4 80g (-500 lbr) tanpa keterangan.</p>
-            <p className="text-[10px] text-muted">Pelaku: Eko (Gudang)</p>
+            <p className="text-[10px] text-muted">Pelaku: Eko (Finishing)</p>
             <button className="w-full py-1.5 rounded-lg bg-status-yellow/10 text-status-yellow font-bold hover:bg-status-yellow/20 transition-all cursor-pointer">
               Tanya Penanggung Jawab
             </button>
@@ -531,7 +540,19 @@ export default function OwnerPage() {
             <span className="text-[10px] text-muted font-mono bg-elevated px-2 py-0.5 rounded border border-border">10 aksi</span>
           </div>
           <div className="flex-1 divide-y divide-border/50 overflow-y-auto max-h-[520px]">
-            {AUDIT_LOG.map((log, i) => (
+            {logs.length > 0 ? logs.map((log) => (
+              <div key={log.id} className="px-4 py-3 hover:bg-elevated/30 transition-colors">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-mono text-muted">{new Date(log.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-status-blue/10 text-status-blue">
+                    {log.operator}
+                  </span>
+                </div>
+                <p className="text-xs font-semibold text-primary">{log.title}</p>
+                <p className="text-[10px] text-accent-teal font-mono mt-0.5">{log.type}</p>
+                <p className="text-[10px] text-muted truncate">{log.description}</p>
+              </div>
+            )) : AUDIT_LOG.map((log, i) => (
               <div key={i} className="px-4 py-3 hover:bg-elevated/30 transition-colors">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] font-mono text-muted">{log.time}</span>

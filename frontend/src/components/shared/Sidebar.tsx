@@ -73,7 +73,7 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["operator"],
   },
   {
-    label: "Gudang",
+    label: "Finishing",
     href: "/gudang",
     icon: <Package className="h-5 w-5" />,
     roles: ["gudang"],

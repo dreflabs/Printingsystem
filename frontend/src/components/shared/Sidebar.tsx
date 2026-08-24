@@ -73,7 +73,7 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["operator"],
   },
   {
-    label: "Finishing",
+    label: "Gudang",
     href: "/gudang",
     icon: <Package className="h-5 w-5" />,
     roles: ["gudang"],
@@ -132,7 +132,7 @@ export function Sidebar({ role, isOpen, onClose }: SidebarProps) {
         <div className="flex items-center justify-between px-5 py-5 border-b border-border">
           <div className="flex items-center gap-2.5">
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden shrink-0">
-              <img src="/logo-sarjana.png" alt="Print Pilot" className="h-full w-full object-contain" />
+              <img src="/PRINT_PILOT_LOGO.png" alt="Print Pilot" className="h-full w-full object-contain" />
             </div>
             <div>
               <span className="text-base font-bold text-primary tracking-tight">
@@ -153,7 +153,10 @@ export function Sidebar({ role, isOpen, onClose }: SidebarProps) {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           {visibleItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+            const isExactRoot = ["/admin", "/owner", "/designer", "/operator", "/gudang"].includes(item.href);
+            const isActive = isExactRoot
+              ? pathname === item.href
+              : pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}
@@ -183,33 +186,19 @@ export function Sidebar({ role, isOpen, onClose }: SidebarProps) {
 
         {/* Role Badge at Bottom */}
         <div className="p-4 border-t border-border">
-          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-elevated border border-border">
-            <div className="flex items-center gap-2 flex-1">
-              <div className="h-2 w-2 rounded-full bg-status-green animate-pulse shrink-0" />
-              <select 
-                value={role}
-                onChange={(e) => {
-                  localStorage.setItem("userRole", e.target.value);
-                  localStorage.setItem("userName", `Akun ${e.target.value}`);
-                  window.location.href = `/${e.target.value === "gudang" ? "gudang" : e.target.value}`;
-                }}
-                className="bg-transparent text-xs text-primary font-bold capitalize outline-none cursor-pointer w-full appearance-none"
-              >
-                <option value="admin">👨‍💼 Admin Depan</option>
-                <option value="designer">🎨 Designer</option>
-                <option value="operator">⚙️ Operator Cetak</option>
-                <option value="gudang">📦 Finishing (Gudang)</option>
-                <option value="owner">👑 Owner</option>
-              </select>
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-elevated">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-status-green animate-pulse" />
+              <span className="text-xs text-muted capitalize">{role}</span>
             </div>
-            <button 
+            <button
               onClick={() => {
                 localStorage.removeItem("userName");
                 localStorage.removeItem("userRole");
                 window.location.href = "/login";
               }}
               title="Logout / Ganti User"
-              className="p-1.5 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors cursor-pointer ml-2 shrink-0"
+              className="p-1.5 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors cursor-pointer"
             >
               <LogOut className="h-4 w-4" />
             </button>

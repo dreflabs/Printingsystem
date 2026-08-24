@@ -15,7 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 
 function deadlineClass(deadline: string, overdue: boolean) {
-  if (overdue) return "text-status-red font-semibold";
+  if (overdue) return "text-status-red font-bold";
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const d = new Date(deadline);
@@ -26,9 +26,9 @@ function deadlineClass(deadline: string, overdue: boolean) {
 function payStatusLabel(o: Order) {
   const total = Number(o.totalPrice);
   const dp = Number(o.dpAmount);
-  if (dp >= total) return { label: "Lunas", color: "text-status-green" };
-  if (dp > 0) return { label: "DP Terpenuhi", color: "text-status-yellow" };
-  return { label: "Belum DP", color: "text-muted" };
+  if (dp >= total) return { label: "Lunas", color: "text-status-green font-medium" };
+  if (dp > 0) return { label: "DP Terpenuhi", color: "text-status-yellow font-medium" };
+  return { label: "Belum DP", color: "text-status-yellow font-medium" };
 }
 
 const fmt = (n: number) => n.toLocaleString("id-ID");
@@ -63,7 +63,7 @@ function FinalAuditModal({ orderId, onClose }: { orderId: string; onClose: () =>
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl shadow-[0_8px_56px_rgba(0,0,0,0.6)] flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-5 border-b border-border shrink-0">
           <div>
             <h3 className="text-base font-bold text-primary flex items-center gap-2">
@@ -88,11 +88,11 @@ function FinalAuditModal({ orderId, onClose }: { orderId: string; onClose: () =>
                   <div className="flex gap-2">
                     <button onClick={() => setItem(item.id, "PASS")}
                       className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border",
-                        auditResult[item.id] === "PASS" ? "bg-status-green text-white border-status-green" : "bg-elevated/50 text-muted border-border hover:text-primary"
+                        auditResult[item.id] === "PASS" ? "bg-status-green text-white border-status-green" : "bg-card text-muted border-border hover:text-primary"
                       )}>✅ PASS</button>
                     <button onClick={() => setItem(item.id, "FAIL")}
                       className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border",
-                        auditResult[item.id] === "FAIL" ? "bg-status-red text-white border-status-red" : "bg-elevated/50 text-muted border-border hover:text-primary"
+                        auditResult[item.id] === "FAIL" ? "bg-status-red text-white border-status-red" : "bg-card text-muted border-border hover:text-primary"
                       )}>❌ FAIL</button>
                   </div>
                 </div>
@@ -116,7 +116,7 @@ function FinalAuditModal({ orderId, onClose }: { orderId: string; onClose: () =>
               <button
                 disabled={!allChecked}
                 onClick={handleSubmit}
-                className="flex-1 h-11 rounded-xl bg-gradient-to-r from-accent-teal to-blue-600 text-white text-sm font-bold hover:brightness-110 transition-all cursor-pointer disabled:opacity-40"
+                className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:bg-blue-700 transition-all cursor-pointer disabled:opacity-40"
               >
                 Submit Audit
               </button>
@@ -125,7 +125,7 @@ function FinalAuditModal({ orderId, onClose }: { orderId: string; onClose: () =>
         ) : (
           <div className="p-8 text-center space-y-4">
             <div className={cn("h-16 w-16 rounded-full flex items-center justify-center mx-auto text-2xl",
-              finalResult === "GREEN" ? "bg-status-green/20" : "bg-status-yellow/20"
+              finalResult === "GREEN" ? "bg-status-green/10 text-status-green" : "bg-status-yellow/10 text-status-yellow"
             )}>
               {finalResult === "GREEN" ? "🟢" : "🟡"}
             </div>
@@ -135,7 +135,7 @@ function FinalAuditModal({ orderId, onClose }: { orderId: string; onClose: () =>
                 ? "Semua aspek PASS. Order dapat di-CLOSE."
                 : "Ada item FAIL. Menunggu approval Owner."}
             </p>
-            <button onClick={onClose} className="w-full h-11 rounded-xl bg-status-green text-white text-sm font-bold hover:brightness-110 cursor-pointer">
+            <button onClick={onClose} className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:bg-blue-700 cursor-pointer">
               Selesai
             </button>
           </div>
@@ -148,20 +148,21 @@ function FinalAuditModal({ orderId, onClose }: { orderId: string; onClose: () =>
 // ── WA Approval Modal ──────────────────────────────────────────────────────────
 function WAApprovalModal({ onClose }: { onClose: () => void }) {
   const [confirmed, setConfirmed] = useState<"yes" | "no" | null>(null);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-5">
+      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-xl space-y-5">
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-base font-bold text-primary flex items-center gap-2">
-              <MessageCircleCheck className="h-5 w-5 text-status-green" /> Konfirmasi Approval Desain Online
+              <MessageCircleCheck className="h-5 w-5 text-accent-teal" /> Konfirmasi Approval Desain Online
             </h3>
             <p className="text-xs text-muted mt-0.5">ORD-20260820-0023 · Budi Santoso · Online</p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary cursor-pointer"><X className="h-4 w-4" /></button>
         </div>
-        <div className="bg-elevated/60 border border-border rounded-xl p-4 space-y-2 text-xs">
+        <div className="bg-elevated border border-border rounded-xl p-4 space-y-2 text-xs">
           <p className="font-semibold text-primary">Preview Desain V2 telah dikirim ke konsumen via WhatsApp</p>
           <p className="text-muted">Dikirim: Sabtu, 22 Agt 2026 · 14:30 WIB</p>
           <p className="text-muted">Konfirmasi persetujuan dilakukan secara manual oleh Admin berdasarkan percakapan WA.</p>
@@ -171,11 +172,11 @@ function WAApprovalModal({ onClose }: { onClose: () => void }) {
             <p className="text-xs text-muted font-medium">Apakah konsumen sudah menyetujui desain ini via WhatsApp?</p>
             <div className="flex gap-3">
               <button onClick={() => setConfirmed("no")}
-                className="flex-1 h-11 rounded-xl bg-status-red/10 text-status-red text-sm font-bold hover:bg-status-red/20 cursor-pointer flex items-center justify-center gap-1.5">
+                className="flex-1 h-11 rounded-xl bg-status-yellow/10 text-status-yellow border border-status-yellow/30 text-sm font-semibold hover:bg-status-yellow/20 cursor-pointer flex items-center justify-center gap-1.5">
                 <XCircle className="h-4 w-4" /> Belum / Revisi
               </button>
               <button onClick={() => setConfirmed("yes")}
-                className="flex-1 h-11 rounded-xl bg-status-green text-white text-sm font-bold hover:brightness-110 cursor-pointer flex items-center justify-center gap-1.5">
+                className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-semibold hover:bg-blue-700 cursor-pointer flex items-center justify-center gap-1.5">
                 <CheckCircle2 className="h-4 w-4" /> Sudah ACC
               </button>
             </div>
@@ -184,7 +185,7 @@ function WAApprovalModal({ onClose }: { onClose: () => void }) {
           <div className="p-4 bg-status-green/10 border border-status-green/30 rounded-xl text-center space-y-2">
             <CheckCircle2 className="h-8 w-8 text-status-green mx-auto" />
             <p className="text-sm font-bold text-status-green">Desain disetujui! Order lanjut ke produksi.</p>
-            <button onClick={onClose} className="w-full h-10 rounded-xl bg-status-green text-white text-sm font-bold hover:brightness-110 cursor-pointer">
+            <button onClick={onClose} className="w-full h-10 rounded-xl bg-accent-teal text-white text-sm font-bold hover:bg-blue-700 cursor-pointer">
               Tutup
             </button>
           </div>
@@ -231,12 +232,12 @@ export default function AdminDashboardPage() {
   const readyJobs = jobs.filter((j) => j.status === "STORED");
 
   const KPI_DATA = [
-    { label: "Order Baru Hari Ini", value: newOrdersToday.toString(), icon: ShoppingCart, color: "text-accent-teal", bg: "bg-accent-teal/10", filter: "" as const },
-    { label: "Menunggu Pembayaran", value: waitingPayment.toString(), icon: Clock, color: "text-status-yellow", bg: "bg-status-yellow/10", filter: "WAITING_PAYMENT" as const },
-    { label: "Siap Diambil", value: readyPickup.toString(), icon: Package, color: "text-status-green", bg: "bg-status-green/10", filter: "READY_FOR_PICKUP" as const },
-    { label: "Overdue", value: overdue.toString(), icon: AlertTriangle, color: "text-status-red", bg: "bg-status-red/10", filter: "OVERDUE" as const },
-    { label: "Notif WA Gagal", value: "2", icon: MessageSquareX, color: "text-status-red", bg: "bg-status-red/10", filter: "" as const },
-    { label: "Menunggu Diskon", value: "1", icon: BadgePercent, color: "text-status-yellow", bg: "bg-status-yellow/10", filter: "" as const },
+    { label: "Order Baru Hari Ini", value: newOrdersToday.toString(), dot: "bg-blue-600", isUrgent: false, filter: "" as const },
+    { label: "Menunggu Bayar", value: waitingPayment.toString(), dot: "bg-amber-500", isUrgent: false, filter: "WAITING_PAYMENT" as const },
+    { label: "Siap Diambil", value: readyPickup.toString(), dot: "bg-emerald-500", isUrgent: false, filter: "READY_FOR_PICKUP" as const },
+    { label: "Overdue", value: overdue.toString(), dot: "bg-red-600 animate-pulse", isUrgent: true, filter: "OVERDUE" as const },
+    { label: "Notif WA Gagal", value: "2", dot: "bg-red-600 animate-pulse", isUrgent: true, filter: "" as const },
+    { label: "Menunggu Diskon", value: "1", dot: "bg-amber-500", isUrgent: false, filter: "" as const },
   ];
 
   // Filter dengan multi-parameter
@@ -250,7 +251,7 @@ export default function AdminDashboardPage() {
     const matchSearch = o.customerName.toLowerCase().includes(searchQuery.toLowerCase())
       || o.id.toLowerCase().includes(searchQuery.toLowerCase());
     const matchOverdue = statusFilter === "OVERDUE" ? o.overdue : true;
-    return matchStatus && matchType && matchPay && matchSearch;
+    return matchStatus && matchType && matchPay && matchSearch && matchOverdue;
   });
 
   const openDetail = (order: Order) => { setSelectedOrder(order); setShowDetail(true); };
@@ -265,6 +266,8 @@ export default function AdminDashboardPage() {
     setAuditOrderId(orderId);
     setShowFinalAudit(true);
   };
+
+  const hasUrgentItems = overdue > 0 || true; // 2 WA fail mock
 
   return (
     <div className="space-y-6">
@@ -306,53 +309,91 @@ export default function AdminDashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <a href="/scan" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary hover:border-accent-teal/50 transition-all">
-            <ScanLine className="h-4 w-4" /> Scan QR
+          <a href="/scan" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-border text-sm text-primary hover:bg-elevated hover:border-accent-teal/40 transition-all shadow-sm">
+            <ScanLine className="h-4 w-4 text-accent-teal" /> Scan QR
           </a>
-          <a href="/pos" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary hover:border-accent-teal/50 transition-all">
-            <ShoppingCart className="h-4 w-4" /> Kasir POS
+          <a href="/pos" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-border text-sm text-primary hover:bg-elevated hover:border-accent-teal/40 transition-all shadow-sm">
+            <ShoppingCart className="h-4 w-4 text-accent-teal" /> Kasir POS
           </a>
           <button
             id="btn-order-baru"
             onClick={() => setShowOrderModal(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-blue-500 text-white text-sm font-semibold shadow-lg shadow-accent-teal/20 hover:brightness-110 transition-all"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent-teal text-white text-sm font-semibold shadow-sm hover:bg-blue-700 hover:shadow-md transition-all cursor-pointer"
           >
             <Plus className="h-4 w-4" /> Order Baru
           </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* 🚨 1. BANNER PRIORITAS URGENT (OVERDUE + WA GAGAL) */}
+      {hasUrgentItems && (
+        <div className="bg-red-50/70 border border-red-200 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-status-red/10 text-status-red flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-primary flex items-center gap-2">
+                Item Urgent Memerlukan Tindakan Segera
+              </h2>
+              <p className="text-xs text-muted mt-0.5">
+                {overdue > 0 ? `${overdue} order telah melewati batas deadline.` : "Semua order masih dalam batas waktu."} 2 notifikasi status pelanggan gagal terkirim via WhatsApp.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 shrink-0 w-full md:w-auto">
+            {overdue > 0 && (
+              <button
+                onClick={() => setStatusFilter("OVERDUE")}
+                className="flex-1 md:flex-initial px-3.5 py-1.5 rounded-lg bg-status-red text-white text-xs font-bold hover:bg-red-700 transition-all cursor-pointer"
+              >
+                Lihat Overdue ({overdue})
+              </button>
+            )}
+            <a
+              href="#panel-wa-gagal"
+              className="flex-1 md:flex-initial text-center px-3.5 py-1.5 rounded-lg bg-white border border-red-200 text-status-red text-xs font-bold hover:bg-red-50 transition-all shadow-2xs"
+            >
+              Tinjau WA Gagal (2)
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* 📊 2. 6 CARD STATISTIK NETRAL (DENGAN STATUS DOT & BORDER MERAH TIPIS UNTUK URGENT) */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         {KPI_DATA.map((kpi) => (
           <button
             key={kpi.label}
             onClick={() => setStatusFilter((prev) => prev === kpi.filter ? "" : (kpi.filter as OrderStatus | ""))}
             className={cn(
-              "bg-card/70 backdrop-blur-xl border rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.4)] transition-all text-left",
-              statusFilter === kpi.filter && kpi.filter !== "" ? "border-accent-teal/60 ring-1 ring-accent-teal/30" : "border-border hover:border-accent-teal/30"
+              "bg-card border rounded-2xl p-4 shadow-sm transition-all text-left cursor-pointer",
+              kpi.isUrgent ? "border-red-300 hover:border-red-400 bg-red-50/15" : "border-border hover:border-accent-teal/40",
+              statusFilter === kpi.filter && kpi.filter !== "" && "ring-2 ring-accent-teal/30 border-accent-teal"
             )}
           >
-            <div className={cn("inline-flex p-2 rounded-xl mb-3", kpi.bg)}>
-              <kpi.icon className={cn("h-5 w-5", kpi.color)} />
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-muted font-medium truncate">{kpi.label}</span>
+              <span className={cn("h-2 w-2 rounded-full shrink-0", kpi.dot)} />
             </div>
-            <p className={cn("text-4xl font-bold", kpi.color)}>{kpi.value}</p>
-            <p className="text-xs text-muted mt-1 leading-tight">{kpi.label}</p>
+            <p className={cn("text-2xl md:text-3xl font-bold tracking-tight", kpi.isUrgent ? "text-status-red" : "text-primary")}>
+              {kpi.value}
+            </p>
           </button>
         ))}
       </div>
 
-      {/* Priority Panels — 3 kolom */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Order Siap Diambil */}
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-5 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
+      {/* 📋 3. PRIORITY PANELS (WA GAGAL & ANTRIAN DISKON DIPISAH MENJADI PANEL SENDIRI) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Panel 1: Order Siap Diambil */}
+        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Package className="h-5 w-5 text-status-green" />
               <h2 className="text-base font-semibold text-primary">Siap Diambil</h2>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-green/20 text-status-green border border-status-green/30">{readyJobs.length}</span>
+              <span className="text-xs text-muted font-medium">({readyJobs.length})</span>
             </div>
-            <button onClick={() => setStatusFilter("READY_FOR_PICKUP")} className="text-xs text-accent-teal hover:underline flex items-center gap-1 cursor-pointer">
+            <button onClick={() => setStatusFilter("READY_FOR_PICKUP")} className="text-xs text-accent-teal hover:underline flex items-center gap-1 cursor-pointer font-medium">
               Lihat Semua <ArrowRight className="h-3 w-3" />
             </button>
           </div>
@@ -361,7 +402,7 @@ export default function AdminDashboardPage() {
               const o = orders.find((ord) => ord.id === j.orderId);
               if (!o) return null;
               return (
-                <div key={j.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-elevated hover:bg-elevated/80 transition-colors cursor-pointer" onClick={() => openDetail(o)}>
+                <div key={j.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-elevated hover:bg-elevated/80 transition-colors cursor-pointer border border-border/60" onClick={() => openDetail(o)}>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-primary truncate">{o.customerName}</p>
                     <p className="text-xs text-muted truncate">{o.id}</p>
@@ -376,121 +417,140 @@ export default function AdminDashboardPage() {
                 </div>
               );
             })}
-            {readyJobs.length === 0 && <p className="text-xs text-muted p-3 text-center">Belum ada order siap diambil.</p>}
+            {readyJobs.length === 0 && <p className="text-xs text-muted p-4 text-center">Belum ada order siap diambil.</p>}
           </div>
         </div>
 
-        {/* Notifikasi WA Gagal */}
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-5 shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-4">
-          <div className="flex items-center gap-2">
-            <MessageSquareX className="h-5 w-5 text-status-red" />
-            <h2 className="text-base font-semibold text-primary">Notifikasi WA Gagal</h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-red/20 text-status-red border border-status-red/30">2</span>
+        {/* Panel 2: Notifikasi WA Gagal (Panel Mandiri) */}
+        <div id="panel-wa-gagal" className="bg-card border border-red-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquareX className="h-5 w-5 text-status-red" />
+              <h2 className="text-base font-semibold text-primary">Notifikasi WA Gagal</h2>
+              <span className="text-xs text-status-red font-bold">(2 Gagal)</span>
+            </div>
           </div>
-          <div className="space-y-2">
-            {["ORD-20260820-0018 · Siti Rahayu · READY_FOR_PICKUP", "ORD-20260819-0044 · Ahmad Fauzi · Desain ACC"].map((msg) => (
-              <div key={msg} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-elevated">
-                <p className="text-xs text-muted truncate">{msg}</p>
-                <button className="text-xs text-accent-teal hover:underline shrink-0 cursor-pointer">Kirim Ulang</button>
+          <div className="space-y-2.5">
+            {[
+              { id: "ORD-20260820-0018", name: "Siti Rahayu", type: "Siap Diambil", time: "10:15 WIB" },
+              { id: "ORD-20260819-0044", name: "Ahmad Fauzi", type: "Desain ACC", time: "09:30 WIB" }
+            ].map((msg) => (
+              <div key={msg.id} className="flex items-center justify-between gap-2 p-3 rounded-xl bg-elevated border border-border/60">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-primary truncate">{msg.id} · {msg.name}</p>
+                  <p className="text-[11px] text-muted truncate">{msg.type} · Gagal dikirim {msg.time}</p>
+                </div>
+                <button className="text-xs text-accent-teal hover:underline shrink-0 cursor-pointer font-semibold px-2 py-1 bg-card rounded-lg border border-border shadow-2xs">
+                  Kirim Ulang
+                </button>
               </div>
             ))}
           </div>
+        </div>
 
-          {/* Antrian Diskon */}
-          <div className="pt-4 border-t border-border">
-            <div className="flex items-center gap-2 mb-3">
-              <BadgePercent className="h-4 w-4 text-status-yellow" />
-              <h3 className="text-sm font-semibold text-primary">Antrian Persetujuan Diskon</h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/20 text-status-yellow border border-status-yellow/30">1</span>
+        {/* Panel 3: Antrian Persetujuan Diskon (Panel Mandiri) */}
+        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BadgePercent className="h-5 w-5 text-status-yellow" />
+              <h2 className="text-base font-semibold text-primary">Antrian Persetujuan Diskon</h2>
+              <span className="text-xs text-muted font-medium">(1 Order)</span>
             </div>
-            <div className="p-2.5 rounded-xl bg-elevated flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs text-primary font-medium">ORD-20260820-0021 · PT Abadi Makmur</p>
-                <p className="text-xs text-muted">Diskon 10% · Rp 350.000 · Pelanggan Setia</p>
+          </div>
+          <div className="space-y-2.5">
+            <div className="p-3 rounded-xl bg-elevated border border-border/60 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold text-primary">ORD-20260820-0021 · PT Abadi Makmur</p>
+                  <p className="text-[11px] text-muted">Pengajuan Diskon 10% · Nilai Potongan Rp 350.000</p>
+                </div>
+                <span className="text-[11px] text-status-yellow bg-status-yellow/10 border border-status-yellow/30 px-2 py-0.5 rounded-full shrink-0 font-semibold">
+                  Menunggu Owner
+                </span>
               </div>
-              <span className="text-xs text-status-yellow bg-status-yellow/10 border border-status-yellow/30 px-2 py-0.5 rounded-full shrink-0 font-bold">Menunggu Owner</span>
             </div>
           </div>
         </div>
 
-        {/* Panel Approval Desain WA — BARU */}
-        <div className="bg-card/70 backdrop-blur-xl border border-status-green/20 rounded-2xl p-5 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
+        {/* Panel 4: Approval Desain via WA */}
+        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <MessageCircleCheck className="h-5 w-5 text-status-green" />
+            <MessageCircleCheck className="h-5 w-5 text-status-yellow" />
             <h2 className="text-base font-semibold text-primary">Approval Desain via WA</h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-green/20 text-status-green border border-status-green/30">1</span>
+            <span className="text-xs text-muted font-medium">(1 Pending)</span>
           </div>
           {!waAccepted ? (
-            <div className="p-3 bg-elevated/60 border border-border rounded-xl space-y-3">
+            <div className="p-3 bg-elevated border border-border/60 rounded-xl space-y-3">
               <div>
                 <p className="text-xs font-bold text-primary">ORD-20260820-0023 · Budi Santoso</p>
-                <p className="text-[10px] text-muted">Brosur A5 · 1000pcs · Tipe: Online</p>
+                <p className="text-[11px] text-muted">Brosur A5 · 1000pcs · Tipe: Online</p>
               </div>
-              <div className="flex items-center gap-2 text-[10px] text-muted">
-                <span className="h-1.5 w-1.5 rounded-full bg-status-yellow animate-pulse" />
+              <p className="text-[11px] text-muted">
                 Preview V2 terkirim 14:30 · Menunggu konfirmasi ACC dari Admin
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowWAApproval(true)}
-                  className="flex-1 py-2 rounded-xl bg-gradient-to-r from-status-green to-emerald-600 text-white text-xs font-bold hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-1"
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Konfirmasi ACC WA
-                </button>
-              </div>
+              </p>
+              <button
+                onClick={() => setShowWAApproval(true)}
+                className="w-full py-2 rounded-xl bg-accent-teal text-white text-xs font-bold hover:bg-blue-700 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" /> Konfirmasi ACC WA
+              </button>
             </div>
           ) : (
             <div className="p-4 bg-status-green/10 border border-status-green/30 rounded-xl text-center">
               <p className="text-xs font-bold text-status-green">✅ Desain ACC! Order lanjut ke produksi.</p>
             </div>
           )}
+        </div>
 
-          {/* Final Audit shortcut */}
-          <div className="mt-4 pt-4 border-t border-border">
-            <div className="flex items-center gap-2 mb-3">
-              <ClipboardCheck className="h-4 w-4 text-accent-teal" />
-              <h3 className="text-sm font-semibold text-primary">Final Audit</h3>
-            </div>
-            <p className="text-[10px] text-muted mb-3">Submit hasil audit sebelum order di-CLOSE (GREEN/YELLOW/RED)</p>
+        {/* Panel 5: Final Audit Shortcut */}
+        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <ClipboardCheck className="h-5 w-5 text-accent-teal" />
+            <h2 className="text-base font-semibold text-primary">Final Audit Siap Close</h2>
+          </div>
+          <p className="text-xs text-muted mb-3">Submit hasil checklist audit sebelum status order di-CLOSE.</p>
+          <div className="space-y-2">
             {orders.filter((o) => o.status === "READY_FOR_PICKUP").slice(0, 2).map((o) => (
-              <div key={o.id} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-elevated mb-2">
-                <div>
+              <div key={o.id} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-elevated border border-border/60">
+                <div className="min-w-0">
                   <p className="text-xs font-medium text-primary truncate">{o.id}</p>
-                  <p className="text-[10px] text-muted">{o.customerName}</p>
+                  <p className="text-[10px] text-muted truncate">{o.customerName}</p>
                 </div>
                 <button
                   id={`btn-audit-${o.id}`}
                   onClick={() => openFinalAudit(o.id)}
-                  className="text-xs text-accent-teal hover:underline shrink-0 cursor-pointer font-semibold whitespace-nowrap"
+                  className="text-xs text-accent-teal hover:underline shrink-0 cursor-pointer font-semibold whitespace-nowrap px-2.5 py-1 bg-card rounded-lg border border-border shadow-2xs"
                 >
                   Audit →
                 </button>
               </div>
             ))}
+            {orders.filter((o) => o.status === "READY_FOR_PICKUP").length === 0 && (
+              <p className="text-xs text-muted p-2 text-center">Tidak ada order menunggu audit.</p>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Supervisor Panel: Reassignment */}
-      <div className="bg-card/70 backdrop-blur-xl border border-status-yellow/30 rounded-2xl p-5 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
-        <div className="flex items-center gap-2 mb-4">
-          <Settings className="h-5 w-5 text-status-yellow" />
-          <h2 className="text-base font-semibold text-primary">Panel Reassignment (Supervisor)</h2>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/20 text-status-yellow border border-status-yellow/30">1</span>
-        </div>
-        <div className="flex items-center justify-between p-3 rounded-xl bg-elevated/60 border border-status-red/20">
-          <div>
-            <p className="text-xs font-bold text-primary">JOB-0042 · Brosur A5</p>
-            <p className="text-[10px] text-status-red mt-0.5">Operator (Budi) tidak hadir. Mesin Roland A menganggur.</p>
+        {/* Panel 6: Supervisor Panel (Reassignment) */}
+        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Settings className="h-5 w-5 text-status-yellow" />
+            <h2 className="text-base font-semibold text-primary">Reassignment Mesin</h2>
           </div>
-          <button className="h-8 px-4 rounded-lg bg-status-yellow text-white text-xs font-bold hover:brightness-110 cursor-pointer">
-            Reassign
-          </button>
+          <div className="p-3 rounded-xl bg-elevated border border-border/60 space-y-2">
+            <div>
+              <p className="text-xs font-bold text-primary">JOB-0042 · Brosur A5</p>
+              <p className="text-[11px] text-muted mt-0.5">Operator (Budi) absen · Mesin Roland A idle</p>
+            </div>
+            <button className="w-full h-8 rounded-lg bg-accent-teal text-white text-xs font-bold hover:bg-blue-700 cursor-pointer shadow-2xs">
+              Reassign Job
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Tabel Daftar Order */}
-      <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5 border-b border-border">
           <div className="flex items-center gap-2 flex-wrap">
             <TrendingUp className="h-5 w-5 text-accent-teal" />

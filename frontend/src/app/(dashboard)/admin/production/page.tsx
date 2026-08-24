@@ -81,7 +81,7 @@ export default function ProductionPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         {kpis.map((k) => (
-          <div key={k.label} className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-4 shadow-sm">
+          <div key={k.label} className="bg-card border border-border rounded-2xl p-4 shadow-sm">
             <div className={cn("inline-flex p-2 rounded-xl mb-3", k.bg)}>
               <k.icon className={cn("h-5 w-5", k.color)} />
             </div>
@@ -101,10 +101,10 @@ export default function ProductionPage() {
               <div
                 key={m.id}
                 className={cn(
-                  "p-4 rounded-2xl border backdrop-blur-xl transition-all shadow-sm",
+                  "p-4 rounded-2xl border transition-all shadow-sm",
                   m.status === "MAINTENANCE"
-                    ? "bg-status-red/5 border-status-red/30 opacity-80"
-                    : "bg-card/70 border-border hover:border-accent-teal/40"
+                    ? "bg-card border-status-yellow/40"
+                    : "bg-card border-border hover:border-accent-teal/40"
                 )}
               >
                 <div className="flex justify-between items-start mb-2">
@@ -115,14 +115,14 @@ export default function ProductionPage() {
                   <span
                     className={cn(
                       "px-2 py-0.5 rounded-full text-[10px] font-bold",
-                      m.status === "ACTIVE" ? "bg-status-green/10 text-status-green" : "bg-status-red/10 text-status-red"
+                      m.status === "ACTIVE" ? "bg-status-green/10 text-status-green border border-status-green/30" : "bg-status-yellow/10 text-status-yellow border border-status-yellow/30"
                     )}
                   >
                     {m.status}
                   </span>
                 </div>
                 {currentJob ? (
-                  <div className="mt-3 bg-elevated/60 p-2.5 rounded-xl border border-border/50">
+                  <div className="mt-3 bg-elevated p-2.5 rounded-xl border border-border">
                     <p className="text-[10px] text-muted uppercase tracking-wide">Sedang Mencetak</p>
                     <p className="text-xs font-bold text-primary truncate">{currentJob.product}</p>
                     <p className="text-[10px] text-accent-teal font-mono">{currentJob.id} · Qty {currentJob.qty}</p>
@@ -160,7 +160,7 @@ export default function ProductionPage() {
                 <p className="text-[10px] text-muted mt-0.5">Deadline: {r.deadline}</p>
               </div>
               <button className="shrink-0 px-3 py-2 rounded-xl bg-status-yellow/10 text-status-yellow text-xs font-bold hover:bg-status-yellow/20 transition-all cursor-pointer border border-status-yellow/30">
-                Reassign
+                Reassigned
               </button>
             </div>
           ))}

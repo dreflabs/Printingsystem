@@ -73,7 +73,7 @@ export default function RegisterPage() {
       {/* Header Minimalis */}
       <header className="h-20 border-b border-border/50 flex items-center px-8">
         <Link href="/" className="flex items-center gap-2 mb-8 hover:opacity-80 transition-opacity">
-          <img src="/logo-sarjana.png" alt="Print Pilot Logo" className="h-8 w-8 object-contain" />
+          <img src="/PRINT_PILOT_LOGO.png" alt="Print Pilot Logo" className="h-8 w-8 object-contain" />
           <span className="font-bold text-xl text-primary tracking-tight">Print Pilot<span className="text-accent-teal">.id</span></span>
         </Link>
       </header>

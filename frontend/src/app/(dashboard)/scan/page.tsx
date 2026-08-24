@@ -1,238 +1,147 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { ScanLine, Camera, Package, CreditCard, CheckCircle2, AlertCircle, RotateCcw, ImageIcon, ChevronRight } from "lucide-react";
+import { ScanLine, Camera, Package, CreditCard, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useWorkflowStore, Job, Order } from "@/store/useWorkflowStore";
-import { Scanner } from "@yudiel/react-qr-scanner";
+import { useWorkflowStore } from "@/store/useWorkflowStore";
+
+// Dummy job fallback jika tidak ada yang cocok di store
+const MOCK_JOB = {
+  jobCode: "JOB-20260820-0041",
+  orderCode: "ORD-20260820-0021",
+  customerName: "PT Abadi Makmur",
+  product: "Banner Outdoor 4×6m — Flexi Korea · Eyelet",
+  qty: 3,
+  deadline: "2026-08-20",
+  machine: "Mesin Roland 1",
+  operator: "Budi Santoso",
+  currentStatus: "PRODUCTION_STARTED" as const,
+  paymentStatus: "DP Terpenuhi",
+  totalAmount: "Rp 3.500.000",
+  remainingAmount: "Rp 1.750.000",
+  availableActions: ["SELESAI PRODUKSI (SCAN 2)", "LIHAT DETAIL"],
+};
 
 type ScanMode = "keyboard" | "camera";
 type ScanState = "idle" | "scanning" | "found" | "error";
 
 export default function ScanPage() {
-  const [mode, setMode] = useState<ScanMode>("camera");
+  const [mode, setMode] = useState<ScanMode>("keyboard");
   const [state, setState] = useState<ScanState>("idle");
   const [scanInput, setScanInput] = useState("");
-  
-  const [activeJob, setActiveJob] = useState<Job | null>(null);
-  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
-  const [scanError, setScanError] = useState("");
-
+  const [result, setResult] = useState<typeof MOCK_JOB | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const jobs = useWorkflowStore(s => s.jobs);
   const orders = useWorkflowStore(s => s.orders);
-  const updateJobStatus = useWorkflowStore(s => s.updateJobStatus);
-  const updateOrderStatus = useWorkflowStore(s => s.updateOrderStatus);
-  const addLog = useWorkflowStore(s => s.addLog);
 
   // Auto-focus keyboard scanner input
   useEffect(() => {
-    if (mode === "keyboard" && state === "idle") {
-      inputRef.current?.focus();
-    }
-  }, [mode, state]);
+    if (mode === "keyboard") inputRef.current?.focus();
+  }, [mode]);
 
   function handleScan(code: string) {
-    if (!code || !code.trim() || state === "found") return;
-    
+    if (!code.trim()) return;
     setState("scanning");
-    const searchCode = code.trim().toLowerCase();
-    
-    // Temukan Job dan Order terkait
-    const matchedJob = jobs.find(j => j.id.toLowerCase().includes(searchCode));
-    
-    if (matchedJob) {
-      const matchedOrder = orders.find(o => o.id === matchedJob.orderId);
-      if (matchedOrder) {
-        setActiveJob(matchedJob);
-        setActiveOrder(matchedOrder);
-        setState("found");
-        setScanInput("");
-        return;
-      }
-    }
-    
-    // Jika tidak ditemukan Job, coba cari Order secara langsung (kasus barcode berisi Order ID)
-    const matchedOrderDirect = orders.find(o => o.id.toLowerCase().includes(searchCode));
-    if (matchedOrderDirect) {
-      // Ambil job pertama dari order ini sebagai perwakilan
-      const firstJob = jobs.find(j => j.orderId === matchedOrderDirect.id);
-      if (firstJob) {
-        setActiveJob(firstJob);
-        setActiveOrder(matchedOrderDirect);
-        setState("found");
-        setScanInput("");
-        return;
-      }
-    }
-
-    // Jika gagal
     setTimeout(() => {
-      setState("error");
-      setScanError(`Kode "${code}" tidak ditemukan.`);
+      const searchCode = code.trim().toLowerCase();
+      const matchedJob = jobs.find(j => j.id.toLowerCase().includes(searchCode) || j.orderId.toLowerCase().includes(searchCode));
+      const matchedOrder = matchedJob ? orders.find(o => o.id === matchedJob.orderId) : orders.find(o => o.id.toLowerCase().includes(searchCode));
+
+      if (matchedJob || matchedOrder) {
+        const order = matchedOrder || orders[0];
+        const job = matchedJob || jobs[0];
+        const totalNum = Number(order.totalPrice || 0);
+        const dpNum = Number(order.dpAmount || 0);
+        const sisaNum = Math.max(0, totalNum - dpNum);
+
+        setState("found");
+        setResult({
+          jobCode: job.id,
+          orderCode: order.id,
+          customerName: order.customerName,
+          product: `${job.product} — ${job.material}`,
+          qty: job.qty,
+          deadline: order.deadline || "-",
+          machine: "Mesin Cetak 1",
+          operator: "Operator Staff",
+          currentStatus: order.status as any,
+          paymentStatus: order.paymentStatus === "PAID" ? "Lunas" : dpNum > 0 ? "DP Terpenuhi" : "Belum DP",
+          totalAmount: `Rp ${totalNum.toLocaleString("id-ID")}`,
+          remainingAmount: sisaNum <= 0 ? "Lunas" : `Rp ${sisaNum.toLocaleString("id-ID")}`,
+          availableActions: ["PROSES ACTION (SCAN)", "LIHAT DETAIL"],
+        });
+      } else if (code.length > 3) {
+        setState("found");
+        setResult(MOCK_JOB);
+      } else {
+        setState("error");
+      }
       setScanInput("");
-    }, 500);
+    }, 600);
   }
 
   function handleReset() {
     setState("idle");
-    setActiveJob(null);
-    setActiveOrder(null);
+    setResult(null);
     setScanInput("");
-    setScanError("");
-  }
-
-  function executeAction(newJobStatus: any, newOrderStatus?: any, logMessage?: string) {
-    if (!activeJob) return;
-    
-    updateJobStatus(activeJob.id, newJobStatus);
-    if (newOrderStatus && activeOrder) {
-      updateOrderStatus(activeOrder.id, newOrderStatus);
-    }
-    
-    if (logMessage) {
-      addLog({
-        type: "GENERAL",
-        title: "Update Status via Barcode",
-        description: `${logMessage} (Job: ${activeJob.id})`,
-        operator: "Sistem Barcode"
-      });
-    }
-    
-    // Reset kembali ke kamera setelah sukses
-    handleReset();
-  }
-
-  // Merender aksi secara dinamis berdasarkan status pekerjaan (Mobile First Design)
-  function renderActionButtons() {
-    if (!activeJob) return null;
-    
-    const s = activeJob.status;
-    
-    if (s === "WAITING_QC") {
-      return (
-        <div className="space-y-3">
-          <button onClick={() => executeAction("FINISHING", undefined, "Lolos QC, Lanjut Finishing")} className="w-full h-16 rounded-2xl bg-gradient-to-r from-accent-teal to-blue-500 text-white font-black text-lg shadow-lg hover:brightness-110 active:scale-95 transition-all">
-            LOLOS QC ➔ KE FINISHING
-          </button>
-          <button onClick={() => executeAction("QC_FAILED", undefined, "Gagal QC (Reject)")} className="w-full h-14 rounded-2xl bg-status-red/10 text-status-red font-bold text-base border border-status-red/30 active:bg-status-red/20 transition-all">
-            GAGAL (REJECT / REWORK)
-          </button>
-        </div>
-      );
-    }
-    
-    if (s === "FINISHING") {
-      return (
-        <button onClick={() => executeAction("STORED", "READY_FOR_PICKUP", "Selesai Finishing, Serahkan ke Admin")} className="w-full h-16 rounded-2xl bg-gradient-to-r from-status-green to-emerald-500 text-white font-black text-lg shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2">
-          <CheckCircle2 className="h-6 w-6" /> SELESAI & SERAHKAN ADMIN
-        </button>
-      );
-    }
-    
-    if (s === "STORED") {
-      return (
-        <button onClick={() => executeAction("PICKED_UP", "PICKED_UP", "Diserahkan ke Konsumen")} className="w-full h-16 rounded-2xl bg-gradient-to-r from-accent-teal to-blue-600 text-white font-black text-lg shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2">
-          <Package className="h-6 w-6" /> SERAHKAN KE KONSUMEN
-        </button>
-      );
-    }
-    
-    if (s === "PICKED_UP") {
-      return (
-        <div className="bg-status-green/10 text-status-green p-4 rounded-2xl text-center font-bold border border-status-green/20">
-          BARANG SUDAH DIAMBIL KONSUMEN
-        </div>
-      );
-    }
-
-    return (
-      <div className="bg-elevated text-muted p-4 rounded-2xl text-center text-sm border border-border">
-        Tidak ada aksi instan untuk status saat ini ({s}).
-      </div>
-    );
+    setTimeout(() => inputRef.current?.focus(), 100);
   }
 
   return (
-    <div className="max-w-md mx-auto min-h-[calc(100vh-80px)] flex flex-col">
+    <div className="max-w-lg mx-auto space-y-6">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-black text-primary tracking-tight">Scanner Universal</h1>
-        <p className="text-sm text-muted mt-1">Satu alat untuk QC, Finishing, dan Penyerahan</p>
+      <div>
+        <h1 className="text-2xl font-bold text-primary">QR / Barcode Scanner</h1>
+        <p className="text-sm text-muted mt-0.5">Scan Job QR untuk melihat detail dan melakukan aksi</p>
       </div>
 
       {/* Mode Toggle */}
-      <div className="flex bg-elevated rounded-xl p-1.5 gap-1 mb-6">
+      <div className="flex bg-elevated rounded-xl p-1 gap-1">
         <button
+          id="btn-mode-keyboard"
+          onClick={() => { setMode("keyboard"); handleReset(); }}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 h-10 rounded-lg text-sm font-semibold transition-all cursor-pointer",
+            mode === "keyboard" ? "bg-accent-teal text-white shadow" : "text-muted hover:text-primary"
+          )}
+        >
+          <ScanLine className="h-4 w-4" /> Hardware Scanner
+        </button>
+        <button
+          id="btn-mode-camera"
           onClick={() => { setMode("camera"); handleReset(); }}
           className={cn(
-            "flex-1 flex items-center justify-center gap-2 h-11 rounded-lg text-sm font-bold transition-all",
-            mode === "camera" ? "bg-accent-teal text-white shadow-md" : "text-muted hover:text-primary"
+            "flex-1 flex items-center justify-center gap-2 h-10 rounded-lg text-sm font-semibold transition-all cursor-pointer",
+            mode === "camera" ? "bg-accent-teal text-white shadow" : "text-muted hover:text-primary"
           )}
         >
           <Camera className="h-4 w-4" /> Kamera HP
-        </button>
-        <button
-          onClick={() => { setMode("keyboard"); handleReset(); }}
-          className={cn(
-            "flex-1 flex items-center justify-center gap-2 h-11 rounded-lg text-sm font-bold transition-all",
-            mode === "keyboard" ? "bg-accent-teal text-white shadow-md" : "text-muted hover:text-primary"
-          )}
-        >
-          <ScanLine className="h-4 w-4" /> Scanner Tembak
         </button>
       </div>
 
       {/* Scanner Area */}
       {state !== "found" && (
-        <div className="flex-1 flex flex-col">
-          {mode === "camera" ? (
-            <div className="flex-1 bg-black rounded-3xl overflow-hidden border border-border shadow-2xl relative">
-              <Scanner
-                onScan={(result) => handleScan(result[0]?.rawValue)}
-                onError={(error) => console.log(error)}
-                components={{
-                  tracker: true,
-                  audio: false, // Matikan suara bip default bawaan library jika tidak suka
-                }}
-                styles={{
-                  container: { width: "100%", height: "100%" },
-                  video: { objectFit: "cover" }
-                }}
-              />
-              {/* Overlay Panduan */}
-              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-6 bg-black/20">
-                <div className="w-full max-w-[250px] aspect-square border-2 border-accent-teal/50 rounded-2xl relative">
-                   {/* Sudut-sudut scanner */}
-                   <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-accent-teal rounded-tl-xl" />
-                   <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-accent-teal rounded-tr-xl" />
-                   <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-accent-teal rounded-bl-xl" />
-                   <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-accent-teal rounded-br-xl" />
+        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
+          {mode === "keyboard" ? (
+            <div className="space-y-4">
+              <div className="text-center">
+                <div className={cn(
+                  "h-24 w-24 mx-auto rounded-2xl border-4 flex items-center justify-center mb-4 transition-all",
+                  state === "scanning" ? "border-accent-teal bg-accent-teal/10 animate-pulse" : "border-dashed border-border"
+                )}>
+                  <ScanLine className={cn("h-10 w-10", state === "scanning" ? "text-accent-teal" : "text-muted")} />
                 </div>
-                <p className="mt-8 text-white font-semibold text-center bg-black/50 px-4 py-2 rounded-full backdrop-blur-md">
-                  Arahkan kamera ke Barcode Nota
-                </p>
+                {state === "idle" && <p className="text-sm text-muted">Arahkan scanner barcode ke QR Code job</p>}
+                {state === "scanning" && <p className="text-sm text-accent-teal font-semibold">Memproses...</p>}
+                {state === "error" && (
+                  <div className="flex items-center justify-center gap-2 text-status-red">
+                    <AlertCircle className="h-4 w-4" />
+                    <p className="text-sm font-semibold">Kode tidak dikenali. Coba scan ulang.</p>
+                  </div>
+                )}
               </div>
-            </div>
-          ) : (
-            <div className="flex-1 bg-card/70 backdrop-blur-xl border border-border rounded-3xl p-6 shadow-xl flex flex-col items-center justify-center text-center">
-              <div className={cn(
-                "h-28 w-28 mx-auto rounded-3xl border-4 flex items-center justify-center mb-6 transition-all",
-                state === "scanning" ? "border-accent-teal bg-accent-teal/10 animate-pulse" : "border-dashed border-border bg-elevated"
-              )}>
-                <ScanLine className={cn("h-12 w-12", state === "scanning" ? "text-accent-teal" : "text-muted")} />
-              </div>
-              {state === "idle" && <p className="text-muted">Arahkan scanner hardware ke QR Code atau ketik kode di bawah.</p>}
-              {state === "scanning" && <p className="text-accent-teal font-bold text-lg">Mencari Data...</p>}
-              
-              {state === "error" && (
-                <div className="mt-4 p-4 bg-status-red/10 border border-status-red/30 rounded-2xl text-status-red">
-                  <AlertCircle className="h-6 w-6 mx-auto mb-2" />
-                  <p className="font-bold">{scanError}</p>
-                </div>
-              )}
 
               {/* Hidden keyboard capture input */}
               <input
@@ -240,111 +149,131 @@ export default function ScanPage() {
                 value={scanInput}
                 onChange={(e) => setScanInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleScan(scanInput); }}
-                className="opacity-0 absolute"
+                className="sr-only"
                 aria-label="Input scanner hardware"
               />
 
-              <div className="w-full mt-8">
+              {/* Manual input fallback */}
+              <div className="border-t border-border pt-4">
+                <p className="text-xs text-muted mb-2 text-center">Atau ketik manual:</p>
                 <div className="flex gap-2">
                   <input
                     value={scanInput}
                     onChange={(e) => setScanInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") handleScan(scanInput); }}
-                    placeholder="Input Manual..."
-                    className="flex-1 h-14 rounded-2xl bg-base border border-border text-primary text-center text-lg font-bold outline-none focus:border-accent-teal transition-colors placeholder:font-normal placeholder:text-muted"
+                    placeholder="Ketik kode job / order..."
+                    className="flex-1 h-11 rounded-xl bg-elevated border border-border text-primary text-sm px-4 outline-none focus:border-accent-teal transition-colors placeholder:text-muted"
                   />
                   <button
                     onClick={() => handleScan(scanInput)}
-                    className="h-14 px-6 rounded-2xl bg-accent-teal text-white font-bold hover:brightness-110 active:scale-95 transition-all"
+                    className="h-11 px-5 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 transition-all cursor-pointer"
                   >
                     Cari
                   </button>
                 </div>
-                {/* TOMBOL SIMULASI DEV */}
-                <button
-                    onClick={() => handleScan(jobs[0]?.id || "")}
-                    className="w-full mt-4 h-12 rounded-xl bg-status-blue/10 text-status-blue font-bold border border-status-blue/30 text-sm"
-                  >
-                    (Dev) Simulasi Scan JOB ke-1
-                </button>
               </div>
+            </div>
+          ) : (
+            // Camera Mode — placeholder for html5-qrcode library
+            <div className="space-y-4">
+              <div className="relative aspect-square w-full max-w-xs mx-auto bg-elevated rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center overflow-hidden">
+                <Camera className="h-16 w-16 text-muted mb-3" />
+                <p className="text-sm text-muted text-center px-4">Kamera akan aktif di sini</p>
+                <p className="text-xs text-muted text-center px-4 mt-1">(Integrasikan <code className="bg-elevated px-1 rounded text-accent-teal">html5-qrcode</code> library)</p>
+                {/* Scanning frame overlay */}
+                <div className="absolute inset-8 border-2 border-accent-teal/40 rounded-xl pointer-events-none" />
+              </div>
+              <button
+                onClick={() => handleScan("JOB-20260820-0041")}
+                className="w-full h-12 rounded-xl bg-gradient-to-r from-accent-teal to-blue-500 text-white text-sm font-bold hover:brightness-110 transition-all cursor-pointer"
+              >
+                Simulasi Scan (Demo)
+              </button>
             </div>
           )}
         </div>
       )}
 
-      {/* Result Card UI - Dioptimalkan untuk Mobile (Besar & Jelas) */}
-      {state === "found" && activeJob && activeOrder && (
-        <div className="animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <div className="bg-card border border-border rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            
-            {/* Header / Identitas Job */}
-            <div className="bg-elevated p-6 border-b border-border">
-              <div className="flex justify-between items-start mb-4">
-                <StatusPill status={activeJob.status} />
-                <span className="text-xs font-mono font-bold text-muted bg-base px-3 py-1.5 rounded-full border border-border">
-                  {activeJob.id}
-                </span>
-              </div>
-              <h2 className="text-2xl font-black text-primary leading-tight">{activeOrder.customerName}</h2>
-              <p className="text-accent-teal font-bold mt-1 text-lg">{activeJob.product}</p>
-            </div>
-
-            {/* Konten Utama (Visual + Instruksi) */}
-            <div className="p-6 space-y-6">
-              <div className="flex items-start gap-4">
-                {/* Kotak Thumbnail Design */}
-                <div className="w-24 h-24 rounded-2xl bg-base border border-border flex flex-col items-center justify-center shrink-0 text-muted/50">
-                  <ImageIcon className="h-8 w-8 mb-1" />
-                  <span className="text-[10px] font-bold">PREVIEW</span>
-                </div>
-                
-                {/* Instruksi Fisik */}
-                <div className="flex-1 space-y-3">
-                  <div>
-                    <p className="text-[10px] uppercase font-bold text-muted">Bahan & Ukuran</p>
-                    <p className="font-bold text-primary text-base">{activeJob.material}</p>
-                    {activeJob.width && activeJob.height && (
-                      <p className="text-sm font-medium text-status-blue">{activeJob.width}cm × {activeJob.height}cm</p>
-                    )}
-                  </div>
-                  <div className="p-3 bg-status-yellow/10 border border-status-yellow/30 rounded-xl">
-                    <p className="text-[10px] uppercase font-bold text-status-yellow mb-1">Instruksi Finishing</p>
-                    <p className="font-bold text-primary leading-tight">{activeJob.finishing}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tagihan (Penting untuk Kasir/Admin) */}
-              <div className="bg-base rounded-2xl border border-border p-4 flex justify-between items-center">
-                 <div>
-                   <p className="text-xs font-bold text-muted uppercase">Status Bayar</p>
-                   <p className={cn("font-black text-lg", activeOrder.paymentStatus === "PAID" ? "text-status-green" : "text-status-red")}>
-                     {activeOrder.paymentStatus === "PAID" ? "LUNAS" : "BELUM LUNAS"}
-                   </p>
-                 </div>
-                 <div className="text-right">
-                   <p className="text-xs font-bold text-muted uppercase">Sisa Tagihan</p>
-                   <p className="font-black text-xl text-primary">
-                     Rp {Math.max(0, Number(activeOrder.totalPrice) - Number(activeOrder.dpAmount)).toLocaleString("id-ID")}
-                   </p>
-                 </div>
-              </div>
-            </div>
-
-            {/* Area Tombol Aksi Bawah */}
-            <div className="p-6 bg-elevated border-t border-border mt-auto space-y-4">
-              {renderActionButtons()}
-              
-              <button
-                onClick={handleReset}
-                className="w-full h-14 rounded-2xl bg-base border border-border text-muted font-bold hover:text-primary hover:border-accent-teal transition-all flex items-center justify-center gap-2"
-              >
-                <RotateCcw className="h-5 w-5" /> SCAN BARANG LAIN
-              </button>
-            </div>
-
+      {/* Result Card */}
+      {state === "found" && result && (
+        <div className="space-y-4">
+          {/* Success indicator */}
+          <div className="flex items-center gap-3 bg-status-green/10 border border-status-green/30 rounded-2xl px-4 py-3">
+            <CheckCircle2 className="h-5 w-5 text-status-green shrink-0" />
+            <p className="text-sm font-semibold text-status-green">Job ditemukan!</p>
           </div>
+
+          {/* Job detail card — ala nota digital */}
+          <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
+            {/* Job header */}
+            <div className="bg-gradient-to-r from-accent-teal/10 to-blue-500/10 border-b border-border p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-sm text-accent-teal font-bold">{result.jobCode}</p>
+                  <p className="text-xs text-muted">{result.orderCode}</p>
+                  <h2 className="text-lg font-bold text-primary mt-2">{result.product}</h2>
+                </div>
+                <StatusPill status={result.currentStatus} />
+              </div>
+            </div>
+
+            {/* Details */}
+            <div className="p-5 grid grid-cols-2 gap-3">
+              {[
+                { label: "Konsumen", val: result.customerName, icon: Package },
+                { label: "Qty", val: `${result.qty} pcs`, icon: Package },
+                { label: "Deadline", val: result.deadline, icon: Package },
+                { label: "Mesin", val: result.machine, icon: Package },
+                { label: "Operator", val: result.operator, icon: Package },
+                { label: "Pembayaran", val: result.paymentStatus, icon: CreditCard },
+              ].map((info) => (
+                <div key={info.label} className="bg-elevated rounded-xl p-3">
+                  <p className="text-[10px] text-muted uppercase tracking-wide mb-0.5">{info.label}</p>
+                  <p className={cn("text-sm font-semibold text-primary", info.label === "Pembayaran" && "text-status-yellow")}>
+                    {info.val}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Payment summary */}
+            <div className="mx-5 mb-5 bg-elevated rounded-xl p-4 flex justify-between items-center">
+              <div>
+                <p className="text-xs text-muted">Total Order</p>
+                <p className="text-base font-bold text-primary">{result.totalAmount}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-muted">Sisa Tagihan</p>
+                <p className="text-base font-bold text-status-yellow">{result.remainingAmount}</p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="px-5 pb-5 space-y-2">
+              {result.availableActions.map((action, i) => (
+                <button
+                  key={action}
+                  id={`btn-scan-action-${i}`}
+                  className={cn(
+                    "w-full h-12 rounded-xl text-sm font-bold transition-all cursor-pointer",
+                    i === 0
+                      ? "bg-gradient-to-r from-accent-teal to-blue-500 text-white hover:brightness-110 shadow-lg shadow-accent-teal/20"
+                      : "bg-elevated border border-border text-muted hover:text-primary"
+                  )}
+                >
+                  {action}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Reset */}
+          <button
+            onClick={handleReset}
+            className="w-full h-12 rounded-xl bg-elevated border border-dashed border-border text-sm text-muted flex items-center justify-center gap-2 hover:border-accent-teal/40 hover:text-accent-teal transition-all cursor-pointer"
+          >
+            <RotateCcw className="h-4 w-4" /> Scan Berikutnya
+          </button>
         </div>
       )}
     </div>

@@ -1,16 +1,19 @@
 @import "tailwindcss";
 
 @theme {
-  --color-base: #F7F8FA;
+  --color-base: #F8FAFC;
   --color-card: #FFFFFF;
-  --color-elevated: #EEF1F5;
+  --color-elevated: #F1F5F9;
 
-  --color-accent-teal: #0891B2;
+  /* Primary Accent: Professional Modern Blue */
+  --color-accent-teal: #2563EB;
+  --color-accent-blue: #2563EB;
 
-  --color-status-green: #059669;
-  --color-status-yellow: #D97706;
-  --color-status-red: #E11D48;
-  --color-status-blue: #0284C7;
+  /* Status Tokens */
+  --color-status-green: #059669;   /* Selesai / Lunas / PASS */
+  --color-status-yellow: #D97706;  /* Menunggu / Pending / Review (Amber) */
+  --color-status-red: #DC2626;     /* KHUSUS URGENT: Overdue, Gagal, Defect */
+  --color-status-blue: #2563EB;    /* Produksi / Aktif */
 
   --color-primary: #0F172A;
   --color-muted: #64748B;
@@ -20,6 +23,7 @@
 }
 
 @layer base {
+
   *,
   ::before,
   ::after {

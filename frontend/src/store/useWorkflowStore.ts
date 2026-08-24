@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
 
 // ─── Status Types ─────────────────────────────────────────────────────────────
 export type JobStatus = 
@@ -87,17 +86,6 @@ export interface RetailProduct {
   minStock: number;
 }
 
-export type LogType = "MATERIAL_CUT" | "PRODUCTION_WASTE" | "GENERAL";
-
-export interface ActivityLog {
-  id: string;
-  type: LogType;
-  title: string;
-  description: string;
-  operator: string;
-  createdAt: string;
-}
-
 // ─── Store Interface ──────────────────────────────────────────────────────────
 interface WorkflowState {
   orders: Order[];
@@ -115,15 +103,10 @@ interface WorkflowState {
 
   // Inventory
   deductInventory: (material: string, usedAmount: number) => void;
-  splitRollMaterial: (sourceMaterialId: string, targetMaterialId: string, sourceQty: number, yieldQty: number) => void;
 
   // Retail products
   addRetailProduct: (product: RetailProduct) => void;
   deductRetailStock: (productId: string, qty: number) => void;
-
-  // Logs
-  logs: ActivityLog[];
-  addLog: (log: Omit<ActivityLog, "id" | "createdAt">) => void;
 }
 
 // ─── Initial Data (Seed) ─────────────────────────────────────────────────────
@@ -180,10 +163,8 @@ const INITIAL_JOBS: Job[] = [
 ];
 
 const INITIAL_INVENTORY: InventoryItem[] = [
-  { id: "flexi-china-3m", name: "Flexi China 3m", stock: 5, unit: "roll" },
-  { id: "flexi-china-150", name: "Flexi China 1.5m", stock: 2, unit: "roll" },
-  { id: "flexi-korea-3m", name: "Flexi Korea 3m", stock: 3, unit: "roll" },
-  { id: "flexi-korea-150", name: "Flexi Korea 1.5m", stock: 0, unit: "roll" },
+  { id: "flexi-china", name: "Flexi China 280g", stock: 150, unit: "meter" },
+  { id: "flexi-korea", name: "Flexi Korea 440g", stock: 80, unit: "meter" },
   { id: "vinyl", name: "Stiker Vinyl", stock: 50, unit: "meter" },
   { id: "artpaper-120", name: "ArtPaper 120g", stock: 5000, unit: "lembar" },
 ];
@@ -200,19 +181,17 @@ const INITIAL_RETAIL_PRODUCTS: RetailProduct[] = [
 ];
 
 // ─── Store ────────────────────────────────────────────────────────────────────
-export const useWorkflowStore = create<WorkflowState>()(
-  persist(
-    (set) => ({
-      orders: INITIAL_ORDERS,
-      jobs: INITIAL_JOBS,
-      inventory: INITIAL_INVENTORY,
-      retailProducts: INITIAL_RETAIL_PRODUCTS,
+export const useWorkflowStore = create<WorkflowState>((set) => ({
+  orders: INITIAL_ORDERS,
+  jobs: INITIAL_JOBS,
+  inventory: INITIAL_INVENTORY,
+  retailProducts: INITIAL_RETAIL_PRODUCTS,
 
-      addOrderAndJob: (order, job) =>
-        set((state) => ({
-          orders: [order, ...state.orders],
-          jobs: [job, ...state.jobs]
-        })),
+  addOrderAndJob: (order, job) =>
+    set((state) => ({
+      orders: [order, ...state.orders],
+      jobs: [job, ...state.jobs]
+    })),
 
   updateOrderStatus: (orderId, status) =>
     set((state) => ({
@@ -251,24 +230,6 @@ export const useWorkflowStore = create<WorkflowState>()(
       )
     })),
 
-  splitRollMaterial: (sourceMaterialId, targetMaterialId, sourceQty, yieldQty) =>
-    set((state) => {
-      const newInventory = [...state.inventory];
-      
-      const sourceIndex = newInventory.findIndex(i => i.id === sourceMaterialId);
-      const targetIndex = newInventory.findIndex(i => i.id === targetMaterialId);
-      
-      if (sourceIndex >= 0) {
-        newInventory[sourceIndex] = { ...newInventory[sourceIndex], stock: Math.max(0, newInventory[sourceIndex].stock - sourceQty) };
-      }
-      
-      if (targetIndex >= 0) {
-        newInventory[targetIndex] = { ...newInventory[targetIndex], stock: newInventory[targetIndex].stock + yieldQty };
-      }
-      
-      return { inventory: newInventory };
-    }),
-
   addRetailProduct: (product) =>
     set((state) => ({
       retailProducts: [product, ...state.retailProducts]
@@ -280,21 +241,4 @@ export const useWorkflowStore = create<WorkflowState>()(
         p.id === productId ? { ...p, stock: Math.max(0, p.stock - qty) } : p
       )
     })),
-
-  logs: [],
-  addLog: (logData) => 
-    set((state) => ({
-      logs: [
-        {
-          ...logData,
-          id: `LOG-${Date.now()}`,
-          createdAt: new Date().toISOString()
-        },
-        ...state.logs
-      ]
-    }))
-  }),
-  {
-    name: 'printpilot-workflow-storage', // name of item in the storage (must be unique)
-  }
-));
+}));

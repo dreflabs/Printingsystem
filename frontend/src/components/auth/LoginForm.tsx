@@ -60,7 +60,7 @@ export function LoginForm() {
       {/* Brand Header */}
       <div className="text-center mb-6">
         <div className="inline-flex items-center justify-center w-20 h-20 mb-4 overflow-hidden">
-          <img src="/PRINT_PILOT_LOGO.png" alt="Print Pilot Logo" className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(14,165,233,0.3)]" />
+          <img src="/logo-sarjana.png" alt="Print Pilot Logo" className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(14,165,233,0.3)]" />
         </div>
         <h1 className="text-3xl font-bold text-primary tracking-tight">Print Pilot<span className="text-accent-teal">.id</span></h1>
         <p className="text-sm text-muted">Sistem Manajemen Percetakan Modern</p>

@@ -21,7 +21,7 @@ export default function MarketingPage() {
       <header className="sticky top-0 z-50 bg-base/80 backdrop-blur-xl border-b border-border/50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/PRINT_PILOT_LOGO.png" alt="Print Pilot Logo" className="h-8 w-8 object-contain" />
+            <img src="/logo-sarjana.png" alt="Print Pilot Logo" className="h-8 w-8 object-contain" />
             <span className="font-bold text-xl text-primary tracking-tight">Print Pilot<span className="text-accent-teal">.id</span></span>
           </div>
           <nav className="hidden md:flex gap-8 text-sm font-medium text-muted">
@@ -364,7 +364,7 @@ export default function MarketingPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
             <div className="md:col-span-2 space-y-4">
               <div className="flex items-center gap-2 mb-4">
-                <img src="/PRINT_PILOT_LOGO.png" alt="Print Pilot Logo" className="h-6 w-6 object-contain" />
+                <img src="/logo-sarjana.png" alt="Print Pilot Logo" className="h-6 w-6 object-contain" />
                 <span className="font-bold text-xl text-primary tracking-tight">Print Pilot<span className="text-muted">.id</span></span>
               </div>
               <p className="text-sm text-muted max-w-sm leading-relaxed">

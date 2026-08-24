@@ -22,7 +22,7 @@ export default function ForgotPasswordPage() {
       {/* Header Minimalis */}
       <header className="absolute top-0 left-0 w-full h-20 flex items-center px-8 z-50">
         <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <img src="/PRINT_PILOT_LOGO.png" alt="Print Pilot Logo" className="h-8 w-8 object-contain" />
+          <img src="/logo-sarjana.png" alt="Print Pilot Logo" className="h-8 w-8 object-contain" />
           <span className="font-bold text-xl text-primary tracking-tight">Print Pilot<span className="text-accent-teal">.id</span></span>
         </Link>
       </header>

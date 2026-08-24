@@ -132,7 +132,7 @@ export function Sidebar({ role, isOpen, onClose }: SidebarProps) {
         <div className="flex items-center justify-between px-5 py-5 border-b border-border">
           <div className="flex items-center gap-2.5">
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden shrink-0">
-              <img src="/PRINT_PILOT_LOGO.png" alt="Print Pilot" className="h-full w-full object-contain" />
+              <img src="/logo-sarjana.png" alt="Print Pilot" className="h-full w-full object-contain" />
             </div>
             <div>
               <span className="text-base font-bold text-primary tracking-tight">

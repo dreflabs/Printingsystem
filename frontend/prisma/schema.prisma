@@ -1,0 +1,813 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── SAAS & MULTI-TENANCY ─────────────────────────────────────────────────────
+
+model Tenant {
+  id                      String    @id @default(uuid())
+  slug                    String    @unique // subdomain (e.g. majujayaprint)
+  name                    String
+  plan                    String // STARTER/PRO/ENTERPRISE
+  status                  String // TRIAL/ACTIVE/SUSPENDED/CHURNED
+  trial_ends_at           DateTime?
+  subscription_started_at DateTime?
+  current_period_start    DateTime?
+  current_period_end      DateTime?
+  billing_email           String?
+  owner_name              String?
+  owner_phone             String?
+  custom_domain           String?
+  wa_provider             String?
+  wa_api_key              String? // [ENCRYPTED]
+  max_users               Int?
+  created_at              DateTime  @default(now())
+  updated_at              DateTime  @updatedAt
+
+  // Relations
+  users                  User[]
+  subscription_plans     TenantSubscription[]
+  invoices               Invoice[]
+  tenant_audit_logs      TenantAuditLog[]
+  onboarding_steps       OnboardingStep[]
+  customers              Customer[]
+  products               Product[]
+  machines               Machine[]
+  materials              Material[]
+  machine_materials      MachineMaterial[]
+  material_movements     MaterialMovement[]
+  orders                 Order[]
+  order_items            OrderItem[]
+  retail_products        RetailProduct[]
+  retail_stock_movements RetailStockMovement[]
+  design_jobs            DesignJob[]
+  design_versions        DesignVersion[]
+  production_jobs        ProductionJob[]
+  qc_records             QcRecord[]
+  finishing_jobs         FinishingJob[]
+  storage_locations      StorageLocation[]
+  storage_items          StorageItem[]
+  payments               Payment[]
+  pickup_records         PickupRecord[]
+  notification_events    NotificationEvent[]
+  audits                 Audit[]
+  audit_items            AuditItem[]
+  audit_logs             AuditLog[]
+  corrections            Correction[]
+  deadline_alerts        DeadlineAlert[]
+  attendance_imports     AttendanceImport[]
+  attendance_records     AttendanceRecord[]
+}
+
+model SubscriptionPlan {
+  id                   String  @id @default(uuid())
+  name                 String
+  slug                 String  @unique
+  price_monthly        Decimal @db.Decimal(15, 2)
+  max_users            Int?
+  max_orders_per_month Int?
+  features_json        String? // JSON string
+  active               Boolean @default(true)
+
+  tenant_subscriptions TenantSubscription[]
+}
+
+model TenantSubscription {
+  id                       String           @id @default(uuid())
+  tenant_id                String
+  tenant                   Tenant           @relation(fields: [tenant_id], references: [id])
+  plan_id                  String
+  plan                     SubscriptionPlan @relation(fields: [plan_id], references: [id])
+  status                   String // ACTIVE/CANCELLED/PAST_DUE
+  started_at               DateTime         @default(now())
+  ends_at                  DateTime?
+  payment_gateway          String?
+  external_subscription_id String?
+  created_at               DateTime         @default(now())
+
+  invoices Invoice[]
+}
+
+model Invoice {
+  id                String             @id @default(uuid())
+  tenant_id         String
+  tenant            Tenant             @relation(fields: [tenant_id], references: [id])
+  subscription_id   String
+  subscription      TenantSubscription @relation(fields: [subscription_id], references: [id])
+  invoice_number    String             @unique // INV-YYYYMM-XXXXX
+  amount            Decimal            @db.Decimal(15, 2)
+  status            String // PENDING/PAID/FAILED/WAIVED
+  due_date          DateTime
+  paid_at           DateTime?
+  payment_method    String?
+  payment_reference String?
+  pdf_path          String?
+  created_at        DateTime           @default(now())
+}
+
+model SuperAdmin {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  password_hash String
+  role          String // SUPER_ADMIN/SUPPORT/FINANCE
+  active        Boolean   @default(true)
+  last_login_at DateTime?
+  created_at    DateTime  @default(now())
+
+  tenant_audit_logs TenantAuditLog[]
+}
+
+model TenantAuditLog {
+  id          String      @id @default(uuid())
+  tenant_id   String
+  tenant      Tenant      @relation(fields: [tenant_id], references: [id])
+  actor_id    String?
+  actor       SuperAdmin? @relation(fields: [actor_id], references: [id])
+  actor_type  String // SUPER_ADMIN/SYSTEM
+  action      String
+  detail_json String? // JSON string
+  created_at  DateTime    @default(now())
+}
+
+model OnboardingStep {
+  id           String   @id @default(uuid())
+  tenant_id    String
+  tenant       Tenant   @relation(fields: [tenant_id], references: [id])
+  step         String // VERIFIED/WIZARD_DONE/FIRST_ORDER/FIRST_PRODUCTION
+  completed_at DateTime @default(now())
+}
+
+// ─── ROLES & USERS ────────────────────────────────────────────────────────────
+
+model Role {
+  id    String @id @default(uuid())
+  name  String @unique // owner, admin, designer_sales, operator, gudang
+  users User[]
+}
+
+model User {
+  id                   String    @id @default(uuid())
+  tenant_id            String
+  tenant               Tenant    @relation(fields: [tenant_id], references: [id])
+  name                 String
+  username             String
+  email                String
+  password_hash        String
+  avatar_url           String?
+  role_id              String
+  role                 Role      @relation(fields: [role_id], references: [id])
+  phone                String?
+  active               Boolean   @default(true)
+  last_login_at        DateTime?
+  failed_login_count   Int       @default(0)
+  locked_until         DateTime?
+  must_change_password Boolean   @default(false)
+  deactivated_at       DateTime?
+  deactivated_by       String? // self-reference if needed, omitted FK for simplicity
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  // Relations (inverse side)
+  created_customers      Customer[]
+  added_materials        Material[]
+  material_movements     MaterialMovement[]
+  created_orders         Order[]               @relation("OrderCreatedBy")
+  designed_orders        Order[]               @relation("OrderDesigner")
+  discount_approved      Order[]               @relation("DiscountApprovedBy")
+  dp_override_by_orders  Order[]               @relation("DpOverrideBy")
+  cancelled_by_orders    Order[]               @relation("OrderCancelledBy")
+  cancellation_approved  Order[]               @relation("CancellationApprovedBy")
+  retail_stock_movements RetailStockMovement[]
+  design_jobs            DesignJob[]
+  uploaded_designs       DesignVersion[]       @relation("UploadedBy")
+  approved_designs       DesignVersion[]       @relation("ApprovedBy")
+  production_jobs        ProductionJob[]
+  qc_inspections         QcRecord[]            @relation("Inspector")
+  rework_decisions       QcRecord[]            @relation("ReworkDecidedBy")
+  finishing_jobs         FinishingJob[]
+  stored_items           StorageItem[]         @relation("StoredBy")
+  transit_items          StorageItem[]         @relation("TransitBy")
+  released_items         StorageItem[]         @relation("ReleasedBy")
+  incident_reports       StorageItem[]         @relation("IncidentReportedBy")
+  payments_received      Payment[]
+  pickup_releases        PickupRecord[]
+  resent_notifications   NotificationEvent[]
+  audits_performed       Audit[]               @relation("AuditedBy")
+  audits_approved        Audit[]               @relation("AuditApprovedBy")
+  audit_logs             AuditLog[]
+  created_corrections    Correction[]          @relation("CorrectionCreatedBy")
+  approved_corrections   Correction[]          @relation("CorrectionApprovedBy")
+  imported_attendance    AttendanceImport[]
+  attendance_records     AttendanceRecord[]
+
+  @@unique([tenant_id, username])
+  @@unique([tenant_id, email])
+}
+
+// ─── MASTER DATA ──────────────────────────────────────────────────────────────
+
+model Customer {
+  id            String   @id @default(uuid())
+  tenant_id     String
+  tenant        Tenant   @relation(fields: [tenant_id], references: [id])
+  customer_code String // CST-XXXXX
+  name          String
+  phone         String?
+  email         String?
+  address       String?
+  company       String?
+  notes         String?
+  created_by    String
+  creator       User     @relation(fields: [created_by], references: [id])
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  orders              Order[]
+  notification_events NotificationEvent[]
+
+  @@unique([tenant_id, customer_code])
+}
+
+model Product {
+  id                  String      @id @default(uuid())
+  tenant_id           String
+  tenant              Tenant      @relation(fields: [tenant_id], references: [id])
+  name                String
+  category            String
+  default_material_id String?
+  default_material    Material?   @relation(fields: [default_material_id], references: [id])
+  active              Boolean     @default(true)
+  order_items         OrderItem[]
+}
+
+// ─── MACHINES & MATERIALS ─────────────────────────────────────────────────────
+
+model Machine {
+  id           String   @id @default(uuid())
+  tenant_id    String
+  tenant       Tenant   @relation(fields: [tenant_id], references: [id])
+  machine_code String // M-OUT-01
+  name         String
+  category     String // OUTDOOR/INDOOR/SUBLIMASI/A3/UV/DTF/BENDERA
+  status       String // ACTIVE/MAINTENANCE/INACTIVE
+  notes        String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  materials          MachineMaterial[]
+  material_movements MaterialMovement[]
+  production_jobs    ProductionJob[]
+
+  @@unique([tenant_id, machine_code])
+}
+
+model Material {
+  id                String   @id @default(uuid())
+  tenant_id         String
+  tenant            Tenant   @relation(fields: [tenant_id], references: [id])
+  material_code     String
+  name              String
+  type              String // MEDIA/INK
+  unit_stock        String // ROLL/METER/LEMBAR/LITER/KG/RIM/BOTOL/PCS/CUSTOM
+  unit_usage        String // METER/LEMBAR/ML/GRAM/PCS/CUSTOM
+  unit_custom       String?
+  conversion_factor Decimal  @db.Decimal(10, 2)
+  is_shared         Boolean  @default(false)
+  min_stock         Decimal  @db.Decimal(10, 2)
+  current_stock     Decimal  @db.Decimal(10, 2)
+  standard_cost     Decimal  @db.Decimal(15, 2)
+  added_by          String
+  adder             User     @relation(fields: [added_by], references: [id])
+  active            Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  machines           MachineMaterial[]
+  material_movements MaterialMovement[]
+  default_for        Product[]
+  order_items        OrderItem[]
+
+  @@unique([tenant_id, material_code])
+}
+
+model MachineMaterial {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id])
+  machine_id  String
+  machine     Machine  @relation(fields: [machine_id], references: [id])
+  material_id String
+  material    Material @relation(fields: [material_id], references: [id])
+
+  @@unique([tenant_id, machine_id, material_id])
+}
+
+model MaterialMovement {
+  id                    String         @id @default(uuid())
+  tenant_id             String
+  tenant                Tenant         @relation(fields: [tenant_id], references: [id])
+  material_id           String
+  material              Material       @relation(fields: [material_id], references: [id])
+  machine_id            String?
+  machine               Machine?       @relation(fields: [machine_id], references: [id])
+  job_id                String?
+  job                   ProductionJob? @relation(fields: [job_id], references: [id])
+  movement_type         String // IN/OUT/WASTE/ADJUSTMENT
+  quantity_usage        Decimal        @db.Decimal(10, 2)
+  quantity_stock_change Decimal        @db.Decimal(10, 2)
+  before_stock          Decimal        @db.Decimal(10, 2)
+  after_stock           Decimal        @db.Decimal(10, 2)
+  supplier              String?
+  unit_cost             Decimal?       @db.Decimal(15, 2)
+  performed_by          String
+  performer             User           @relation(fields: [performed_by], references: [id])
+  reason                String?
+  created_at            DateTime       @default(now())
+}
+
+// ─── ORDERS ───────────────────────────────────────────────────────────────────
+
+model Order {
+  id                       String    @id @default(uuid())
+  tenant_id                String
+  tenant                   Tenant    @relation(fields: [tenant_id], references: [id])
+  order_code               String // ORD-YYYYMMDD-XXXX
+  order_type               String // PRINTING/RETAIL
+  customer_id              String?
+  customer                 Customer? @relation(fields: [customer_id], references: [id])
+  created_by               String
+  creator                  User      @relation("OrderCreatedBy", fields: [created_by], references: [id])
+  designer_id              String?
+  designer                 User?     @relation("OrderDesigner", fields: [designer_id], references: [id])
+  status                   String
+  subtotal                 Decimal   @db.Decimal(15, 2)
+  discount                 Decimal   @default(0) @db.Decimal(15, 2)
+  discount_approved_by     String?
+  discount_approver        User?     @relation("DiscountApprovedBy", fields: [discount_approved_by], references: [id])
+  discount_approved_at     DateTime?
+  discount_reason          String?
+  total                    Decimal   @db.Decimal(15, 2)
+  dp_required              Decimal?  @db.Decimal(15, 2)
+  dp_override_pct          Decimal?  @db.Decimal(5, 2)
+  dp_override_by           String?
+  dp_overrider             User?     @relation("DpOverrideBy", fields: [dp_override_by], references: [id])
+  dp_override_reason       String?
+  paid_amount              Decimal   @default(0) @db.Decimal(15, 2)
+  balance                  Decimal   @db.Decimal(15, 2)
+  deadline                 DateTime?
+  notes                    String?
+  cancelled_at             DateTime?
+  cancelled_by             String?
+  canceller                User?     @relation("OrderCancelledBy", fields: [cancelled_by], references: [id])
+  cancellation_reason      String?
+  cancellation_approved_by String?
+  cancellation_approver    User?     @relation("CancellationApprovedBy", fields: [cancellation_approved_by], references: [id])
+  dp_refund_amount         Decimal?  @db.Decimal(15, 2)
+  dp_refund_method         String?
+  closed_at                DateTime?
+  created_at               DateTime  @default(now())
+  updated_at               DateTime  @updatedAt
+
+  items                  OrderItem[]
+  retail_stock_movements RetailStockMovement[]
+  design_jobs            DesignJob[]
+  production_jobs        ProductionJob[]
+  payments               Payment[]
+  pickup_records         PickupRecord[]
+  notification_events    NotificationEvent[]
+  audits                 Audit[]
+  corrections            Correction[]
+  deadline_alerts        DeadlineAlert[]
+
+  @@unique([tenant_id, order_code])
+}
+
+model OrderItem {
+  id                String         @id @default(uuid())
+  tenant_id         String
+  tenant            Tenant         @relation(fields: [tenant_id], references: [id])
+  order_id          String
+  order             Order          @relation(fields: [order_id], references: [id])
+  product_id        String?
+  product           Product?       @relation(fields: [product_id], references: [id])
+  retail_product_id String?
+  retail_product    RetailProduct? @relation(fields: [retail_product_id], references: [id])
+  description       String?
+  quantity          Int
+  size              String?
+  material_id       String?
+  material          Material?      @relation(fields: [material_id], references: [id])
+  finishing         String?
+  unit_price        Decimal        @db.Decimal(15, 2)
+  total_price       Decimal        @db.Decimal(15, 2)
+}
+
+// ─── RETAIL & POS ─────────────────────────────────────────────────────────────
+
+model RetailProduct {
+  id             String   @id @default(uuid())
+  tenant_id      String
+  tenant         Tenant   @relation(fields: [tenant_id], references: [id])
+  sku            String
+  name           String
+  category       String
+  price          Decimal  @db.Decimal(15, 2)
+  stock_quantity Int
+  min_stock      Int
+  active         Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  order_items     OrderItem[]
+  stock_movements RetailStockMovement[]
+
+  @@unique([tenant_id, sku])
+}
+
+model RetailStockMovement {
+  id                String        @id @default(uuid())
+  tenant_id         String
+  tenant            Tenant        @relation(fields: [tenant_id], references: [id])
+  retail_product_id String
+  retail_product    RetailProduct @relation(fields: [retail_product_id], references: [id])
+  order_id          String?
+  order             Order?        @relation(fields: [order_id], references: [id])
+  movement_type     String // IN/OUT/ADJUSTMENT
+  quantity_change   Int
+  before_stock      Int
+  after_stock       Int
+  performed_by      String
+  performer         User          @relation(fields: [performed_by], references: [id])
+  reason            String?
+  created_at        DateTime      @default(now())
+}
+
+// ─── DESIGN ───────────────────────────────────────────────────────────────────
+
+model DesignJob {
+  id              String   @id @default(uuid())
+  tenant_id       String
+  tenant          Tenant   @relation(fields: [tenant_id], references: [id])
+  order_id        String
+  order           Order    @relation(fields: [order_id], references: [id])
+  designer_id     String
+  designer        User     @relation(fields: [designer_id], references: [id])
+  status          String
+  current_version Int      @default(1)
+  approval_method String // WALK_IN/MAKLOON/WHATSAPP
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  versions DesignVersion[]
+}
+
+model DesignVersion {
+  id               String    @id @default(uuid())
+  tenant_id        String
+  tenant           Tenant    @relation(fields: [tenant_id], references: [id])
+  design_job_id    String
+  design_job       DesignJob @relation(fields: [design_job_id], references: [id])
+  version_no       Int
+  file_path        String?
+  preview_path     String?
+  uploaded_by      String
+  uploader         User      @relation("UploadedBy", fields: [uploaded_by], references: [id])
+  uploaded_at      DateTime  @default(now())
+  approval_status  String // PENDING/APPROVED/REJECTED
+  approved_at      DateTime?
+  approved_by      String?
+  approver         User?     @relation("ApprovedBy", fields: [approved_by], references: [id])
+  approval_method  String?
+  approval_notes   String?
+  rejection_reason String?
+}
+
+// ─── PRODUCTION ───────────────────────────────────────────────────────────────
+
+model ProductionJob {
+  id            String          @id @default(uuid())
+  tenant_id     String
+  tenant        Tenant          @relation(fields: [tenant_id], references: [id])
+  order_id      String
+  order         Order           @relation(fields: [order_id], references: [id])
+  job_code      String // JOB-YYYYMMDD-XXXX
+  machine_id    String
+  machine       Machine         @relation(fields: [machine_id], references: [id])
+  operator_id   String
+  operator      User            @relation(fields: [operator_id], references: [id])
+  status        String
+  priority      Int             @default(1)
+  planned_start DateTime?
+  planned_end   DateTime?
+  actual_start  DateTime?
+  actual_end    DateTime?
+  planned_qty   Int
+  actual_qty    Int             @default(0)
+  reprint_qty   Int             @default(0)
+  waste_qty     Int             @default(0)
+  waste_reason  String?
+  parent_job_id String?
+  parent_job    ProductionJob?  @relation("ReworkJobs", fields: [parent_job_id], references: [id])
+  child_jobs    ProductionJob[] @relation("ReworkJobs")
+  rework_count  Int             @default(0)
+  rework_reason String?
+  notes         String?
+  created_at    DateTime        @default(now())
+  updated_at    DateTime        @updatedAt
+
+  material_movements MaterialMovement[]
+  qc_records         QcRecord[]
+  finishing_jobs     FinishingJob[]
+  storage_items      StorageItem[]
+
+  @@unique([tenant_id, job_code])
+}
+
+model QcRecord {
+  id                    String        @id @default(uuid())
+  tenant_id             String
+  tenant                Tenant        @relation(fields: [tenant_id], references: [id])
+  job_id                String
+  job                   ProductionJob @relation(fields: [job_id], references: [id])
+  inspector_id          String
+  inspector             User          @relation("Inspector", fields: [inspector_id], references: [id])
+  result                String // PASS/FAIL/PENDING
+  checklist_json        String? // JSON string instead of jsonb for simplicity across db types
+  notes                 String?
+  photo_path            String?
+  rework_recommendation String?
+  rework_decision       String? // APPROVED/REJECTED/HOLD
+  rework_decided_by     String?
+  rework_decider        User?         @relation("ReworkDecidedBy", fields: [rework_decided_by], references: [id])
+  rework_decided_at     DateTime?
+  rework_reason         String?
+  created_at            DateTime      @default(now())
+}
+
+model FinishingJob {
+  id                String        @id @default(uuid())
+  tenant_id         String
+  tenant            Tenant        @relation(fields: [tenant_id], references: [id])
+  job_id            String
+  job               ProductionJob @relation(fields: [job_id], references: [id])
+  operator_id       String
+  operator          User          @relation(fields: [operator_id], references: [id])
+  status            String
+  started_at        DateTime?
+  completed_at      DateTime?
+  actual_qty        Int           @default(0)
+  notes             String?
+  job_qr_scanned_at DateTime?
+  label_printed_at  DateTime?
+  created_at        DateTime      @default(now())
+}
+
+// ─── STORAGE ──────────────────────────────────────────────────────────────────
+
+model StorageLocation {
+  id               String   @id @default(uuid())
+  tenant_id        String
+  tenant           Tenant   @relation(fields: [tenant_id], references: [id])
+  location_code    String
+  name             String
+  floor            Int
+  zone             String
+  rack             String?
+  slot             String?
+  capacity_max     Int      @default(1)
+  capacity_current Int      @default(0)
+  qr_code_value    String?
+  active           Boolean  @default(true)
+  created_at       DateTime @default(now())
+
+  stored_items  StorageItem[] @relation("Location")
+  transit_items StorageItem[] @relation("TransitLocation")
+
+  @@unique([tenant_id, location_code])
+}
+
+model StorageItem {
+  id                   String           @id @default(uuid())
+  tenant_id            String
+  tenant               Tenant           @relation(fields: [tenant_id], references: [id])
+  job_id               String
+  job                  ProductionJob    @relation(fields: [job_id], references: [id])
+  location_id          String
+  location             StorageLocation  @relation("Location", fields: [location_id], references: [id])
+  quantity             Int
+  status               String // STORED/IN_TRANSIT/RELEASED/INCIDENT
+  stored_by            String
+  storer               User             @relation("StoredBy", fields: [stored_by], references: [id])
+  stored_at            DateTime         @default(now())
+  transit_at           DateTime?
+  transit_by           String?
+  transitor            User?            @relation("TransitBy", fields: [transit_by], references: [id])
+  transit_location_id  String?
+  transit_location     StorageLocation? @relation("TransitLocation", fields: [transit_location_id], references: [id])
+  released_by          String?
+  releaser             User?            @relation("ReleasedBy", fields: [released_by], references: [id])
+  released_at          DateTime?
+  incident_reported_at DateTime?
+  incident_reported_by String?
+  incident_reporter    User?            @relation("IncidentReportedBy", fields: [incident_reported_by], references: [id])
+  incident_notes       String?
+}
+
+// ─── PAYMENT & PICKUP ─────────────────────────────────────────────────────────
+
+model Payment {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id])
+  order_id    String
+  order       Order    @relation(fields: [order_id], references: [id])
+  amount      Decimal  @db.Decimal(15, 2)
+  method      String // CASH/TRANSFER/QRIS
+  reference   String?
+  status      String // PENDING/CONFIRMED/REJECTED
+  received_by String
+  receiver    User     @relation(fields: [received_by], references: [id])
+  paid_at     DateTime @default(now())
+  notes       String?
+}
+
+model PickupRecord {
+  id                 String   @id @default(uuid())
+  tenant_id          String
+  tenant             Tenant   @relation(fields: [tenant_id], references: [id])
+  order_id           String
+  order              Order    @relation(fields: [order_id], references: [id])
+  released_by        String
+  releaser           User     @relation(fields: [released_by], references: [id])
+  receiver_name      String
+  receiver_id_type   String?
+  receiver_id_number String?
+  photo_path         String?
+  notes              String?
+  released_at        DateTime @default(now())
+}
+
+// ─── NOTIFICATION ─────────────────────────────────────────────────────────────
+
+model NotificationEvent {
+  id                  String    @id @default(uuid())
+  tenant_id           String
+  tenant              Tenant    @relation(fields: [tenant_id], references: [id])
+  order_id            String
+  order               Order     @relation(fields: [order_id], references: [id])
+  customer_id         String
+  customer            Customer  @relation(fields: [customer_id], references: [id])
+  event_type          String
+  channel             String // WHATSAPP/EMAIL
+  recipient           String
+  template_code       String
+  status              String // PENDING/SENT/FAILED/RETRY
+  provider_message_id String?
+  error_message       String?
+  sent_at             DateTime?
+  is_resend           Boolean   @default(false)
+  resent_by           String?
+  resender            User?     @relation(fields: [resent_by], references: [id])
+  retry_count         Int       @default(0)
+  created_at          DateTime  @default(now())
+}
+
+// ─── AUDIT & REPORTING ────────────────────────────────────────────────────────
+
+model Audit {
+  id                String    @id @default(uuid())
+  tenant_id         String
+  tenant            Tenant    @relation(fields: [tenant_id], references: [id])
+  order_id          String
+  order             Order     @relation(fields: [order_id], references: [id])
+  audited_by_id     String
+  auditor           User      @relation("AuditedBy", fields: [audited_by_id], references: [id])
+  result            String // GREEN/YELLOW/RED
+  financial_status  String
+  material_status   String
+  quantity_status   String
+  production_status String
+  storage_status    String
+  exception_count   Int       @default(0)
+  notes             String?
+  audited_at        DateTime  @default(now())
+  approved_at       DateTime?
+  approved_by       String?
+  approver          User?     @relation("AuditApprovedBy", fields: [approved_by], references: [id])
+
+  items AuditItem[]
+}
+
+model AuditItem {
+  id             String  @id @default(uuid())
+  tenant_id      String
+  tenant         Tenant  @relation(fields: [tenant_id], references: [id])
+  audit_id       String
+  audit          Audit   @relation(fields: [audit_id], references: [id])
+  category       String
+  severity       String // INFO/WARNING/CRITICAL
+  expected_value String?
+  actual_value   String?
+  difference     String?
+  status         String
+  note           String?
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  tenant_id      String
+  tenant         Tenant   @relation(fields: [tenant_id], references: [id])
+  actor_id       String
+  actor          User     @relation(fields: [actor_id], references: [id])
+  action         String
+  entity_type    String
+  entity_id      String
+  old_value_json String? // JSON string
+  new_value_json String? // JSON string
+  ip_address     String?
+  user_agent     String?
+  notes          String?
+  hash           String? // Anti-fraud chaining hash
+  previous_hash  String? // Anti-fraud chaining hash
+  created_at     DateTime @default(now())
+}
+
+model Correction {
+  id               String    @id @default(uuid())
+  tenant_id        String
+  tenant           Tenant    @relation(fields: [tenant_id], references: [id])
+  order_id         String
+  order            Order     @relation(fields: [order_id], references: [id])
+  corrected_entity String
+  corrected_id     String
+  category         String // FINANCIAL/MATERIAL/QUANTITY/OTHER
+  field_name       String
+  old_value        String?
+  new_value        String?
+  reason           String?
+  created_by       String
+  creator          User      @relation("CorrectionCreatedBy", fields: [created_by], references: [id])
+  created_at       DateTime  @default(now())
+  approved_by      String?
+  approver         User?     @relation("CorrectionApprovedBy", fields: [approved_by], references: [id])
+  approved_at      DateTime?
+}
+
+model DeadlineAlert {
+  id           String    @id @default(uuid())
+  tenant_id    String
+  tenant       Tenant    @relation(fields: [tenant_id], references: [id])
+  order_id     String
+  order        Order     @relation(fields: [order_id], references: [id])
+  alert_type   String // H1_WARNING/OVERDUE
+  triggered_at DateTime  @default(now())
+  resolved_at  DateTime?
+}
+
+// ─── ABSENSI ──────────────────────────────────────────────────────────────────
+
+model AttendanceImport {
+  id           String   @id @default(uuid())
+  tenant_id    String
+  tenant       Tenant   @relation(fields: [tenant_id], references: [id])
+  imported_by  String
+  importer     User     @relation(fields: [imported_by], references: [id])
+  import_date  DateTime @default(now())
+  file_path    String
+  period_start DateTime
+  period_end   DateTime
+  row_count    Int
+  late_count   Int
+  created_at   DateTime @default(now())
+
+  records AttendanceRecord[]
+}
+
+model AttendanceRecord {
+  id                 String           @id @default(uuid())
+  tenant_id          String
+  tenant             Tenant           @relation(fields: [tenant_id], references: [id])
+  import_id          String
+  import             AttendanceImport @relation(fields: [import_id], references: [id])
+  user_id            String?
+  user               User?            @relation(fields: [user_id], references: [id])
+  employee_name      String
+  date               DateTime
+  check_in           DateTime?
+  check_out          DateTime?
+  check_in_status    String // ON_TIME/LATE
+  late_minutes       Int              @default(0)
+  break_start        DateTime?
+  break_end          DateTime?
+  break_duration_min Int              @default(0)
+  break_status       String? // NORMAL/EXCEEDED
+  warning_sent_at    DateTime?
+  owner_note         String?
+  created_at         DateTime         @default(now())
+}

@@ -159,7 +159,7 @@ export default function MarketingPage() {
                 },
                 {
                   icon: PackageSearch,
-                  title: "Manajemen Gudang",
+                  title: "Manajemen Finishing",
                   desc: "Stok bahan baku terpotong otomatis setiap kali mesin mencetak. Ada alert stok menipis.",
                   color: "text-status-yellow",
                   bg: "bg-status-yellow/10"
@@ -202,7 +202,7 @@ export default function MarketingPage() {
                   <span className="text-muted">/bln</span>
                 </div>
                 <ul className="space-y-4 mb-8 flex-1">
-                  {['Maksimal 5 Pengguna', '200 Order per bulan', '1 Lokasi Gudang', 'Support via Email'].map((feat, i) => (
+                  {['Maksimal 5 Pengguna', '200 Order per bulan', '1 Lokasi Finishing', 'Support via Email'].map((feat, i) => (
                     <li key={i} className="flex items-start gap-3 text-sm font-medium text-muted">
                       <CheckCircle2 className="h-5 w-5 text-accent-teal shrink-0" /> {feat}
                     </li>
@@ -225,7 +225,7 @@ export default function MarketingPage() {
                   <span className="text-muted">/bln</span>
                 </div>
                 <ul className="space-y-4 mb-8 flex-1">
-                  {['Maksimal 15 Pengguna', 'Unlimited Order', 'Multi-lokasi Gudang', 'Notifikasi WhatsApp Otomatis', 'Support Prioritas (WA)'].map((feat, i) => (
+                  {['Maksimal 15 Pengguna', 'Unlimited Order', 'Multi-lokasi Finishing', 'Notifikasi WhatsApp Otomatis', 'Support Prioritas (WA)'].map((feat, i) => (
                     <li key={i} className="flex items-start gap-3 text-sm font-medium text-primary">
                       <CheckCircle2 className="h-5 w-5 text-accent-teal shrink-0" /> {feat}
                     </li>

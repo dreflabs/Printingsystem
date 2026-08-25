@@ -5,24 +5,22 @@ import { ClipboardList, Wrench, Warehouse } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { QCTab } from "./QCTab";
 import { FinishingTab } from "./FinishingTab";
-import { StorageTab } from "./StorageTab";
 
-type GudangTab = "qc" | "finishing" | "storage";
+type FinishingTab = "qc" | "finishing";
 
-const TABS: { id: GudangTab; label: string; icon: typeof ClipboardList }[] = [
+const TABS: { id: FinishingTab; label: string; icon: typeof ClipboardList }[] = [
   { id: "qc", label: "QC", icon: ClipboardList },
   { id: "finishing", label: "Finishing", icon: Wrench },
-  { id: "storage", label: "Storage", icon: Warehouse },
 ];
 
-export default function GudangPage() {
-  const [activeTab, setActiveTab] = useState<GudangTab>("qc");
+export default function FinishingPage() {
+  const [activeTab, setActiveTab] = useState<FinishingTab>("qc");
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-primary">Dashboard Gudang</h1>
-        <p className="text-sm text-muted mt-0.5">QC, Finishing, dan Storage — satu role, tiga tahap akhir produksi</p>
+        <h1 className="text-2xl font-bold text-primary">Dashboard Finishing</h1>
+        <p className="text-sm text-muted mt-0.5">QC dan Finishing — tahap akhir produksi sebelum diserahkan ke pelanggan</p>
       </div>
 
       {/* Tab Navigation */}
@@ -43,7 +41,6 @@ export default function GudangPage() {
 
       {activeTab === "qc" && <QCTab />}
       {activeTab === "finishing" && <FinishingTab />}
-      {activeTab === "storage" && <StorageTab />}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, ShoppingCart, User, PlusCircle, LayoutGrid, Receipt, ClipboardList, Package, CheckCircle2, Printer } from "lucide-react";
 import { PosProductCard, Product } from "@/components/pos/PosProductCard";
 import { PosCartItem, CartItemType } from "@/components/pos/PosCartItem";
@@ -35,7 +35,7 @@ function ReceiptModal({ open, transactionData, onClose }: { open: boolean, trans
 
         <div className="flex gap-3 w-full">
           <button onClick={onClose} className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary cursor-pointer transition-colors">Tutup Kasir</button>
-          <button onClick={() => { alert("Mencetak struk kasir..."); onClose(); }} className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold flex justify-center items-center gap-2 cursor-pointer hover:brightness-110"><Printer className="h-4 w-4" /> Cetak Struk</button>
+          <button onClick={() => { alert("Mencetak 2 Struk:\n1. Struk Bukti Bayar Konsumen\n2. Struk Kerja (Berisi QR Code untuk ditempel oleh QC & Finishing)\n\nHarap berikan Struk Kerja (2) ke Operator Mesin!"); onClose(); }} className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold flex justify-center items-center gap-2 cursor-pointer hover:brightness-110"><Printer className="h-4 w-4" /> Cetak 2 Struk</button>
         </div>
       </div>
     </div>
@@ -46,24 +46,38 @@ function PosPaymentModal({
   open,
   totalAmount,
   customerName,
+  defaultDiscount = 0,
   onClose,
   onSuccess,
 }: {
   open: boolean;
   totalAmount: number;
   customerName: string;
+  defaultDiscount?: number;
   onClose: () => void;
   onSuccess: (method: "TUNAI" | "QRIS", cashGiven: number) => void;
 }) {
   const [method, setMethod] = useState<"TUNAI" | "QRIS">("TUNAI");
   const [cashInput, setCashInput] = useState("");
+  const [discountInput, setDiscountInput] = useState("");
   const [qrisRef, setQrisRef] = useState("");
+
+  // Set default discount when modal opens
+  useEffect(() => {
+    if (open) {
+      setDiscountInput(defaultDiscount > 0 ? defaultDiscount.toString() : "");
+      setCashInput("");
+      setMethod("TUNAI");
+    }
+  }, [open, defaultDiscount]);
 
   if (!open) return null;
 
+  const discount = Number(discountInput) || 0;
+  const finalAmount = Math.max(0, totalAmount - discount);
   const cashGiven = Number(cashInput) || 0;
-  const change = Math.max(0, cashGiven - totalAmount);
-  const isValidCash = method === "TUNAI" ? cashGiven >= totalAmount : true;
+  const change = Math.max(0, cashGiven - finalAmount);
+  const isValidCash = method === "TUNAI" ? cashGiven >= finalAmount : true;
 
   const formatRupiah = (amount: number) =>
     new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(amount);
@@ -78,9 +92,23 @@ function PosPaymentModal({
         <div className="bg-elevated p-4 rounded-xl flex justify-between items-center">
           <div>
             <p className="text-xs text-muted">Pelanggan: {customerName || "Umum"}</p>
-            <p className="text-xs text-muted">Total Tagihan</p>
+            <p className="text-xs text-muted mt-1">Subtotal: {formatRupiah(totalAmount)}</p>
+            {discount > 0 && <p className="text-xs text-status-red font-bold">Diskon: -{formatRupiah(discount)}</p>}
+            <p className="text-sm font-bold text-primary mt-2">Total Akhir</p>
           </div>
-          <p className="text-2xl font-mono font-bold text-status-yellow">{formatRupiah(totalAmount)}</p>
+          <p className="text-3xl font-mono font-bold text-status-yellow">{formatRupiah(finalAmount)}</p>
+        </div>
+
+        {/* Discount Input */}
+        <div>
+          <label className="text-xs text-muted font-medium mb-1 block">Potongan Harga / Diskon (Rp) - Opsional</label>
+          <input
+            type="number"
+            value={discountInput}
+            onChange={(e) => setDiscountInput(e.target.value)}
+            placeholder="0"
+            className="w-full h-10 rounded-xl bg-elevated border border-border text-primary text-sm px-4 outline-none focus:border-status-yellow transition-all"
+          />
         </div>
 
         {/* Method Toggle */}
@@ -114,7 +142,7 @@ function PosPaymentModal({
                 type="number"
                 value={cashInput}
                 onChange={(e) => setCashInput(e.target.value)}
-                placeholder={totalAmount.toString()}
+                placeholder={finalAmount.toString()}
                 className="w-full h-12 rounded-xl bg-elevated border border-border text-primary text-xl font-mono font-bold px-4 outline-none focus:border-status-yellow"
               />
             </div>
@@ -150,11 +178,7 @@ function PosPaymentModal({
           <button onClick={onClose} className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary transition-colors cursor-pointer">
             Batal
           </button>
-          <button
-            disabled={!isValidCash}
-            onClick={() => onSuccess(method, cashGiven)}
-            className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 transition-all cursor-pointer disabled:opacity-40"
-          >
+          <button onClick={() => onSuccess(method, cashGiven)} disabled={!isValidCash} className={cn("flex-[2] h-11 rounded-xl text-white text-sm font-bold flex items-center justify-center transition-all shadow-sm", isValidCash ? "bg-status-green hover:brightness-110 shadow-status-green/20 cursor-pointer" : "bg-status-green/50 cursor-not-allowed")}>
             Selesaikan Transaksi
           </button>
         </div>
@@ -168,12 +192,17 @@ export default function PosPage() {
   const [activeCategory, setActiveCategory] = useState("Semua");
   const [searchQuery, setSearchQuery] = useState("");
   const [cart, setCart] = useState<CartItemType[]>([]);
-  const [customerName, setCustomerName] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
 
   const retailProducts = useWorkflowStore((s) => s.retailProducts);
   const deductRetailStock = useWorkflowStore((s) => s.deductRetailStock);
+  const customers = useWorkflowStore((s) => s.customers);
+
+  const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+  const displayCustomerName = selectedCustomer ? selectedCustomer.name : "Umum";
+  const defaultDiscount = selectedCustomer ? selectedCustomer.defaultDiscountRp : 0;
 
   // Map store products to Product interface
   const allProducts: Product[] = retailProducts.map(p => ({
@@ -260,7 +289,7 @@ export default function PosPage() {
     setReceiptData({ total: totalVal, method, cashGiven, change: changeVal });
     
     setCart([]);
-    setCustomerName("");
+    setSelectedCustomerId("");
   };
 
   return (
@@ -289,7 +318,8 @@ export default function PosPage() {
       <PosPaymentModal
         open={showPaymentModal}
         totalAmount={total}
-        customerName={customerName}
+        customerName={displayCustomerName}
+        defaultDiscount={defaultDiscount}
         onClose={() => setShowPaymentModal(false)}
         onSuccess={handleCheckoutSuccess}
       />
@@ -376,13 +406,18 @@ export default function PosPage() {
           </div>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
-            <input
-              type="text"
-              placeholder="Nama Pelanggan (Opsional)"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg outline-none focus:border-status-yellow text-sm"
-            />
+            <select
+              value={selectedCustomerId}
+              onChange={(e) => setSelectedCustomerId(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg outline-none focus:border-status-yellow text-sm appearance-none cursor-pointer"
+            >
+              <option value="">Pelanggan Umum</option>
+              {customers.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name} {c.type === "Makloon" || c.type === "B2B" ? `(${c.type})` : ""}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

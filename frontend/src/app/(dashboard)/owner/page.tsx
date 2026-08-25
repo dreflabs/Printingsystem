@@ -30,25 +30,13 @@ import { useWorkflowStore } from "@/store/useWorkflowStore";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
-// ── Audit Log mock entries ────────────────────────────────────────────────────
-const AUDIT_LOG = [
-  { time: "16:42", user: "Admin Rere", role: "admin", action: "Konfirmasi Pembayaran", entity: "ORD-20260820-0021", detail: "Rp 1.750.000 (Transfer)" },
-  { time: "16:30", user: "Ayu", role: "designer_sales", action: "Upload Versi Desain", entity: "JOB-001", detail: "V2 — Revisi logo konsumen" },
-  { time: "16:15", user: "Deni", role: "gudang", action: "QC PASS", entity: "JOB-004", detail: "Kartu Nama 500pcs — OK" },
-  { time: "15:58", user: "Budi", role: "operator", action: "Selesai Produksi", entity: "JOB-002", detail: "Qty: 5, Waste: 0" },
-  { time: "15:40", user: "Admin Rere", role: "admin", action: "Buat Order Baru", entity: "ORD-20260820-0024", detail: "Banner Indoor 2pcs — Walk-in" },
-  { time: "15:22", user: "Eko", role: "gudang", action: "Selesai Finishing", entity: "JOB-003", detail: "Laminasi Doff — 500pcs" },
-  { time: "15:00", user: "Fajar", role: "gudang", action: "Simpan ke Gudang", entity: "JOB-003", detail: "Lokasi: B-5" },
-  { time: "14:45", user: "Admin Rere", role: "admin", action: "Approve Rework", entity: "JOB-007", detail: "Rework Ke-1 disetujui" },
-  { time: "14:20", user: "Admin Rere", role: "admin", action: "Proses Pickup", entity: "ORD-20260819-0051", detail: "Diterima konsumen" },
-  { time: "13:50", user: "Pak Hendra", role: "owner", action: "Setujui Diskon", entity: "ORD-20260820-0021", detail: "Diskon 10% — PT Abadi Makmur" },
-];
+// ── Audit Log mock entries are now in the store ─────────────────────────────────
 
 const ROLE_BADGE: Record<string, string> = {
   admin: "bg-accent-teal/10 text-accent-teal",
   designer_sales: "bg-status-blue/10 text-status-blue",
   operator: "bg-status-blue/10 text-status-blue",
-  gudang: "bg-status-green/10 text-status-green",
+  finishing: "bg-status-green/10 text-status-green",
   owner: "bg-accent-teal/10 text-accent-teal",
 };
 
@@ -112,6 +100,7 @@ export default function OwnerPage() {
   const orders = useWorkflowStore((s) => s.orders);
   const jobs = useWorkflowStore((s) => s.jobs);
   const inventory = useWorkflowStore((s) => s.inventory);
+  const logs = useWorkflowStore((s) => s.logs);
   const updateJobStatus = useWorkflowStore((s) => s.updateJobStatus);
 
   // KPI — sesuai dokumen DASHBOARD.md
@@ -126,7 +115,13 @@ export default function OwnerPage() {
   // Alert data
   const qcFailed = jobs.filter((j) => j.status === "QC_FAILED");
   const overdue = orders.filter((o) => o.overdue);
-  const lowStock = inventory.filter((i) => i.stock < 100);
+  const lowStock = inventory.filter((i) => {
+    // Abaikan bahan sisa/potongan
+    if (i.name.toLowerCase().includes("sisa") || i.name.toLowerCase().includes("potongan") || i.id.toLowerCase().includes("sisa")) return false;
+    // Batas aman: Roll/Meter < 2, Lembaran < 100
+    const isRoll = i.unit.toLowerCase().includes("roll") || i.unit.toLowerCase().includes("meter");
+    return isRoll ? i.stock < 2 : i.stock < 100;
+  });
 
   // Pipeline counts
   const pipeline = [
@@ -134,7 +129,7 @@ export default function OwnerPage() {
     { label: "Cetak", count: jobs.filter((j) => j.status === "WAITING_PRINT" || j.status === "PRINTING").length, color: "bg-accent-teal" },
     { label: "QC", count: jobs.filter((j) => j.status === "WAITING_QC").length, color: "bg-status-yellow" },
     { label: "Finishing", count: jobs.filter((j) => j.status === "QC_PASSED" || j.status === "FINISHING").length, color: "bg-accent-teal" },
-    { label: "Gudang", count: jobs.filter((j) => j.status === "STORED").length, color: "bg-status-green" },
+    { label: "Storage", count: jobs.filter((j) => j.status === "STORED").length, color: "bg-status-green" },
     { label: "Siap Ambil", count: readyPickup, color: "bg-status-green", glow: true },
   ];
 
@@ -341,7 +336,7 @@ export default function OwnerPage() {
             <p className="text-muted truncate">· Kertas Art Carton 260g (15 lbr) oleh <span className="font-semibold text-primary">Fajar</span></p>
             <p className="text-muted truncate">· Tinta Cyan (500ml) oleh <span className="font-semibold text-primary">Deni</span></p>
             <button className="w-full py-1.5 rounded-lg bg-status-red/10 text-status-red font-bold hover:bg-status-red/20 transition-all cursor-pointer">
-              Tinjau Audit Gudang
+              Tinjau Audit Finishing
             </button>
           </div>
 
@@ -360,9 +355,11 @@ export default function OwnerPage() {
 
           {/* Anomaly: Manual Adjustment */}
           <div className="p-3 bg-status-yellow/5 border border-status-yellow/30 rounded-xl text-xs space-y-2">
-            <span className="font-bold text-status-yellow flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5" /> Manual Adjustment (Gudang)</span>
-            <p className="text-muted">· HVS A4 80g (-500 lbr) tanpa keterangan.</p>
-            <p className="text-[10px] text-muted">Pelaku: Eko (Gudang)</p>
+            <div className="flex justify-between items-start">
+              <span className="font-bold text-status-yellow flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5" /> Manual Adjustment (Finishing)</span>
+              <span className="text-status-yellow text-[10px] font-bold">Baru saja</span>
+            </div>
+            <p className="text-[10px] text-muted">Pelaku: Eko (Finishing)</p>
             <button className="w-full py-1.5 rounded-lg bg-status-yellow/10 text-status-yellow font-bold hover:bg-status-yellow/20 transition-all cursor-pointer">
               Tanya Penanggung Jawab
             </button>
@@ -531,19 +528,22 @@ export default function OwnerPage() {
             <span className="text-[10px] text-muted font-mono bg-elevated px-2 py-0.5 rounded border border-border">10 aksi</span>
           </div>
           <div className="flex-1 divide-y divide-border/50 overflow-y-auto max-h-[520px]">
-            {AUDIT_LOG.map((log, i) => (
-              <div key={i} className="px-4 py-3 hover:bg-elevated/30 transition-colors">
+            {logs.map((log, i) => {
+              // Map ActivityLog to the display format
+              const timeStr = new Date(log.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+              return (
+              <div key={log.id || i} className="px-4 py-3 hover:bg-elevated/30 transition-colors">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-mono text-muted">{log.time}</span>
-                  <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", ROLE_BADGE[log.role] || "bg-elevated text-muted")}>
-                    {log.role.replace("_", " ")}
+                  <span className="text-[10px] font-mono text-muted">{timeStr}</span>
+                  <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", "bg-elevated text-muted")}>
+                    {log.operator}
                   </span>
                 </div>
-                <p className="text-xs font-semibold text-primary">{log.action}</p>
-                <p className="text-[10px] text-accent-teal font-mono mt-0.5">{log.entity}</p>
-                <p className="text-[10px] text-muted truncate">{log.detail}</p>
+                <p className="text-xs font-semibold text-primary">{log.title}</p>
+                <p className="text-[10px] text-accent-teal font-mono mt-0.5">{log.type}</p>
+                <p className="text-[10px] text-muted truncate">{log.description}</p>
               </div>
-            ))}
+            )})}
           </div>
           <div className="p-3 border-t border-border">
             <button className="w-full text-xs text-accent-teal hover:underline font-semibold cursor-pointer">

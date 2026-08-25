@@ -24,7 +24,7 @@ type UserRole =
   | "admin"
   | "designer"
   | "operator"
-  | "gudang"
+  | "finishing"
   | "owner"
   | "pos";
 
@@ -61,6 +61,12 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["admin"],
   },
   {
+    label: "Database Pelanggan",
+    href: "/admin/customers",
+    icon: <Users className="h-5 w-5" />,
+    roles: ["admin"],
+  },
+  {
     label: "Dashboard",
     href: "/designer",
     icon: <Palette className="h-5 w-5" />,
@@ -73,10 +79,10 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["operator"],
   },
   {
-    label: "Gudang",
-    href: "/gudang",
+    label: "Finishing",
+    href: "/finishing",
     icon: <Package className="h-5 w-5" />,
-    roles: ["gudang"],
+    roles: ["finishing"],
   },
   {
     label: "Produksi & Laporan",
@@ -88,7 +94,7 @@ const NAV_ITEMS: NavItem[] = [
     label: "Scan QR",
     href: "/scan",
     icon: <ScanLine className="h-5 w-5" />,
-    roles: ["admin", "operator", "gudang"],
+    roles: ["admin", "operator", "finishing"],
   },
   {
     label: "Pegawai & Akses",
@@ -153,7 +159,7 @@ export function Sidebar({ role, isOpen, onClose }: SidebarProps) {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           {visibleItems.map((item) => {
-            const isExactRoot = ["/admin", "/owner", "/designer", "/operator", "/gudang"].includes(item.href);
+            const isExactRoot = ["/admin", "/owner", "/designer", "/operator", "/finishing"].includes(item.href);
             const isActive = isExactRoot
               ? pathname === item.href
               : pathname === item.href || pathname.startsWith(item.href + "/");

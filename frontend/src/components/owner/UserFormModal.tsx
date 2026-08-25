@@ -27,7 +27,7 @@ export function UserFormModal({ onClose, onSave, isLoading }: UserFormModalProps
     { id: "admin", name: "Admin" },
     { id: "designer_sales", name: "Designer / Setting" },
     { id: "operator", name: "Operator Cetak" },
-    { id: "gudang", name: "Gudang (QC, Finishing & Storage)" },
+    { id: "finishing", name: "Finishing (QC & Storage)" },
   ];
 
   return (

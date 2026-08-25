@@ -10,7 +10,7 @@ const DEMO_ACCOUNTS = [
   { role: "admin", name: "Rere", title: "Admin", user: "admin", pass: "admin123", path: "/admin", color: "border-accent-teal/40 text-accent-teal bg-accent-teal/10" },
   { role: "designer", name: "Ayu", title: "Designer", user: "designer", pass: "designer123", path: "/designer", color: "border-status-blue/40 text-status-blue bg-status-blue/10" },
   { role: "operator", name: "Budi", title: "Operator", user: "operator", pass: "operator123", path: "/operator", color: "border-status-blue/40 text-status-blue bg-status-blue/10" },
-  { role: "gudang", name: "Fajar", title: "Gudang (QC, Finishing & Storage)", user: "gudang", pass: "gudang123", path: "/gudang", color: "border-status-green/40 text-status-green bg-status-green/10" },
+  { role: "finishing", name: "Fajar", title: "Finishing (QC & Storage)", user: "finishing", pass: "finishing123", path: "/finishing", color: "border-status-green/40 text-status-green bg-status-green/10" },
 ];
 
 export function LoginForm() {

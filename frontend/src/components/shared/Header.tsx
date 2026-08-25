@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Menu, Bell, User, RefreshCw, ChevronDown, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getCurrentUserProfile } from "@/actions/profile";
@@ -10,7 +11,7 @@ const ROLE_OPTIONS = [
   { role: "admin", label: "Admin", user: "Rere (Admin)", path: "/admin" },
   { role: "designer_sales", label: "Designer Sales", user: "Ayu (Designer)", path: "/designer" },
   { role: "operator", label: "Operator Mesin", user: "Budi (Operator)", path: "/operator" },
-  { role: "gudang", label: "Gudang", user: "Fajar (Gudang)", path: "/gudang" },
+  { role: "finishing", label: "Finishing", user: "Fajar (Finishing)", path: "/finishing" },
   { role: "owner", label: "Owner", user: "Pak Hendra (Owner)", path: "/owner" },
 ];
 
@@ -22,6 +23,7 @@ interface HeaderProps {
 }
 
 export function Header({ userName, role, onMenuClick, className }: HeaderProps) {
+  const router = useRouter();
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -57,7 +59,7 @@ export function Header({ userName, role, onMenuClick, className }: HeaderProps) 
     localStorage.setItem("userRole", r.role);
     localStorage.setItem("userName", r.user);
     setShowRoleDropdown(false);
-    window.location.href = r.path;
+    router.push(r.path);
   };
 
   return (
@@ -171,7 +173,7 @@ export function Header({ userName, role, onMenuClick, className }: HeaderProps) 
                 </button>
                 <div className="h-px bg-border my-1" />
                 <button
-                  onClick={() => window.location.href = "/login"}
+                  onClick={() => router.push("/login")}
                   className="w-full text-left px-4 py-2 text-sm font-semibold text-status-red hover:bg-status-red/10 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <LogOut className="h-4 w-4" />

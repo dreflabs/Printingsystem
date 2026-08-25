@@ -14,10 +14,9 @@ export function ProductFormModal({ open, onClose, onSave }: ProductFormModalProp
     sku: "",
     name: "",
     category: "Kertas",
-    cogs: "",
+    customCategory: "",
     price: "",
-    stock: "",
-    minStock: ""
+    makloonPrice: "",
   });
 
   if (!open) return null;
@@ -26,6 +25,7 @@ export function ProductFormModal({ open, onClose, onSave }: ProductFormModalProp
     e.preventDefault();
     onSave({
       ...formData,
+      category: formData.category === "Custom" ? formData.customCategory : formData.category,
       id: Math.random().toString(36).substr(2, 9)
     });
     onClose();
@@ -59,9 +59,15 @@ export function ProductFormModal({ open, onClose, onSave }: ProductFormModalProp
                     <option>Tinta</option>
                     <option>Alat Tulis</option>
                     <option>Merchandise</option>
-                    <option>Lainnya</option>
+                    <option value="Custom">Lainnya (Custom)</option>
                   </select>
                 </div>
+                {formData.category === "Custom" && (
+                  <div className="space-y-1.5 col-span-2">
+                    <label className="text-sm font-medium text-primary">Kategori Custom <span className="text-status-red">*</span></label>
+                    <input required value={formData.customCategory} onChange={e => setFormData({...formData, customCategory: e.target.value})} type="text" placeholder="Masukkan nama kategori..." className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-status-blue" />
+                  </div>
+                )}
                 <div className="space-y-1.5 col-span-2">
                   <label className="text-sm font-medium text-primary">Nama Produk <span className="text-status-red">*</span></label>
                   <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} type="text" placeholder="Nama lengkap produk..." className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-status-blue" />
@@ -74,36 +80,30 @@ export function ProductFormModal({ open, onClose, onSave }: ProductFormModalProp
               <h3 className="font-semibold text-sm text-primary border-b border-border pb-2">Harga (Pricing)</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-primary">Harga Modal (COGS) <span className="text-status-red">*</span></label>
+                  <label className="text-sm font-medium text-primary">Harga Umum (Rp) <span className="text-status-red">*</span></label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm">Rp</span>
-                    <input required value={formData.cogs} onChange={e => setFormData({...formData, cogs: e.target.value})} type="number" className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:border-status-blue" />
+                    <input required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} type="number" className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:border-status-blue" placeholder="20000" />
                   </div>
-                  <p className="text-xs text-muted">Untuk menghitung laba rugi.</p>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-primary">Harga Jual POS <span className="text-status-red">*</span></label>
+                  <label className="text-sm font-medium text-primary">Harga Makloon (Rp)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm">Rp</span>
-                    <input required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} type="number" className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:border-status-blue" />
+                    <input value={formData.makloonPrice || ""} onChange={e => setFormData({...formData, makloonPrice: e.target.value})} type="number" className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:border-status-blue" placeholder="15000" />
                   </div>
                 </div>
               </div>
-            </div>
-
-            {/* Stok */}
-            <div className="space-y-4">
-              <h3 className="font-semibold text-sm text-primary border-b border-border pb-2">Manajemen Stok</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-primary">Stok Awal</label>
-                  <input value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} type="number" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-status-blue" />
+              
+              {/* Auto Discount Indicator */}
+              {formData.price && formData.makloonPrice && parseFloat(formData.price) > 0 && parseFloat(formData.makloonPrice) < parseFloat(formData.price) && (
+                <div className="bg-status-green/10 border border-status-green/30 rounded-xl p-3 text-xs text-status-green font-bold flex items-center justify-between">
+                  <span>Persentase Diskon Makloon:</span>
+                  <span className="text-sm bg-status-green text-white px-2 py-0.5 rounded-md shadow-sm">
+                    {Math.round(((parseFloat(formData.price) - parseFloat(formData.makloonPrice)) / parseFloat(formData.price)) * 100)}%
+                  </span>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-primary">Minimum Stok Peringatan</label>
-                  <input value={formData.minStock} onChange={e => setFormData({...formData, minStock: e.target.value})} type="number" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-status-blue" />
-                </div>
-              </div>
+              )}
             </div>
           </form>
         </div>

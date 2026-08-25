@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 // ─── Status Types ─────────────────────────────────────────────────────────────
 export type JobStatus = 
@@ -86,12 +87,60 @@ export interface RetailProduct {
   minStock: number;
 }
 
+export interface ProductVariant {
+  name: string;
+  price: number;
+}
+
+export interface ProductFinishing {
+  name: string;
+  price: number;
+  type: 'per_m2' | 'per_pcs' | 'flat';
+}
+
+export interface PrintingProduct {
+  id: string;
+  label: string;
+  value: string;
+  basePrice: number;
+  unit: string;
+  variants: ProductVariant[];
+  finishings: ProductFinishing[];
+}
+
+export type LogType = "MATERIAL_CUT" | "PRODUCTION_WASTE" | "GENERAL";
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  type: "Umum" | "Makloon" | "B2B";
+  defaultDiscountRp: number;
+  joinDate: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  type: LogType;
+  title: string;
+  description: string;
+  operator: string;
+  createdAt: string;
+}
+
 // ─── Store Interface ──────────────────────────────────────────────────────────
 interface WorkflowState {
   orders: Order[];
   jobs: Job[];
   inventory: InventoryItem[];
   retailProducts: RetailProduct[];
+  printingProducts: PrintingProduct[];
+  customers: Customer[];
+
+  // Customer actions
+  addCustomer: (customer: Customer) => void;
+  updateCustomer: (id: string, updates: Partial<Customer>) => void;
+  deleteCustomer: (id: string) => void;
 
   // Order actions
   addOrderAndJob: (order: Order, job: Job) => void;
@@ -103,10 +152,19 @@ interface WorkflowState {
 
   // Inventory
   deductInventory: (material: string, usedAmount: number) => void;
+  splitRollMaterial: (sourceMaterialId: string, targetMaterialId: string, sourceQty: number, yieldQty: number) => void;
 
   // Retail products
   addRetailProduct: (product: RetailProduct) => void;
   deductRetailStock: (productId: string, qty: number) => void;
+
+  // Printing products
+  addPrintingProduct: (product: PrintingProduct) => void;
+  updatePrintingProduct: (id: string, updates: Partial<PrintingProduct>) => void;
+
+  // Logs
+  logs: ActivityLog[];
+  addLog: (log: Omit<ActivityLog, "id" | "createdAt">) => void;
 }
 
 // ─── Initial Data (Seed) ─────────────────────────────────────────────────────
@@ -163,8 +221,10 @@ const INITIAL_JOBS: Job[] = [
 ];
 
 const INITIAL_INVENTORY: InventoryItem[] = [
-  { id: "flexi-china", name: "Flexi China 280g", stock: 150, unit: "meter" },
-  { id: "flexi-korea", name: "Flexi Korea 440g", stock: 80, unit: "meter" },
+  { id: "flexi-china-3m", name: "Flexi China 3m", stock: 5, unit: "roll" },
+  { id: "flexi-china-150", name: "Flexi China 1.5m", stock: 2, unit: "roll" },
+  { id: "flexi-korea-3m", name: "Flexi Korea 3m", stock: 3, unit: "roll" },
+  { id: "flexi-korea-150", name: "Flexi Korea 1.5m", stock: 0, unit: "roll" },
   { id: "vinyl", name: "Stiker Vinyl", stock: 50, unit: "meter" },
   { id: "artpaper-120", name: "ArtPaper 120g", stock: 5000, unit: "lembar" },
 ];
@@ -180,18 +240,89 @@ const INITIAL_RETAIL_PRODUCTS: RetailProduct[] = [
   { id: "P008", sku: "P-MRC-002", name: "Pin Gantungan Kunci 44mm", category: "Merchandise", cogs: 1500, price: 2500, stock: 500, minStock: 50 },
 ];
 
-// ─── Store ────────────────────────────────────────────────────────────────────
-export const useWorkflowStore = create<WorkflowState>((set) => ({
-  orders: INITIAL_ORDERS,
-  jobs: INITIAL_JOBS,
-  inventory: INITIAL_INVENTORY,
-  retailProducts: INITIAL_RETAIL_PRODUCTS,
+const INITIAL_CUSTOMERS: Customer[] = [
+  { id: "CUST-001", name: "Budi (Makloon A)", phone: "08123456789", type: "Makloon", defaultDiscountRp: 50000, joinDate: "2026-08-20" },
+  { id: "CUST-002", name: "PT. Maju Jaya", phone: "08987654321", type: "B2B", defaultDiscountRp: 100000, joinDate: "2026-08-21" },
+];
 
-  addOrderAndJob: (order, job) =>
-    set((state) => ({
-      orders: [order, ...state.orders],
-      jobs: [job, ...state.jobs]
-    })),
+const INITIAL_PRINTING_PRODUCTS: PrintingProduct[] = [
+  { 
+    id: "PR-1", label: "Banner Indoor", value: "banner-indoor", basePrice: 25000, unit: "m2",
+    variants: [
+      { name: "Albatros", price: 25000 },
+      { name: "Luster", price: 30000 },
+    ],
+    finishings: [
+      { name: "Mata Ayam", price: 0, type: "per_pcs" },
+      { name: "Laminasi Glossy", price: 5000, type: "per_m2" },
+      { name: "Laminasi Matte", price: 5000, type: "per_m2" }
+    ]
+  },
+  { 
+    id: "PR-2", label: "Banner Outdoor", value: "banner-outdoor", basePrice: 15000, unit: "m2",
+    variants: [
+      { name: "Flexi China 280gr", price: 15000 },
+      { name: "Flexi Korea 440gr", price: 25000 },
+    ],
+    finishings: [
+      { name: "Mata Ayam", price: 0, type: "per_pcs" },
+      { name: "Lipat Lem", price: 0, type: "flat" },
+      { name: "Selongsong", price: 0, type: "flat" }
+    ]
+  },
+  { 
+    id: "PR-3", label: "Stiker Cutting", value: "stiker-cutting", basePrice: 65000, unit: "m2",
+    variants: [{ name: "Vinyl Oracal", price: 65000 }],
+    finishings: [{ name: "Cutting Kontur", price: 0, type: "flat" }]
+  },
+  { 
+    id: "PR-4", label: "Stiker Printing", value: "stiker-print", basePrice: 70000, unit: "m2",
+    variants: [
+      { name: "Vinyl Glossy", price: 70000 },
+      { name: "Vinyl Matte", price: 70000 }
+    ],
+    finishings: [
+      { name: "Laminasi Glossy", price: 10000, type: "per_m2" },
+      { name: "Cutting Kontur", price: 15000, type: "per_m2" }
+    ]
+  },
+  { 
+    id: "PR-5", label: "Kartu Nama", value: "kartu-nama", basePrice: 25000, unit: "box",
+    variants: [{ name: "ArtCarton 260gr", price: 25000 }],
+    finishings: [
+      { name: "Laminasi Doff 2 Sisi", price: 10000, type: "per_pcs" },
+      { name: "Laminasi Glossy 2 Sisi", price: 10000, type: "per_pcs" },
+      { name: "Tanpa Laminasi", price: 0, type: "flat" }
+    ]
+  },
+  { 
+    id: "PR-6", label: "Brosur / Flyer", value: "brosur", basePrice: 250000, unit: "rim",
+    variants: [{ name: "ArtPaper 120gr", price: 250000 }, { name: "ArtPaper 150gr", price: 300000 }],
+    finishings: [{ name: "Lipat 3", price: 50000, type: "flat" }]
+  },
+  { id: "PR-7", label: "Spanduk Kain", value: "spanduk", basePrice: 30000, unit: "m2", variants: [{ name: "TC Import", price: 30000 }], finishings: [{name: "Jahit Tepi", price: 0, type: "flat"}] },
+  { id: "PR-8", label: "X-Banner", value: "x-banner", basePrice: 65000, unit: "pcs", variants: [{ name: "Albatros", price: 65000 }, { name: "Flexi China", price: 50000 }], finishings: [{name: "Include Stand", price: 0, type: "flat"}] },
+  { id: "PR-9", label: "Roll Banner", value: "roll-banner", basePrice: 150000, unit: "pcs", variants: [{ name: "Albatros", price: 150000 }], finishings: [{name: "Include Stand", price: 0, type: "flat"}] },
+  { id: "PR-10", label: "Nota / Invoice", value: "nota", basePrice: 120000, unit: "rim", variants: [{ name: "NCR 2 Ply", price: 120000 }, { name: "NCR 3 Ply", price: 180000 }], finishings: [{name: "Numerator & Porporasi", price: 25000, type: "flat"}] },
+];
+
+// ─── Store ────────────────────────────────────────────────────────────────────
+export const useWorkflowStore = create<WorkflowState>()(
+  persist(
+    (set) => ({
+      orders: INITIAL_ORDERS,
+      jobs: INITIAL_JOBS,
+      inventory: INITIAL_INVENTORY,
+      retailProducts: INITIAL_RETAIL_PRODUCTS,
+      printingProducts: INITIAL_PRINTING_PRODUCTS,
+      customers: INITIAL_CUSTOMERS,
+      logs: [],
+
+      addOrderAndJob: (order, job) =>
+        set((state) => ({
+          orders: [order, ...state.orders],
+          jobs: [job, ...state.jobs]
+        })),
 
   updateOrderStatus: (orderId, status) =>
     set((state) => ({
@@ -230,6 +361,24 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       )
     })),
 
+  splitRollMaterial: (sourceMaterialId, targetMaterialId, sourceQty, yieldQty) =>
+    set((state) => {
+      const newInventory = [...state.inventory];
+      
+      const sourceIndex = newInventory.findIndex(i => i.id === sourceMaterialId);
+      const targetIndex = newInventory.findIndex(i => i.id === targetMaterialId);
+      
+      if (sourceIndex >= 0) {
+        newInventory[sourceIndex] = { ...newInventory[sourceIndex], stock: Math.max(0, newInventory[sourceIndex].stock - sourceQty) };
+      }
+      
+      if (targetIndex >= 0) {
+        newInventory[targetIndex] = { ...newInventory[targetIndex], stock: newInventory[targetIndex].stock + yieldQty };
+      }
+      
+      return { inventory: newInventory };
+    }),
+
   addRetailProduct: (product) =>
     set((state) => ({
       retailProducts: [product, ...state.retailProducts]
@@ -241,4 +390,42 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
         p.id === productId ? { ...p, stock: Math.max(0, p.stock - qty) } : p
       )
     })),
-}));
+
+  updatePrintingProduct: (id, updates) =>
+    set((state) => ({
+      printingProducts: state.printingProducts.map(p =>
+        p.id === id ? { ...p, ...updates } : p
+      )
+    })),
+
+  addPrintingProduct: (product) =>
+    set((state) => ({
+      printingProducts: [...state.printingProducts, product]
+    })),
+
+  addCustomer: (customer) => set((state) => ({ customers: [...state.customers, customer] })),
+  
+  updateCustomer: (id, updates) => set((state) => ({
+    customers: state.customers.map((c) => c.id === id ? { ...c, ...updates } : c)
+  })),
+  
+  deleteCustomer: (id) => set((state) => ({
+    customers: state.customers.filter((c) => c.id !== id)
+  })),
+
+  addLog: (logData) => 
+    set((state) => ({
+      logs: [
+        {
+          ...logData,
+          id: `LOG-${Date.now()}`,
+          createdAt: new Date().toISOString()
+        },
+        ...state.logs
+      ]
+    }))
+  }),
+  {
+    name: 'printpilot-workflow-storage', // name of item in the storage (must be unique)
+  }
+));

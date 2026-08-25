@@ -5,6 +5,7 @@ import { ScanLine, Camera, Package, CreditCard, CheckCircle2, AlertCircle, Rotat
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useWorkflowStore } from "@/store/useWorkflowStore";
+import { Html5QrcodeScanner, Html5Qrcode } from "html5-qrcode";
 
 // Dummy job fallback jika tidak ada yang cocok di store
 const MOCK_JOB = {
@@ -20,7 +21,7 @@ const MOCK_JOB = {
   paymentStatus: "DP Terpenuhi",
   totalAmount: "Rp 3.500.000",
   remainingAmount: "Rp 1.750.000",
-  availableActions: ["SELESAI PRODUKSI (SCAN 2)", "LIHAT DETAIL"],
+  availableActions: [{ label: "SELESAI PRODUKSI (SCAN 2)", action: "next" }, { label: "LIHAT DETAIL", action: "view" }],
 };
 
 type ScanMode = "keyboard" | "camera";
@@ -39,7 +40,33 @@ export default function ScanPage() {
   // Auto-focus keyboard scanner input
   useEffect(() => {
     if (mode === "keyboard") inputRef.current?.focus();
-  }, [mode]);
+    
+    let html5QrcodeScanner: Html5QrcodeScanner | null = null;
+    if (mode === "camera" && state !== "found") {
+      setTimeout(() => {
+        html5QrcodeScanner = new Html5QrcodeScanner(
+          "reader",
+          { fps: 10, qrbox: {width: 250, height: 250} },
+          /* verbose= */ false
+        );
+        html5QrcodeScanner.render(
+          (decodedText) => {
+            handleScan(decodedText);
+            html5QrcodeScanner?.clear();
+          },
+          (error) => {
+            // ignore
+          }
+        );
+      }, 100);
+    }
+    
+    return () => {
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.clear().catch(e => console.log(e));
+      }
+    };
+  }, [mode, state]);
 
   function handleScan(code: string) {
     if (!code.trim()) return;
@@ -70,7 +97,7 @@ export default function ScanPage() {
           paymentStatus: order.paymentStatus === "PAID" ? "Lunas" : dpNum > 0 ? "DP Terpenuhi" : "Belum DP",
           totalAmount: `Rp ${totalNum.toLocaleString("id-ID")}`,
           remainingAmount: sisaNum <= 0 ? "Lunas" : `Rp ${sisaNum.toLocaleString("id-ID")}`,
-          availableActions: ["PROSES ACTION (SCAN)", "LIHAT DETAIL"],
+          availableActions: getDynamicActions(job.status, order.status),
         });
       } else if (code.length > 3) {
         setState("found");
@@ -80,6 +107,19 @@ export default function ScanPage() {
       }
       setScanInput("");
     }, 600);
+  }
+  
+  function getDynamicActions(jobStatus: string, orderStatus: string) {
+    const actions = [];
+    if (jobStatus === "WAITING_QC") {
+      actions.push({ label: "Lolos QC & Finishing", action: "qc_pass" });
+    } else if (jobStatus === "PRINTING") {
+      actions.push({ label: "Selesai Produksi", action: "prod_done" });
+    } else if (orderStatus === "READY_FOR_PICKUP" || jobStatus === "STORED") {
+      actions.push({ label: "Serahkan Konsumen", action: "pickup" });
+    }
+    actions.push({ label: "Lihat Detail", action: "view" });
+    return actions;
   }
 
   function handleReset() {
@@ -174,15 +214,10 @@ export default function ScanPage() {
               </div>
             </div>
           ) : (
-            // Camera Mode — placeholder for html5-qrcode library
+            // Camera Mode — html5-qrcode
             <div className="space-y-4">
-              <div className="relative aspect-square w-full max-w-xs mx-auto bg-elevated rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center overflow-hidden">
-                <Camera className="h-16 w-16 text-muted mb-3" />
-                <p className="text-sm text-muted text-center px-4">Kamera akan aktif di sini</p>
-                <p className="text-xs text-muted text-center px-4 mt-1">(Integrasikan <code className="bg-elevated px-1 rounded text-accent-teal">html5-qrcode</code> library)</p>
-                {/* Scanning frame overlay */}
-                <div className="absolute inset-8 border-2 border-accent-teal/40 rounded-xl pointer-events-none" />
-              </div>
+              <div id="reader" className="w-full max-w-xs mx-auto overflow-hidden rounded-2xl border-2 border-dashed border-accent-teal/40 bg-black"></div>
+              <p className="text-sm text-muted text-center px-4">Kamera aktif, arahkan ke barcode/QR</p>
               <button
                 onClick={() => handleScan("JOB-20260820-0041")}
                 className="w-full h-12 rounded-xl bg-gradient-to-r from-accent-teal to-blue-500 text-white text-sm font-bold hover:brightness-110 transition-all cursor-pointer"
@@ -250,9 +285,9 @@ export default function ScanPage() {
 
             {/* Actions */}
             <div className="px-5 pb-5 space-y-2">
-              {result.availableActions.map((action, i) => (
+              {result.availableActions.map((actionInfo, i) => (
                 <button
-                  key={action}
+                  key={actionInfo.label}
                   id={`btn-scan-action-${i}`}
                   className={cn(
                     "w-full h-12 rounded-xl text-sm font-bold transition-all cursor-pointer",
@@ -261,7 +296,7 @@ export default function ScanPage() {
                       : "bg-elevated border border-border text-muted hover:text-primary"
                   )}
                 >
-                  {action}
+                  {actionInfo.label}
                 </button>
               ))}
             </div>

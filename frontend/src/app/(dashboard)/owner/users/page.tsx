@@ -93,7 +93,7 @@ export default function OwnerUsersPage() {
       admin: "bg-accent-teal/10 text-accent-teal border-accent-teal/20",
       designer_sales: "bg-status-yellow/10 text-status-yellow border-status-yellow/20",
       operator: "bg-status-blue/10 text-status-blue border-status-blue/20",
-      gudang: "bg-status-green/10 text-status-green border-status-green/20",
+      finishing: "bg-status-green/10 text-status-green border-status-green/20",
     };
     return roles[roleName] || "bg-base text-muted border-border";
   };

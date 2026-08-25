@@ -217,12 +217,14 @@ model Customer {
   tenant_id     String
   tenant        Tenant   @relation(fields: [tenant_id], references: [id])
   customer_code String // CST-XXXXX
+  type          String   @default("Umum") // Umum, Makloon, B2B
   name          String
   phone         String?
   email         String?
   address       String?
   company       String?
   notes         String?
+  default_discount Decimal? @db.Decimal(15, 2)
   created_by    String
   creator       User     @relation(fields: [created_by], references: [id])
   created_at    DateTime @default(now())
@@ -418,6 +420,7 @@ model RetailProduct {
   name           String
   category       String
   price          Decimal  @db.Decimal(15, 2)
+  makloon_price  Decimal? @db.Decimal(15, 2)
   stock_quantity Int
   min_stock      Int
   active         Boolean  @default(true)

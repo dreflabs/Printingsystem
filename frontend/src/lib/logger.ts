@@ -19,8 +19,16 @@ export async function logAction(
   notes?: string
 ) {
   try {
-    // 1. Get the last log's hash to chain
+    // 1. Fetch user to get tenant_id
+    const user = await prisma.user.findUnique({ where: { id: actorId } });
+    if (!user) {
+      console.warn(`[AUDIT] User ${actorId} not found, skipping log.`);
+      return;
+    }
+
+    // 2. Get the last log's hash to chain
     const lastLog = await prisma.auditLog.findFirst({
+      where: { tenant_id: user.tenant_id },
       orderBy: { created_at: "desc" },
     });
 
@@ -28,13 +36,14 @@ export async function logAction(
     const oldVal = oldValueJson ? JSON.stringify(oldValueJson) : null;
     const newVal = newValueJson ? JSON.stringify(newValueJson) : null;
 
-    // 2. Data payload to hash
+    // 3. Data payload to hash
     const dataPayload = `${actorId}:${action}:${entityType}:${entityId}:${oldVal}:${newVal}:${notes || ""}`;
     const newHash = generateHash(dataPayload, previousHash);
 
-    // 3. Insert Log
+    // 4. Insert Log
     await prisma.auditLog.create({
       data: {
+        tenant_id: user.tenant_id,
         actor_id: actorId,
         action,
         entity_type: entityType,

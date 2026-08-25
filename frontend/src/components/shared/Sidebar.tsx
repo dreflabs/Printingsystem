@@ -85,6 +85,12 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["finishing"],
   },
   {
+    label: "Dashboard",
+    href: "/owner",
+    icon: <LayoutDashboard className="h-5 w-5" />,
+    roles: ["owner"],
+  },
+  {
     label: "Produksi & Laporan",
     href: "/admin/production",
     icon: <BarChart2 className="h-5 w-5" />,

@@ -20,6 +20,7 @@ import {
   Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { signOutAction } from "@/actions/session";
 
 // All possible roles in the system
 type UserRole = "admin" | "designer_sales" | "operator" | "gudang" | "owner";
@@ -279,17 +280,15 @@ export function Sidebar({ role, roles = [role], isOpen, onClose }: SidebarProps)
                 )}
               </div>
             </div>
-            <button
-              onClick={() => {
-                localStorage.removeItem("userName");
-                localStorage.removeItem("userRole");
-                window.location.href = "/login";
-              }}
-              title="Logout / Ganti User"
-              className="p-1.5 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors cursor-pointer shrink-0"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
+            <form action={signOutAction}>
+              <button
+                type="submit"
+                title="Keluar"
+                className="p-1.5 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors cursor-pointer shrink-0"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </form>
           </div>
         </div>
       </aside>

@@ -1,245 +1,206 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, Search, Filter, MoreHorizontal, ArrowUpDown } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Search, MoreHorizontal, X } from "lucide-react";
 import { ProductFormModal } from "@/components/admin/ProductFormModal";
-import { PrintingProductModal } from "@/components/admin/PrintingProductModal";
 import { cn } from "@/lib/utils";
-import { getRetailProducts, createRetailProduct } from "@/actions/master-data";
-import { useWorkflowStore, PrintingProduct } from "@/store/useWorkflowStore";
+import {
+  getRetailProducts, createRetailProduct,
+  getPrintingProducts, createPrintingProduct, updatePrintingProduct,
+  getMaterials,
+} from "@/actions/master-data";
 
-export default function AdminProductsPage() {
-  const [activeTab, setActiveTab] = useState<"retail" | "printing">("retail");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isPrintingModalOpen, setIsPrintingModalOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  
-  // Retail products (Prisma backend)
-  const [retailProducts, setRetailProducts] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // Printing products (Zustand frontend)
-  const printingProducts = useWorkflowStore(s => s.printingProducts);
-  const updatePrintingProduct = useWorkflowStore(s => s.updatePrintingProduct);
-  const addPrintingProduct = useWorkflowStore(s => s.addPrintingProduct);
-  
-  const [editingPrintingPrice, setEditingPrintingPrice] = useState<{id: string, price: string} | null>(null);
+type Retail = { id: string; sku: string; name: string; category: string; price: number };
+type Printing = { id: string; name: string; category: string; default_material_id: string | null; active: boolean };
+type MatOpt = { id: string; name: string };
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
+const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 
-  const loadProducts = async () => {
-    setIsLoading(true);
-    const result = await getRetailProducts();
-    if (result.success && result.data) {
-      setRetailProducts(result.data);
-    }
-    setIsLoading(false);
-  };
+function PrintingModal({
+  editing, materials, onClose, onSaved,
+}: {
+  editing: Printing | null; materials: MatOpt[]; onClose: () => void; onSaved: () => void;
+}) {
+  const [name, setName] = useState(editing?.name ?? "");
+  const [category, setCategory] = useState(editing?.category ?? "OUTDOOR");
+  const [materialId, setMaterialId] = useState(editing?.default_material_id ?? "");
+  const [active, setActive] = useState(editing?.active ?? true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
-  const filteredRetail = retailProducts.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const filteredPrinting = printingProducts.filter(p => 
-    p.label.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const formatRupiah = (amount: number) => {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
-  };
-
-  const handleSaveProduct = async (newProduct: any) => {
-    const result = await createRetailProduct({
-      sku: newProduct.sku || "SKU-AUTO",
-      name: newProduct.name,
-      category: newProduct.category || "GENERAL",
-      price: Number(newProduct.price) || 0,
-      stock_quantity: Number(newProduct.stock) || 0,
-      min_stock: Number(newProduct.minStock) || 0,
-    });
-    
-    if (result.success) {
-      setIsModalOpen(false);
-      loadProducts();
-    } else {
-      alert("Gagal menyimpan produk: " + result.error);
-    }
-  };
-
-  const handleSavePrintingProduct = (productData: any) => {
-    const value = productData.label.toLowerCase().replace(/\s+/g, '-');
-    const id = `PR-${Date.now().toString().slice(-4)}`;
-    
-    addPrintingProduct({
-      id,
-      value,
-      ...productData
-    });
-    
-    setIsPrintingModalOpen(false);
-  };
+  async function save() {
+    if (!name.trim()) { setErr("Nama produk wajib diisi."); return; }
+    setBusy(true);
+    const payload = { name: name.trim(), category, default_material_id: materialId || null };
+    const res = editing
+      ? await updatePrintingProduct(editing.id, { ...payload, active })
+      : await createPrintingProduct(payload);
+    setBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    onSaved();
+  }
+  const inp = "w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm outline-none focus:border-accent-teal";
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-overlay backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-base font-bold text-primary">{editing ? "Edit Produk Cetak" : "Tambah Produk Cetak"}</h3>
+          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
+        </div>
+        {err && <div className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</div>}
+        <div>
+          <label className="text-xs font-medium text-muted block mb-1">Nama Produk *</label>
+          <input className={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Spanduk Outdoor" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted block mb-1">Kategori</label>
+          <select className={inp} value={category} onChange={(e) => setCategory(e.target.value)}>
+            {["OUTDOOR", "INDOOR", "KERTAS", "MERCHANDISE", "PACKAGING", "LAINNYA"].map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted block mb-1">Material Default (opsional)</label>
+          <select className={inp} value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
+            <option value="">—</option>
+            {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
+        {editing && (
+          <label className="flex items-center gap-2 text-xs text-primary">
+            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Aktif
+          </label>
+        )}
+        <p className="text-[10px] text-muted">Harga per produk cetak dihitung manual saat pembuatan order (belum ada model harga/varian di schema).</p>
+        <button disabled={busy} onClick={save} className="w-full h-11 bg-accent-teal text-white rounded-xl text-sm font-bold hover:brightness-110 disabled:opacity-50">
+          {busy ? "Menyimpan…" : "Simpan"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function AdminProductsPage() {
+  const [tab, setTab] = useState<"retail" | "printing">("retail");
+  const [search, setSearch] = useState("");
+  const [retail, setRetail] = useState<Retail[]>([]);
+  const [printing, setPrinting] = useState<Printing[]>([]);
+  const [materials, setMaterials] = useState<MatOpt[]>([]);
+  const [retailModal, setRetailModal] = useState(false);
+  const [printingModal, setPrintingModal] = useState<{ open: boolean; editing: Printing | null }>({ open: false, editing: null });
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const [r, p, m] = await Promise.all([getRetailProducts(), getPrintingProducts(), getMaterials()]);
+    if (r.success) setRetail(r.data as Retail[]);
+    if (p.success) setPrinting(p.data as Printing[]);
+    if (m.success) setMaterials((m.data as { id: string; name: string }[]).map((x) => ({ id: x.id, name: x.name })));
+    if (!p.success) setError(p.error);
+  }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
+
+  const matName = (id: string | null) => materials.find((m) => m.id === id)?.name ?? "—";
+  const fRetail = retail.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()));
+  const fPrinting = printing.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+
+  async function saveRetail(np: { sku?: string; name: string; category?: string; price?: number; stock?: number; minStock?: number }) {
+    const res = await createRetailProduct({
+      sku: np.sku || `RET-${Date.now().toString().slice(-5)}`,
+      name: np.name, category: np.category || "GENERAL",
+      price: Number(np.price) || 0, stock_quantity: Number(np.stock) || 0, min_stock: Number(np.minStock) || 0,
+    });
+    if (res.success) { setRetailModal(false); load(); } else setError(res.error);
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-primary">Master Produk</h1>
-          <p className="text-sm text-muted mt-1">Kelola data produk retail, harga, dan stok.</p>
+          <p className="text-sm text-muted mt-1">Produk retail (harga & stok) dan jasa cetak.</p>
         </div>
-        <button 
-          onClick={() => activeTab === 'retail' ? setIsModalOpen(true) : setIsPrintingModalOpen(true)}
-          className="flex items-center gap-2 bg-accent-teal text-white px-5 py-2.5 rounded-xl font-bold hover:bg-accent-teal/90 shadow-lg shadow-accent-teal/20 transition-all"
+        <button
+          onClick={() => (tab === "retail" ? setRetailModal(true) : setPrintingModal({ open: true, editing: null }))}
+          className="flex items-center gap-2 bg-accent-teal text-white px-5 py-2.5 rounded-xl font-bold hover:brightness-110 shadow-lg shadow-accent-teal/20 transition-all"
         >
-          <Plus className="h-5 w-5" />
-          Tambah Produk Baru
-        </button>
-      </div>
-      
-      {/* Tabs */}
-      <div className="flex items-center gap-4 mb-6 border-b border-border">
-        <button 
-          onClick={() => setActiveTab("retail")}
-          className={cn("pb-3 px-1 border-b-2 font-bold text-sm transition-colors", activeTab === "retail" ? "border-accent-teal text-accent-teal" : "border-transparent text-muted hover:text-primary")}
-        >
-          Barang Retail / Consumable
-        </button>
-        <button 
-          onClick={() => setActiveTab("printing")}
-          className={cn("pb-3 px-1 border-b-2 font-bold text-sm transition-colors", activeTab === "printing" ? "border-accent-teal text-accent-teal" : "border-transparent text-muted hover:text-primary")}
-        >
-          Jasa Cetak (Banner, Stiker, dll)
+          <Plus className="h-5 w-5" /> Tambah Produk
         </button>
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-card p-4 rounded-xl border border-border">
-        <div className="relative flex-1">
+      {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
+
+      <div className="flex items-center gap-4 border-b border-border">
+        {(["retail", "printing"] as const).map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={cn("pb-3 px-1 border-b-2 font-bold text-sm transition-colors", tab === t ? "border-accent-teal text-accent-teal" : "border-transparent text-muted hover:text-primary")}>
+            {t === "retail" ? "Barang Retail / Consumable" : "Jasa Cetak"}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-card p-4 rounded-xl border border-border">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
-          <input
-            type="text"
-            placeholder="Cari berdasarkan SKU atau Nama Produk..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-lg outline-none focus:border-status-blue transition-colors text-sm"
-          />
+          <input placeholder="Cari SKU / Nama Produk..." value={search} onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-elevated border border-border rounded-lg outline-none focus:border-accent-teal text-sm" />
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg bg-background hover:bg-elevated text-sm font-medium transition-colors">
-          <Filter className="h-4 w-4 text-muted" />
-          Filter Kategori
-        </button>
       </div>
 
-      {/* Data Table */}
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-elevated border-b border-border text-muted uppercase text-xs font-semibold">
-              <tr>
-                {activeTab === "retail" ? (
-                  <>
-                    <th className="px-6 py-4">SKU</th>
-                    <th className="px-6 py-4">Produk & Kategori</th>
-                    <th className="px-6 py-4">Harga Jual</th>
-                  </>
-                ) : (
-                  <>
-                    <th className="px-6 py-4">ID Jasa</th>
-                    <th className="px-6 py-4">Nama Produk Cetak</th>
-                    <th className="px-6 py-4">Satuan Harga</th>
-                    <th className="px-6 py-4">Harga Dasar (Rp)</th>
-                  </>
-                )}
-                <th className="px-6 py-4 text-right">Aksi</th>
-              </tr>
+              {tab === "retail" ? (
+                <tr><th className="px-6 py-4">SKU</th><th className="px-6 py-4">Produk & Kategori</th><th className="px-6 py-4">Harga Jual</th><th className="px-6 py-4 text-right">Aksi</th></tr>
+              ) : (
+                <tr><th className="px-6 py-4">ID</th><th className="px-6 py-4">Nama Produk Cetak</th><th className="px-6 py-4">Kategori</th><th className="px-6 py-4">Material Default</th><th className="px-6 py-4">Status</th><th className="px-6 py-4 text-right">Aksi</th></tr>
+              )}
             </thead>
             <tbody className="divide-y divide-border">
-              {activeTab === "retail" && filteredRetail.map((product) => (
-                <tr key={product.id} className="hover:bg-elevated/50 transition-colors">
-                  <td className="px-6 py-4 font-mono text-xs text-muted">{product.sku}</td>
+              {tab === "retail" && fRetail.map((p) => (
+                <tr key={p.id} className="hover:bg-elevated/50 transition-colors">
+                  <td className="px-6 py-4 font-mono text-xs text-muted">{p.sku}</td>
+                  <td className="px-6 py-4"><div className="font-semibold text-primary">{p.name}</div><div className="text-xs text-muted mt-1">{p.category}</div></td>
+                  <td className="px-6 py-4 font-mono font-medium text-status-blue">{rupiah(Number(p.price))}</td>
+                  <td className="px-6 py-4 text-right"><button className="p-1.5 text-muted hover:text-primary rounded-md"><MoreHorizontal className="h-5 w-5" /></button></td>
+                </tr>
+              ))}
+              {tab === "printing" && fPrinting.map((p) => (
+                <tr key={p.id} className="hover:bg-elevated/50 transition-colors">
+                  <td className="px-6 py-4 font-mono text-xs text-muted">{p.id.slice(0, 8)}</td>
+                  <td className="px-6 py-4 font-semibold text-primary">{p.name}</td>
+                  <td className="px-6 py-4 text-muted text-xs">{p.category}</td>
+                  <td className="px-6 py-4 text-muted text-xs">{matName(p.default_material_id)}</td>
                   <td className="px-6 py-4">
-                    <div className="font-semibold text-primary">{product.name}</div>
-                    <div className="text-xs text-muted mt-1">{product.category}</div>
-                  </td>
-                  <td className="px-6 py-4 font-mono font-medium text-status-blue">
-                    {formatRupiah(Number(product.price))}
+                    <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border", p.active ? "bg-status-green/10 text-status-green border-status-green/30" : "bg-muted/10 text-muted border-muted/20")}>
+                      {p.active ? "Aktif" : "Nonaktif"}
+                    </span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button className="p-1.5 text-muted hover:text-primary hover:bg-background rounded-md transition-colors">
-                      <MoreHorizontal className="h-5 w-5" />
-                    </button>
+                    <button onClick={() => setPrintingModal({ open: true, editing: p })} className="text-xs font-bold text-accent-teal hover:underline">Edit</button>
                   </td>
                 </tr>
               ))}
-              
-              {activeTab === "printing" && filteredPrinting.map((product) => {
-                const isEditing = editingPrintingPrice?.id === product.id;
-                return (
-                <tr key={product.id} className="hover:bg-elevated/50 transition-colors">
-                  <td className="px-6 py-4 font-mono text-xs text-muted">{product.id}</td>
-                  <td className="px-6 py-4 font-semibold text-primary">{product.label}</td>
-                  <td className="px-6 py-4 font-mono text-muted text-xs">Per {product.unit?.toUpperCase() || 'M2'}</td>
-                  <td className="px-6 py-4">
-                    {product.variants && product.variants.length > 0 ? (
-                      <div className="flex flex-col gap-1">
-                        {product.variants.map((v, idx) => (
-                          <div key={idx} className="flex items-center justify-between text-xs bg-elevated px-2 py-1 rounded">
-                            <span className="text-muted">{v.name}</span>
-                            <span className="font-mono text-status-blue font-medium">{formatRupiah(v.price)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="font-medium text-status-blue border-b border-dashed border-status-blue/50">
-                        {formatRupiah(product.basePrice)}
-                      </span>
-                    )}
-                    {product.finishings && product.finishings.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted flex gap-1 flex-wrap">
-                        {product.finishings.map((f, idx) => (
-                          <span key={idx} className="bg-background border border-border px-1.5 py-0.5 rounded text-[10px]">
-                            {f.name} ({f.price === 0 ? 'Gratis' : '+' + formatRupiah(f.price)})
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    {!isEditing && (
-                      <button className="text-xs font-bold text-accent-teal hover:underline opacity-50 cursor-not-allowed">
-                        Edit
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              )})}
-              
-              {((activeTab === "retail" && filteredRetail.length === 0) || (activeTab === "printing" && filteredPrinting.length === 0)) && (
-                <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-muted">
-                    Tidak ada produk yang sesuai dengan pencarian.
-                  </td>
-                </tr>
+              {((tab === "retail" && fRetail.length === 0) || (tab === "printing" && fPrinting.length === 0)) && (
+                <tr><td colSpan={6} className="px-6 py-8 text-center text-muted">Tidak ada produk yang sesuai.</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      <ProductFormModal 
-        open={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onSave={handleSaveProduct}
-      />
-
-      <PrintingProductModal 
-        open={isPrintingModalOpen}
-        onClose={() => setIsPrintingModalOpen(false)}
-        onSave={handleSavePrintingProduct}
-      />
+      <ProductFormModal open={retailModal} onClose={() => setRetailModal(false)} onSave={saveRetail} />
+      {printingModal.open && (
+        <PrintingModal
+          editing={printingModal.editing}
+          materials={materials}
+          onClose={() => setPrintingModal({ open: false, editing: null })}
+          onSaved={() => { setPrintingModal({ open: false, editing: null }); load(); }}
+        />
+      )}
     </div>
   );
 }

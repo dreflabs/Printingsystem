@@ -176,3 +176,53 @@ export async function getOperatorPerformance(fromStr?: string, toStr?: string) {
     return fail(e instanceof Error ? e.message : "Gagal memuat laporan produksi.");
   }
 }
+
+/** Deret pendapatan N hari terakhir (printing vs retail) untuk chart. */
+export async function getRevenueSeries(days = 7) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.role)) return fail("Tidak berwenang.");
+
+    const n = Math.min(Math.max(days, 1), 90);
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (n - 1));
+
+    const [payments, retailOrders] = await Promise.all([
+      prisma.payment.findMany({
+        where: { tenant_id: tenant.id, status: "CONFIRMED", paid_at: { gte: start }, order: { order_type: "PRINTING" } },
+        select: { amount: true, paid_at: true },
+      }),
+      prisma.order.findMany({
+        where: { tenant_id: tenant.id, order_type: "RETAIL", status: "CLOSED", closed_at: { gte: start } },
+        select: { total: true, closed_at: true },
+      }),
+    ]);
+
+    const key = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const buckets = new Map<string, { cetak: number; retail: number }>();
+    for (let i = 0; i < n; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      buckets.set(key(d), { cetak: 0, retail: 0 });
+    }
+    for (const p of payments) {
+      const b = buckets.get(key(new Date(p.paid_at)));
+      if (b) b.cetak += Number(p.amount);
+    }
+    for (const o of retailOrders) {
+      if (!o.closed_at) continue;
+      const b = buckets.get(key(new Date(o.closed_at)));
+      if (b) b.retail += Number(o.total);
+    }
+
+    const labels = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+    const series = [...buckets.entries()].map(([k, v]) => {
+      const [y, m, dd] = k.split("-").map(Number);
+      return { name: labels[new Date(y, m, dd).getDay()], ...v };
+    });
+    return ok(series);
+  } catch (e) {
+    console.error("getRevenueSeries:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat deret pendapatan.");
+  }
+}

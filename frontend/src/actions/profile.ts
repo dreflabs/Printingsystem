@@ -42,6 +42,20 @@ export async function getCurrentUserProfile(role: string) {
   }
 }
 
+/** Profil user berdasarkan ID (dipakai Header untuk user yang sedang login). */
+export async function getUserProfileById(userId: string) {
+  try {
+    const tenant = await requireTenant();
+    return await prisma.user.findFirst({
+      where: { id: userId, tenant_id: tenant.id },
+      select: { id: true, name: true, username: true, email: true, phone: true, avatar_url: true },
+    });
+  } catch (error) {
+    console.error("getUserProfileById:", error);
+    return null;
+  }
+}
+
 export async function updateProfile(userId: string, data: { name: string; username: string; email: string; phone: string; avatar_url: string }) {
   try {
     const tenant = await requireTenant();

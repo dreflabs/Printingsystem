@@ -334,6 +334,83 @@ export async function getOwnerDashboard() {
   }
 }
 
+/** Data halaman Admin — Produksi: KPI, status mesin, semua job, opsi reassign, low-stock. */
+export async function getProductionOverview() {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (actor.role !== "owner" && actor.role !== "admin") return fail("Tidak berwenang.");
+    const T = { tenant_id: tenant.id };
+
+    const [jobs, machines, materials, operators] = await Promise.all([
+      prisma.productionJob.findMany({
+        where: T,
+        orderBy: { created_at: "desc" },
+        take: 200,
+        include: {
+          machine: { select: { id: true, name: true, machine_code: true, status: true } },
+          operator: { select: { id: true, name: true } },
+          order: { select: { order_code: true, deadline: true, customer: { select: { name: true } } } },
+        },
+      }),
+      prisma.machine.findMany({ where: T, orderBy: { name: "asc" } }),
+      prisma.material.findMany({ where: { ...T, active: true }, select: { id: true, name: true, current_stock: true, min_stock: true, unit_stock: true } }),
+      prisma.user.findMany({ where: { ...T, active: true, role: { name: "operator" } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    ]);
+
+    const activeByMachine = new Map<string, { jobCode: string; qty: number; product: string }>();
+    for (const j of jobs) {
+      if (["PRODUCTION_STARTED", "PRODUCTION_PAUSED"].includes(j.status)) {
+        activeByMachine.set(j.machine_id, { jobCode: j.job_code, qty: j.planned_qty, product: j.order.order_code });
+      }
+    }
+
+    const shaped = jobs.map((j) => ({
+      jobCode: j.job_code,
+      orderCode: j.order.order_code,
+      customerName: j.order.customer?.name ?? "-",
+      status: j.status,
+      machineId: j.machine.id,
+      machineName: j.machine.name,
+      operatorId: j.operator.id,
+      operatorName: j.operator.name,
+      plannedQty: j.planned_qty,
+      actualQty: j.actual_qty,
+      wasteQty: j.waste_qty,
+      reworkCount: j.rework_count,
+      deadline: j.order.deadline,
+      parentJobId: j.parent_job_id,
+    }));
+
+    return ok({
+      kpi: {
+        assigned: shaped.filter((j) => j.status === "PRODUCTION_ASSIGNED").length,
+        running: shaped.filter((j) => j.status === "PRODUCTION_STARTED").length,
+        paused: shaped.filter((j) => j.status === "PRODUCTION_PAUSED").length,
+        qcQueue: shaped.filter((j) => j.status === "PRODUCTION_COMPLETE").length,
+        failedRework: shaped.filter((j) => j.status === "FAILED_REWORK").length,
+        machineMaint: machines.filter((m) => m.status === "MAINTENANCE").length,
+        lowStock: materials.filter((m) => Number(m.current_stock) <= Number(m.min_stock)).length,
+      },
+      machines: machines.map((m) => ({
+        id: m.id, code: m.machine_code, name: m.name, category: m.category, status: m.status,
+        activeJob: activeByMachine.get(m.id) ?? null,
+      })),
+      jobs: shaped,
+      reassignOptions: {
+        machines: machines.filter((m) => m.status === "ACTIVE").map((m) => ({ id: m.id, name: m.name })),
+        operators,
+      },
+      lowStock: materials
+        .filter((m) => Number(m.current_stock) <= Number(m.min_stock))
+        .map((m) => ({ name: m.name, current: Number(m.current_stock), min: Number(m.min_stock), unit: m.unit_stock })),
+    });
+  } catch (e) {
+    console.error("getProductionOverview:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat data produksi.");
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // ORDER LIST + DETAIL
 // ─────────────────────────────────────────────────────────────

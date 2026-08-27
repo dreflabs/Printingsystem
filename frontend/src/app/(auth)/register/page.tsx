@@ -16,6 +16,7 @@ import {
   Lock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { registerTenant } from "@/actions/register";
 
 // Komponen UI kustom kecil untuk input
 function InputField({ label, icon: Icon, ...props }: any) {
@@ -38,7 +39,9 @@ function InputField({ label, icon: Icon, ...props }: any) {
 export default function RegisterPage() {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
-  
+  const [error, setError] = useState<string | null>(null);
+  const [ownerUsername, setOwnerUsername] = useState("");
+
   // State Form
   const [formData, setFormData] = useState({
     name: "",
@@ -52,12 +55,40 @@ export default function RegisterPage() {
   });
 
   const handleNext = () => {
+    setError(null);
+    // Langkah 1–2 belum menyentuh backend (OTP email belum diwire) — maju lokal.
+    if (step < 3) {
+      setIsLoading(true);
+      setTimeout(() => {
+        setIsLoading(false);
+        setStep(s => Math.min(s + 1, 4));
+      }, 400);
+      return;
+    }
+    // Langkah 3: buat workspace sungguhan.
+    void submitRegistration();
+  };
+
+  const submitRegistration = async () => {
     setIsLoading(true);
-    // Simulasi loading API
-    setTimeout(() => {
-      setIsLoading(false);
-      setStep(s => Math.min(s + 1, 4));
-    }, 800);
+    setError(null);
+    const res = await registerTenant({
+      ownerName: formData.name,
+      email: formData.email,
+      phone: formData.phone || undefined,
+      password: formData.password,
+      shopName: formData.shopName,
+      subdomain: formData.subdomain,
+      address: formData.address || undefined,
+    });
+    setIsLoading(false);
+    if (!res.success) {
+      setError(res.error);
+      return;
+    }
+    setOwnerUsername(res.data.ownerUsername);
+    setFormData(f => ({ ...f, subdomain: res.data.slug }));
+    setStep(4);
   };
 
   const handleBack = () => {
@@ -227,7 +258,13 @@ export default function RegisterPage() {
                     </h2>
                     <p className="text-xs text-muted mt-1">Buat ruang kerja (Workspace) khusus untuk toko Anda.</p>
                   </div>
-                  
+
+                  {error && (
+                    <div className="mb-5 rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2.5 text-xs font-semibold text-status-red">
+                      {error}
+                    </div>
+                  )}
+
                   <div className="space-y-5 flex-1">
                     <div className="space-y-1.5">
                       <label className="text-sm font-semibold text-muted">Nama Percetakan</label>
@@ -295,22 +332,25 @@ export default function RegisterPage() {
                     <CheckCircle2 className="h-10 w-10 text-status-green" />
                   </div>
                   <h2 className="text-2xl font-bold text-primary mb-2">Workspace Berhasil Dibuat!</h2>
-                  <p className="text-muted text-sm max-w-sm mb-8">
-                    Selamat datang di Print Pilot. Sistem Anda sudah aktif di <br/>
-                    <a 
-                      href={typeof window !== "undefined" ? `${window.location.protocol}//${formData.subdomain || 'demo'}.${window.location.hostname === 'localhost' ? 'localhost:3000' : window.location.host}/owner` : "#"} 
-                      className="text-accent-teal font-mono font-bold mt-2 inline-block hover:underline"
-                    >
-                      {formData.subdomain || 'demo'}.{typeof window !== "undefined" && window.location.hostname !== 'localhost' ? window.location.host : 'printpilot.id'}
-                    </a>
+                  <p className="text-muted text-sm max-w-sm mb-4">
+                    Selamat datang di Print Pilot. Workspace Anda aktif di{" "}
+                    <span className="text-accent-teal font-mono font-bold">
+                      {formData.subdomain}.printpilot.id
+                    </span>{" "}
+                    (masa uji coba 14 hari).
                   </p>
-                  
-                  <a 
-                    href={typeof window !== "undefined" ? `${window.location.protocol}//${formData.subdomain || 'demo'}.${window.location.hostname === 'localhost' ? 'localhost:3000' : window.location.host}/owner` : "#"}
+                  <div className="mb-8 rounded-xl border border-border bg-elevated px-4 py-3 text-xs text-muted max-w-sm">
+                    Login sebagai Owner dengan username{" "}
+                    <span className="font-mono font-bold text-primary">{ownerUsername}</span>{" "}
+                    dan kata sandi yang tadi Anda buat.
+                  </div>
+
+                  <Link
+                    href="/login"
                     className="h-12 px-8 rounded-xl bg-primary text-base font-bold flex items-center gap-2 text-white hover:scale-105 transition-transform"
                   >
                     Masuk ke Dashboard <ChevronRight className="h-4 w-4" />
-                  </a>
+                  </Link>
                 </div>
               )}
             </div>

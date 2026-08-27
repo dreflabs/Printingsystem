@@ -170,6 +170,32 @@ export async function toggleEmployeeStatus(userId: string, active: boolean) {
   }
 }
 
+/**
+ * Clear a lockout on an employee account (failed-login threshold reached).
+ * Does NOT change the password — the user keeps their existing credentials.
+ */
+export async function unlockEmployeeAccount(userId: string) {
+  try {
+    const tenant = await requireTenant();
+
+    const user = await prisma.user.findFirst({
+      where: { id: userId, tenant_id: tenant.id },
+    });
+    if (!user) throw new Error("User tidak ditemukan");
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { failed_login_count: 0, locked_until: null },
+    });
+
+    revalidatePath("/owner/users");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error unlocking account:", error);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function resetEmployeePassword(userId: string) {
   try {
     const tenant = await requireTenant();

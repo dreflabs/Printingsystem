@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search } from "lucide-react";
+import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserFormModal } from "@/components/owner/UserFormModal";
-import { getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword } from "@/actions/user-management";
+import { getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword, unlockEmployeeAccount } from "@/actions/user-management";
+
+const isLocked = (user: any) => !!user.locked_until && new Date(user.locked_until) > new Date();
 
 export default function OwnerUsersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -61,6 +63,17 @@ export default function OwnerUsersPage() {
       loadUsers();
     } else {
       alert("Gagal mengubah status: " + result.error);
+    }
+  };
+
+  const handleUnlock = async (userId: string, name: string) => {
+    setActionMessage(null);
+    const result = await unlockEmployeeAccount(userId);
+    if (result.success) {
+      setActionMessage({ type: "success", text: `Kunci akun ${name} berhasil dibuka. Pegawai bisa login kembali.` });
+      loadUsers();
+    } else {
+      setActionMessage({ type: "error", text: "Gagal membuka kunci: " + result.error });
     }
   };
 
@@ -206,11 +219,25 @@ export default function OwnerUsersPage() {
                             <KeyRound className="h-3 w-3" /> Wajib ubah sandi
                           </span>
                         )}
+                        {isLocked(user) && (
+                          <span className="text-[10px] text-status-red font-medium flex items-center gap-1 bg-status-red/10 px-1.5 py-0.5 rounded">
+                            <LockKeyhole className="h-3 w-3" /> Terkunci ({user.failed_login_count}× gagal)
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
                       {user.role.name !== "owner" && (
                         <div className="flex items-center justify-end gap-2">
+                          {isLocked(user) && (
+                            <button
+                              onClick={() => handleUnlock(user.id, user.name)}
+                              className="p-2 text-status-red bg-status-red/10 hover:text-status-green hover:bg-status-green/10 rounded-lg transition-colors"
+                              title="Buka Kunci Akun"
+                            >
+                              <Unlock className="h-4 w-4" />
+                            </button>
+                          )}
                           <button
                             onClick={() => handleResetPassword(user.id, user.role.name)}
                             className="p-2 text-muted hover:text-status-yellow-text hover:bg-status-yellow/10 rounded-lg transition-colors group relative"

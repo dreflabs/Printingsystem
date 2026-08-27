@@ -11,6 +11,10 @@ import { cn } from "@/lib/utils";
 import { getOrders, getOrderDetail } from "@/actions/queries";
 import { addPayment } from "@/actions/orders";
 import { submitFinalAudit } from "@/actions/audit";
+import { getSessionUser } from "@/actions/session";
+import { freezeOrder, unfreezeOrder } from "@/actions/hold";
+
+const FREEZE_BLOCKED = ["CLOSED", "CANCELLED", "PICKED_UP", "ON_HOLD"];
 
 type OrderRow = {
   id: string; orderCode: string; type: string; customerName: string; status: string;
@@ -23,12 +27,32 @@ const fmtRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—");
 
 // ── Detail Modal ─────────────────────────────────────────────────────────────
-function DetailModal({ orderId, onClose, onBayar }: { orderId: string; onClose: () => void; onBayar: () => void }) {
+function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
+  orderId: string; isOwner: boolean; onClose: () => void; onBayar: () => void; onChanged: () => void;
+}) {
   const [d, setD] = useState<Detail | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [freezeMode, setFreezeMode] = useState(false);
+  const [freezeReason, setFreezeReason] = useState("");
+  const [holdBusy, setHoldBusy] = useState(false);
   useEffect(() => {
     getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
   }, [orderId]);
+
+  async function doFreeze() {
+    setHoldBusy(true); setErr(null);
+    const res = await freezeOrder(orderId, freezeReason);
+    setHoldBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    onChanged(); onClose();
+  }
+  async function doUnfreeze() {
+    setHoldBusy(true); setErr(null);
+    const res = await unfreezeOrder(orderId);
+    setHoldBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    onChanged(); onClose();
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -107,10 +131,36 @@ function DetailModal({ orderId, onClose, onBayar }: { orderId: string; onClose: 
             </>
           )}
         </div>
-        <div className="flex gap-3 p-5 border-t border-border shrink-0">
-          <button onClick={onClose} className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary">Tutup</button>
+        {isOwner && d && freezeMode && (
+          <div className="px-5 pb-3 pt-4 border-t border-border shrink-0 space-y-2">
+            <label className="text-[11px] font-bold text-primary uppercase">Alasan pembekuan</label>
+            <textarea value={freezeReason} onChange={(e) => setFreezeReason(e.target.value)} rows={2} autoFocus
+              placeholder="mis. sengketa pembayaran / menunggu revisi brief dari konsumen"
+              className="w-full rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none" />
+          </div>
+        )}
+        <div className="flex flex-wrap gap-3 p-5 border-t border-border shrink-0">
+          <button onClick={onClose} className="flex-1 min-w-[120px] h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary">Tutup</button>
           {d && d.balance > 0 && (
-            <button onClick={onBayar} className="flex-1 h-11 rounded-xl bg-status-yellow text-black text-sm font-bold hover:brightness-105">Catat Pembayaran</button>
+            <button onClick={onBayar} className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-yellow text-black text-sm font-bold hover:brightness-105">Catat Pembayaran</button>
+          )}
+          {isOwner && d && d.status === "ON_HOLD" && (
+            <button onClick={doUnfreeze} disabled={holdBusy}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-green text-white text-sm font-bold hover:brightness-110 disabled:opacity-50">
+              {holdBusy ? "Memproses…" : "Cairkan Order"}
+            </button>
+          )}
+          {isOwner && d && !FREEZE_BLOCKED.includes(d.status) && !freezeMode && (
+            <button onClick={() => setFreezeMode(true)}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-red/10 border border-status-red/30 text-status-red text-sm font-bold hover:bg-status-red/20">
+              Bekukan Order
+            </button>
+          )}
+          {isOwner && d && freezeMode && (
+            <button onClick={doFreeze} disabled={holdBusy || !freezeReason.trim()}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-red text-white text-sm font-bold hover:brightness-110 disabled:opacity-50">
+              {holdBusy ? "Memproses…" : "Konfirmasi Bekukan"}
+            </button>
           )}
         </div>
       </div>
@@ -247,6 +297,13 @@ export default function AdminDashboardPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState<"" | "PRINTING" | "RETAIL">("");
   const [search, setSearch] = useState("");
+  const [isOwner, setIsOwner] = useState(false);
+
+  useEffect(() => {
+    getSessionUser().then((r) => {
+      if (r.ok) setIsOwner(r.user.role === "owner" || r.user.roles.includes("owner"));
+    });
+  }, []);
 
   const load = useCallback(async () => {
     const res = await getOrders({ limit: 200, ...(statusFilter ? { status: statusFilter } : {}), ...(typeFilter ? { type: typeFilter } : {}), ...(search ? { search } : {}) });
@@ -273,7 +330,7 @@ export default function AdminDashboardPage() {
   return (
     <div className="space-y-6">
       <NewOrderModal open={showOrderModal} onClose={() => setShowOrderModal(false)} onCreated={() => load()} />
-      {detailFor && <DetailModal orderId={detailFor.id} onClose={() => setDetailFor(null)} onBayar={() => { setPayFor(detailFor); setDetailFor(null); }} />}
+      {detailFor && <DetailModal orderId={detailFor.id} isOwner={isOwner} onClose={() => setDetailFor(null)} onBayar={() => { setPayFor(detailFor); setDetailFor(null); }} onChanged={load} />}
       {payFor && <PaymentModal order={payFor} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); load(); }} />}
       {auditFor && <FinalAuditModal order={auditFor} onClose={() => setAuditFor(null)} onDone={() => { setAuditFor(null); load(); }} />}
 

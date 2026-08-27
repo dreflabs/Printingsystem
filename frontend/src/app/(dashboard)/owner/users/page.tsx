@@ -81,21 +81,25 @@ export default function OwnerUsersPage() {
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  const filteredUsers = users.filter(u =>
+    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.role.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getRoleBadge = (roleName: string) => {
-    const roles: Record<string, string> = {
-      owner: "bg-accent-teal/10 text-accent-teal border-accent-teal/20",
-      admin: "bg-accent-teal/10 text-accent-teal border-accent-teal/20",
-      designer_sales: "bg-status-yellow/10 text-status-yellow-text border-status-yellow/20",
-      operator: "bg-status-blue/10 text-status-blue border-status-blue/20",
-      finishing: "bg-status-green/10 text-status-green border-status-green/20",
-    };
-    return roles[roleName] || "bg-base text-muted border-border";
+  const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
+    owner:          { label: "Owner",             cls: "bg-accent-teal/10 text-accent-teal border-accent-teal/20" },
+    admin:          { label: "Admin",             cls: "bg-accent-teal/10 text-accent-teal border-accent-teal/20" },
+    designer_sales: { label: "Designer/Setting",  cls: "bg-status-yellow/10 text-status-yellow-text border-status-yellow/20" },
+    operator:       { label: "Operator Cetak",    cls: "bg-status-blue/10 text-status-blue border-status-blue/20" },
+    gudang:         { label: "Finishing & Gudang", cls: "bg-status-green/10 text-status-green border-status-green/20" },
+  };
+
+  /** Returns all role names for a user (primary + extra) */
+  const getUserRoles = (user: any): string[] => {
+    const primary = user.role?.name;
+    const extra: string[] = (user.extra_roles ?? []).map((ur: any) => ur.role?.name).filter(Boolean);
+    return Array.from(new Set([primary, ...extra].filter(Boolean)));
   };
 
   return (
@@ -178,9 +182,16 @@ export default function OwnerUsersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold border capitalize", getRoleBadge(user.role.name))}>
-                        {user.role.name.replace("_", " ")}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {getUserRoles(user).map((roleName) => {
+                          const badge = ROLE_BADGE[roleName] ?? { label: roleName, cls: "bg-base text-muted border-border" };
+                          return (
+                            <span key={roleName} className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border", badge.cls)}>
+                              {badge.label}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col items-start gap-1">

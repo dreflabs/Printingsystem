@@ -146,9 +146,10 @@ model OnboardingStep {
 // ─── ROLES & USERS ────────────────────────────────────────────────────────────
 
 model Role {
-  id    String @id @default(uuid())
-  name  String @unique // owner, admin, designer_sales, operator, gudang
-  users User[]
+  id         String     @id @default(uuid())
+  name       String     @unique // owner, admin, designer_sales, operator, gudang
+  users      User[]
+  user_roles UserRole[]
 }
 
 model User {
@@ -167,11 +168,14 @@ model User {
   last_login_at        DateTime?
   failed_login_count   Int       @default(0)
   locked_until         DateTime?
-  must_change_password Boolean   @default(false)
+  must_change_password Boolean    @default(false)
   deactivated_at       DateTime?
   deactivated_by       String? // self-reference if needed, omitted FK for simplicity
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
+  created_at           DateTime   @default(now())
+  updated_at           DateTime   @updatedAt
+
+  // Multi-role support: extra_roles stores additional roles beyond the primary role
+  extra_roles UserRole[]
 
   // Relations (inverse side)
   created_customers      Customer[]
@@ -208,6 +212,17 @@ model User {
 
   @@unique([tenant_id, username])
   @@unique([tenant_id, email])
+}
+
+// Join table: User ↔ Role (many-to-many, for extra roles beyond primary role)
+model UserRole {
+  id      String @id @default(uuid())
+  user_id String
+  user    User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role_id String
+  role    Role   @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, role_id])
 }
 
 // ─── MASTER DATA ──────────────────────────────────────────────────────────────

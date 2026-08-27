@@ -4,6 +4,7 @@
 
 - Hanya **Owner** yang bisa membuat user baru dan mengubah role
 - Sistem menggunakan RBAC (Role-Based Access Control)
+- Satu user bisa memiliki **lebih dari satu role** (Multi-Role) — lihat [`MULTI-ROLE.md`](./MULTI-ROLE.md)
 - Setiap aksi user management dicatat di audit log
 
 ---
@@ -16,13 +17,27 @@
 - Nama lengkap
 - Username (unik, untuk login)
 - Email (opsional, untuk notifikasi sistem)
-- Role (pilih dari daftar role yang ada)
+- **Role (bisa pilih lebih dari 1)** — sistem akan menentukan primary role otomatis berdasarkan prioritas
 - Status: Aktif / Nonaktif
 
 **Setelah dibuat:**
-- Sistem generate password sementara
+- Sistem generate password sementara: `printpilot123!`
 - Owner memberikan password sementara ke pegawai secara langsung
 - Pegawai wajib ganti password saat login pertama kali
+
+---
+
+## Multi-Role & Solo Mode
+
+User bisa memiliki lebih dari satu role sekaligus. Ini sangat berguna untuk percetakan kecil agar tidak perlu banyak akun.
+
+**Contoh:** Satu karyawan bisa menjadi Admin + Operator + Finishing sekaligus.
+
+Di sidebar, user multi-role akan melihat:
+- **Role Switcher** — dropdown untuk berpindah antar dashboard
+- Label **"Solo Mode ✓"** sebagai indikator
+
+> Lihat dokumentasi lengkap: [`MULTI-ROLE.md`](./MULTI-ROLE.md)
 
 ---
 
@@ -33,6 +48,7 @@
 **Aturan:**
 - Role tidak bisa diubah jika user punya job/order yang sedang aktif (status IN_PROGRESS)
 - Jika terpaksa ubah, Owner harus reassign job yang aktif dulu
+- Role `owner` tidak bisa dihapus dari akun Owner
 
 ---
 
@@ -84,11 +100,17 @@ Admin melihat:
 
 ## Database
 
-Tambahan field di tabel `users`:
+Field di tabel `users`:
 ```
+role_id                (FK ke Role — primary role, backward compat)
 failed_login_count     (reset setiap sukses login)
 locked_until           (timestamp jika akun terkunci)
 must_change_password   (boolean, true untuk user baru)
 deactivated_at
 deactivated_by
+```
+
+Tabel tambahan untuk multi-role:
+```
+UserRole               (join table: user_id + role_id, many-to-many)
 ```

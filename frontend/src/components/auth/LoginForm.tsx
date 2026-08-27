@@ -8,9 +8,9 @@ import { signIn } from "next-auth/react";
 const DEMO_ACCOUNTS = [
   { role: "owner", name: "Pak Hendra", title: "Owner", user: "owner", pass: "owner123", path: "/owner", color: "border-accent-teal/40 text-accent-teal bg-accent-teal/10" },
   { role: "admin", name: "Rere", title: "Admin", user: "admin", pass: "admin123", path: "/admin", color: "border-accent-teal/40 text-accent-teal bg-accent-teal/10" },
-  { role: "designer", name: "Ayu", title: "Designer", user: "designer", pass: "designer123", path: "/designer", color: "border-status-blue/40 text-status-blue bg-status-blue/10" },
+  { role: "designer_sales", name: "Ayu", title: "Designer", user: "designer", pass: "designer123", path: "/designer", color: "border-status-blue/40 text-status-blue bg-status-blue/10" },
   { role: "operator", name: "Budi", title: "Operator", user: "operator", pass: "operator123", path: "/operator", color: "border-status-blue/40 text-status-blue bg-status-blue/10" },
-  { role: "finishing", name: "Fajar", title: "Finishing (QC & Storage)", user: "finishing", pass: "finishing123", path: "/finishing", color: "border-status-green/40 text-status-green bg-status-green/10" },
+  { role: "gudang", name: "Fajar", title: "Finishing (QC & Storage)", user: "finishing", pass: "finishing123", path: "/finishing", color: "border-status-green/40 text-status-green bg-status-green/10" },
 ];
 
 export function LoginForm() {
@@ -22,6 +22,8 @@ export function LoginForm() {
   const handleQuickLogin = (demo: typeof DEMO_ACCOUNTS[0]) => {
     localStorage.setItem("userRole", demo.role);
     localStorage.setItem("userName", `${demo.name} (${demo.title})`);
+    // Store as single-role array for demo accounts
+    localStorage.setItem("userRoles", JSON.stringify([demo.role]));
     window.location.href = demo.path;
   };
 
@@ -47,6 +49,18 @@ export function LoginForm() {
         setError("Username atau password salah. Silakan pilih Akun Demo di bawah.");
         setLoading(false);
       } else {
+        // Fetch session to get roles and store them
+        try {
+          const sessionRes = await fetch("/api/auth/session");
+          const session = await sessionRes.json();
+          if (session?.user) {
+            localStorage.setItem("userRole", session.user.role ?? "admin");
+            localStorage.setItem("userName", session.user.name ?? "User");
+            localStorage.setItem("userRoles", JSON.stringify(session.user.roles ?? [session.user.role]));
+          }
+        } catch {
+          // Non-critical: localStorage already set partially
+        }
         window.location.href = "/";
       }
     } catch (err) {

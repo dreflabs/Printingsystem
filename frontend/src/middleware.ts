@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 const { auth } = NextAuth(authConfig);
 
 // Rute publik (tak butuh login)
-const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password", "/platform/login"];
 
 // Prefix rute → role yang boleh mengakses
 const ROUTE_ACCESS: { prefix: string; roles: string[] }[] = [
@@ -18,6 +18,9 @@ const ROUTE_ACCESS: { prefix: string; roles: string[] }[] = [
   { prefix: "/scan", roles: ["owner", "admin", "operator", "gudang"] },
 ];
 
+// Priority order: highest-access role wins for default redirect
+const ROLE_PRIORITY = ["owner", "admin", "designer_sales", "operator", "gudang"];
+
 const HOME_BY_ROLE: Record<string, string> = {
   owner: "/owner",
   admin: "/admin",
@@ -25,6 +28,17 @@ const HOME_BY_ROLE: Record<string, string> = {
   operator: "/operator",
   gudang: "/finishing",
 };
+
+/**
+ * Determines the best home dashboard for a user with potentially multiple roles.
+ * Picks the highest-priority role from their roles array.
+ */
+function getHomeForRoles(roles: string[]): string {
+  for (const role of ROLE_PRIORITY) {
+    if (roles.includes(role)) return HOME_BY_ROLE[role] ?? "/";
+  }
+  return "/";
+}
 
 // Selama frontend masih preview tanpa DB: set AUTH_BYPASS=1 di .env.
 // Hapus flag (atau set 0) untuk mengaktifkan RBAC penuh.
@@ -46,10 +60,27 @@ export default auth((req) => {
   if (path.startsWith("/api/auth") || path.startsWith("/print") || PUBLIC_PATHS.includes(path)) {
     return pass();
   }
-  if (AUTH_BYPASS) return pass();
 
   const isLoggedIn = !!req.auth;
-  const role = (req.auth?.user as { role?: string } | undefined)?.role;
+  const isPlatform = (req.auth?.user as { platform?: boolean } | undefined)?.platform === true;
+
+  // ── Platform (Super Admin) area — never bypassed ──
+  if (path.startsWith("/platform")) {
+    if (!isLoggedIn) {
+      const url = new URL("/platform/login", nextUrl);
+      url.searchParams.set("callbackUrl", path);
+      return NextResponse.redirect(url);
+    }
+    if (!isPlatform) return NextResponse.redirect(new URL("/login", nextUrl));
+    return pass();
+  }
+
+  if (AUTH_BYPASS) return pass();
+
+  // Support both old single-role and new multi-role tokens
+  const primaryRole = (req.auth?.user as { role?: string } | undefined)?.role;
+  const userRoles: string[] = (req.auth?.user as { roles?: string[] } | undefined)?.roles
+    ?? (primaryRole ? [primaryRole] : []);
 
   if (!isLoggedIn) {
     const url = new URL("/login", nextUrl);
@@ -57,9 +88,15 @@ export default auth((req) => {
     return NextResponse.redirect(url);
   }
 
+  // Platform user on tenant routes: allowed only while impersonating; otherwise send home.
+  if (isPlatform && !req.cookies.get("pp_impersonate")) {
+    return NextResponse.redirect(new URL("/platform", nextUrl));
+  }
+
+  // Multi-role RBAC: allow if ANY of the user's roles is in the allowed list
   const rule = ROUTE_ACCESS.find((r) => path === r.prefix || path.startsWith(r.prefix + "/"));
-  if (rule && role && !rule.roles.includes(role)) {
-    return NextResponse.redirect(new URL(HOME_BY_ROLE[role] ?? "/", nextUrl));
+  if (rule && userRoles.length > 0 && !userRoles.some((r) => rule.roles.includes(r))) {
+    return NextResponse.redirect(new URL(getHomeForRoles(userRoles), nextUrl));
   }
 
   return pass();

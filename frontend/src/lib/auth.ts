@@ -20,10 +20,35 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) return null;
+        const identifier = credentials.username as string;
+        const pw = credentials.password as string;
+
+        // ── Platform login (Super Admin) — identified by email, stored in super_admins ──
+        if (identifier.includes("@")) {
+          const sa = await prisma.superAdmin.findFirst({ where: { email: identifier } });
+          if (sa && sa.active && (await bcrypt.compare(pw, sa.password_hash))) {
+            await prisma.superAdmin.update({
+              where: { id: sa.id },
+              data: { last_login_at: new Date() },
+            });
+            return {
+              id: sa.id,
+              name: sa.name,
+              role: "SUPER_ADMIN",
+              roles: ["SUPER_ADMIN"],
+              platform: true,
+              subLevel: sa.role, // SUPER_ADMIN / SUPPORT / FINANCE
+            };
+          }
+          return null;
+        }
 
         const user = await prisma.user.findFirst({
-          where: { username: credentials.username as string },
-          include: { role: true },
+          where: { username: identifier },
+          include: {
+            role: true,
+            extra_roles: { include: { role: true } },
+          },
         });
 
         if (!user || !user.active) return null;
@@ -47,10 +72,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           data: { failed_login_count: 0, last_login_at: new Date() },
         });
 
+        // Build roles array: primary role + any extra roles
+        const primaryRole = user.role.name;
+        const extraRoleNames = user.extra_roles.map((ur: any) => ur.role.name);
+        const allRoles = Array.from(new Set([primaryRole, ...extraRoleNames]));
+
         return {
           id: user.id,
           name: user.name,
-          role: user.role.name,
+          role: primaryRole,   // primary role (backward compat)
+          roles: allRoles,     // all roles (new multi-role support)
         };
       },
     }),

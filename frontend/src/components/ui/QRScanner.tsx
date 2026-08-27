@@ -40,6 +40,9 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
                   onScan(result[0].rawValue);
                 }
               }}
+              onError={(err) => {
+                setError(err instanceof Error ? err.message : "Kamera tidak tersedia");
+              }}
               allowMultiple={false}
               scanDelay={500}
             />

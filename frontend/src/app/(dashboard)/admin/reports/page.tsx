@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
-import { DollarSign, PackageX, Activity, Receipt } from "lucide-react";
+import { DollarSign, PackageX, Activity, Receipt, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getDailyRevenue, getOperatorPerformance, getOutstandingReceivables, getRevenueSeries } from "@/actions/reports";
+import { toCsv, downloadCsv, stampedName } from "@/lib/csv";
 
 // Recharts butuh hex literal — pakai nilai token desain (globals.css).
 const C = { accent: "#0492B2", blue: "#2563EB", red: "#DC2626", grid: "#E2E8F0", axis: "#64748B", text: "#0F172A", card: "#FFFFFF" };
@@ -45,6 +46,43 @@ export default function ReportsPage() {
   const totalWaste = perf.reduce((a, b) => a + b.totalWaste, 0);
   const totalReceivable = recv.reduce((a, b) => a + b.balance, 0);
 
+  const exportSummary = () => {
+    const rows: (string | number)[][] = [
+      ["Laporan Ringkasan", new Date().toLocaleString("id-ID")],
+      [],
+      ["Metrik", "Nilai"],
+      ["Pendapatan hari ini (gabungan)", daily?.combinedRevenue ?? 0],
+      ["Order printing baru hari ini", daily?.newPrintingOrders ?? 0],
+      ["Total waste 30 hari (pcs)", totalWaste],
+      ["Piutang outstanding", totalReceivable],
+      [],
+      ["Tren Pendapatan 7 Hari"],
+      ["Hari", "Cetak", "Eceran"],
+      ...series.map((s) => [s.name, s.cetak, s.retail]),
+    ];
+    downloadCsv(stampedName("laporan-ringkasan"), toCsv(rows));
+  };
+
+  const exportPerformance = () => {
+    const rows: (string | number)[][] = [
+      ["Operator", "Jumlah Job", "Output (pcs)", "Waste (pcs)", "Rasio Waste (%)"],
+      ...perf.map((p) => [p.operatorName, p.jobCount, p.totalOutput, p.totalWaste, (p.wasteRatio * 100).toFixed(1)]),
+    ];
+    downloadCsv(stampedName("kinerja-operator"), toCsv(rows));
+  };
+
+  const exportReceivables = () => {
+    const rows: (string | number)[][] = [
+      ["Kode Order", "Konsumen", "Total", "Dibayar", "Sisa", "Deadline", "Status", "Overdue"],
+      ...recv.map((o) => [
+        o.orderCode, o.customerName, o.total, o.paidAmount, o.balance,
+        o.deadline ? new Date(o.deadline).toLocaleDateString("id-ID") : "",
+        o.status, o.overdue ? "YA" : "",
+      ]),
+    ];
+    downloadCsv(stampedName(`piutang-${recvFilter}`), toCsv(rows));
+  };
+
   const kpi = [
     { label: "Pendapatan Hari Ini", value: daily ? rupiah(daily.combinedRevenue) : "—", icon: DollarSign, color: "text-status-green", bg: "bg-status-green/10" },
     { label: "Order Printing Hari Ini", value: daily?.newPrintingOrders ?? "—", icon: Activity, color: "text-accent-teal", bg: "bg-accent-teal/10" },
@@ -54,9 +92,17 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-primary">Analytics & Laporan</h1>
-        <p className="text-sm text-muted mt-0.5">Pendapatan, kinerja operator, dan piutang</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-primary">Analytics & Laporan</h1>
+          <p className="text-sm text-muted mt-0.5">Pendapatan, kinerja operator, dan piutang</p>
+        </div>
+        <button
+          onClick={exportSummary}
+          className="flex items-center gap-2 h-10 px-4 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 transition-all shadow-sm"
+        >
+          <Download className="h-4 w-4" /> Export Ringkasan (CSV)
+        </button>
       </div>
 
       {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
@@ -108,9 +154,18 @@ export default function ReportsPage() {
 
       {/* Kinerja operator — tabel */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        <div className="p-5 border-b border-border flex items-center gap-2">
-          <Activity className="h-5 w-5 text-accent-teal" />
-          <h3 className="text-base font-bold text-primary">Kinerja Operator (30 hari)</h3>
+        <div className="p-5 border-b border-border flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-accent-teal" />
+            <h3 className="text-base font-bold text-primary">Kinerja Operator (30 hari)</h3>
+          </div>
+          <button
+            onClick={exportPerformance}
+            disabled={perf.length === 0}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-elevated border border-border text-xs font-bold text-muted hover:text-primary hover:border-accent-teal disabled:opacity-40 transition-all"
+          >
+            <Download className="h-3.5 w-3.5" /> CSV
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
@@ -142,12 +197,21 @@ export default function ReportsPage() {
             <Receipt className="h-5 w-5 text-accent-teal" />
             <h3 className="text-base font-bold text-primary">Piutang Outstanding</h3>
           </div>
-          <select value={recvFilter} onChange={(e) => setRecvFilter(e.target.value as typeof recvFilter)}
-            className="h-9 rounded-lg bg-elevated border border-border text-sm text-muted px-3 outline-none focus:border-accent-teal">
-            <option value="all">Semua</option>
-            <option value="overdue">Overdue</option>
-            <option value="ready_unpaid">Siap Ambil Belum Lunas</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <select value={recvFilter} onChange={(e) => setRecvFilter(e.target.value as typeof recvFilter)}
+              className="h-9 rounded-lg bg-elevated border border-border text-sm text-muted px-3 outline-none focus:border-accent-teal">
+              <option value="all">Semua</option>
+              <option value="overdue">Overdue</option>
+              <option value="ready_unpaid">Siap Ambil Belum Lunas</option>
+            </select>
+            <button
+              onClick={exportReceivables}
+              disabled={recv.length === 0}
+              className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-elevated border border-border text-xs font-bold text-muted hover:text-primary hover:border-accent-teal disabled:opacity-40 transition-all"
+            >
+              <Download className="h-3.5 w-3.5" /> CSV
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">

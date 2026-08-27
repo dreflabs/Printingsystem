@@ -37,28 +37,28 @@ function ApprovalModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[#1C2333]/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white border border-[#E6E8EF] rounded-[10px] p-6 shadow-sm space-y-5">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-card border border-border rounded-[10px] p-6 shadow-sm space-y-5">
         <div className="flex justify-between items-start">
           <div>
-            <h3 className="text-base font-bold text-[#1C2333]">{title}</h3>
-            <p className="text-xs text-[#5B6479] mt-1">{description}</p>
+            <h3 className="text-base font-bold text-primary">{title}</h3>
+            <p className="text-xs text-muted mt-1">{description}</p>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-[#5B6479] hover:text-[#1C2333] hover:bg-[#F6F7FA]"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
         </div>
-        <div className="bg-[#F6F7FA] rounded-[10px] p-4 space-y-2 border border-[#E6E8EF]">
+        <div className="bg-elevated rounded-[10px] p-4 space-y-2 border border-border">
           {details.map((d) => (
             <div key={d.label} className="flex justify-between items-center text-xs">
-              <span className="text-[#5B6479]">{d.label}</span>
-              <span className="font-semibold text-[#1C2333] text-right max-w-[60%]">{d.value}</span>
+              <span className="text-muted">{d.label}</span>
+              <span className="font-semibold text-primary text-right max-w-[60%]">{d.value}</span>
             </div>
           ))}
         </div>
         <div className="flex gap-3">
-          <button disabled={busy} onClick={onReject} className="flex-1 h-10 rounded-[10px] bg-[#FCEBEB] text-[#D64545] text-xs font-bold hover:bg-[#FCEBEB]/80 disabled:opacity-50 flex items-center justify-center gap-1.5">
+          <button disabled={busy} onClick={onReject} className="flex-1 h-10 rounded-[10px] bg-status-red/10 text-status-red text-xs font-bold hover:bg-status-red/20 disabled:opacity-50 flex items-center justify-center gap-1.5">
             <XCircle className="h-4 w-4" /> {rejectLabel}
           </button>
-          <button disabled={busy} onClick={onApprove} className="flex-1 h-10 rounded-[10px] bg-[#1F8A5B] text-white text-xs font-bold hover:bg-[#1F8A5B]/90 disabled:opacity-50 flex items-center justify-center gap-1.5">
+          <button disabled={busy} onClick={onApprove} className="flex-1 h-10 rounded-[10px] bg-status-green text-white text-xs font-bold hover:bg-status-green/90 disabled:opacity-50 flex items-center justify-center gap-1.5">
             <CheckCircle2 className="h-4 w-4" /> {approveLabel}
           </button>
         </div>
@@ -72,16 +72,16 @@ function AlertRow({ icon: Icon, label, sub, tier, action, onAction }: {
   tier: "red" | "orange" | "gray"; action?: string; onAction?: () => void;
 }) {
   const c = {
-    red: { bg: "bg-[#FCEBEB]", border: "border-[#D64545]/20", text: "text-[#D64545]", btn: "bg-[#D64545] text-white hover:bg-[#D64545]/90" },
-    orange: { bg: "bg-[#FBF1E1]", border: "border-[#B8760A]/20", text: "text-[#B8760A]", btn: "bg-transparent text-[#B8760A] border border-[#B8760A]/30 hover:bg-[#B8760A]/5" },
-    gray: { bg: "bg-transparent", border: "border-transparent", text: "text-[#5B6479]", btn: "bg-[#F6F7FA] text-[#1C2333] border border-[#E6E8EF] hover:bg-[#E6E8EF]" },
+    red: { bg: "bg-status-red/10", border: "border-status-red/20", text: "text-status-red", btn: "bg-status-red text-white hover:bg-status-red/90" },
+    orange: { bg: "bg-status-yellow/10", border: "border-status-yellow/20", text: "text-status-yellow", btn: "bg-transparent text-status-yellow border border-status-yellow/30 hover:bg-status-yellow/5" },
+    gray: { bg: "bg-transparent", border: "border-transparent", text: "text-muted", btn: "bg-elevated text-primary border border-border hover:bg-elevated" },
   }[tier];
   return (
     <div className={cn("flex items-center gap-3 px-4 py-3 rounded-[10px] border", c.bg, c.border)}>
-      <div className="p-1.5 rounded-[10px] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]"><Icon className={cn("h-4 w-4", c.text)} /></div>
+      <div className="p-1.5 rounded-[10px] bg-card shadow-[0_1px_2px_rgba(0,0,0,0.05)]"><Icon className={cn("h-4 w-4", c.text)} /></div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-bold text-[#1C2333] truncate">{label}</p>
-        {sub && <p className="text-[10px] text-[#5B6479] truncate mt-0.5">{sub}</p>}
+        <p className="text-xs font-bold text-primary truncate">{label}</p>
+        {sub && <p className="text-[10px] text-muted truncate mt-0.5">{sub}</p>}
       </div>
       {action && onAction && (
         <button onClick={onAction} className={cn("flex-shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-[10px] whitespace-nowrap", c.btn)}>{action}</button>
@@ -91,7 +91,7 @@ function AlertRow({ icon: Icon, label, sub, tier, action, onAction }: {
 }
 
 const OkGreen = ({ text }: { text: string }) => (
-  <div className="flex items-center gap-2 px-3 py-2 bg-[#E7F5EE] border border-[#1F8A5B]/20 rounded-[10px] text-xs text-[#1F8A5B]">
+  <div className="flex items-center gap-2 px-3 py-2 bg-status-green/10 border border-status-green/20 rounded-[10px] text-xs text-status-green">
     <CheckCircle2 className="h-4 w-4 flex-shrink-0" /><span>{text}</span>
   </div>
 );
@@ -141,7 +141,7 @@ export default function OwnerPage() {
   const tier2 = (q?.pendingDiscounts.length ?? 0) + (q?.auditsPending.length ?? 0) + (q?.lowStock.length ? 1 : 0);
 
   return (
-    <div className="space-y-5 bg-[#F6F7FA] p-6 rounded-2xl min-h-screen text-[#1C2333]">
+    <div className="space-y-5 bg-elevated p-6 rounded-2xl min-h-screen text-primary">
       {modal?.kind === "discount" && (
         <ApprovalModal
           title={`Approval Diskon — ${modal.row.orderCode}`}
@@ -189,13 +189,13 @@ export default function OwnerPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Crown className="h-6 w-6 text-[#2454FF]" /> Dashboard Owner</h1>
-          <p className="text-sm text-[#5B6479] mt-0.5">Keuangan · Produksi · Approval · Audit</p>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><Crown className="h-6 w-6 text-accent-teal" /> Dashboard Owner</h1>
+          <p className="text-sm text-muted mt-0.5">Keuangan · Produksi · Approval · Audit</p>
         </div>
-        <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#EEF2FF] text-[#2454FF] border border-[#E6E8EF]">Akses Penuh</span>
+        <span className="px-3 py-1 rounded-full text-xs font-bold bg-accent-teal/10 text-accent-teal border border-border">Akses Penuh</span>
       </div>
 
-      {error && <div className="rounded-[10px] border border-[#D64545]/20 bg-[#FCEBEB] px-4 py-3 text-xs font-bold text-[#D64545]">{error}</div>}
+      {error && <div className="rounded-[10px] border border-status-red/20 bg-status-red/10 px-4 py-3 text-xs font-bold text-status-red">{error}</div>}
 
       {/* KPI */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
@@ -205,27 +205,27 @@ export default function OwnerPage() {
           { icon: Activity, label: "Bahan Menipis", value: q?.lowStock.length ?? "—" },
           { icon: TrendingUp, label: "Pendapatan Hari Ini", value: revenue ? rupiah(revenue.combinedRevenue) : "—", gold: true },
         ].map((k) => (
-          <div key={k.label} className="bg-white border border-[#E6E8EF] rounded-[10px] p-5">
-            <div className={cn("p-2.5 rounded-[10px] w-fit mb-3", k.gold ? "bg-[#FBF1E1]" : "bg-[#EEF2FF]")}>
-              <k.icon className={cn("h-5 w-5", k.gold ? "text-[#B8760A]" : "text-[#2454FF]")} />
+          <div key={k.label} className="bg-card border border-border rounded-[10px] p-5">
+            <div className={cn("p-2.5 rounded-[10px] w-fit mb-3", k.gold ? "bg-status-yellow/10" : "bg-accent-teal/10")}>
+              <k.icon className={cn("h-5 w-5", k.gold ? "text-status-yellow" : "text-accent-teal")} />
             </div>
-            <p className="text-[10px] font-semibold text-[#5B6479] uppercase tracking-wider">{k.label}</p>
-            <p className={cn("text-2xl font-bold mt-1 font-mono", k.gold ? "text-[#B8760A]" : "text-[#1C2333]")}>{k.value}</p>
+            <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">{k.label}</p>
+            <p className={cn("text-2xl font-bold mt-1 font-mono", k.gold ? "text-status-yellow" : "text-primary")}>{k.value}</p>
           </div>
         ))}
       </div>
 
       {/* Alerts */}
-      <div className="bg-white border border-[#E6E8EF] rounded-[10px] p-5 space-y-6">
-        <div className="flex items-center gap-2 border-b border-[#E6E8EF] pb-3">
-          <Bell className="h-5 w-5 text-[#2454FF]" />
+      <div className="bg-card border border-border rounded-[10px] p-5 space-y-6">
+        <div className="flex items-center gap-2 border-b border-border pb-3">
+          <Bell className="h-5 w-5 text-accent-teal" />
           <h2 className="text-base font-bold">Alert & Antrian Keputusan</h2>
         </div>
 
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-[#D64545] uppercase tracking-wider">Tier 1 · Butuh Keputusan Anda</span>
-            <span className="bg-[#D64545] text-white text-[10px] font-black px-2 py-0.5 rounded-full">{tier1}</span>
+            <span className="text-xs font-bold text-status-red uppercase tracking-wider">Tier 1 · Butuh Keputusan Anda</span>
+            <span className="bg-status-red text-white text-[10px] font-black px-2 py-0.5 rounded-full">{tier1}</span>
           </div>
           <div className="grid grid-cols-1 gap-2.5">
             {q?.reworkPending.map((r) => (
@@ -242,8 +242,8 @@ export default function OwnerPage() {
 
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-[#B8760A] uppercase tracking-wider">Tier 2 · Perlu Ditinjau</span>
-            <span className="bg-[#FBF1E1] text-[#B8760A] text-[10px] font-black px-2 py-0.5 rounded-full border border-[#B8760A]/20">{tier2}</span>
+            <span className="text-xs font-bold text-status-yellow uppercase tracking-wider">Tier 2 · Perlu Ditinjau</span>
+            <span className="bg-status-yellow/10 text-status-yellow text-[10px] font-black px-2 py-0.5 rounded-full border border-status-yellow/20">{tier2}</span>
           </div>
           <div className="grid grid-cols-1 gap-2.5">
             {q?.pendingDiscounts.map((d) => (
@@ -264,56 +264,56 @@ export default function OwnerPage() {
 
       {/* High value orders + audit log */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white border border-[#E6E8EF] rounded-[10px] overflow-hidden">
-          <div className="p-5 border-b border-[#E6E8EF] flex items-center gap-2">
-            <DollarSign className="h-4 w-4 text-[#2454FF]" />
+        <div className="lg:col-span-2 bg-card border border-border rounded-[10px] overflow-hidden">
+          <div className="p-5 border-b border-border flex items-center gap-2">
+            <DollarSign className="h-4 w-4 text-accent-teal" />
             <h3 className="font-bold text-base">Order Bernilai Tinggi</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
-              <thead className="bg-[#F6F7FA] border-b border-[#E6E8EF] text-[#5B6479] font-semibold uppercase tracking-wide">
+              <thead className="bg-elevated border-b border-border text-muted font-semibold uppercase tracking-wide">
                 <tr><th className="px-4 py-3">Kode</th><th className="px-4 py-3">Konsumen</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Sisa</th><th className="px-4 py-3">Status</th></tr>
               </thead>
-              <tbody className="divide-y divide-[#E6E8EF]">
+              <tbody className="divide-y divide-border">
                 {highValue.map((o) => (
-                  <tr key={o.id} className="hover:bg-[#F6F7FA]/50">
-                    <td className="px-4 py-3 font-mono text-[#2454FF] font-bold">{o.orderCode}</td>
+                  <tr key={o.id} className="hover:bg-elevated/50">
+                    <td className="px-4 py-3 font-mono text-accent-teal font-bold">{o.orderCode}</td>
                     <td className="px-4 py-3 font-semibold">{o.customerName}</td>
                     <td className="px-4 py-3 font-mono font-bold">{rupiah(o.total)}</td>
-                    <td className={cn("px-4 py-3 font-mono", o.balance > 0 ? "text-[#B8760A]" : "text-[#1F8A5B]")}>{o.balance > 0 ? rupiah(o.balance) : "Lunas"}</td>
+                    <td className={cn("px-4 py-3 font-mono", o.balance > 0 ? "text-status-yellow" : "text-status-green")}>{o.balance > 0 ? rupiah(o.balance) : "Lunas"}</td>
                     <td className="px-4 py-3"><StatusPill status={o.status} /></td>
                   </tr>
                 ))}
-                {highValue.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-[#5B6479]">Belum ada order printing.</td></tr>}
+                {highValue.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-muted">Belum ada order printing.</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div className="bg-white border border-[#E6E8EF] rounded-[10px] overflow-hidden flex flex-col">
-          <div className="p-5 border-b border-[#E6E8EF] flex items-center gap-2">
-            <ClipboardList className="h-4 w-4 text-[#2454FF]" />
+        <div className="bg-card border border-border rounded-[10px] overflow-hidden flex flex-col">
+          <div className="p-5 border-b border-border flex items-center gap-2">
+            <ClipboardList className="h-4 w-4 text-accent-teal" />
             <h3 className="font-bold text-sm">Audit Log Terbaru</h3>
           </div>
-          <div className="flex-1 divide-y divide-[#E6E8EF]/50 overflow-y-auto max-h-[520px]">
+          <div className="flex-1 divide-y divide-border/50 overflow-y-auto max-h-[520px]">
             {logs.map((l) => (
-              <div key={l.id} className="px-4 py-3 hover:bg-[#F6F7FA]/30">
+              <div key={l.id} className="px-4 py-3 hover:bg-elevated/30">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-mono text-[#9AA2B4]">{new Date(l.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-[#F6F7FA] text-[#5B6479] border border-[#E6E8EF]">{l.actor}</span>
+                  <span className="text-[10px] font-mono text-muted">{new Date(l.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-elevated text-muted border border-border">{l.actor}</span>
                 </div>
-                <p className="text-xs font-semibold text-[#2454FF] font-mono">{l.action}</p>
-                <p className="text-[10px] text-[#5B6479] truncate">{l.entityType}:{l.entityId}</p>
+                <p className="text-xs font-semibold text-accent-teal font-mono">{l.action}</p>
+                <p className="text-[10px] text-muted truncate">{l.entityType}:{l.entityId}</p>
               </div>
             ))}
-            {logs.length === 0 && <p className="p-6 text-center text-xs text-[#5B6479]">Belum ada aktivitas terekam.</p>}
+            {logs.length === 0 && <p className="p-6 text-center text-xs text-muted">Belum ada aktivitas terekam.</p>}
           </div>
         </div>
       </div>
 
-      <div className="bg-white border border-[#E6E8EF] rounded-[10px] p-5 flex items-center gap-2 text-xs text-[#5B6479]">
-        <BarChart3 className="h-4 w-4 text-[#2454FF]" />
-        Laporan pendapatan harian, piutang, dan kinerja operator ada di menu <strong className="text-[#1C2333]">Laporan</strong>.
+      <div className="bg-card border border-border rounded-[10px] p-5 flex items-center gap-2 text-xs text-muted">
+        <BarChart3 className="h-4 w-4 text-accent-teal" />
+        Laporan pendapatan harian, piutang, dan kinerja operator ada di menu <strong className="text-primary">Laporan</strong>.
       </div>
     </div>
   );

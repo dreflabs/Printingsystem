@@ -16,6 +16,7 @@ const ROUTE_ACCESS: { prefix: string; roles: string[] }[] = [
   { prefix: "/operator", roles: ["owner", "admin", "operator"] },
   { prefix: "/finishing", roles: ["owner", "admin", "gudang", "operator"] },
   { prefix: "/scan", roles: ["owner", "admin", "operator", "gudang"] },
+  { prefix: "/audit-logs", roles: ["owner", "admin"] },
 ];
 
 // Priority order: highest-access role wins for default redirect

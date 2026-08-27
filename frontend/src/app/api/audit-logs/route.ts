@@ -18,18 +18,26 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const q = url.searchParams;
     const limit = Math.min(Math.max(Number(q.get("limit") ?? 100), 1), 500);
+    const search = q.get("search");
 
     const logs = await prisma.auditLog.findMany({
       where: {
         tenant_id: tenant.id,
         ...(q.get("entity_type") ? { entity_type: q.get("entity_type")! } : {}),
         ...(q.get("entity_id") ? { entity_id: q.get("entity_id")! } : {}),
-        ...(q.get("action") ? { action: q.get("action")! } : {}),
+        ...(q.get("action") ? { action: { contains: q.get("action")!, mode: "insensitive" } } : {}),
         ...(q.get("actor_id") ? { actor_id: q.get("actor_id")! } : {}),
+        ...(search
+          ? { OR: [
+              { action: { contains: search, mode: "insensitive" } },
+              { entity_id: { contains: search, mode: "insensitive" } },
+              { entity_type: { contains: search, mode: "insensitive" } },
+            ] }
+          : {}),
       },
       orderBy: { created_at: "desc" },
       take: limit,
-      include: { actor: { select: { name: true, username: true } } },
+      include: { actor: { select: { name: true, username: true, role: { select: { name: true } } } } },
     });
 
     return Response.json({
@@ -37,6 +45,7 @@ export async function GET(request: Request) {
       logs: logs.map((l) => ({
         id: l.id,
         actor: l.actor?.name ?? l.actor_id,
+        actorRole: l.actor?.role?.name ?? null,
         action: l.action,
         entityType: l.entity_type,
         entityId: l.entity_id,

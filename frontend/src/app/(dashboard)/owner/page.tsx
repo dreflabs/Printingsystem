@@ -1,44 +1,39 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
-  Crown, DollarSign, TrendingUp, ShoppingBag, Package, AlertTriangle, RotateCcw,
-  BadgePercent, CheckCircle2, XCircle, BarChart3, Bell, ShieldAlert, Activity,
-  ClipboardList, X, ClipboardCheck,
+  Crown, TrendingUp, ShoppingBag, Package, AlertTriangle, RotateCcw, BadgePercent,
+  CheckCircle2, XCircle, Bell, ShieldAlert, Activity, ClipboardList, X, ClipboardCheck,
+  MessageSquareX, Ban, Users, Wrench, ArrowRight,
 } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { getOwnerQueues, getOrders } from "@/actions/queries";
-import { getDailyRevenue } from "@/actions/reports";
+import { getOwnerDashboard } from "@/actions/queries";
 import { decideDiscount } from "@/actions/orders";
 import { approveFinalAudit } from "@/actions/audit";
-import { decideRework } from "@/actions/production";
+import { decideRework, reassignProductionJob } from "@/actions/production";
+import { decideOrderCancellation } from "@/actions/cancel";
+import { retryNotification } from "@/actions/notifications";
 
-type Queues = {
-  pendingDiscounts: { orderId: string; orderCode: string; customerName: string; discount: number; total: number; reason: string | null }[];
-  reworkPending: { jobCode: string; orderCode: string; reason: string | null }[];
-  auditsPending: { orderId: string; orderCode: string; customerName: string }[];
-  lowStock: { name: string; current: number; min: number; unit: string }[];
-  overdueCount: number;
-  incidentCount: number;
-};
-type OrderRow = { id: string; orderCode: string; customerName: string; status: string; total: number; balance: number };
-type AuditLog = { id: string; actor: string; action: string; entityType: string; entityId: string; createdAt: string };
+type Dash = Extract<Awaited<ReturnType<typeof getOwnerDashboard>>, { success: true }>["data"];
+type AuditLog = { id: string; actor: string; actorRole: string | null; action: string; entityType: string; entityId: string; createdAt: string };
 
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—");
 
 function ApprovalModal({
-  title, description, details, approveLabel = "Setujui", rejectLabel = "Tolak",
-  onApprove, onReject, onClose, busy,
+  title, description, details, approveLabel = "Setujui", rejectLabel = "Tolak", extra,
+  onApprove, onReject, onClose, busy, canApprove = true,
 }: {
   title: string; description: string; details: { label: string; value: string }[];
-  approveLabel?: string; rejectLabel?: string;
-  onApprove: () => void; onReject: () => void; onClose: () => void; busy: boolean;
+  approveLabel?: string; rejectLabel?: string; extra?: React.ReactNode;
+  onApprove: () => void; onReject: () => void; onClose: () => void; busy: boolean; canApprove?: boolean;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-card border border-border rounded-[10px] p-6 shadow-sm space-y-5">
+      <div className="absolute inset-0 bg-overlay backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-modal space-y-5">
         <div className="flex justify-between items-start">
           <div>
             <h3 className="text-base font-bold text-primary">{title}</h3>
@@ -46,7 +41,7 @@ function ApprovalModal({
           </div>
           <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
         </div>
-        <div className="bg-elevated rounded-[10px] p-4 space-y-2 border border-border">
+        <div className="bg-elevated rounded-xl p-4 space-y-2 border border-border">
           {details.map((d) => (
             <div key={d.label} className="flex justify-between items-center text-xs">
               <span className="text-muted">{d.label}</span>
@@ -54,11 +49,12 @@ function ApprovalModal({
             </div>
           ))}
         </div>
+        {extra}
         <div className="flex gap-3">
-          <button disabled={busy} onClick={onReject} className="flex-1 h-10 rounded-[10px] bg-status-red/10 text-status-red text-xs font-bold hover:bg-status-red/20 disabled:opacity-50 flex items-center justify-center gap-1.5">
+          <button disabled={busy} onClick={onReject} className="flex-1 h-10 rounded-xl bg-status-red/10 text-status-red text-xs font-bold hover:bg-status-red/20 disabled:opacity-50 flex items-center justify-center gap-1.5">
             <XCircle className="h-4 w-4" /> {rejectLabel}
           </button>
-          <button disabled={busy} onClick={onApprove} className="flex-1 h-10 rounded-[10px] bg-status-green text-white text-xs font-bold hover:bg-status-green/90 disabled:opacity-50 flex items-center justify-center gap-1.5">
+          <button disabled={busy || !canApprove} onClick={onApprove} className="flex-1 h-10 rounded-xl bg-status-green text-white text-xs font-bold hover:brightness-110 disabled:opacity-40 flex items-center justify-center gap-1.5">
             <CheckCircle2 className="h-4 w-4" /> {approveLabel}
           </button>
         </div>
@@ -67,62 +63,62 @@ function ApprovalModal({
   );
 }
 
-function AlertRow({ icon: Icon, label, sub, tier, action, onAction }: {
+function AlertRow({ icon: Icon, label, sub, tier, action, onAction, href }: {
   icon: React.ComponentType<{ className?: string }>; label: string; sub?: string;
-  tier: "red" | "orange" | "gray"; action?: string; onAction?: () => void;
+  tier: "red" | "orange"; action?: string; onAction?: () => void; href?: string;
 }) {
-  const c = {
-    red: { bg: "bg-status-red/10", border: "border-status-red/20", text: "text-status-red", btn: "bg-status-red text-white hover:bg-status-red/90" },
-    orange: { bg: "bg-status-yellow/10", border: "border-status-yellow/20", text: "text-status-yellow-text", btn: "bg-transparent text-status-yellow-text border border-status-yellow/30 hover:bg-status-yellow/5" },
-    gray: { bg: "bg-transparent", border: "border-transparent", text: "text-muted", btn: "bg-elevated text-primary border border-border hover:bg-elevated" },
-  }[tier];
+  const c = tier === "red"
+    ? { bg: "bg-status-red/10", border: "border-status-red/20", text: "text-status-red", btn: "bg-status-red text-white hover:brightness-110" }
+    : { bg: "bg-status-yellow/10", border: "border-status-yellow/20", text: "text-status-yellow-text", btn: "bg-transparent text-status-yellow-text border border-status-yellow/30 hover:bg-status-yellow/5" };
   return (
-    <div className={cn("flex items-center gap-3 px-4 py-3 rounded-[10px] border", c.bg, c.border)}>
-      <div className="p-1.5 rounded-[10px] bg-card shadow-[0_1px_2px_rgba(0,0,0,0.05)]"><Icon className={cn("h-4 w-4", c.text)} /></div>
+    <div className={cn("flex items-center gap-3 px-4 py-3 rounded-xl border", c.bg, c.border)}>
+      <div className="p-1.5 rounded-lg bg-card shadow-card"><Icon className={cn("h-4 w-4", c.text)} /></div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-bold text-primary truncate">{label}</p>
         {sub && <p className="text-[10px] text-muted truncate mt-0.5">{sub}</p>}
       </div>
+      {action && href && (
+        <Link href={href} className={cn("flex-shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg whitespace-nowrap", c.btn)}>{action}</Link>
+      )}
       {action && onAction && (
-        <button onClick={onAction} className={cn("flex-shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-[10px] whitespace-nowrap", c.btn)}>{action}</button>
+        <button onClick={onAction} className={cn("flex-shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg whitespace-nowrap", c.btn)}>{action}</button>
       )}
     </div>
   );
 }
 
 const OkGreen = ({ text }: { text: string }) => (
-  <div className="flex items-center gap-2 px-3 py-2 bg-status-green/10 border border-status-green/20 rounded-[10px] text-xs text-status-green">
+  <div className="flex items-center gap-2 px-3 py-2 bg-status-green/10 border border-status-green/20 rounded-xl text-xs text-status-green">
     <CheckCircle2 className="h-4 w-4 flex-shrink-0" /><span>{text}</span>
   </div>
 );
 
 type Modal =
-  | { kind: "discount"; row: Queues["pendingDiscounts"][number] }
-  | { kind: "rework"; row: Queues["reworkPending"][number] }
-  | { kind: "audit"; row: Queues["auditsPending"][number] }
+  | { kind: "discount"; row: Dash["pendingDiscounts"][number] }
+  | { kind: "rework"; row: Dash["reworkPending"][number] }
+  | { kind: "audit"; row: Dash["auditsPending"][number] }
+  | { kind: "cancel"; row: Dash["cancelRequests"][number] }
+  | { kind: "reassign"; row: Dash["reassignPending"][number] }
   | null;
 
 export default function OwnerPage() {
-  const [q, setQ] = useState<Queues | null>(null);
-  const [highValue, setHighValue] = useState<OrderRow[]>([]);
-  const [revenue, setRevenue] = useState<{ combinedRevenue: number; newPrintingOrders: number } | null>(null);
+  const [d, setD] = useState<Dash | null>(null);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [busy, setBusy] = useState(false);
+  const [reassign, setReassign] = useState({ machineId: "", operatorId: "", reason: "" });
 
   const load = useCallback(async () => {
-    const [qr, or, rv] = await Promise.all([getOwnerQueues(), getOrders({ type: "PRINTING", limit: 100 }), getDailyRevenue()]);
-    if (!qr.success) { setError(qr.error); return; }
+    const res = await getOwnerDashboard();
+    if (!res.success) { setError(res.error); return; }
     setError(null);
-    setQ(qr.data);
-    if (or.success) setHighValue([...or.data].sort((a, b) => b.total - a.total).slice(0, 6));
-    if (rv.success) setRevenue(rv.data);
+    setD(res.data);
     try {
-      const res = await fetch("/api/audit-logs?limit=12");
-      const j = await res.json();
+      const r = await fetch("/api/audit-logs?limit=10");
+      const j = await r.json();
       if (Array.isArray(j.logs)) setLogs(j.logs);
-    } catch { /* audit log optional */ }
+    } catch { /* optional */ }
   }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -134,11 +130,34 @@ export default function OwnerPage() {
     setBusy(false);
     if (!res.success) { setError(res.error ?? "Aksi gagal."); return; }
     setModal(null);
+    setReassign({ machineId: "", operatorId: "", reason: "" });
     await load();
   }
 
-  const tier1 = (q?.reworkPending.length ?? 0) + (q?.overdueCount ? 1 : 0) + (q?.incidentCount ? 1 : 0);
-  const tier2 = (q?.pendingDiscounts.length ?? 0) + (q?.auditsPending.length ?? 0) + (q?.lowStock.length ? 1 : 0);
+  const criticalCount = d
+    ? d.reworkPending.length + d.cancelRequests.length + d.reassignPending.length +
+      (d.overdue.length ? 1 : 0) + (d.waFailed.length ? 1 : 0) +
+      (d.anomalies.highWaste.length || d.anomalies.orphanMovements ? 1 : 0)
+    : 0;
+  const reviewCount = d ? d.pendingDiscounts.length + d.auditsPending.length + (d.lowStock.length ? 1 : 0) : 0;
+
+  const kpi = [
+    { icon: ShoppingBag, label: "Total Order Hari Ini", value: d?.kpi.ordersToday ?? "—" },
+    { icon: Package, label: "Siap Diambil", value: d?.kpi.readyPickup ?? "—" },
+    { icon: Activity, label: "Produksi Aktif", value: d?.kpi.produksiAktif ?? "—" },
+    { icon: TrendingUp, label: "Omset Bulan Ini", value: d ? rupiah(d.kpi.omsetBulanIni) : "—", gold: true },
+  ];
+
+  const pipelineStages = d
+    ? [
+        { label: "Produksi", n: d.pipeline.produksi },
+        { label: "QC", n: d.pipeline.qc },
+        { label: "Finishing", n: d.pipeline.finishing },
+        { label: "Storage", n: d.pipeline.storage },
+        { label: "Tersimpan", n: d.pipeline.stored },
+        { label: "Siap Ambil", n: d.pipeline.siapAmbil },
+      ]
+    : [];
 
   return (
     <div className="space-y-5 bg-elevated p-6 rounded-2xl min-h-screen text-primary">
@@ -160,7 +179,7 @@ export default function OwnerPage() {
       {modal?.kind === "rework" && (
         <ApprovalModal
           title={`Keputusan Rework — ${modal.row.jobCode}`}
-          description={`Order ${modal.row.orderCode} · job gagal QC`}
+          description={`Order ${modal.row.orderCode} · gagal QC (rework ke-${(modal.row.reworkCount ?? 0) + 1})`}
           details={[
             { label: "Job", value: modal.row.jobCode },
             { label: "Alasan QC FAIL", value: modal.row.reason ?? "-" },
@@ -186,27 +205,70 @@ export default function OwnerPage() {
           onClose={() => setModal(null)}
         />
       )}
+      {modal?.kind === "cancel" && (
+        <ApprovalModal
+          title={`Permintaan Cancel — ${modal.row.orderCode}`}
+          description={`${modal.row.customerName} · produksi berjalan (${modal.row.orderStatus})`}
+          details={[
+            { label: "Alasan diajukan Admin", value: modal.row.reason ?? "-" },
+            { label: "DP masuk", value: rupiah(modal.row.paidAmount) },
+            { label: "Kebijakan", value: "DP HANGUS jika disetujui" },
+          ]}
+          approveLabel="Setujui Cancel"
+          rejectLabel="Tolak"
+          busy={busy}
+          onApprove={() => run(() => decideOrderCancellation(modal.row.orderId, { approve: true }))}
+          onReject={() => run(() => decideOrderCancellation(modal.row.orderId, { approve: false }))}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal?.kind === "reassign" && d && (
+        <ApprovalModal
+          title={`Reassign Job — ${modal.row.jobCode}`}
+          description={`Sudah ${modal.row.count}× reassign dalam 24 jam — butuh keputusan Owner.`}
+          details={[{ label: "Job", value: modal.row.jobCode }]}
+          approveLabel="Reassign"
+          rejectLabel="Batal"
+          busy={busy}
+          canApprove={!!reassign.machineId && !!reassign.operatorId && !!reassign.reason.trim()}
+          extra={
+            <div className="space-y-2">
+              <select value={reassign.machineId} onChange={(e) => setReassign({ ...reassign, machineId: e.target.value })}
+                className="w-full h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal">
+                <option value="">Pilih mesin baru…</option>
+                {d.reassignOptions.machines.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <select value={reassign.operatorId} onChange={(e) => setReassign({ ...reassign, operatorId: e.target.value })}
+                className="w-full h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal">
+                <option value="">Pilih operator baru…</option>
+                {d.reassignOptions.operators.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+              <input value={reassign.reason} onChange={(e) => setReassign({ ...reassign, reason: e.target.value })}
+                placeholder="Alasan reassignment (wajib)…"
+                className="w-full h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal" />
+            </div>
+          }
+          onApprove={() => run(() => reassignProductionJob(modal.row.jobCode, { machineId: reassign.machineId, operatorId: reassign.operatorId, reason: reassign.reason }))}
+          onReject={() => setModal(null)}
+          onClose={() => setModal(null)}
+        />
+      )}
 
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><Crown className="h-6 w-6 text-accent-teal" /> Dashboard Owner</h1>
-          <p className="text-sm text-muted mt-0.5">Keuangan · Produksi · Approval · Audit</p>
+          <p className="text-sm text-muted mt-0.5">Visibilitas penuh — Keuangan · Produksi · Approval · Audit</p>
         </div>
         <span className="px-3 py-1 rounded-full text-xs font-bold bg-accent-teal/10 text-accent-teal border border-border">Akses Penuh</span>
       </div>
 
-      {error && <div className="rounded-[10px] border border-status-red/20 bg-status-red/10 px-4 py-3 text-xs font-bold text-status-red">{error}</div>}
+      {error && <div className="rounded-xl border border-status-red/20 bg-status-red/10 px-4 py-3 text-xs font-bold text-status-red">{error}</div>}
 
-      {/* KPI */}
+      {/* KPI (spec: 4 card) */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {[
-          { icon: ShoppingBag, label: "Order Printing Hari Ini", value: revenue?.newPrintingOrders ?? "—" },
-          { icon: Package, label: "Antrian Keputusan", value: tier1 + tier2 },
-          { icon: Activity, label: "Bahan Menipis", value: q?.lowStock.length ?? "—" },
-          { icon: TrendingUp, label: "Pendapatan Hari Ini", value: revenue ? rupiah(revenue.combinedRevenue) : "—", gold: true },
-        ].map((k) => (
-          <div key={k.label} className="bg-card border border-border rounded-[10px] p-5">
-            <div className={cn("p-2.5 rounded-[10px] w-fit mb-3", k.gold ? "bg-status-yellow/10" : "bg-accent-teal/10")}>
+        {kpi.map((k) => (
+          <div key={k.label} className="bg-card border border-border rounded-2xl p-5">
+            <div className={cn("p-2.5 rounded-xl w-fit mb-3", k.gold ? "bg-status-yellow/10" : "bg-accent-teal/10")}>
               <k.icon className={cn("h-5 w-5", k.gold ? "text-status-yellow-text" : "text-accent-teal")} />
             </div>
             <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">{k.label}</p>
@@ -215,105 +277,138 @@ export default function OwnerPage() {
         ))}
       </div>
 
-      {/* Alerts */}
-      <div className="bg-card border border-border rounded-[10px] p-5 space-y-6">
+      {/* Alert panel */}
+      <div className="bg-card border border-border rounded-2xl p-5 space-y-6">
         <div className="flex items-center gap-2 border-b border-border pb-3">
           <Bell className="h-5 w-5 text-accent-teal" />
-          <h2 className="text-base font-bold">Alert & Antrian Keputusan</h2>
+          <h2 className="text-base font-bold">Alert Kritis & Antrian Approval</h2>
         </div>
 
+        {/* Tier 1 — butuh keputusan */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-status-red uppercase tracking-wider">Tier 1 · Butuh Keputusan Anda</span>
-            <span className="bg-status-red text-white text-[10px] font-black px-2 py-0.5 rounded-full">{tier1}</span>
+            <span className="text-xs font-bold text-status-red uppercase tracking-wider">Butuh Keputusan Anda</span>
+            <span className="bg-status-red text-white text-[10px] font-black px-2 py-0.5 rounded-full">{criticalCount}</span>
           </div>
           <div className="grid grid-cols-1 gap-2.5">
-            {q?.reworkPending.map((r) => (
-              <AlertRow key={r.jobCode} icon={RotateCcw} label={`Rework Pending — ${r.jobCode}`} sub={`${r.orderCode} · ${r.reason ?? "QC FAIL"}`}
+            {d?.reworkPending.map((r) => (
+              <AlertRow key={r.jobCode} icon={RotateCcw} label={`QC FAIL — ${r.jobCode}`} sub={`${r.orderCode} · ${r.reason ?? "menunggu keputusan rework"}`}
                 tier="red" action="Putuskan" onAction={() => setModal({ kind: "rework", row: r })} />
             ))}
-            {q && q.reworkPending.length === 0 && <OkGreen text="Tidak ada rework menunggu keputusan" />}
-            {q && q.overdueCount > 0
-              ? <AlertRow icon={AlertTriangle} label={`Order OVERDUE (${q.overdueCount})`} sub="Order melewati deadline — cek daftar order" tier="red" />
-              : <OkGreen text="Tidak ada order overdue" />}
-            {q && q.incidentCount > 0 && <AlertRow icon={ShieldAlert} label={`Insiden Storage (${q.incidentCount})`} sub="Barang tidak ditemukan di lokasi tercatat" tier="red" />}
+            {d?.cancelRequests.map((c) => (
+              <AlertRow key={c.orderId} icon={Ban} label={`Permintaan Cancel — ${c.orderCode}`} sub={`${c.customerName} · ${c.reason ?? ""}`}
+                tier="red" action="Tinjau" onAction={() => setModal({ kind: "cancel", row: c })} />
+            ))}
+            {d?.reassignPending.map((r) => (
+              <AlertRow key={r.jobCode} icon={Wrench} label={`Reassignment Limit — ${r.jobCode}`} sub={`Sudah ${r.count}× reassign dalam 24 jam`}
+                tier="red" action="Putuskan" onAction={() => setModal({ kind: "reassign", row: r })} />
+            ))}
+            {d && d.overdue.length > 0 && (
+              <AlertRow icon={AlertTriangle} label={`Order OVERDUE (${d.overdue.length})`}
+                sub={d.overdue.slice(0, 3).map((o) => `${o.orderCode} — ${o.customerName} (${fmtDate(o.deadline)})`).join(" · ")}
+                tier="red" action="Lihat" href="/admin?status=OVERDUE" />
+            )}
+            {d && d.waFailed.length > 0 && (
+              <AlertRow icon={MessageSquareX} label={`Notifikasi WA Gagal (${d.waFailed.length})`}
+                sub={d.waFailed.slice(0, 3).map((n) => `${n.orderCode} — ${n.customerName}`).join(" · ")}
+                tier="red" action="Kelola" href="/admin" />
+            )}
+            {d && (d.anomalies.highWaste.length > 0 || d.anomalies.orphanMovements > 0) && (
+              <AlertRow icon={ShieldAlert}
+                label={`Anomali & Kecurangan`}
+                sub={[
+                  d.anomalies.highWaste.length ? `${d.anomalies.highWaste.length} job waste >20% (${d.anomalies.highWaste.slice(0, 2).map((w) => `${w.jobCode} ${Math.round(w.ratio * 100)}%`).join(", ")})` : "",
+                  d.anomalies.orphanMovements ? `${d.anomalies.orphanMovements} pemakaian bahan tanpa Job ID` : "",
+                ].filter(Boolean).join(" · ")}
+                tier="red" action="Audit" href="/audit-logs" />
+            )}
+            {criticalCount === 0 && <OkGreen text="Tidak ada yang butuh keputusan Anda saat ini" />}
           </div>
         </div>
 
+        {/* Tier 2 — perlu ditinjau */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-status-yellow-text uppercase tracking-wider">Tier 2 · Perlu Ditinjau</span>
-            <span className="bg-status-yellow/10 text-status-yellow-text text-[10px] font-black px-2 py-0.5 rounded-full border border-status-yellow/20">{tier2}</span>
+            <span className="text-xs font-bold text-status-yellow-text uppercase tracking-wider">Perlu Ditinjau</span>
+            <span className="bg-status-yellow/10 text-status-yellow-text text-[10px] font-black px-2 py-0.5 rounded-full border border-status-yellow/20">{reviewCount}</span>
           </div>
           <div className="grid grid-cols-1 gap-2.5">
-            {q?.pendingDiscounts.map((d) => (
-              <AlertRow key={d.orderId} icon={BadgePercent} label={`Permohonan Diskon — ${d.orderCode}`} sub={`${d.customerName} · ${rupiah(d.discount)} · ${d.reason ?? ""}`}
-                tier="orange" action="Tinjau Diskon" onAction={() => setModal({ kind: "discount", row: d })} />
+            {d?.pendingDiscounts.map((x) => (
+              <AlertRow key={x.orderId} icon={BadgePercent} label={`Permohonan Diskon — ${x.orderCode}`} sub={`${x.customerName} · ${rupiah(x.discount)} · ${x.reason ?? ""}`}
+                tier="orange" action="Tinjau Diskon" onAction={() => setModal({ kind: "discount", row: x })} />
             ))}
-            {q?.auditsPending.map((a) => (
-              <AlertRow key={a.orderId} icon={ClipboardCheck} label={`Final Audit YELLOW — ${a.orderCode}`} sub={`${a.customerName} · menunggu persetujuan Owner`}
+            {d?.auditsPending.map((a) => (
+              <AlertRow key={a.orderId} icon={ClipboardCheck} label={`Final Audit YELLOW — ${a.orderCode}`} sub={`${a.customerName} · menunggu persetujuan`}
                 tier="orange" action="Tinjau Audit" onAction={() => setModal({ kind: "audit", row: a })} />
             ))}
-            {q && q.lowStock.length > 0
-              ? <AlertRow icon={ShieldAlert} label={`Stok Menipis (${q.lowStock.length} bahan)`} sub={q.lowStock.map((s) => `${s.name}: ${s.current} ${s.unit}`).join(" · ")} tier="orange" />
-              : <OkGreen text="Stok semua bahan aman" />}
-            {q && q.pendingDiscounts.length === 0 && q.auditsPending.length === 0 && <OkGreen text="Tidak ada diskon / audit menunggu" />}
+            {d && d.lowStock.length > 0 && (
+              <AlertRow icon={ShieldAlert} label={`Stok Menipis (${d.lowStock.length} bahan)`}
+                sub={d.lowStock.map((s) => `${s.name}: ${s.current} ${s.unit}`).join(" · ")} tier="orange" />
+            )}
+            {reviewCount === 0 && <OkGreen text="Tidak ada diskon / audit / stok yang perlu ditinjau" />}
           </div>
         </div>
       </div>
 
-      {/* High value orders + audit log */}
+      {/* Operasional: pipeline + absensi */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-card border border-border rounded-[10px] overflow-hidden">
-          <div className="p-5 border-b border-border flex items-center gap-2">
-            <DollarSign className="h-4 w-4 text-accent-teal" />
-            <h3 className="font-bold text-base">Order Bernilai Tinggi</h3>
+        <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Activity className="h-5 w-5 text-accent-teal" />
+            <h3 className="font-bold text-base">Pipeline Produksi</h3>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-elevated border-b border-border text-muted font-semibold uppercase tracking-wide">
-                <tr><th className="px-4 py-3">Kode</th><th className="px-4 py-3">Konsumen</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Sisa</th><th className="px-4 py-3">Status</th></tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {highValue.map((o) => (
-                  <tr key={o.id} className="hover:bg-elevated/50">
-                    <td className="px-4 py-3 font-mono text-accent-teal font-bold">{o.orderCode}</td>
-                    <td className="px-4 py-3 font-semibold">{o.customerName}</td>
-                    <td className="px-4 py-3 font-mono font-bold">{rupiah(o.total)}</td>
-                    <td className={cn("px-4 py-3 font-mono", o.balance > 0 ? "text-status-yellow-text" : "text-status-green")}>{o.balance > 0 ? rupiah(o.balance) : "Lunas"}</td>
-                    <td className="px-4 py-3"><StatusPill status={o.status} /></td>
-                  </tr>
-                ))}
-                {highValue.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-muted">Belum ada order printing.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-[10px] overflow-hidden flex flex-col">
-          <div className="p-5 border-b border-border flex items-center gap-2">
-            <ClipboardList className="h-4 w-4 text-accent-teal" />
-            <h3 className="font-bold text-sm">Audit Log Terbaru</h3>
-          </div>
-          <div className="flex-1 divide-y divide-border/50 overflow-y-auto max-h-[520px]">
-            {logs.map((l) => (
-              <div key={l.id} className="px-4 py-3 hover:bg-elevated/30">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-mono text-muted">{new Date(l.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-elevated text-muted border border-border">{l.actor}</span>
-                </div>
-                <p className="text-xs font-semibold text-accent-teal font-mono">{l.action}</p>
-                <p className="text-[10px] text-muted truncate">{l.entityType}:{l.entityId}</p>
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+            {pipelineStages.map((s) => (
+              <div key={s.label} className="text-center">
+                <div className="h-1.5 rounded-full bg-accent-teal/50 mb-2" />
+                <p className="text-3xl font-bold text-primary">{s.n}</p>
+                <p className="text-[10px] text-muted font-medium uppercase tracking-wide">{s.label}</p>
               </div>
             ))}
-            {logs.length === 0 && <p className="p-6 text-center text-xs text-muted">Belum ada aktivitas terekam.</p>}
+            {pipelineStages.length === 0 && <p className="col-span-6 text-center text-xs text-muted py-4">Memuat…</p>}
           </div>
+        </div>
+
+        <div className="bg-card border border-border rounded-2xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="h-5 w-5 text-accent-teal" />
+            <h3 className="font-bold text-base">Absensi Hari Ini</h3>
+          </div>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between"><span className="text-muted flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-status-green" /> Hadir</span><span className="font-bold">{d?.attendance.present ?? "—"}</span></div>
+            <div className="flex justify-between"><span className="text-muted flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-status-yellow" /> Terlambat</span><span className="font-bold">{d?.attendance.late ?? "—"}</span></div>
+            <div className="flex justify-between"><span className="text-muted flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-status-red" /> Belum Absen</span><span className="font-bold">{d?.attendance.notCheckedIn ?? "—"}</span></div>
+          </div>
+          <p className="text-[10px] text-muted mt-3">Detail di menu Laporan Pegawai.</p>
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-[10px] p-5 flex items-center gap-2 text-xs text-muted">
-        <BarChart3 className="h-4 w-4 text-accent-teal" />
-        Laporan pendapatan harian, piutang, dan kinerja operator ada di menu <strong className="text-primary">Laporan</strong>.
+      {/* Audit log widget */}
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="p-5 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-4 w-4 text-accent-teal" />
+            <h3 className="font-bold text-sm">Audit Log — 10 Aksi Terbaru</h3>
+          </div>
+          <Link href="/audit-logs" className="text-xs text-accent-teal font-semibold hover:underline flex items-center gap-1">
+            Lihat Semua <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+        <div className="divide-y divide-border/60 max-h-[420px] overflow-y-auto">
+          {logs.map((l) => (
+            <div key={l.id} className="px-4 py-3 hover:bg-elevated/30 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-accent-teal font-mono">{l.action}</p>
+                <p className="text-[10px] text-muted truncate">{l.entityType}:{l.entityId.slice(0, 20)}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-[10px] text-primary font-medium">{l.actor}{l.actorRole ? ` · ${l.actorRole}` : ""}</p>
+                <p className="text-[10px] font-mono text-muted">{new Date(l.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</p>
+              </div>
+            </div>
+          ))}
+          {logs.length === 0 && <p className="p-6 text-center text-xs text-muted">Belum ada aktivitas terekam.</p>}
+        </div>
       </div>
     </div>
   );

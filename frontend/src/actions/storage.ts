@@ -371,3 +371,59 @@ export async function releaseOrder(
     return fail(e instanceof Error ? e.message : "Gagal melakukan release order.");
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// PENCARIAN & PETA GUDANG
+// ─────────────────────────────────────────────────────────────
+
+export async function getStorageLocationsWithItems() {
+  try {
+    const tenant = await requireTenant();
+    const locs = await prisma.storageLocation.findMany({
+      where: { tenant_id: tenant.id },
+      orderBy: [{ floor: "desc" }, { zone: "asc" }, { rack: "asc" }, { slot: "asc" }],
+      include: {
+        stored_items: {
+          where: { status: "STORED" },
+          include: { job: { include: { order: { include: { customer: true } } } } },
+        },
+      },
+    });
+    return ok(locs);
+  } catch (e) {
+    console.error("getStorageLocationsWithItems:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat peta gudang.");
+  }
+}
+
+export async function searchStorageItems(query: string) {
+  try {
+    const tenant = await requireTenant();
+    if (!query || query.trim().length < 3) return ok([]);
+    const q = query.trim();
+    const items = await prisma.storageItem.findMany({
+      where: {
+        tenant_id: tenant.id,
+        status: { in: ["STORED", "IN_TRANSIT"] },
+        job: {
+          OR: [
+            { job_code: { contains: q, mode: "insensitive" } },
+            { order: { order_code: { contains: q, mode: "insensitive" } } },
+            { order: { customer: { name: { contains: q, mode: "insensitive" } } } },
+          ],
+        },
+      },
+      include: {
+        location: true,
+        transit_location: true,
+        job: { include: { order: { include: { customer: true } } } },
+      },
+      take: 20,
+    });
+    return ok(items);
+  } catch (e) {
+    console.error("searchStorageItems:", e);
+    return fail(e instanceof Error ? e.message : "Gagal mencari barang.");
+  }
+}
+

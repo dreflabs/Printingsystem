@@ -1,10 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, XCircle, ClipboardList, ScanLine, History } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { CheckCircle2, XCircle, ClipboardList, ScanLine, History, Upload, Image as ImageIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getGudangQueues } from "@/actions/queries";
-import { submitQC } from "@/actions/production";
+import { submitQC, getQCHistory } from "@/actions/production";
+import { Prisma } from "@prisma/client";
+
+type QCHistoryRecord = Prisma.QcRecordGetPayload<{
+  include: {
+    job: { include: { order: { include: { customer: true } } } };
+    inspector: { select: { name: true } };
+  }
+}>;
 
 const CHECKLIST_ITEMS = [
   { id: "qty", label: "Jumlah (Quantity vs Planned)" },
@@ -34,12 +42,26 @@ function QCInspectionModal({ job, onClose, onDone }: { job: QCJob; onClose: () =
   const [failCategory, setFailCategory] = useState("");
   const [failDesc, setFailDesc] = useState("");
   const [notes, setNotes] = useState("");
+  const [photoBase64, setPhotoBase64] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const setCheck = (id: string, val: CheckResult) => setChecklist((p) => ({ ...p, [id]: val }));
   const hasMajor = Object.values(checklist).includes("MAJOR");
   const allChecked = CHECKLIST_ITEMS.every((i) => checklist[i.id]);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { setErr("Maksimal ukuran foto adalah 2MB"); return; }
+    
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (ev.target?.result) setPhotoBase64(ev.target.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
 
   async function submit(result: "PASS" | "FAIL") {
     setBusy(true);
@@ -49,6 +71,7 @@ function QCInspectionModal({ job, onClose, onDone }: { job: QCJob; onClose: () =
       checklist,
       notes: result === "FAIL" ? failDesc : notes || undefined,
       category: result === "FAIL" ? failCategory : undefined,
+      photoPath: result === "FAIL" && photoBase64 ? photoBase64 : undefined,
     });
     setBusy(false);
     if (!res.success) { setErr(res.error); return; }
@@ -136,6 +159,37 @@ function QCInspectionModal({ job, onClose, onDone }: { job: QCJob; onClose: () =
                   className="w-full rounded-xl bg-elevated border border-border text-sm text-primary p-3 outline-none focus:border-status-red resize-none"
                 />
               </div>
+              
+              <div>
+                <label className="text-xs text-muted font-medium mb-1 block">Foto Bukti Defect (Opsional)</label>
+                <input 
+                  type="file" 
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden" 
+                  ref={fileInputRef}
+                  onChange={handlePhotoUpload}
+                />
+                
+                {photoBase64 ? (
+                  <div className="relative w-full h-32 rounded-xl overflow-hidden border border-border group">
+                    <img src={photoBase64} alt="Defect" className="w-full h-full object-cover" />
+                    <button 
+                      onClick={() => setPhotoBase64("")}
+                      className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-lg hover:bg-status-red transition-colors backdrop-blur-md opacity-0 group-hover:opacity-100"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full h-24 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center text-muted hover:border-accent-teal hover:text-accent-teal transition-colors bg-elevated/30"
+                  >
+                    <Upload className="h-5 w-5 mb-1.5" />
+                    <span className="text-xs font-medium">Klik untuk upload foto (Max 2MB)</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -178,15 +232,17 @@ function QCInspectionModal({ job, onClose, onDone }: { job: QCJob; onClose: () =
 
 export function QCTab() {
   const [queue, setQueue] = useState<QCJob[]>([]);
+  const [historyList, setHistoryList] = useState<QCHistoryRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [qcFor, setQcFor] = useState<QCJob | null>(null);
   const [activeTab, setActiveTab] = useState<"queue" | "history">("queue");
 
   const load = useCallback(async () => {
-    const res = await getGudangQueues();
-    if (!res.success) { setError(res.error); return; }
+    const [resQ, resH] = await Promise.all([getGudangQueues(), getQCHistory()]);
+    if (!resQ.success) { setError(resQ.error); return; }
     setError(null);
-    setQueue(res.data.qcQueue);
+    setQueue(resQ.data.qcQueue);
+    if (resH.success) setHistoryList(resH.data);
   }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -290,8 +346,63 @@ export function QCTab() {
       )}
 
       {activeTab === "history" && (
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-sm p-8 text-center text-sm text-muted">
-          Riwayat inspeksi lengkap tersedia di menu Laporan / audit-logs.
+        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 p-5 border-b border-border bg-elevated/30">
+            <History className="h-5 w-5 text-accent-teal" />
+            <h2 className="text-base font-semibold text-primary">Riwayat Inspeksi QC Terakhir</h2>
+          </div>
+          
+          <div className="divide-y divide-border/50 max-h-[600px] overflow-y-auto">
+            {historyList.length === 0 && (
+              <div className="p-8 text-center text-muted">Belum ada riwayat inspeksi QC.</div>
+            )}
+            
+            {historyList.map(item => (
+              <div key={item.id} className="p-5 hover:bg-elevated/30 transition-colors">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    {item.result === "PASS" ? (
+                      <div className="h-10 w-10 rounded-xl bg-status-green/10 flex items-center justify-center shrink-0">
+                        <CheckCircle2 className="h-5 w-5 text-status-green" />
+                      </div>
+                    ) : (
+                      <div className="h-10 w-10 rounded-xl bg-status-red/10 flex items-center justify-center shrink-0">
+                        <XCircle className="h-5 w-5 text-status-red" />
+                      </div>
+                    )}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-accent-teal text-sm">{item.job.job_code}</span>
+                        <span className="text-xs text-muted">·</span>
+                        <span className="text-xs text-primary">{item.job.order.order_code}</span>
+                      </div>
+                      <p className="text-xs text-muted mt-0.5">{item.job.order.customer?.name} · {item.inspector.name}</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono text-muted">
+                    {new Date(item.created_at).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}
+                  </span>
+                </div>
+                
+                {item.notes && (
+                  <div className={cn("text-xs p-3 rounded-xl border mt-3 flex items-start gap-3", 
+                    item.result === "PASS" ? "bg-status-green/5 border-status-green/20 text-primary" : "bg-status-red/5 border-status-red/20 text-status-red"
+                  )}>
+                    <div className="flex-1">
+                      {item.result === "FAIL" && <strong className="block mb-1">Defect Note:</strong>}
+                      {item.notes}
+                    </div>
+                    {item.photo_path && (
+                      <div className="shrink-0 w-20 h-20 rounded-lg overflow-hidden border border-status-red/30">
+                         {/* We assume it's base64 for now since it's the MVP */}
+                        <img src={item.photo_path} alt="Defect" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

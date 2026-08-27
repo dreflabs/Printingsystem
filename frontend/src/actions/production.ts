@@ -214,6 +214,79 @@ export async function resumeProduction(jobCode: string): Promise<ActionResult<nu
 }
 
 // ─────────────────────────────────────────────────────────────
+// REASSIGNMENT JOB PRODUKSI
+// ─────────────────────────────────────────────────────────────
+
+export interface ReassignJobInput {
+  machineId: string;
+  operatorId: string;
+  reason: string;
+}
+
+/**
+ * Pindahkan job produksi ke mesin/operator lain.
+ * Admin: maks 2x per 24 jam per job — percobaan ke-3 diblokir, wajib Owner.
+ * Owner: selalu boleh (dicatat sebagai override limit).
+ */
+export async function reassignProductionJob(
+  jobCode: string,
+  input: ReassignJobInput
+): Promise<ActionResult<{ machineId: string; operatorId: string }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (actor.role !== "admin" && actor.role !== "owner") return fail("Hanya Admin/Owner yang bisa reassign job.");
+    if (!input.reason?.trim()) return fail("Alasan reassignment wajib diisi.");
+
+    const job = await findJobByCode(prisma, tenant.id, jobCode);
+    if (!job) return fail("Job tidak ditemukan.");
+    if (!["PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"].includes(job.status)) {
+      return fail(`Job tidak bisa direassign dari status ${job.status}.`);
+    }
+
+    const dayAgo = new Date(Date.now() - 24 * 3600 * 1000);
+    const recentReassigns = await prisma.auditLog.count({
+      where: { tenant_id: tenant.id, action: "PRODUCTION_JOB_REASSIGNED", entity_id: job.job_code, created_at: { gte: dayAgo } },
+    });
+    const limitReached = recentReassigns >= 2;
+    if (limitReached && actor.role !== "owner") {
+      return fail("Batas 2x reassignment / 24 jam tercapai. Butuh keputusan Owner.");
+    }
+
+    const [machine, operator] = await Promise.all([
+      prisma.machine.findFirst({ where: { id: input.machineId, tenant_id: tenant.id } }),
+      prisma.user.findFirst({ where: { id: input.operatorId, tenant_id: tenant.id } }),
+    ]);
+    if (!machine) return fail("Mesin tidak valid.");
+    if (!operator) return fail("Operator tidak valid.");
+
+    const before = { machine_id: job.machine_id, operator_id: job.operator_id };
+    await prisma.productionJob.update({
+      where: { id: job.id },
+      data: { machine_id: input.machineId, operator_id: input.operatorId },
+    });
+    await logAction(actor.id, "PRODUCTION_JOB_REASSIGNED", "ProductionJob", job.job_code, before, {
+      machine_id: input.machineId,
+      operator_id: input.operatorId,
+      reason: input.reason.trim(),
+    });
+    if (limitReached) {
+      await logAction(actor.id, "PRODUCTION_JOB_REASSIGN_LIMIT_REACHED", "ProductionJob", job.job_code, null, {
+        attempt: recentReassigns + 1,
+        by_owner_override: true,
+      });
+    }
+
+    revalidatePath("/owner");
+    revalidatePath("/admin");
+    return ok({ machineId: input.machineId, operatorId: input.operatorId });
+  } catch (e) {
+    console.error("reassignProductionJob:", e);
+    return fail(e instanceof Error ? e.message : "Gagal reassign job.");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // SCAN 2 — SELESAI PRODUKSI (+ pemakaian material wajib)
 // ─────────────────────────────────────────────────────────────
 
@@ -422,6 +495,26 @@ export async function submitQC(
     return fail(e instanceof Error ? e.message : "Gagal submit QC.");
   }
 }
+
+export async function getQCHistory() {
+  try {
+    const tenant = await requireTenant();
+    const records = await prisma.qcRecord.findMany({
+      where: { tenant_id: tenant.id },
+      orderBy: { created_at: "desc" },
+      take: 50,
+      include: {
+        job: { include: { order: { include: { customer: true } } } },
+        inspector: { select: { name: true } },
+      },
+    });
+    return ok(records);
+  } catch (e) {
+    console.error("getQCHistory:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat riwayat QC.");
+  }
+}
+
 
 /** Keputusan rework atas job yang FAILED_REWORK — Owner saja. */
 export async function decideRework(

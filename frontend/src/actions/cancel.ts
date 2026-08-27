@@ -7,6 +7,74 @@ import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";
 
+/**
+ * Admin mengajukan pembatalan order yang produksinya sudah berjalan.
+ * Tidak langsung membatalkan — hanya menandai request (cancellation_reason terisi,
+ * cancelled_at masih null) supaya muncul di antrian approval Owner.
+ */
+export async function requestOrderCancellation(
+  orderId: string,
+  reason: string
+): Promise<ActionResult<null>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (actor.role !== "admin" && actor.role !== "owner") return fail("Hanya Admin/Owner yang bisa mengajukan pembatalan.");
+    if (!reason?.trim()) return fail("Alasan pembatalan wajib diisi.");
+
+    const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
+    if (!order) return fail("Order tidak ditemukan.");
+    if (["CLOSED", "CANCELLED", "PICKED_UP"].includes(order.status)) return fail(`Order ${order.status} tidak bisa dibatalkan.`);
+    if (order.cancellation_reason && !order.cancelled_at) return fail("Sudah ada pengajuan pembatalan untuk order ini.");
+
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { cancellation_reason: reason.trim() },
+    });
+    await logAction(actor.id, "CANCEL_REQUESTED", "Order", orderId, null, { reason });
+    revalidatePath("/admin");
+    revalidatePath("/owner");
+    return ok(null);
+  } catch (e) {
+    console.error("requestOrderCancellation:", e);
+    return fail(e instanceof Error ? e.message : "Gagal mengajukan pembatalan.");
+  }
+}
+
+/** Owner memutuskan pengajuan pembatalan: approve → jalankan cancelOrder; reject → hapus request. */
+export async function decideOrderCancellation(
+  orderId: string,
+  input: { approve: boolean; refundAmount?: number; refundMethod?: "CASH" | "TRANSFER" }
+): Promise<ActionResult<{ decision: "APPROVED" | "REJECTED" }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (actor.role !== "owner") return fail("Hanya Owner yang bisa memutuskan pembatalan.");
+
+    const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
+    if (!order) return fail("Order tidak ditemukan.");
+    if (!order.cancellation_reason || order.cancelled_at) return fail("Tidak ada pengajuan pembatalan aktif.");
+
+    if (!input.approve) {
+      await prisma.order.update({ where: { id: orderId }, data: { cancellation_reason: null } });
+      await logAction(actor.id, "CANCEL_REJECTED", "Order", orderId, null, null);
+      revalidatePath("/owner");
+      return ok({ decision: "REJECTED" });
+    }
+
+    const res = await cancelOrder(orderId, {
+      reason: order.cancellation_reason,
+      refundAmount: input.refundAmount,
+      refundMethod: input.refundMethod,
+    });
+    if (!res.success) return fail(res.error);
+    return ok({ decision: "APPROVED" });
+  } catch (e) {
+    console.error("decideOrderCancellation:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memproses keputusan pembatalan.");
+  }
+}
+
 /** Status sebelum produksi dimulai — Admin boleh cancel, DP bisa dikembalikan. */
 const PRE_PRODUCTION = [
   "DRAFT",

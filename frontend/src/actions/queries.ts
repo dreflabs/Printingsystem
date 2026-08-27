@@ -191,6 +191,149 @@ export async function getOwnerQueues() {
   }
 }
 
+const IN_PROGRESS = [
+  "PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_COMPLETE",
+  "QC_PENDING", "QC_PASSED", "QC_REWORK_PENDING",
+  "FINISHING_STARTED", "FINISHING_COMPLETE", "STORAGE_PENDING", "STORED",
+];
+
+/** Dashboard Owner lengkap — KPI, semua panel alert, pipeline, absensi, audit. */
+export async function getOwnerDashboard() {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (actor.role !== "owner" && actor.role !== "admin") return fail("Tidak berwenang.");
+
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const dayAgo = new Date(now.getTime() - 24 * 3600 * 1000);
+    const T = { tenant_id: tenant.id };
+
+    const [
+      ordersToday, readyPickup, produksiAktif, omsetAgg,
+      pendingDiscounts, auditsPending, reworkPending, cancelRequests, overdue,
+      lowStockRaw, waFailed, wasteJobs, orphanMovements, reassignLogs,
+      pipelineJobs, attendanceToday, activeUsers,
+    ] = await Promise.all([
+      prisma.order.count({ where: { ...T, created_at: { gte: startOfDay } } }),
+      prisma.order.count({ where: { ...T, status: "READY_FOR_PICKUP" } }),
+      prisma.productionJob.count({ where: { ...T, status: { in: ["PRODUCTION_STARTED", "FINISHING_STARTED"] } } }),
+      prisma.payment.aggregate({ where: { ...T, status: "CONFIRMED", paid_at: { gte: startOfMonth } }, _sum: { amount: true } }),
+
+      prisma.order.findMany({
+        where: { ...T, discount: { gt: 0 }, discount_approved_by: null, status: { notIn: ["CANCELLED"] } },
+        select: { id: true, order_code: true, discount: true, discount_reason: true, total: true, customer: { select: { name: true } } },
+      }),
+      prisma.order.findMany({
+        where: { ...T, status: "FINAL_AUDIT_COMPLETE" },
+        select: { id: true, order_code: true, customer: { select: { name: true } } },
+      }),
+      prisma.productionJob.findMany({
+        where: { ...T, status: "FAILED_REWORK" },
+        select: { job_code: true, rework_reason: true, rework_count: true, order: { select: { order_code: true } } },
+      }),
+      prisma.order.findMany({
+        where: { ...T, cancellation_reason: { not: null }, cancelled_at: null, status: { notIn: ["CANCELLED", "DRAFT"] } },
+        select: { id: true, order_code: true, status: true, cancellation_reason: true, paid_amount: true, customer: { select: { name: true } } },
+      }),
+      prisma.order.findMany({
+        where: { ...T, deadline: { lt: now }, status: { notIn: ["CLOSED", "CANCELLED", "PICKED_UP"] } },
+        orderBy: { deadline: "asc" },
+        select: { id: true, order_code: true, deadline: true, status: true, customer: { select: { name: true } } },
+      }),
+      prisma.material.findMany({ where: { ...T, active: true }, select: { name: true, current_stock: true, min_stock: true, unit_stock: true } }),
+      prisma.notificationEvent.findMany({
+        where: { ...T, status: { in: ["FAILED", "RETRY"] } },
+        orderBy: { created_at: "desc" },
+        take: 10,
+        select: { id: true, event_type: true, template_code: true, retry_count: true, order: { select: { order_code: true } }, customer: { select: { name: true } } },
+      }),
+      prisma.productionJob.findMany({
+        where: { ...T, waste_qty: { gt: 0 } },
+        select: { job_code: true, actual_qty: true, waste_qty: true, waste_reason: true, machine: { select: { name: true } } },
+      }),
+      prisma.materialMovement.count({ where: { ...T, job_id: null, movement_type: { in: ["OUT", "WASTE"] } } }),
+      prisma.auditLog.groupBy({
+        by: ["entity_id"],
+        where: { ...T, action: "PRODUCTION_JOB_REASSIGNED", created_at: { gte: dayAgo } },
+        _count: { _all: true },
+      }),
+      prisma.productionJob.findMany({ where: { ...T, status: { in: IN_PROGRESS } }, select: { status: true } }),
+      prisma.attendanceRecord.findMany({ where: { ...T, date: { gte: startOfDay } }, select: { check_in_status: true, user_id: true } }),
+      prisma.user.count({ where: { ...T, active: true } }),
+    ]);
+
+    const [machines, operators] = await Promise.all([
+      prisma.machine.findMany({ where: { ...T, status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      prisma.user.findMany({ where: { ...T, active: true, role: { name: "operator" } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    ]);
+
+    const bucket = (s: string) =>
+      ["PRODUCTION_ASSIGNED", "PRODUCTION_STARTED"].includes(s) ? "produksi"
+        : ["PRODUCTION_COMPLETE", "QC_PENDING"].includes(s) ? "qc"
+        : ["QC_PASSED", "FINISHING_STARTED"].includes(s) ? "finishing"
+        : ["FINISHING_COMPLETE", "STORAGE_PENDING"].includes(s) ? "storage"
+        : s === "STORED" ? "stored" : "lainnya";
+    const pipeline = { produksi: 0, qc: 0, finishing: 0, storage: 0, stored: 0, siapAmbil: readyPickup };
+    for (const j of pipelineJobs) {
+      const b = bucket(j.status);
+      if (b in pipeline) (pipeline as Record<string, number>)[b]++;
+    }
+
+    const highWaste = wasteJobs
+      .map((j) => {
+        const total = j.actual_qty + j.waste_qty;
+        return { jobCode: j.job_code, machine: j.machine.name, ratio: total > 0 ? j.waste_qty / total : 0, wasteQty: j.waste_qty, reason: j.waste_reason };
+      })
+      .filter((x) => x.ratio > 0.2);
+
+    const attendedIds = new Set(attendanceToday.filter((a) => a.user_id).map((a) => a.user_id));
+
+    return ok({
+      kpi: {
+        ordersToday,
+        readyPickup,
+        produksiAktif,
+        omsetBulanIni: num(omsetAgg._sum.amount),
+      },
+      pendingDiscounts: pendingDiscounts.map((o) => ({
+        orderId: o.id, orderCode: o.order_code, customerName: o.customer?.name ?? "-",
+        discount: num(o.discount), total: num(o.total), reason: o.discount_reason,
+      })),
+      auditsPending: auditsPending.map((o) => ({ orderId: o.id, orderCode: o.order_code, customerName: o.customer?.name ?? "-" })),
+      reworkPending: reworkPending.map((j) => ({ jobCode: j.job_code, orderCode: j.order.order_code, reason: j.rework_reason, reworkCount: j.rework_count })),
+      cancelRequests: cancelRequests.map((o) => ({
+        orderId: o.id, orderCode: o.order_code, orderStatus: o.status,
+        reason: o.cancellation_reason, paidAmount: num(o.paid_amount), customerName: o.customer?.name ?? "-",
+      })),
+      reassignPending: reassignLogs.filter((r) => r._count._all >= 2).map((r) => ({ jobCode: r.entity_id, count: r._count._all })),
+      overdue: overdue.map((o) => ({ orderId: o.id, orderCode: o.order_code, deadline: o.deadline, status: o.status, customerName: o.customer?.name ?? "-" })),
+      waFailed: waFailed.map((n) => ({
+        id: n.id, eventType: n.event_type, template: n.template_code, retryCount: n.retry_count,
+        orderCode: n.order.order_code, customerName: n.customer?.name ?? "-",
+      })),
+      lowStock: lowStockRaw
+        .filter((m) => num(m.current_stock) <= num(m.min_stock))
+        .map((m) => ({ name: m.name, current: num(m.current_stock), min: num(m.min_stock), unit: m.unit_stock })),
+      anomalies: {
+        highWaste,
+        orphanMovements,
+      },
+      pipeline,
+      attendance: {
+        present: attendanceToday.length,
+        late: attendanceToday.filter((a) => a.check_in_status === "LATE").length,
+        notCheckedIn: Math.max(0, activeUsers - attendedIds.size),
+      },
+      reassignOptions: { machines, operators },
+    });
+  } catch (e) {
+    console.error("getOwnerDashboard:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat dashboard owner.");
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // ORDER LIST + DETAIL
 // ─────────────────────────────────────────────────────────────

@@ -73,7 +73,7 @@ function AlertRow({ icon: Icon, label, sub, tier, action, onAction }: {
 }) {
   const c = {
     red: { bg: "bg-status-red/10", border: "border-status-red/20", text: "text-status-red", btn: "bg-status-red text-white hover:bg-status-red/90" },
-    orange: { bg: "bg-status-yellow/10", border: "border-status-yellow/20", text: "text-status-yellow", btn: "bg-transparent text-status-yellow border border-status-yellow/30 hover:bg-status-yellow/5" },
+    orange: { bg: "bg-status-yellow/10", border: "border-status-yellow/20", text: "text-status-yellow-text", btn: "bg-transparent text-status-yellow-text border border-status-yellow/30 hover:bg-status-yellow/5" },
     gray: { bg: "bg-transparent", border: "border-transparent", text: "text-muted", btn: "bg-elevated text-primary border border-border hover:bg-elevated" },
   }[tier];
   return (
@@ -207,10 +207,10 @@ export default function OwnerPage() {
         ].map((k) => (
           <div key={k.label} className="bg-card border border-border rounded-[10px] p-5">
             <div className={cn("p-2.5 rounded-[10px] w-fit mb-3", k.gold ? "bg-status-yellow/10" : "bg-accent-teal/10")}>
-              <k.icon className={cn("h-5 w-5", k.gold ? "text-status-yellow" : "text-accent-teal")} />
+              <k.icon className={cn("h-5 w-5", k.gold ? "text-status-yellow-text" : "text-accent-teal")} />
             </div>
             <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">{k.label}</p>
-            <p className={cn("text-2xl font-bold mt-1 font-mono", k.gold ? "text-status-yellow" : "text-primary")}>{k.value}</p>
+            <p className={cn("text-2xl font-bold mt-1 font-mono", k.gold ? "text-status-yellow-text" : "text-primary")}>{k.value}</p>
           </div>
         ))}
       </div>
@@ -242,8 +242,8 @@ export default function OwnerPage() {
 
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-status-yellow uppercase tracking-wider">Tier 2 · Perlu Ditinjau</span>
-            <span className="bg-status-yellow/10 text-status-yellow text-[10px] font-black px-2 py-0.5 rounded-full border border-status-yellow/20">{tier2}</span>
+            <span className="text-xs font-bold text-status-yellow-text uppercase tracking-wider">Tier 2 · Perlu Ditinjau</span>
+            <span className="bg-status-yellow/10 text-status-yellow-text text-[10px] font-black px-2 py-0.5 rounded-full border border-status-yellow/20">{tier2}</span>
           </div>
           <div className="grid grid-cols-1 gap-2.5">
             {q?.pendingDiscounts.map((d) => (
@@ -280,7 +280,7 @@ export default function OwnerPage() {
                     <td className="px-4 py-3 font-mono text-accent-teal font-bold">{o.orderCode}</td>
                     <td className="px-4 py-3 font-semibold">{o.customerName}</td>
                     <td className="px-4 py-3 font-mono font-bold">{rupiah(o.total)}</td>
-                    <td className={cn("px-4 py-3 font-mono", o.balance > 0 ? "text-status-yellow" : "text-status-green")}>{o.balance > 0 ? rupiah(o.balance) : "Lunas"}</td>
+                    <td className={cn("px-4 py-3 font-mono", o.balance > 0 ? "text-status-yellow-text" : "text-status-green")}>{o.balance > 0 ? rupiah(o.balance) : "Lunas"}</td>
                     <td className="px-4 py-3"><StatusPill status={o.status} /></td>
                   </tr>
                 ))}

@@ -82,9 +82,9 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
           <input type="number" className={inp} value={usageQty} onChange={(e) => setUsageQty(e.target.value)} />
         </div>
       </div>
-      {materials.length === 0 && <p className="text-[11px] text-status-yellow">Belum ada master material — tambahkan di Katalog dulu.</p>}
+      {materials.length === 0 && <p className="text-[11px] text-status-yellow-text">Belum ada master material — tambahkan di Katalog dulu.</p>}
       <div>
-        <label className="text-xs font-bold text-status-yellow mb-1 block">Jumlah Gagal / Waste</label>
+        <label className="text-xs font-bold text-status-yellow-text mb-1 block">Jumlah Gagal / Waste</label>
         <input type="number" min="0" className={inp} value={waste} onChange={(e) => setWaste(e.target.value)} placeholder="0" />
       </div>
       {wasteN > 0 && (
@@ -101,7 +101,7 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
       <button
         disabled={!canSubmit || busy}
         onClick={submit}
-        className="w-full h-12 rounded-xl bg-gradient-to-r from-status-green to-emerald-500 text-white text-sm font-black hover:brightness-110 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+        className="w-full h-12 rounded-xl bg-gradient-to-r from-status-green to-status-green/75 text-white text-sm font-black hover:brightness-110 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
       >
         <CheckCircle2 className="h-5 w-5" /> Selesai Produksi (SCAN 2)
       </button>
@@ -144,7 +144,7 @@ export default function OperatorPage() {
 
   const kpi = [
     { label: "Job Aktif", value: active ? 1 : 0, color: "text-status-blue", bg: "bg-status-blue/10", icon: Layers },
-    { label: "Sisa Antrian", value: queue.length, color: "text-status-yellow", bg: "bg-status-yellow/10", icon: Timer },
+    { label: "Sisa Antrian", value: queue.length, color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Timer },
     { label: "Status Mesin", value: active ? (active.status === "PRODUCTION_PAUSED" ? "Jeda" : "Jalan") : "Idle", color: "text-status-green", bg: "bg-status-green/10", icon: Settings2 },
   ];
 
@@ -173,9 +173,9 @@ export default function OperatorPage() {
         {/* Antrian */}
         <div className="bg-card/70 backdrop-blur-xl border border-border rounded-3xl shadow-sm flex flex-col max-h-[800px] overflow-hidden">
           <div className="p-5 border-b border-border flex items-center gap-2">
-            <Timer className="h-5 w-5 text-status-yellow" />
+            <Timer className="h-5 w-5 text-status-yellow-text" />
             <h2 className="text-lg font-bold text-primary">Antrian Masuk</h2>
-            <span className="px-2.5 py-1 rounded-full text-xs font-black bg-status-yellow text-black">{queue.length}</span>
+            <span className="px-2.5 py-1 rounded-full text-xs font-black bg-status-yellow text-primary">{queue.length}</span>
           </div>
           <div className="overflow-y-auto flex-1 p-2 space-y-2">
             {queue.length === 0 && (
@@ -249,7 +249,7 @@ export default function OperatorPage() {
                   )}
                   <button
                     onClick={() => setShowFinish((v) => !v)}
-                    className="flex-1 h-12 rounded-xl bg-gradient-to-r from-status-green to-emerald-500 text-white text-sm font-black hover:brightness-110 transition-all flex items-center justify-center gap-2"
+                    className="flex-1 h-12 rounded-xl bg-gradient-to-r from-status-green to-status-green/75 text-white text-sm font-black hover:brightness-110 transition-all flex items-center justify-center gap-2"
                   >
                     <CheckCircle2 className="h-5 w-5" /> {showFinish ? "Tutup Form" : "SELESAI PRODUKSI"}
                   </button>

@@ -161,7 +161,7 @@ export default function MarketingPage() {
                   icon: PackageSearch,
                   title: "Manajemen Finishing",
                   desc: "Stok bahan baku terpotong otomatis setiap kali mesin mencetak. Ada alert stok menipis.",
-                  color: "text-status-yellow",
+                  color: "text-status-yellow-text",
                   bg: "bg-status-yellow/10"
                 },
                 {
@@ -286,7 +286,7 @@ export default function MarketingPage() {
               ].map((testi, i) => (
                 <div key={i} className="bg-card border border-border p-8 rounded-2xl flex flex-col justify-between">
                   <div>
-                    <div className="flex text-status-yellow mb-6">
+                    <div className="flex text-status-yellow-text mb-6">
                       {Array.from({length: 5}).map((_, idx) => (
                         <svg key={idx} className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
                       ))}

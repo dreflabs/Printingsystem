@@ -17,7 +17,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
           variant === "default"
             ? "bg-card/70"
             : "bg-elevated/70",
-          glow && "border-accent-teal/40 shadow-[0_4px_24px_rgba(14,165,233,0.15)]",
+          glow && "border-accent-teal/40 shadow-[0_4px_24px_rgba(4,146,178,0.15)]",
           className
         )}
         {...props}

@@ -71,7 +71,7 @@ function DetailModal({ orderId, onClose, onBayar }: { orderId: string; onClose: 
                 </div>
                 <div className="bg-elevated/50 p-3 rounded-xl">
                   <p className="text-muted text-[10px] uppercase">Dibayar / Sisa</p>
-                  <p className={cn("font-mono font-bold", d.balance > 0 ? "text-status-yellow" : "text-status-green")}>
+                  <p className={cn("font-mono font-bold", d.balance > 0 ? "text-status-yellow-text" : "text-status-green")}>
                     {fmtRp(d.paidAmount)} / {d.balance > 0 ? fmtRp(d.balance) : "Lunas"}
                   </p>
                 </div>
@@ -144,7 +144,7 @@ function PaymentModal({ order, onClose, onDone }: { order: OrderRow; onClose: ()
           <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
         </div>
         {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
-        <p className="text-xs text-muted">Sisa tagihan: <span className="font-bold text-status-yellow">{fmtRp(order.balance)}</span></p>
+        <p className="text-xs text-muted">Sisa tagihan: <span className="font-bold text-status-yellow-text">{fmtRp(order.balance)}</span></p>
         <div><label className="text-xs text-muted mb-1 block">Jumlah</label><input type="number" className={inp} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
         <div><label className="text-xs text-muted mb-1 block">Metode</label>
           <select className={inp} value={method} onChange={(e) => setMethod(e.target.value as "CASH" | "TRANSFER" | "QRIS")}>
@@ -222,7 +222,7 @@ function FinalAuditModal({ order, onClose, onDone }: { order: OrderRow; onClose:
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Catatan audit (opsional)"
             className="w-full rounded-xl bg-elevated border border-border text-sm text-primary p-3 outline-none focus:border-accent-teal resize-none" />
           {allChecked && (
-            <div className={cn("p-2 rounded-xl text-center text-sm font-bold border", result === "GREEN" ? "bg-status-green/10 text-status-green border-status-green/30" : "bg-status-yellow/10 text-status-yellow border-status-yellow/30")}>
+            <div className={cn("p-2 rounded-xl text-center text-sm font-bold border", result === "GREEN" ? "bg-status-green/10 text-status-green border-status-green/30" : "bg-status-yellow/10 text-status-yellow-text border-status-yellow/30")}>
               {result === "GREEN" ? "🟢 GREEN — akan CLOSED" : "🟡 YELLOW — butuh approval Owner"}
             </div>
           )}
@@ -260,11 +260,11 @@ export default function AdminDashboardPage() {
 
   const today = new Date().toDateString();
   const kpi = [
-    { label: "Order Baru Hari Ini", value: orders.filter((o) => new Date(o.createdAt).toDateString() === today).length, filter: "", dot: "bg-blue-600" },
-    { label: "Ada Sisa Tagihan", value: orders.filter((o) => o.balance > 0 && !["CANCELLED"].includes(o.status)).length, filter: "", dot: "bg-amber-500" },
-    { label: "Siap Diambil", value: orders.filter((o) => o.status === "READY_FOR_PICKUP").length, filter: "READY_FOR_PICKUP", dot: "bg-emerald-500" },
-    { label: "Overdue", value: orders.filter((o) => o.overdue).length, filter: "", dot: "bg-red-600", urgent: true },
-    { label: "Menunggu Audit", value: orders.filter((o) => o.status === "FINAL_AUDIT_PENDING").length, filter: "FINAL_AUDIT_PENDING", dot: "bg-amber-500" },
+    { label: "Order Baru Hari Ini", value: orders.filter((o) => new Date(o.createdAt).toDateString() === today).length, filter: "", dot: "bg-status-blue" },
+    { label: "Ada Sisa Tagihan", value: orders.filter((o) => o.balance > 0 && !["CANCELLED"].includes(o.status)).length, filter: "", dot: "bg-status-yellow" },
+    { label: "Siap Diambil", value: orders.filter((o) => o.status === "READY_FOR_PICKUP").length, filter: "READY_FOR_PICKUP", dot: "bg-status-green" },
+    { label: "Overdue", value: orders.filter((o) => o.overdue).length, filter: "", dot: "bg-status-red", urgent: true },
+    { label: "Menunggu Audit", value: orders.filter((o) => o.status === "FINAL_AUDIT_PENDING").length, filter: "FINAL_AUDIT_PENDING", dot: "bg-status-yellow" },
   ];
 
   const readyPickup = orders.filter((o) => o.status === "READY_FOR_PICKUP");
@@ -295,7 +295,7 @@ export default function AdminDashboardPage() {
         {kpi.map((k) => (
           <button key={k.label} onClick={() => setStatusFilter((p) => (p === k.filter ? "" : k.filter))}
             className={cn("bg-card border rounded-2xl p-4 shadow-sm text-left transition-all",
-              k.urgent ? "border-red-300 bg-red-50/15" : "border-border hover:border-accent-teal/40",
+              k.urgent ? "border-status-red/30 bg-status-red/5" : "border-border hover:border-accent-teal/40",
               statusFilter === k.filter && k.filter !== "" && "ring-2 ring-accent-teal/30 border-accent-teal")}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-muted font-medium truncate">{k.label}</span>
@@ -393,14 +393,14 @@ export default function AdminDashboardPage() {
                   <td className="px-4 py-3"><StatusPill status={o.status} /></td>
                   <td className="px-4 py-3 font-mono text-xs text-primary whitespace-nowrap">{fmtRp(o.total)}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <span className={cn("text-xs font-mono", o.balance > 0 ? "text-status-yellow" : "text-status-green")}>{o.balance > 0 ? fmtRp(o.balance) : "Lunas"}</span>
+                    <span className={cn("text-xs font-mono", o.balance > 0 ? "text-status-yellow-text" : "text-status-green")}>{o.balance > 0 ? fmtRp(o.balance) : "Lunas"}</span>
                   </td>
                   <td className={cn("px-4 py-3 whitespace-nowrap text-xs", o.overdue ? "text-status-red font-bold" : "text-muted")}>{fmtDate(o.deadline)}</td>
                   <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
                       <button onClick={() => setDetailFor(o)} className="text-xs text-accent-teal hover:underline">Detail</button>
                       {o.balance > 0 && o.type === "PRINTING" && (
-                        <><span className="text-border">·</span><button onClick={() => setPayFor(o)} className="text-xs text-status-yellow hover:underline">Bayar</button></>
+                        <><span className="text-border">·</span><button onClick={() => setPayFor(o)} className="text-xs text-status-yellow-text hover:underline">Bayar</button></>
                       )}
                       {o.status === "FINAL_AUDIT_PENDING" && (
                         <><span className="text-border">·</span><button onClick={() => setAuditFor(o)} className="text-xs text-accent-teal hover:underline font-semibold">Audit</button></>

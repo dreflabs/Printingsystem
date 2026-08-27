@@ -91,7 +91,7 @@ export default function OwnerUsersPage() {
     const roles: Record<string, string> = {
       owner: "bg-accent-teal/10 text-accent-teal border-accent-teal/20",
       admin: "bg-accent-teal/10 text-accent-teal border-accent-teal/20",
-      designer_sales: "bg-status-yellow/10 text-status-yellow border-status-yellow/20",
+      designer_sales: "bg-status-yellow/10 text-status-yellow-text border-status-yellow/20",
       operator: "bg-status-blue/10 text-status-blue border-status-blue/20",
       finishing: "bg-status-green/10 text-status-green border-status-green/20",
     };
@@ -191,7 +191,7 @@ export default function OwnerUsersPage() {
                           {user.active ? "Aktif" : "Nonaktif"}
                         </span>
                         {user.must_change_password && (
-                          <span className="text-[10px] text-status-yellow font-medium flex items-center gap-1 bg-status-yellow/10 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] text-status-yellow-text font-medium flex items-center gap-1 bg-status-yellow/10 px-1.5 py-0.5 rounded">
                             <KeyRound className="h-3 w-3" /> Wajib ubah sandi
                           </span>
                         )}
@@ -202,7 +202,7 @@ export default function OwnerUsersPage() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleResetPassword(user.id, user.role.name)}
-                            className="p-2 text-muted hover:text-status-yellow hover:bg-status-yellow/10 rounded-lg transition-colors group relative"
+                            className="p-2 text-muted hover:text-status-yellow-text hover:bg-status-yellow/10 rounded-lg transition-colors group relative"
                             title="Reset Password"
                           >
                             <KeyRound className="h-4 w-4" />

@@ -155,8 +155,8 @@ export default function AdminCustomersPage() {
                       <span
                         className={cn(
                           "px-2.5 py-1 rounded-full text-xs font-bold border",
-                          c.type === "Umum" && "bg-slate-500/10 text-slate-500 border-slate-500/20",
-                          c.type === "Makloon" && "bg-status-yellow/10 text-status-yellow border-status-yellow/30",
+                          c.type === "Umum" && "bg-muted/10 text-muted border-muted/20",
+                          c.type === "Makloon" && "bg-status-yellow/10 text-status-yellow-text border-status-yellow/30",
                           c.type === "B2B" && "bg-status-green/10 text-status-green border-status-green/30"
                         )}
                       >

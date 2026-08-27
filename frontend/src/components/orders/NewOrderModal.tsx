@@ -307,14 +307,14 @@ function Step3({
               </div>
               <div className="border-t border-border pt-2 flex justify-between">
                 <span className="text-primary font-semibold">Sisa Tagihan</span>
-                <span className={cn("font-bold text-base", sisa > 0 ? "text-status-yellow" : "text-status-green")}>
+                <span className={cn("font-bold text-base", sisa > 0 ? "text-status-yellow-text" : "text-status-green")}>
                   Rp {sisa.toLocaleString("id-ID")}
                 </span>
               </div>
             </>
           ) : (
             <div className="border-t border-border pt-3 mt-3">
-              <p className="text-status-yellow text-xs font-medium">
+              <p className="text-status-yellow-text text-xs font-medium">
                 ⚠️ Pembayaran DP / Pelunasan akan ditagihkan oleh Admin Kasir.
               </p>
             </div>

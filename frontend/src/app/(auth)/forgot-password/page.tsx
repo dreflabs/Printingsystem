@@ -44,7 +44,7 @@ export default function ForgotPasswordPage() {
             <p className="text-muted text-sm leading-relaxed">
               Masukkan email yang terdaftar sebagai Owner. Kami akan mengirimkan tautan untuk mereset password Anda. 
               <br/><br/>
-              <span className="font-semibold text-status-yellow">Catatan:</span> Pegawai harus meminta Owner untuk mereset password mereka.
+              <span className="font-semibold text-status-yellow-text">Catatan:</span> Pegawai harus meminta Owner untuk mereset password mereka.
             </p>
           </div>
 

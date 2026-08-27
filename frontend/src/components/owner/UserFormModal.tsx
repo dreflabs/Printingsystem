@@ -94,7 +94,7 @@ export function UserFormModal({ onClose, onSave, isLoading }: UserFormModalProps
           </div>
 
           <div className="p-3 bg-status-yellow/10 border border-status-yellow/30 rounded-xl mt-2">
-            <p className="text-xs text-status-yellow font-medium">
+            <p className="text-xs text-status-yellow-text font-medium">
               Password otomatis (Default): <strong className="font-mono bg-status-yellow/20 px-1 py-0.5 rounded">printpilot123!</strong><br />
               Pegawai wajib mengubah password pada saat login pertama kali.
             </p>

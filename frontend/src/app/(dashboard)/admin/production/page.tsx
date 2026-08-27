@@ -57,11 +57,11 @@ export default function ProductionPage() {
   });
 
   const kpis = [
-    { label: "Job Belum Di-assign", value: unassignedJobs.length.toString(), color: "text-status-yellow", bg: "bg-status-yellow/10", icon: Clock },
+    { label: "Job Belum Di-assign", value: unassignedJobs.length.toString(), color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Clock },
     { label: "Job Sedang Berjalan", value: runningJobs.length.toString(), color: "text-status-blue", bg: "bg-status-blue/10", icon: Play },
     { label: "Antrian QC", value: qcQueue.length.toString(), color: "text-accent-teal", bg: "bg-accent-teal/10", icon: Package },
     { label: "QC Fail / Rework", value: qcFailed.length.toString(), color: "text-status-red", bg: "bg-status-red/10", icon: AlertTriangle },
-    { label: "Mesin Maintenance", value: "1", color: "text-status-yellow", bg: "bg-status-yellow/10", icon: Wrench },
+    { label: "Mesin Maintenance", value: "1", color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Wrench },
     { label: "Stok Material Menipis", value: lowStock.length.toString(), color: "text-status-red", bg: "bg-status-red/10", icon: ShieldAlert },
   ];
 
@@ -115,7 +115,7 @@ export default function ProductionPage() {
                   <span
                     className={cn(
                       "px-2 py-0.5 rounded-full text-[10px] font-bold",
-                      m.status === "ACTIVE" ? "bg-status-green/10 text-status-green border border-status-green/30" : "bg-status-yellow/10 text-status-yellow border border-status-yellow/30"
+                      m.status === "ACTIVE" ? "bg-status-green/10 text-status-green border border-status-green/30" : "bg-status-yellow/10 text-status-yellow-text border border-status-yellow/30"
                     )}
                   >
                     {m.status}
@@ -141,9 +141,9 @@ export default function ProductionPage() {
       {/* Panel Reassignment */}
       <div className="bg-card/70 backdrop-blur-xl border border-status-yellow/20 rounded-2xl p-5 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
-          <RefreshCw className="h-5 w-5 text-status-yellow" />
+          <RefreshCw className="h-5 w-5 text-status-yellow-text" />
           <h2 className="text-base font-bold text-primary">Job Perlu Reassignment</h2>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/10 text-status-yellow border border-status-yellow/30">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/10 text-status-yellow-text border border-status-yellow/30">
             {REASSIGN_QUEUE.length}
           </span>
         </div>
@@ -153,13 +153,13 @@ export default function ProductionPage() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="font-mono text-xs text-accent-teal">{r.jobId}</span>
-                  <span className="text-[10px] bg-status-yellow/10 text-status-yellow px-1.5 py-0.5 rounded font-bold">{r.machine}</span>
+                  <span className="text-[10px] bg-status-yellow/10 text-status-yellow-text px-1.5 py-0.5 rounded font-bold">{r.machine}</span>
                 </div>
                 <p className="text-sm font-semibold text-primary truncate">{r.product}</p>
                 <p className="text-xs text-muted">{r.reason}</p>
                 <p className="text-[10px] text-muted mt-0.5">Deadline: {r.deadline}</p>
               </div>
-              <button className="shrink-0 px-3 py-2 rounded-xl bg-status-yellow/10 text-status-yellow text-xs font-bold hover:bg-status-yellow/20 transition-all cursor-pointer border border-status-yellow/30">
+              <button className="shrink-0 px-3 py-2 rounded-xl bg-status-yellow/10 text-status-yellow-text text-xs font-bold hover:bg-status-yellow/20 transition-all cursor-pointer border border-status-yellow/30">
                 Reassigned
               </button>
             </div>
@@ -264,10 +264,10 @@ export default function ProductionPage() {
           <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <RotateCcw className="h-5 w-5 text-status-yellow" />
+                <RotateCcw className="h-5 w-5 text-status-yellow-text" />
                 <h3 className="font-bold text-sm text-primary">Approval Rework</h3>
               </div>
-              <span className="text-[10px] bg-status-yellow/10 text-status-yellow px-2 py-0.5 rounded-full font-bold">Level 1 & 2</span>
+              <span className="text-[10px] bg-status-yellow/10 text-status-yellow-text px-2 py-0.5 rounded-full font-bold">Level 1 & 2</span>
             </div>
             <p className="text-xs text-muted mb-3">Pengajuan rework akibat QC fail yang membutuhkan verifikasi Admin.</p>
             {qcFailed.length === 0 ? (

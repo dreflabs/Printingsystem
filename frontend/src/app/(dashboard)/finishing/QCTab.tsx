@@ -82,7 +82,7 @@ function QCInspectionModal({ job, onClose, onDone }: { job: QCJob; onClose: () =
                           "flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer border",
                           checklist[item.id] === val
                             ? val === "OK" ? "bg-status-green text-white border-status-green"
-                              : val === "MINOR" ? "bg-status-yellow text-black border-status-yellow"
+                              : val === "MINOR" ? "bg-status-yellow text-primary border-status-yellow"
                               : "bg-status-red text-white border-status-red"
                             : "bg-elevated/50 text-muted border-border hover:text-primary"
                         )}
@@ -156,7 +156,7 @@ function QCInspectionModal({ job, onClose, onDone }: { job: QCJob; onClose: () =
               <button
                 onClick={() => submit("PASS")}
                 disabled={!allChecked || hasMajor || busy}
-                className="flex-1 h-11 rounded-xl bg-gradient-to-r from-status-green to-emerald-600 text-white text-sm font-bold hover:brightness-110 transition-all disabled:opacity-40"
+                className="flex-1 h-11 rounded-xl bg-gradient-to-r from-status-green to-status-green/75 text-white text-sm font-bold hover:brightness-110 transition-all disabled:opacity-40"
               >
                 <CheckCircle2 className="h-4 w-4 inline mr-1" /> PASS
               </button>
@@ -193,7 +193,7 @@ export function QCTab() {
   useEffect(() => { load(); }, [load]);
 
   const kpi = [
-    { label: "Menunggu Inspeksi", value: queue.length, color: "text-status-yellow" },
+    { label: "Menunggu Inspeksi", value: queue.length, color: "text-status-yellow-text" },
     { label: "Antrian Finishing (next)", value: "—", color: "text-status-blue" },
   ];
 
@@ -209,7 +209,7 @@ export function QCTab() {
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted">Inspeksi kualitas cetak — checklist PASS / FAIL per job (SCAN 3)</p>
-        <a href="/scan" className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-blue-500 text-white text-sm font-semibold shadow-lg shadow-accent-teal/20 hover:brightness-110 transition-all">
+        <a href="/scan" className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white text-sm font-semibold shadow-lg shadow-accent-teal/20 hover:brightness-110 transition-all">
           <ScanLine className="h-4 w-4" /> Scan Cepat
         </a>
       </div>
@@ -246,9 +246,9 @@ export function QCTab() {
       {activeTab === "queue" && (
         <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 p-5 border-b border-border">
-            <ClipboardList className="h-5 w-5 text-status-yellow" />
+            <ClipboardList className="h-5 w-5 text-status-yellow-text" />
             <h2 className="text-base font-semibold text-primary">Antrian Job PRODUCTION_COMPLETE</h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/10 text-status-yellow border border-status-yellow/30">{queue.length}</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/10 text-status-yellow-text border border-status-yellow/30">{queue.length}</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
@@ -273,7 +273,7 @@ export function QCTab() {
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => setQcFor(j)}
-                        className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-accent-teal to-blue-500 text-white font-bold hover:brightness-110 transition-all flex items-center gap-1.5 ml-auto"
+                        className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white font-bold hover:brightness-110 transition-all flex items-center gap-1.5 ml-auto"
                       >
                         <ScanLine className="h-3.5 w-3.5" /> Mulai Inspeksi
                       </button>

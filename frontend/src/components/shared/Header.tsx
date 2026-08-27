@@ -145,7 +145,7 @@ export function Header({ userName, role, onMenuClick, className }: HeaderProps) 
               <p className="text-xs font-bold text-primary leading-tight">{dbUser ? dbUser.name : userName}</p>
               <p className="text-[10px] text-accent-teal font-semibold leading-tight">{currentRoleObj.label}</p>
             </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-gradient-to-br from-accent-teal to-blue-600 shadow-md shadow-accent-teal/10">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-gradient-to-br from-accent-teal to-accent-teal/70 shadow-md shadow-accent-teal/10">
               {dbUser?.avatar_url ? (
                 <img src={dbUser.avatar_url} alt="Profile" className="h-full w-full object-cover" />
               ) : (

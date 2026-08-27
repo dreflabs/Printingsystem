@@ -96,7 +96,7 @@ function PosPaymentModal({
             {discount > 0 && <p className="text-xs text-status-red font-bold">Diskon: -{formatRupiah(discount)}</p>}
             <p className="text-sm font-bold text-primary mt-2">Total Akhir</p>
           </div>
-          <p className="text-3xl font-mono font-bold text-status-yellow">{formatRupiah(finalAmount)}</p>
+          <p className="text-3xl font-mono font-bold text-status-yellow-text">{formatRupiah(finalAmount)}</p>
         </div>
 
         {/* Discount Input */}
@@ -444,7 +444,7 @@ export default function PosPage() {
         <div className="p-4 border-b border-border shrink-0">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-bold text-lg flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5 text-status-yellow" />
+              <ShoppingCart className="h-5 w-5 text-status-yellow-text" />
               Keranjang
             </h2>
             <button 
@@ -510,7 +510,7 @@ export default function PosPage() {
             </div>
             <div className="flex justify-between items-end mt-2 pt-2 border-t border-border border-dashed">
               <span className="font-bold">Total</span>
-              <span className="font-mono text-2xl font-bold text-status-yellow">{formatRupiah(total)}</span>
+              <span className="font-mono text-2xl font-bold text-status-yellow-text">{formatRupiah(total)}</span>
             </div>
           </div>
           
@@ -546,7 +546,7 @@ export default function PosPage() {
 
       {activeTab === "STOCK" && (
         <div className="flex-1 bg-card border border-border rounded-2xl p-6 shadow-lg overflow-y-auto">
-          <h2 className="text-xl font-bold text-primary mb-4 flex items-center gap-2"><Package className="h-5 w-5 text-status-yellow"/> Manajemen Stok Retail</h2>
+          <h2 className="text-xl font-bold text-primary mb-4 flex items-center gap-2"><Package className="h-5 w-5 text-status-yellow-text"/> Manajemen Stok Retail</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {retailProducts.map(p => (
               <div key={p.id} className="bg-elevated p-4 rounded-xl border border-border flex items-center justify-between">

@@ -80,7 +80,7 @@ function UploadModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
         <div className="flex gap-3 pt-2">
           <button onClick={onClose} className="flex-1 h-10 rounded-xl bg-elevated border border-border text-xs text-muted hover:text-primary">Batal</button>
           <button disabled={!filePath.trim() || busy} onClick={submit}
-            className="flex-1 h-10 rounded-xl bg-gradient-to-r from-accent-teal to-blue-600 text-white text-xs font-bold hover:brightness-110 disabled:opacity-40 shadow-md shadow-accent-teal/20">
+            className="flex-1 h-10 rounded-xl bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white text-xs font-bold hover:brightness-110 disabled:opacity-40 shadow-md shadow-accent-teal/20">
             Submit Versi
           </button>
         </div>
@@ -122,7 +122,7 @@ export default function DesignerDashboardPage() {
 
   const KPI = [
     { label: "Belum Ada Versi", value: pending, filter: "PENDING", color: "text-status-blue", bg: "bg-status-blue/10", icon: Palette },
-    { label: "Sedang Dikerjakan", value: designing, filter: "DESIGNING", color: "text-status-yellow", bg: "bg-status-yellow/10", icon: Clock },
+    { label: "Sedang Dikerjakan", value: designing, filter: "DESIGNING", color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Clock },
     { label: "Sudah Disetujui", value: approved, filter: "APPROVED", color: "text-status-green", bg: "bg-status-green/10", icon: CheckCircle2 },
   ];
 
@@ -145,7 +145,7 @@ export default function DesignerDashboardPage() {
         </div>
         <button
           onClick={() => setShowOrderModal(true)}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-blue-500 text-white text-sm font-semibold shadow-lg shadow-accent-teal/20 hover:brightness-110 transition-all"
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white text-sm font-semibold shadow-lg shadow-accent-teal/20 hover:brightness-110 transition-all"
         >
           <Palette className="h-4 w-4" /> Buat Order Baru
         </button>
@@ -209,7 +209,7 @@ export default function DesignerDashboardPage() {
                   <td className="px-4 py-3">
                     <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold",
                       r.method === "MAKLOON" ? "bg-accent-teal/10 text-accent-teal"
-                        : r.method === "ONLINE" ? "bg-status-yellow/10 text-status-yellow"
+                        : r.method === "ONLINE" ? "bg-status-yellow/10 text-status-yellow-text"
                         : "bg-status-blue/10 text-status-blue")}>
                       {r.method}
                     </span>
@@ -244,7 +244,7 @@ export default function DesignerDashboardPage() {
                           if (reason) run(() => requestDesignRevision(r.orderId, { reason }));
                         }}
                         disabled={busy || r.latestVersionStatus == null}
-                        className="px-2.5 py-1 rounded-lg bg-status-yellow/10 text-status-yellow font-bold hover:bg-status-yellow/20 transition-all flex items-center gap-1 disabled:opacity-40"
+                        className="px-2.5 py-1 rounded-lg bg-status-yellow/10 text-status-yellow-text font-bold hover:bg-status-yellow/20 transition-all flex items-center gap-1 disabled:opacity-40"
                       >
                         <RefreshCw className="h-3 w-3" /> Revisi
                       </button>

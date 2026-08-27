@@ -219,7 +219,7 @@ export default function ScanPage() {
                 <Camera className="h-10 w-10 text-accent-teal" />
               </div>
               <p className="text-sm text-muted text-center px-4">Buka kamera untuk memindai QR job/order</p>
-              <button onClick={() => setCameraOpen(true)} className="w-full h-12 rounded-xl bg-gradient-to-r from-accent-teal to-blue-500 text-white text-sm font-bold hover:brightness-110 transition-all cursor-pointer">
+              <button onClick={() => setCameraOpen(true)} className="w-full h-12 rounded-xl bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white text-sm font-bold hover:brightness-110 transition-all cursor-pointer">
                 Buka Kamera
               </button>
             </div>
@@ -235,7 +235,7 @@ export default function ScanPage() {
           </div>
 
           <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
-            <div className="bg-gradient-to-r from-accent-teal/10 to-blue-500/10 border-b border-border p-5">
+            <div className="bg-gradient-to-r from-accent-teal/10 to-accent-teal/5 border-b border-border p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-mono text-sm text-accent-teal font-bold">{ctx.jobCode}</p>
@@ -266,7 +266,7 @@ export default function ScanPage() {
               </div>
               <div className="text-right">
                 <p className="text-xs text-muted">Sisa Tagihan</p>
-                <p className={cn("text-base font-bold", ctx.balance > 0 ? "text-status-yellow" : "text-status-green")}>
+                <p className={cn("text-base font-bold", ctx.balance > 0 ? "text-status-yellow-text" : "text-status-green")}>
                   {ctx.balance > 0 ? rupiah(ctx.balance) : "Lunas"}
                 </p>
               </div>
@@ -289,7 +289,7 @@ export default function ScanPage() {
                     }}
                     className={cn("w-full h-12 rounded-xl text-sm font-bold transition-all cursor-pointer disabled:opacity-50",
                       i === 0 && a.action !== "view"
-                        ? "bg-gradient-to-r from-accent-teal to-blue-500 text-white hover:brightness-110 shadow-lg shadow-accent-teal/20"
+                        ? "bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white hover:brightness-110 shadow-lg shadow-accent-teal/20"
                         : "bg-elevated border border-border text-muted hover:text-primary")}
                   >
                     {a.label}
@@ -353,7 +353,7 @@ function ActionForm({
           {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
         <input className={field} type="number" placeholder="Jumlah pemakaian material" value={f.usageQty ?? ""} onChange={(e) => set("usageQty", e.target.value)} />
-        {materials.length === 0 && <p className="text-[11px] text-status-yellow">Belum ada master material — tambahkan dulu di Katalog.</p>}
+        {materials.length === 0 && <p className="text-[11px] text-status-yellow-text">Belum ada master material — tambahkan dulu di Katalog.</p>}
       </>,
       () => ({
         actualQty: f.actualQty, wasteQty: f.wasteQty, wasteReason: f.wasteReason,

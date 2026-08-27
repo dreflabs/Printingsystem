@@ -62,7 +62,7 @@ export function FinishingTab() {
   }
 
   const kpi = [
-    { label: "Menunggu Finishing", value: queue.length, color: "text-status-yellow", bg: "bg-status-yellow/10", icon: Package },
+    { label: "Menunggu Finishing", value: queue.length, color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Package },
     { label: "Sedang Dikerjakan", value: active ? 1 : 0, color: "text-accent-teal", bg: "bg-accent-teal/10", icon: Wrench },
     { label: "Siap Simpan ke Rak", value: storageReady.length, color: "text-status-green", bg: "bg-status-green/10", icon: CheckCircle2 },
   ];
@@ -98,7 +98,7 @@ export function FinishingTab() {
           {!showDoneForm ? (
             <button
               onClick={() => { setQty(String(active.plannedQty || "")); setShowDoneForm(true); }}
-              className="w-full h-14 rounded-xl bg-gradient-to-r from-accent-teal to-blue-500 text-white text-base font-bold hover:brightness-110 transition-all cursor-pointer"
+              className="w-full h-14 rounded-xl bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white text-base font-bold hover:brightness-110 transition-all cursor-pointer"
             >
               🔧 SELESAI FINISHING
             </button>
@@ -136,9 +136,9 @@ export function FinishingTab() {
 
       <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
         <div className="flex items-center gap-2 p-5 border-b border-border">
-          <Wrench className="h-5 w-5 text-status-yellow" />
+          <Wrench className="h-5 w-5 text-status-yellow-text" />
           <h2 className="text-base font-semibold text-primary">Antrian Finishing</h2>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/10 text-status-yellow border border-status-yellow/30">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/10 text-status-yellow-text border border-status-yellow/30">
             {queue.length} Item
           </span>
         </div>

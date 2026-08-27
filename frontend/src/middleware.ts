@@ -4,56 +4,65 @@ import { NextResponse } from "next/server";
 
 const { auth } = NextAuth(authConfig);
 
+// Rute publik (tak butuh login)
+const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password"];
+
+// Prefix rute → role yang boleh mengakses
+const ROUTE_ACCESS: { prefix: string; roles: string[] }[] = [
+  { prefix: "/owner", roles: ["owner"] },
+  { prefix: "/admin", roles: ["owner", "admin"] },
+  { prefix: "/pos", roles: ["owner", "admin"] },
+  { prefix: "/designer", roles: ["owner", "admin", "designer_sales"] },
+  { prefix: "/operator", roles: ["owner", "admin", "operator"] },
+  { prefix: "/finishing", roles: ["owner", "admin", "gudang", "operator"] },
+  { prefix: "/scan", roles: ["owner", "admin", "operator", "gudang"] },
+];
+
+const HOME_BY_ROLE: Record<string, string> = {
+  owner: "/owner",
+  admin: "/admin",
+  designer_sales: "/designer",
+  operator: "/operator",
+  gudang: "/finishing",
+};
+
+// Selama frontend masih preview tanpa DB: set AUTH_BYPASS=1 di .env.
+// Hapus flag (atau set 0) untuk mengaktifkan RBAC penuh.
+const AUTH_BYPASS = process.env.AUTH_BYPASS === "1";
+
 export default auth((req) => {
   const { nextUrl } = req;
-  const hostname = req.headers.get("host") || "";
-  
-  // Deteksi Subdomain (contoh: toko.printpilot.id atau toko.localhost:3000)
-  // Abaikan WWW
-  const cleanHostname = hostname.replace("www.", "");
-  
-  // Tentukan apakah ini root domain (printpilot.id atau localhost:3000)
-  const isLocal = cleanHostname.includes("localhost");
+  const path = nextUrl.pathname;
+  const hostname = (req.headers.get("host") || "").replace("www.", "");
+
+  const isLocal = hostname.includes("localhost");
   const rootDomain = isLocal ? "localhost:3000" : "printpilot.id";
-  
-  let tenantSlug = null;
-  if (cleanHostname !== rootDomain) {
-    tenantSlug = cleanHostname.replace(`.${rootDomain}`, "");
-  }
+  const tenantSlug = hostname !== rootDomain ? hostname.replace(`.${rootDomain}`, "") : null;
 
-  // Buat request headers baru untuk menyisipkan x-tenant-slug
   const requestHeaders = new Headers(req.headers);
-  if (tenantSlug) {
-    requestHeaders.set("x-tenant-slug", tenantSlug);
-  }
+  if (tenantSlug) requestHeaders.set("x-tenant-slug", tenantSlug);
+  const pass = () => NextResponse.next({ request: { headers: requestHeaders } });
 
-  // Rewrite /marketing jika diakses dari root domain (printpilot.id)
-  // Untuk sementara, jika root domain, kita biarkan saja (karena landing page akan dibuat nanti di page.tsx utama)
-  // Jika tenantSlug ada, kita pastikan aplikasi tahu slug-nya dari header.
+  if (path.startsWith("/api/auth") || path.startsWith("/print") || PUBLIC_PATHS.includes(path)) {
+    return pass();
+  }
+  if (AUTH_BYPASS) return pass();
 
   const isLoggedIn = !!req.auth;
-  const role = (req.auth?.user as any)?.role;
+  const role = (req.auth?.user as { role?: string } | undefined)?.role;
 
-  // Protect dashboard routes
-  if (nextUrl.pathname.startsWith("/api/auth") || nextUrl.pathname === "/login") {
-    return NextResponse.next({
-      request: { headers: requestHeaders }
-    });
-  }
-
-  // Bypass auth check for frontend UI mockup since DB might not be ready yet
   if (!isLoggedIn) {
-    // For mockup purposes, we allow bypassing so Rere can preview the UI.
-    // Drefan should remove this bypass later.
-    const url = nextUrl.clone();
-    // return NextResponse.redirect(new URL("/login", nextUrl));
+    const url = new URL("/login", nextUrl);
+    url.searchParams.set("callbackUrl", path);
+    return NextResponse.redirect(url);
   }
 
-  return NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
+  const rule = ROUTE_ACCESS.find((r) => path === r.prefix || path.startsWith(r.prefix + "/"));
+  if (rule && role && !rule.roles.includes(role)) {
+    return NextResponse.redirect(new URL(HOME_BY_ROLE[role] ?? "/", nextUrl));
+  }
+
+  return pass();
 });
 
 export const config = {

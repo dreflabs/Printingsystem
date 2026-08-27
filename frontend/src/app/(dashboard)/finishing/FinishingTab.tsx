@@ -1,50 +1,82 @@
 "use client";
 
-import { useState } from "react";
-import { Package, Wrench, CheckCircle2, Tag, Printer, ScanLine, ChevronRight } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Package, Wrench, CheckCircle2, Tag, ScanLine } from "lucide-react";
 import { StatusPill } from "@/components/ui";
-import { useWorkflowStore, Job } from "@/store/useWorkflowStore";
 import { cn } from "@/lib/utils";
+import { getGudangQueues } from "@/actions/queries";
+import { startFinishing, finishFinishing } from "@/actions/production";
 
-const KPI = [
-  { label: "Menunggu Finishing", value: "4", color: "text-status-yellow", bg: "bg-status-yellow/10", icon: Package },
-  { label: "Sedang Dikerjakan", value: "1", color: "text-accent-teal", bg: "bg-accent-teal/10", icon: Wrench },
-  { label: "Selesai Hari Ini", value: "6", color: "text-status-green", bg: "bg-status-green/10", icon: CheckCircle2 },
-  { label: "Label Tercetak", value: "6", color: "text-accent-teal", bg: "bg-accent-teal/10", icon: Tag },
-];
+type Row = {
+  jobCode: string;
+  orderCode: string;
+  customerName: string;
+  status: string;
+  plannedQty: number;
+  actualQty: number;
+  deadline: string | Date | null;
+};
 
-// Label printing logic removed as per user request (Struk is printed by Admin POS)
+const fmtDeadline = (d: string | Date | null) =>
+  d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—";
 
 export function FinishingTab() {
-  const jobs = useWorkflowStore(s => s.jobs);
-  const orders = useWorkflowStore(s => s.orders);
-  const updateJobStatus = useWorkflowStore(s => s.updateJobStatus);
-  const updateOrderStatus = useWorkflowStore(s => s.updateOrderStatus);
-
-  const finishingJobs = jobs.filter(j => j.status === "FINISHING" || j.status === "QC_PASSED");
-  const activeJob = finishingJobs.find(j => j.status === "FINISHING");
-  const queueJobs = finishingJobs.filter(j => j.status === "QC_PASSED");
-
-  const completedFinishingCount = jobs.filter(j => j.status === "STORED" || j.status === "PICKED_UP").length;
-
-  const dynamicKPI = [
-    { label: "Menunggu Finishing", value: queueJobs.length.toString(), color: "text-status-yellow", bg: "bg-status-yellow/10", icon: Package },
-    { label: "Sedang Dikerjakan", value: activeJob ? "1" : "0", color: "text-accent-teal", bg: "bg-accent-teal/10", icon: Wrench },
-    { label: "Selesai Hari Ini", value: completedFinishingCount.toString(), color: "text-status-green", bg: "bg-status-green/10", icon: CheckCircle2 },
-    { label: "Label Tercetak", value: completedFinishingCount.toString(), color: "text-accent-teal", bg: "bg-accent-teal/10", icon: Tag },
-  ];
-
+  const [queue, setQueue] = useState<Row[]>([]);
+  const [active, setActive] = useState<Row | null>(null);
+  const [storageReady, setStorageReady] = useState<Row[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [showDoneForm, setShowDoneForm] = useState(false);
   const [qty, setQty] = useState("");
 
+  const load = useCallback(async () => {
+    const res = await getGudangQueues();
+    if (!res.success) { setError(res.error); return; }
+    setError(null);
+    const fq = res.data.finishingQueue;
+    setQueue(fq.filter((j) => j.status === "QC_PASSED"));
+    setActive(fq.find((j) => j.status === "FINISHING_STARTED") ?? null);
+    setStorageReady(res.data.storageQueue);
+  }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
+
+  async function begin(jobCode: string) {
+    setBusy(true);
+    const res = await startFinishing(jobCode);
+    setBusy(false);
+    if (!res.success) { setError(res.error); return; }
+    await load();
+  }
+
+  async function complete() {
+    if (!active) return;
+    setBusy(true);
+    const res = await finishFinishing(active.jobCode, { actualQty: Number(qty) });
+    setBusy(false);
+    if (!res.success) { setError(res.error); return; }
+    setShowDoneForm(false);
+    setQty("");
+    await load();
+  }
+
+  const kpi = [
+    { label: "Menunggu Finishing", value: queue.length, color: "text-status-yellow", bg: "bg-status-yellow/10", icon: Package },
+    { label: "Sedang Dikerjakan", value: active ? 1 : 0, color: "text-accent-teal", bg: "bg-accent-teal/10", icon: Wrench },
+    { label: "Siap Simpan ke Rak", value: storageReady.length, color: "text-status-green", bg: "bg-status-green/10", icon: CheckCircle2 },
+  ];
+
   return (
     <div className="space-y-6">
+      <p className="text-sm text-muted">Produk cetak yang lolos QC dan siap proses finishing (mata itik, laminasi, potong, dll).</p>
 
-      <p className="text-sm text-muted">Daftar produk cetak yang sudah lolos QC dan siap untuk proses finishing (Mata Itik, Laminasi, Potong, dll).</p>
+      {error && (
+        <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>
+      )}
 
-      {/* KPI */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {dynamicKPI.map((k) => (
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+        {kpi.map((k) => (
           <div key={k.label} className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
             <div className={cn("inline-flex p-2 rounded-xl mb-3", k.bg)}>
               <k.icon className={cn("h-5 w-5", k.color)} />
@@ -55,38 +87,36 @@ export function FinishingTab() {
         ))}
       </div>
 
-      {/* Active Job */}
-      {activeJob ? (
+      {active ? (
         <div className="bg-gradient-to-br from-accent-teal/10 to-accent-teal/5 border border-accent-teal/30 rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <span className="h-2 w-2 rounded-full bg-accent-teal animate-pulse" />
             <span className="text-xs font-semibold text-accent-teal uppercase tracking-wide">Finishing Berjalan</span>
           </div>
-          <p className="font-bold text-primary text-lg">{activeJob.product} — {activeJob.finishing}</p>
-          <p className="text-sm text-muted mb-4">{activeJob.id} · Qty: {activeJob.qty} pcs</p>
+          <p className="font-bold text-primary text-lg">{active.jobCode}</p>
+          <p className="text-sm text-muted mb-4">{active.orderCode} · {active.customerName} · Planned {active.plannedQty} pcs</p>
           {!showDoneForm ? (
             <button
-              id="btn-selesai-finishing"
-              onClick={() => setShowDoneForm(true)}
+              onClick={() => { setQty(String(active.plannedQty || "")); setShowDoneForm(true); }}
               className="w-full h-14 rounded-xl bg-gradient-to-r from-accent-teal to-blue-500 text-white text-base font-bold hover:brightness-110 transition-all cursor-pointer"
             >
               🔧 SELESAI FINISHING
             </button>
           ) : (
             <div className="space-y-3">
-              <input type="number" value={qty} onChange={(e) => setQty(e.target.value)}
+              <input
+                type="number"
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
                 placeholder="Qty aktual finishing..."
-                className="w-full h-12 rounded-xl bg-card border border-border text-primary text-lg font-bold px-4 outline-none focus:border-accent-teal transition-all" />
+                className="w-full h-12 rounded-xl bg-card border border-border text-primary text-lg font-bold px-4 outline-none focus:border-accent-teal transition-all"
+              />
               <button
-                disabled={!qty}
-                onClick={() => { 
-                  setShowDoneForm(false); 
-                  updateJobStatus(activeJob.id, "STORED");
-                  updateOrderStatus(activeJob.orderId, "READY_FOR_PICKUP");
-                }}
+                disabled={!qty || busy}
+                onClick={complete}
                 className="w-full h-12 rounded-xl bg-status-green text-white text-sm font-bold hover:brightness-110 transition-all cursor-pointer disabled:opacity-40"
               >
-                Selesai & Simpan ke Rak
+                Selesai Finishing (SCAN 5)
               </button>
             </div>
           )}
@@ -97,52 +127,48 @@ export function FinishingTab() {
         </div>
       )}
 
-      {/* Scan CTA */}
-      <button className="w-full h-14 rounded-xl bg-elevated border-2 border-dashed border-accent-teal/40 text-accent-teal font-semibold flex items-center justify-center gap-2 hover:bg-accent-teal/10 transition-all cursor-pointer">
-        <ScanLine className="h-5 w-5" /> SCAN QR MULAI FINISHING BERIKUTNYA
-      </button>
+      <a
+        href="/scan"
+        className="w-full h-14 rounded-xl bg-elevated border-2 border-dashed border-accent-teal/40 text-accent-teal font-semibold flex items-center justify-center gap-2 hover:bg-accent-teal/10 transition-all cursor-pointer"
+      >
+        <ScanLine className="h-5 w-5" /> SCAN QR untuk mulai / simpan job
+      </a>
 
-      {/* Queue */}
       <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
         <div className="flex items-center gap-2 p-5 border-b border-border">
           <Wrench className="h-5 w-5 text-status-yellow" />
-          <h2 className="text-base font-semibold text-primary">Daftar Barang Perlu Finishing</h2>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/10 text-status-yellow border border-status-yellow/30">{queueJobs.length} Item</span>
+          <h2 className="text-base font-semibold text-primary">Antrian Finishing</h2>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-yellow/10 text-status-yellow border border-status-yellow/30">
+            {queue.length} Item
+          </span>
         </div>
         <div className="divide-y divide-border/50">
-          {queueJobs.map((j, i) => {
-            const order = orders.find(o => o.id === j.orderId);
-            return (
-            <div key={j.id} className={cn("flex items-center gap-4 p-4 hover:bg-elevated/30 transition-colors")}>
+          {queue.length === 0 && <p className="p-6 text-center text-sm text-muted">Antrian kosong.</p>}
+          {queue.map((j) => (
+            <div key={j.jobCode} className="flex items-center gap-4 p-4 hover:bg-elevated/30 transition-colors">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="font-mono text-xs text-accent-teal">{j.id}</span>
-                  <StatusPill status="QC_PASSED" />
+                  <span className="font-mono text-xs text-accent-teal">{j.jobCode}</span>
+                  <StatusPill status={j.status} />
                 </div>
-                <p className="font-bold text-primary text-base mb-0.5">{j.product}</p>
-                <div className="flex items-center gap-4 text-xs text-muted">
-                  <span className="flex items-center gap-1.5 bg-elevated px-2 py-1 rounded-md text-primary font-medium border border-border">
-                    <Tag className="h-3.5 w-3.5 text-accent-teal" /> {j.qty} pcs
-                  </span>
-                  <span className="flex items-center gap-1.5 bg-status-blue/10 px-2 py-1 rounded-md text-status-blue font-medium border border-status-blue/20">
-                    <Wrench className="h-3.5 w-3.5" /> {j.finishing || "Finishing Standar"}
-                  </span>
-                </div>
+                <p className="font-bold text-primary text-base mb-0.5">{j.orderCode} · {j.customerName}</p>
+                <span className="inline-flex items-center gap-1.5 bg-elevated px-2 py-1 rounded-md text-primary text-xs font-medium border border-border">
+                  <Tag className="h-3.5 w-3.5 text-accent-teal" /> {j.plannedQty} pcs
+                </span>
               </div>
               <div className="text-right shrink-0 text-xs hidden sm:block">
                 <p className="text-muted mb-1">Deadline:</p>
-                <p className="font-bold text-status-red">{order?.deadline || "Hari Ini"}</p>
+                <p className="font-bold text-status-red">{fmtDeadline(j.deadline)}</p>
               </div>
               <button
-                id={`btn-mulai-finishing-${i}`}
-                onClick={() => updateJobStatus(j.id, "FINISHING")}
-                className="shrink-0 h-10 px-4 rounded-xl bg-accent-teal/20 border border-accent-teal/40 text-accent-teal text-xs font-bold hover:bg-accent-teal/30 transition-all cursor-pointer"
+                disabled={busy}
+                onClick={() => begin(j.jobCode)}
+                className="shrink-0 h-10 px-4 rounded-xl bg-accent-teal/20 border border-accent-teal/40 text-accent-teal text-xs font-bold hover:bg-accent-teal/30 transition-all cursor-pointer disabled:opacity-50"
               >
                 Mulai
               </button>
             </div>
-            );
-          })}
+          ))}
         </div>
       </div>
     </div>

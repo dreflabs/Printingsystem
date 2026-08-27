@@ -5,7 +5,7 @@ import { Search, ShoppingCart, User, PlusCircle, LayoutGrid, Receipt, ClipboardL
 import { PosProductCard, Product } from "@/components/pos/PosProductCard";
 import { PosCartItem, CartItemType } from "@/components/pos/PosCartItem";
 import { cn } from "@/lib/utils";
-import { useWorkflowStore } from "@/store/useWorkflowStore";
+import { getPosData, processRetailOrder, type RetailCartLine } from "@/actions/pos";
 
 const CATEGORIES = ["Semua", "Kertas", "Tinta", "Alat Tulis", "Merchandise", "Lainnya"];
 
@@ -195,16 +195,36 @@ export default function PosPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const retailProducts = useWorkflowStore((s) => s.retailProducts);
-  const deductRetailStock = useWorkflowStore((s) => s.deductRetailStock);
-  const customers = useWorkflowStore((s) => s.customers);
+  type RetailProductRow = { id: string; name: string; sku: string; category: string; price: number; stock: number };
+  type CustomerRow = { id: string; name: string; type: string; defaultDiscountRp: number };
+  const [retailProducts, setRetailProducts] = useState<RetailProductRow[]>([]);
+  const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  async function loadPosData() {
+    const res = await getPosData();
+    if (res.success) {
+      setRetailProducts(res.data.products);
+      setCustomers(res.data.customers);
+      setLoadError(null);
+    } else {
+      setLoadError(res.error);
+    }
+  }
+
+  useEffect(() => {
+    // fetch awal; setState terjadi setelah await, bukan sinkron
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadPosData();
+  }, []);
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
   const displayCustomerName = selectedCustomer ? selectedCustomer.name : "Umum";
   const defaultDiscount = selectedCustomer ? selectedCustomer.defaultDiscountRp : 0;
 
-  // Map store products to Product interface
+  // Map DB rows to Product interface
   const allProducts: Product[] = retailProducts.map(p => ({
     id: p.id, name: p.name, price: p.price, stock: p.stock, category: p.category
   }));
@@ -276,20 +296,45 @@ export default function PosPage() {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
   };
 
-  const handleCheckoutSuccess = (method: "TUNAI" | "QRIS", cashGiven: number) => {
-    cart.forEach(item => {
-      if (!item.isCustom) {
-        deductRetailStock(item.productId, item.qty);
+  const handleCheckoutSuccess = async (method: "TUNAI" | "QRIS", cashGiven: number) => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const lines: RetailCartLine[] = cart.map(item => ({
+        retailProductId: item.isCustom ? null : item.productId,
+        name: item.name,
+        unitPrice: item.price,
+        quantity: item.qty,
+        notes: item.notes || undefined,
+      }));
+      const amountPaid = method === "TUNAI" ? cashGiven : total;
+
+      const res = await processRetailOrder({
+        items: lines,
+        customerId: selectedCustomerId || null,
+        tax,
+        payment: { method: method === "TUNAI" ? "CASH" : "QRIS", amountPaid },
+      });
+
+      if (!res.success) {
+        alert(`Transaksi gagal: ${res.error}`);
+        return;
       }
-    });
-    const totalVal = total;
-    const changeVal = method === "TUNAI" ? Math.max(0, cashGiven - totalVal) : 0;
-    
-    setShowPaymentModal(false);
-    setReceiptData({ total: totalVal, method, cashGiven, change: changeVal });
-    
-    setCart([]);
-    setSelectedCustomerId("");
+
+      setShowPaymentModal(false);
+      setReceiptData({
+        total: res.data.total,
+        method,
+        cashGiven,
+        change: res.data.change,
+        orderCode: res.data.orderCode,
+      });
+      setCart([]);
+      setSelectedCustomerId("");
+      loadPosData();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -323,6 +368,12 @@ export default function PosPage() {
         onClose={() => setShowPaymentModal(false)}
         onSuccess={handleCheckoutSuccess}
       />
+
+      {loadError && (
+        <div className="shrink-0 rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-3 text-sm text-status-red">
+          Gagal memuat data kasir: {loadError}
+        </div>
+      )}
 
       {activeTab === "KASIR" && (
         <div className="flex-1 flex overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
@@ -463,12 +514,12 @@ export default function PosPage() {
             </div>
           </div>
           
-          <button 
-            disabled={cart.length === 0}
+          <button
+            disabled={cart.length === 0 || submitting}
             onClick={() => setShowPaymentModal(true)}
             className="w-full h-14 bg-accent-teal hover:brightness-110 text-white rounded-xl font-bold text-lg shadow-lg shadow-accent-teal/20 transition-all disabled:opacity-50 disabled:grayscale-[0.5] disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
           >
-            Bayar <span className="opacity-80">({cart.length} item)</span>
+            {submitting ? "Memproses..." : <>Bayar <span className="opacity-80">({cart.length} item)</span></>}
           </button>
         </div>
         </div>

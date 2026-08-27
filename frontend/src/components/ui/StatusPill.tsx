@@ -51,13 +51,14 @@ const STATUS_MAP: Record<OrderStatus, StatusConfig> = {
 };
 
 interface StatusPillProps {
-  status: OrderStatus;
+  // OrderStatus for autocomplete; any string still renders (runtime fallback below)
+  status: OrderStatus | (string & {});
   className?: string;
   showEmoji?: boolean;
 }
 
 export function StatusPill({ status, className }: StatusPillProps) {
-  const config = STATUS_MAP[status] ?? {
+  const config = (STATUS_MAP as Record<string, StatusConfig>)[status] ?? {
     label: status,
     color: "bg-muted/15 text-muted border-muted/30",
     dotColor: "bg-muted",

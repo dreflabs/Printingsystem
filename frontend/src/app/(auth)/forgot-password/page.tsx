@@ -4,18 +4,25 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft, KeyRound, Mail, ShieldCheck, CheckCircle2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { requestPasswordReset } from "@/actions/password-reset";
 
 export default function ForgotPasswordPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      setIsSubmitted(true);
-    }, 800);
+    setError(null);
+    const res = await requestPasswordReset(email);
+    setIsLoading(false);
+    if (!res.success) {
+      setError(res.error);
+      return;
+    }
+    setIsSubmitted(true);
   };
   return (
     <div className="min-h-screen bg-base flex flex-col font-sans">
@@ -58,6 +65,11 @@ export default function ForgotPasswordPage() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
+              {error && (
+                <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2.5 text-xs font-semibold text-status-red">
+                  {error}
+                </div>
+              )}
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-primary">Email Owner</label>
                 <div className="relative">
@@ -65,6 +77,8 @@ export default function ForgotPasswordPage() {
                   <input
                     type="email"
                     required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     placeholder="admin@perusahaan.com"
                     className="w-full h-12 pl-10 pr-4 rounded-xl border border-border bg-base outline-none focus:border-accent-teal focus:ring-1 focus:ring-accent-teal transition-all"
                   />

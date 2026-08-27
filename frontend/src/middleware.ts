@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 const { auth } = NextAuth(authConfig);
 
 // Rute publik (tak butuh login)
-const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password", "/platform/login"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password", "/reset-password", "/platform/login"];
 
 // Prefix rute → role yang boleh mengakses
 const ROUTE_ACCESS: { prefix: string; roles: string[] }[] = [

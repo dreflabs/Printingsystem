@@ -5,11 +5,13 @@ import { Search, ShoppingCart, User, PlusCircle, LayoutGrid, Receipt, ClipboardL
 import { PosProductCard, Product } from "@/components/pos/PosProductCard";
 import { PosCartItem, CartItemType } from "@/components/pos/PosCartItem";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog, useToast } from "@/components/ui";
 import { getPosData, processRetailOrder, type RetailCartLine } from "@/actions/pos";
 
 const CATEGORIES = ["Semua", "Kertas", "Tinta", "Alat Tulis", "Merchandise", "Lainnya"];
 
 function ReceiptModal({ open, transactionData, onClose }: { open: boolean, transactionData: any, onClose: () => void }) {
+  const { toast } = useToast();
   if (!open || !transactionData) return null;
   const formatRupiah = (amount: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
   
@@ -35,7 +37,7 @@ function ReceiptModal({ open, transactionData, onClose }: { open: boolean, trans
 
         <div className="flex gap-3 w-full">
           <button onClick={onClose} className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary cursor-pointer transition-colors">Tutup Kasir</button>
-          <button onClick={() => { alert("Mencetak 2 Struk:\n1. Struk Bukti Bayar Konsumen\n2. Struk Kerja (Berisi QR Code untuk ditempel oleh QC & Finishing)\n\nHarap berikan Struk Kerja (2) ke Operator Mesin!"); onClose(); }} className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold flex justify-center items-center gap-2 cursor-pointer hover:brightness-110"><Printer className="h-4 w-4" /> Cetak 2 Struk</button>
+          <button onClick={() => { toast({ type: "info", title: "Mencetak 2 struk", message: "Struk bukti bayar konsumen + struk kerja (QR untuk QC & Finishing). Serahkan struk kerja ke operator mesin." }); onClose(); }} className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold flex justify-center items-center gap-2 cursor-pointer hover:brightness-110"><Printer className="h-4 w-4" /> Cetak 2 Struk</button>
         </div>
       </div>
     </div>
@@ -196,6 +198,8 @@ export default function PosPage() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const { toast } = useToast();
 
   type RetailProductRow = { id: string; name: string; sku: string; category: string; price: number; stock: number };
   type CustomerRow = { id: string; name: string; type: string; defaultDiscountRp: number };
@@ -285,7 +289,8 @@ export default function PosPage() {
   };
 
   const clearCart = () => {
-    if(confirm("Kosongkan keranjang?")) setCart([]);
+    if (cart.length === 0) return;
+    setConfirmClear(true);
   };
 
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -317,7 +322,7 @@ export default function PosPage() {
       });
 
       if (!res.success) {
-        alert(`Transaksi gagal: ${res.error}`);
+        toast({ type: "error", title: "Transaksi gagal", message: res.error });
         return;
       }
 
@@ -360,6 +365,14 @@ export default function PosPage() {
       </div>
 
       <ReceiptModal open={!!receiptData} transactionData={receiptData} onClose={() => setReceiptData(null)} />
+      <ConfirmDialog
+        open={confirmClear}
+        onClose={() => setConfirmClear(false)}
+        onConfirm={() => { setCart([]); setConfirmClear(false); }}
+        title="Kosongkan Keranjang"
+        message="Semua item di keranjang akan dihapus. Lanjutkan?"
+        confirmLabel="Ya, Kosongkan"
+      />
       <PosPaymentModal
         open={showPaymentModal}
         totalAmount={total}

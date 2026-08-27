@@ -115,6 +115,8 @@ export default function OperatorPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showFinish, setShowFinish] = useState(false);
+  const [pausePrompt, setPausePrompt] = useState(false);
+  const [pauseReason, setPauseReason] = useState("");
 
   const load = useCallback(async () => {
     const res = await getOperatorJobs();
@@ -230,10 +232,7 @@ export default function OperatorPage() {
                   {active.status === "PRODUCTION_STARTED" ? (
                     <button
                       disabled={busy}
-                      onClick={() => {
-                        const reason = window.prompt("Alasan jeda produksi:");
-                        if (reason) act(() => pauseProduction(active.jobCode, reason));
-                      }}
+                      onClick={() => { setPauseReason(""); setPausePrompt(true); }}
                       className="h-12 px-5 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary flex items-center gap-2 disabled:opacity-40"
                     >
                       <Pause className="h-4 w-4" /> Jeda
@@ -282,6 +281,47 @@ export default function OperatorPage() {
           )}
         </div>
       </div>
+
+      {pausePrompt && active && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={() => setPausePrompt(false)} />
+          <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-primary">Jeda Produksi</h3>
+              <p className="text-xs text-muted font-mono">{active.jobCode}</p>
+            </div>
+            <div>
+              <label className="text-xs text-muted font-medium mb-1 block">Alasan jeda</label>
+              <textarea
+                value={pauseReason}
+                onChange={(e) => setPauseReason(e.target.value)}
+                autoFocus
+                className="w-full min-h-[80px] rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPausePrompt(false)}
+                className="flex-1 h-10 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary"
+              >
+                Batal
+              </button>
+              <button
+                disabled={busy || !pauseReason.trim()}
+                onClick={() => {
+                  const reason = pauseReason.trim();
+                  const code = active.jobCode;
+                  setPausePrompt(false);
+                  act(() => pauseProduction(code, reason));
+                }}
+                className="flex-1 h-10 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"
+              >
+                Jeda
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

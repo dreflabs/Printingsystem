@@ -4,7 +4,16 @@ import { useState, useEffect } from "react";
 import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserFormModal } from "@/components/owner/UserFormModal";
+import { ConfirmDialog } from "@/components/ui";
 import { getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword, unlockEmployeeAccount } from "@/actions/user-management";
+
+type PendingConfirm = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  variant: "danger" | "primary";
+  run: () => Promise<void>;
+};
 
 const isLocked = (user: any) => !!user.locked_until && new Date(user.locked_until) > new Date();
 
@@ -15,6 +24,16 @@ export default function OwnerUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [actionMessage, setActionMessage] = useState<{type: "success" | "error", text: string} | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+
+  const runPendingConfirm = async () => {
+    if (!pendingConfirm) return;
+    setConfirmBusy(true);
+    await pendingConfirm.run();
+    setConfirmBusy(false);
+    setPendingConfirm(null);
+  };
 
   useEffect(() => {
     loadUsers();
@@ -46,24 +65,29 @@ export default function OwnerUsersPage() {
     setIsSaving(false);
   };
 
-  const handleToggleStatus = async (userId: string, currentStatus: boolean, roleName: string) => {
+  const handleToggleStatus = (userId: string, currentStatus: boolean, roleName: string) => {
     if (roleName === "owner") {
-      alert("Akun owner tidak bisa dinonaktifkan.");
+      setActionMessage({ type: "error", text: "Akun Owner tidak bisa dinonaktifkan." });
       return;
     }
-    
-    const confirmMsg = currentStatus 
-      ? "Apakah Anda yakin ingin MENONAKTIFKAN pegawai ini? Mereka tidak akan bisa login lagi."
-      : "Apakah Anda yakin ingin MENGAKTIFKAN kembali pegawai ini?";
-      
-    if (!confirm(confirmMsg)) return;
-
-    const result = await toggleEmployeeStatus(userId, !currentStatus);
-    if (result.success) {
-      loadUsers();
-    } else {
-      alert("Gagal mengubah status: " + result.error);
-    }
+    setActionMessage(null);
+    setPendingConfirm({
+      title: currentStatus ? "Nonaktifkan Pegawai" : "Aktifkan Pegawai",
+      message: currentStatus
+        ? "Pegawai ini tidak akan bisa login lagi sampai diaktifkan kembali. Lanjutkan?"
+        : "Pegawai ini akan bisa login kembali. Lanjutkan?",
+      confirmLabel: currentStatus ? "Ya, Nonaktifkan" : "Ya, Aktifkan",
+      variant: currentStatus ? "danger" : "primary",
+      run: async () => {
+        const result = await toggleEmployeeStatus(userId, !currentStatus);
+        if (result.success) {
+          setActionMessage({ type: "success", text: currentStatus ? "Pegawai dinonaktifkan." : "Pegawai diaktifkan kembali." });
+          loadUsers();
+        } else {
+          setActionMessage({ type: "error", text: "Gagal mengubah status: " + result.error });
+        }
+      },
+    });
   };
 
   const handleUnlock = async (userId: string, name: string) => {
@@ -77,21 +101,27 @@ export default function OwnerUsersPage() {
     }
   };
 
-  const handleResetPassword = async (userId: string, roleName: string) => {
+  const handleResetPassword = (userId: string, roleName: string) => {
     if (roleName === "owner") {
-      alert("Reset password Owner harus dilakukan secara mandiri melalui menu Lupa Password.");
+      setActionMessage({ type: "error", text: "Reset password Owner dilakukan mandiri lewat menu Lupa Password." });
       return;
     }
-
-    if (!confirm("Apakah Anda yakin ingin MERESET password pegawai ini menjadi password bawaan (printpilot123!)?")) return;
-
-    const result = await resetEmployeePassword(userId);
-    if (result.success) {
-      alert("Password berhasil direset menjadi: " + result.newPassword + "\\nPegawai akan dipaksa mengganti password saat login berikutnya.");
-      loadUsers();
-    } else {
-      alert("Gagal mereset password: " + result.error);
-    }
+    setActionMessage(null);
+    setPendingConfirm({
+      title: "Reset Password Pegawai",
+      message: "Password diganti ke bawaan (printpilot123!) dan pegawai wajib menggantinya saat login berikutnya. Lanjutkan?",
+      confirmLabel: "Ya, Reset",
+      variant: "danger",
+      run: async () => {
+        const result = await resetEmployeePassword(userId);
+        if (result.success) {
+          setActionMessage({ type: "success", text: `Password direset ke: ${result.newPassword} — pegawai wajib menggantinya saat login.` });
+          loadUsers();
+        } else {
+          setActionMessage({ type: "error", text: "Gagal mereset password: " + result.error });
+        }
+      },
+    });
   };
 
   const filteredUsers = users.filter(u =>
@@ -276,6 +306,17 @@ export default function OwnerUsersPage() {
           onSave={handleSaveUser}
         />
       )}
+
+      <ConfirmDialog
+        open={!!pendingConfirm}
+        onClose={() => !confirmBusy && setPendingConfirm(null)}
+        onConfirm={runPendingConfirm}
+        title={pendingConfirm?.title ?? ""}
+        message={pendingConfirm?.message ?? ""}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        variant={pendingConfirm?.variant}
+        isLoading={confirmBusy}
+      />
     </div>
   );
 }

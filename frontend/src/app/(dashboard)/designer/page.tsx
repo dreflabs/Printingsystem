@@ -89,12 +89,44 @@ function UploadModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
   );
 }
 
+function ReasonModal({ title, label, orderCode, onClose, onSubmit }: {
+  title: string; label: string; orderCode: string;
+  onClose: () => void; onSubmit: (reason: string) => Promise<void>;
+}) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-4">
+        <div className="flex justify-between items-center border-b border-border pb-3">
+          <div>
+            <h3 className="text-base font-bold text-primary">{title}</h3>
+            <p className="text-xs text-muted font-mono">{orderCode}</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
+        </div>
+        <div>
+          <label className="text-xs text-muted font-medium mb-1 block">{label}</label>
+          <textarea value={reason} onChange={(e) => setReason(e.target.value)} autoFocus
+            className="w-full min-h-[80px] rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none" />
+        </div>
+        <button disabled={busy || !reason.trim()} onClick={async () => { setBusy(true); await onSubmit(reason.trim()); setBusy(false); }}
+          className="w-full h-10 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40">
+          {busy ? "Memproses…" : "Kirim"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function DesignerDashboardPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [uploadFor, setUploadFor] = useState<Row | null>(null);
+  const [revisionFor, setRevisionFor] = useState<Row | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
 
@@ -137,6 +169,19 @@ export default function DesignerDashboardPage() {
     <div className="space-y-6">
       <NewOrderModal open={showOrderModal} onClose={() => setShowOrderModal(false)} onCreated={() => load()} />
       {uploadFor && <UploadModal row={uploadFor} onClose={() => setUploadFor(null)} onDone={() => { setUploadFor(null); load(); }} />}
+      {revisionFor && (
+        <ReasonModal
+          title="Minta Revisi Desain"
+          label="Alasan minta revisi"
+          orderCode={revisionFor.orderCode}
+          onClose={() => setRevisionFor(null)}
+          onSubmit={async (reason) => {
+            const oid = revisionFor.orderId;
+            setRevisionFor(null);
+            await run(() => requestDesignRevision(oid, { reason }));
+          }}
+        />
+      )}
 
       <div className="flex items-center justify-between">
         <div>
@@ -239,10 +284,7 @@ export default function DesignerDashboardPage() {
                         ACC
                       </button>
                       <button
-                        onClick={() => {
-                          const reason = window.prompt("Alasan minta revisi:");
-                          if (reason) run(() => requestDesignRevision(r.orderId, { reason }));
-                        }}
+                        onClick={() => setRevisionFor(r)}
                         disabled={busy || r.latestVersionStatus == null}
                         className="px-2.5 py-1 rounded-lg bg-status-yellow/10 text-status-yellow-text font-bold hover:bg-status-yellow/20 transition-all flex items-center gap-1 disabled:opacity-40"
                       >

@@ -9,24 +9,24 @@ export const authConfig = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as any).role;
-        // Store all roles (primary + extra) as an array
-        token.roles = (user as any).roles ?? [(user as any).role];
-        token.platform = (user as any).platform ?? false;
-        token.subLevel = (user as any).subLevel ?? null;
-        token.pwChangedAt = (user as any).pwChangedAt ?? 0;
+        token.role = user.role;
+        // Simpan semua role (utama + tambahan) sebagai array
+        token.roles = user.roles ?? (user.role ? [user.role] : []);
+        token.platform = user.platform ?? false;
+        token.subLevel = user.subLevel ?? null;
+        token.pwChangedAt = user.pwChangedAt ?? 0;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string;
-        (session.user as any).role = token.role;
-        // Expose roles array on session for multi-role checks
-        (session.user as any).roles = token.roles ?? [token.role];
-        (session.user as any).platform = token.platform ?? false;
-        (session.user as any).subLevel = token.subLevel ?? null;
-        (session.user as any).pwChangedAt = token.pwChangedAt ?? 0;
+        if (token.id) session.user.id = token.id;
+        session.user.role = token.role;
+        // Ekspos array role di session untuk cek multi-role
+        session.user.roles = token.roles ?? (token.role ? [token.role] : []);
+        session.user.platform = token.platform ?? false;
+        session.user.subLevel = token.subLevel ?? null;
+        session.user.pwChangedAt = token.pwChangedAt ?? 0;
       }
       return session;
     },

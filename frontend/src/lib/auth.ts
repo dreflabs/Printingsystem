@@ -93,7 +93,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // Build roles array: primary role + any extra roles
         const primaryRole = user.role.name;
-        const extraRoleNames = user.extra_roles.map((ur: any) => ur.role.name);
+        const extraRoleNames = user.extra_roles.map((ur) => ur.role.name);
         const allRoles = Array.from(new Set([primaryRole, ...extraRoleNames]));
 
         return {

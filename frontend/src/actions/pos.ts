@@ -71,7 +71,6 @@ export async function processRetailOrder(
     if (items.some((i) => i.unitPrice < 0)) return fail("Harga item tidak valid.");
 
     const discount = Math.max(0, Math.round(input.discount ?? 0));
-    const tax = Math.max(0, Math.round(input.tax ?? 0));
 
     const result = await retryOnUnique(() => prisma.$transaction(async (tx) => {
       // Ambil produk retail yang direferensikan (item custom dilewati).
@@ -87,18 +86,30 @@ export async function processRetailOrder(
 
       let subtotal = 0;
       const lines = items.map((i) => {
-        subtotal += i.unitPrice * i.quantity;
-        if (!i.retailProductId) return { input: i, product: null };
+        const product = i.retailProductId ? byId.get(i.retailProductId) : null;
+        if (i.retailProductId && !product) throw new Error(`Produk tidak ditemukan: ${i.name}`);
 
-        const product = byId.get(i.retailProductId);
-        if (!product) throw new Error(`Produk tidak ditemukan: ${i.name}`);
-        if (product.stock_quantity < i.quantity) {
+        // Harga item katalog SELALU dari DB — jangan percaya harga dari client.
+        // Item manual (tanpa retailProductId) memakai harga yang diinput kasir.
+        const unitPrice = product ? Number(product.price) : Math.max(0, Math.round(i.unitPrice));
+        subtotal += unitPrice * i.quantity;
+
+        if (product && product.stock_quantity < i.quantity) {
           throw new Error(
             `Stok "${product.name}" tidak cukup (sisa ${product.stock_quantity}, diminta ${i.quantity}).`
           );
         }
-        return { input: i, product };
+        return { input: { ...i, unitPrice }, product: product ?? null };
       });
+
+      // PPN dihitung ulang di server: harus 0 (tidak kena PPN) atau 11% dari (subtotal − diskon).
+      const ppnBase = Math.max(0, subtotal - discount);
+      const expectedPpn = Math.round(ppnBase * 0.11);
+      const clientTax = Math.max(0, Math.round(input.tax ?? 0));
+      if (clientTax !== 0 && Math.abs(clientTax - expectedPpn) > 1) {
+        throw new Error("Nilai PPN tidak valid (harus 0 atau 11%).");
+      }
+      const tax = clientTax === 0 ? 0 : expectedPpn;
 
       const total = Math.max(0, subtotal + tax - discount);
       if (input.payment.amountPaid + 1e-6 < total) {

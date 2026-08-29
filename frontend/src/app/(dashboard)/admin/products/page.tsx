@@ -96,7 +96,7 @@ export default function AdminProductsPage() {
     if (r.success) setRetail(r.data as Retail[]);
     if (p.success) setPrinting(p.data as Printing[]);
     if (m.success) setMaterials((m.data as { id: string; name: string }[]).map((x) => ({ id: x.id, name: x.name })));
-    if (!p.success) setError(p.error);
+    if (!p.success) setError(p.error ?? null);
   }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -112,7 +112,7 @@ export default function AdminProductsPage() {
       name: np.name, category: np.category || "GENERAL",
       price: Number(np.price) || 0, stock_quantity: Number(np.stock) || 0, min_stock: Number(np.minStock) || 0,
     });
-    if (res.success) { setRetailModal(false); load(); } else setError(res.error);
+    if (res.success) { setRetailModal(false); load(); } else setError(res.error ?? null);
   }
 
   return (

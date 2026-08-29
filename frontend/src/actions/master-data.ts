@@ -25,9 +25,9 @@ export async function getRetailProducts() {
     }));
     
     return { success: true, data: plainProducts };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching retail products:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }
 
@@ -57,9 +57,9 @@ export async function createRetailProduct(data: {
     };
     
     return { success: true, data: plainProduct };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating retail product:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }
 
@@ -78,9 +78,9 @@ export async function getPrintingProducts() {
     });
 
     return { success: true, data: products };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching printing products:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }
 

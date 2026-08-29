@@ -104,9 +104,9 @@ export async function updateProfile(userId: string, data: { name: string; userna
     revalidatePath("/", "layout");
     
     return { success: true, user: updatedUser };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating profile:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }
 
@@ -133,8 +133,8 @@ export async function changePassword(userId: string, oldPassword: string, newPas
     });
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error changing password:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }

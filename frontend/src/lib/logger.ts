@@ -1,8 +1,6 @@
 import * as crypto from "crypto";
 import { prisma } from "./prisma";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 function auditSecret(): string {
   const s = process.env.AUDIT_SECRET;
   if (!s || s === "default_secret") {
@@ -38,8 +36,8 @@ export async function logAction(
   action: string,
   entityType: string,
   entityId: string,
-  oldValueJson?: any,
-  newValueJson?: any,
+  oldValueJson?: unknown,
+  newValueJson?: unknown,
   notes?: string
 ) {
   try {

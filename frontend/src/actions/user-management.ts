@@ -82,9 +82,9 @@ export async function createEmployee(data: {
 
     revalidatePath("/owner/users");
     return { success: true, user: newUser, tempPassword: defaultPassword };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating employee:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }
 
@@ -137,9 +137,9 @@ export async function updateUserRoles(userId: string, roleNames: string[]) {
 
     revalidatePath("/owner/users");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating user roles:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }
 
@@ -164,8 +164,8 @@ export async function toggleEmployeeStatus(userId: string, active: boolean) {
 
     revalidatePath("/owner/users");
     return { success: true };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (error: unknown) {
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }
 
@@ -189,9 +189,9 @@ export async function unlockEmployeeAccount(userId: string) {
 
     revalidatePath("/owner/users");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error unlocking account:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }
 
@@ -222,7 +222,7 @@ export async function resetEmployeePassword(userId: string) {
 
     revalidatePath("/owner/users");
     return { success: true, newPassword };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (error: unknown) {
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }

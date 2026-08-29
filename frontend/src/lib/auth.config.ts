@@ -14,6 +14,7 @@ export const authConfig = {
         token.roles = (user as any).roles ?? [(user as any).role];
         token.platform = (user as any).platform ?? false;
         token.subLevel = (user as any).subLevel ?? null;
+        token.pwChangedAt = (user as any).pwChangedAt ?? 0;
       }
       return token;
     },
@@ -25,6 +26,7 @@ export const authConfig = {
         (session.user as any).roles = token.roles ?? [token.role];
         (session.user as any).platform = token.platform ?? false;
         (session.user as any).subLevel = token.subLevel ?? null;
+        (session.user as any).pwChangedAt = token.pwChangedAt ?? 0;
       }
       return session;
     },

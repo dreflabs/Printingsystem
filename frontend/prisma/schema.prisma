@@ -169,6 +169,7 @@ model User {
   failed_login_count   Int       @default(0)
   locked_until         DateTime?
   must_change_password Boolean    @default(false)
+  password_changed_at  DateTime? // dinaikkan tiap ganti password → sesi lama (JWT) yang terbit sebelumnya ditolak
   deactivated_at       DateTime?
   deactivated_by       String? // self-reference if needed, omitted FK for simplicity
   created_at           DateTime   @default(now())

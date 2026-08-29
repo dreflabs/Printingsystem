@@ -95,6 +95,7 @@ export async function resetPassword(
         where: { id: record.user_id },
         data: {
           password_hash,
+          password_changed_at: new Date(),
           failed_login_count: 0,
           locked_until: null,
           must_change_password: false,

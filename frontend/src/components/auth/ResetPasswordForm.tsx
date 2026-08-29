@@ -46,8 +46,8 @@ export function ResetPasswordForm({ token }: { token: string }) {
       </div>
       <h1 className="text-2xl font-bold text-primary mb-2">Atur Kata Sandi Baru</h1>
       <p className="text-muted text-sm leading-relaxed mb-8">
-        Buat kata sandi baru untuk akun Owner Anda. Sesi login lama tetap berlaku
-        hingga kedaluwarsa.
+        Buat kata sandi baru untuk akun Owner Anda. Setelah diganti, semua sesi
+        login lama otomatis keluar dan Anda perlu masuk ulang.
       </p>
 
       {missingToken ? (

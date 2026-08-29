@@ -213,6 +213,7 @@ export async function resetEmployeePassword(userId: string) {
       where: { id: userId },
       data: {
         password_hash,
+        password_changed_at: new Date(),
         must_change_password: true,
         failed_login_count: 0,
         locked_until: null,

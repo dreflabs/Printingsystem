@@ -21,7 +21,12 @@ export async function getCurrentUser(): Promise<Actor | null> {
   const sid = session?.user?.id;
   if (sid) {
     const u = await prisma.user.findUnique({ where: { id: sid }, include: { role: true } });
-    if (u) return { id: u.id, name: u.name, role: u.role.name };
+    if (u) {
+      // Revoke sesi lama: token yang terbit sebelum password terakhir diganti ditolak.
+      const tokenPw = Number((session.user as { pwChangedAt?: number }).pwChangedAt ?? 0);
+      if (u.password_changed_at && u.password_changed_at.getTime() > tokenPw) return null;
+      return { id: u.id, name: u.name, role: u.role.name };
+    }
   }
 
   if (process.env.NODE_ENV !== "production") {

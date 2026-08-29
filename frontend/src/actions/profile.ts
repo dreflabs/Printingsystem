@@ -129,7 +129,7 @@ export async function changePassword(userId: string, oldPassword: string, newPas
     
     await prisma.user.update({
       where: { id: userId },
-      data: { password_hash: newHash }
+      data: { password_hash: newHash, password_changed_at: new Date() }
     });
 
     return { success: true };

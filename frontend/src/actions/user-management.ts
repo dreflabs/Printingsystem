@@ -1,11 +1,10 @@
 "use server";
 
+import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 
-const prisma = new PrismaClient();
 
 export async function getTenantUsers() {
   try {
@@ -49,7 +48,7 @@ export async function createEmployee(data: {
 
     // Default password for new employees: printpilot123!
     const defaultPassword = "printpilot123!";
-    const password_hash = await bcrypt.hash(defaultPassword, 10);
+    const password_hash = await bcrypt.hash(defaultPassword, 12);
 
     const newUser = await prisma.user.create({
       data: {
@@ -208,7 +207,7 @@ export async function resetEmployeePassword(userId: string) {
     if (user.role.name === "owner") throw new Error("Owner must use self-service reset");
 
     const newPassword = "printpilot123!";
-    const password_hash = await bcrypt.hash(newPassword, 10);
+    const password_hash = await bcrypt.hash(newPassword, 12);
 
     await prisma.user.update({
       where: { id: userId },

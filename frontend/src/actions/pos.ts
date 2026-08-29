@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { retryOnUnique } from "@/lib/retry";
 import { ok, fail, type ActionResult } from "@/types";
 
 /** Satu baris keranjang kasir. `retailProductId` null = item custom/manual. */
@@ -71,7 +72,7 @@ export async function processRetailOrder(
     const discount = Math.max(0, Math.round(input.discount ?? 0));
     const tax = Math.max(0, Math.round(input.tax ?? 0));
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await retryOnUnique(() => prisma.$transaction(async (tx) => {
       // Ambil produk retail yang direferensikan (item custom dilewati).
       const retailIds = items
         .map((i) => i.retailProductId)
@@ -137,12 +138,20 @@ export async function processRetailOrder(
         });
 
         if (product) {
-          const before = product.stock_quantity;
-          const after = before - i.quantity;
-          await tx.retailProduct.update({
-            where: { id: product.id },
-            data: { stock_quantity: after },
+          // Pengurangan stok atomik — cegah oversell saat 2 kasir jual unit terakhir.
+          const dec = await tx.retailProduct.updateMany({
+            where: { id: product.id, tenant_id: tenant.id, stock_quantity: { gte: i.quantity } },
+            data: { stock_quantity: { decrement: i.quantity } },
           });
+          if (dec.count === 0) {
+            throw new Error(`Stok "${product.name}" tidak cukup atau berubah — transaksi dibatalkan.`);
+          }
+          const fresh = await tx.retailProduct.findUnique({
+            where: { id: product.id },
+            select: { stock_quantity: true },
+          });
+          const after = fresh!.stock_quantity;
+          const before = after + i.quantity;
           await tx.retailStockMovement.create({
             data: {
               tenant_id: tenant.id,
@@ -172,7 +181,7 @@ export async function processRetailOrder(
       });
 
       return { orderId: order.id, orderCode: order.order_code, total, change };
-    });
+    }));
 
     revalidatePath("/pos");
     revalidatePath("/admin/products");

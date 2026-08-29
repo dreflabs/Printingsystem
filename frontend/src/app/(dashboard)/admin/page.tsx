@@ -215,7 +215,7 @@ function PaymentModal({ order, onClose, onDone }: { order: OrderRow; onClose: ()
 const AUDIT_ITEMS = [
   { id: "financial", label: "Keuangan (DP & Pelunasan)" },
   { id: "material", label: "Material (Pemakaian sesuai order)" },
-  { id: "quantity", label: "Jumlah (Qty aktual vs planned)" },
+  { id: "quantity", label: "Jumlah (aktual vs rencana)" },
   { id: "production", label: "Produksi (Semua job selesai)" },
   { id: "storage", label: "Penyimpanan & Pickup" },
 ] as const;

@@ -1,13 +1,12 @@
 "use server";
 
-import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { prisma } from "@/lib/prisma";
 import { ok, fail, type ActionResult } from "@/types/actions";
-
-const prisma = new PrismaClient();
 
 const DEFAULT_ROLES = ["owner", "admin", "designer_sales", "operator", "gudang"] as const;
 const TRIAL_DAYS = 14;
+const BCRYPT_ROUNDS = 12;
 
 export type RegisterTenantInput = {
   ownerName: string;
@@ -31,11 +30,10 @@ function slugify(v: string) {
 
 /**
  * Public self-serve signup. Creates Tenant + owner User + trial subscription +
- * onboarding markers in one transaction.
+ * onboarding marker in one transaction.
  *
- * NOTE: email OTP is not verified server-side (no mail provider wired yet) — the
- * wizard's OTP step is cosmetic. When a provider is added, gate this behind a
- * verified-token check.
+ * NOTE: email is NOT verified (no mail provider wired yet). When one is added,
+ * gate this behind a verified-token check and re-add the VERIFIED onboarding step.
  */
 export async function registerTenant(
   input: RegisterTenantInput
@@ -53,6 +51,8 @@ export async function registerTenant(
       return fail("Alamat email tidak valid.", { email: "Email tidak valid." });
     if (!input.password || input.password.length < 8)
       return fail("Kata sandi minimal 8 karakter.", { password: "Minimal 8 karakter." });
+    if (!/[a-zA-Z]/.test(input.password) || !/[0-9]/.test(input.password))
+      return fail("Kata sandi harus mengandung huruf dan angka.", { password: "Gabungkan huruf dan angka." });
     if (!shopName) return fail("Nama percetakan wajib diisi.", { shopName: "Wajib diisi." });
     if (!/^[a-z0-9]{3,30}$/.test(slug))
       return fail("Subdomain harus 3–30 karakter, huruf kecil/angka saja.", {
@@ -62,7 +62,7 @@ export async function registerTenant(
     const existing = await prisma.tenant.findUnique({ where: { slug } });
     if (existing) return fail("Subdomain sudah dipakai. Coba yang lain.", { subdomain: "Sudah dipakai." });
 
-    const password_hash = await bcrypt.hash(input.password, 10);
+    const password_hash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
     const usernameBase = slugify(email.split("@")[0]) || "owner";
 
     const result = await prisma.$transaction(async (tx) => {
@@ -130,11 +130,10 @@ export async function registerTenant(
         },
       });
 
-      await tx.onboardingStep.createMany({
-        data: [
-          { tenant_id: tenant.id, step: "VERIFIED" },
-          { tenant_id: tenant.id, step: "WIZARD_DONE" },
-        ],
+      // Catatan: email belum diverifikasi (belum ada provider email) — jangan
+      // tandai VERIFIED. Tambahkan langkah itu saat verifikasi email diaktifkan.
+      await tx.onboardingStep.create({
+        data: { tenant_id: tenant.id, step: "WIZARD_DONE" },
       });
 
       await tx.tenantAuditLog.create({

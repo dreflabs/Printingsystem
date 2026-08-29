@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
+import { retryOnUnique } from "@/lib/retry";
 import { ok, fail, type ActionResult } from "@/types";
 
 const isAdmin = (role: string) => role === "admin" || role === "owner";
@@ -30,7 +31,7 @@ export async function getDesignJob(orderId: string) {
       where: { order_id: orderId, tenant_id: tenant.id },
       include: { versions: { orderBy: { version_no: "asc" } } },
     });
-    if (!job) return fail("Design job tidak ditemukan untuk order ini.");
+    if (!job) return fail("Job desain tidak ditemukan untuk order ini.");
     return ok(job);
   } catch (e) {
     console.error("getDesignJob:", e);
@@ -61,7 +62,7 @@ export async function uploadDesignVersion(
       const job = await tx.designJob.findFirst({
         where: { order_id: orderId, tenant_id: tenant.id },
       });
-      if (!job) throw new Error("Design job tidak ditemukan.");
+      if (!job) throw new Error("Job desain tidak ditemukan.");
 
       const last = await tx.designVersion.findFirst({
         where: { design_job_id: job.id },
@@ -135,7 +136,7 @@ export async function approveDesign(
       const job = await tx.designJob.findFirst({
         where: { order_id: orderId, tenant_id: tenant.id },
       });
-      if (!job) throw new Error("Design job tidak ditemukan.");
+      if (!job) throw new Error("Job desain tidak ditemukan.");
 
       const version = await tx.designVersion.findFirst({
         where: { design_job_id: job.id, version_no: job.current_version },
@@ -148,7 +149,7 @@ export async function approveDesign(
         throw new Error("Persetujuan desain ONLINE harus dilakukan oleh Admin.");
       }
       if (method !== "ONLINE" && actor.role === "designer_sales" && version.uploaded_by !== actor.id && !isAdmin(actor.role)) {
-        throw new Error("Hanya designer pembuat atau Admin yang bisa menyetujui.");
+        throw new Error("Hanya designer pembuat atau Admin yang boleh menyetujui.");
       }
 
       await tx.designVersion.update({
@@ -162,14 +163,18 @@ export async function approveDesign(
         },
       });
       await tx.designJob.update({ where: { id: job.id }, data: { status: "APPROVED" } });
-      await tx.order.updateMany({
-        where: {
-          id: orderId,
-          tenant_id: tenant.id,
-          status: { in: ["DRAFT", "DESIGNING", "WAITING_APPROVAL"] },
-        },
-        data: { status: "WAITING_PAYMENT" },
-      });
+
+      // Desain ACC → WAITING_PAYMENT. Tapi kalau DP sudah lunas (mis. dibayar saat
+      // order dibuat), langsung CONFIRMED supaya order tidak nyangkut.
+      const ord = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
+      if (ord && ["DRAFT", "DESIGNING", "WAITING_APPROVAL"].includes(ord.status)) {
+        const dpReq = Number(ord.dp_required ?? Math.round(Number(ord.total) * 0.5));
+        const dpMet = Number(ord.paid_amount) + 1e-6 >= dpReq;
+        await tx.order.update({
+          where: { id: ord.id },
+          data: { status: dpMet ? "CONFIRMED" : "WAITING_PAYMENT" },
+        });
+      }
 
       return { versionNo: version.version_no };
     });
@@ -201,7 +206,7 @@ export async function requestDesignRevision(
       const job = await tx.designJob.findFirst({
         where: { order_id: orderId, tenant_id: tenant.id },
       });
-      if (!job) throw new Error("Design job tidak ditemukan.");
+      if (!job) throw new Error("Job desain tidak ditemukan.");
       const version = await tx.designVersion.findFirst({
         where: { design_job_id: job.id, version_no: job.current_version },
       });
@@ -250,11 +255,11 @@ export async function assignProductionJob(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Admin/Owner yang bisa assign produksi.");
+    if (!isAdmin(actor.role)) return fail("Hanya Admin/Owner yang boleh assign produksi.");
     const assignments = (input.assignments ?? []).filter((a) => a.plannedQty > 0);
     if (assignments.length === 0) return fail("Minimal 1 assignment produksi.");
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await retryOnUnique(() => prisma.$transaction(async (tx) => {
       const order = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
       if (!order) throw new Error("Order tidak ditemukan.");
 
@@ -262,6 +267,11 @@ export async function assignProductionJob(
         where: { order_id: orderId, tenant_id: tenant.id },
       });
       if (!job || job.status !== "APPROVED") throw new Error("Desain belum disetujui.");
+
+      // Aturan 14: order dengan diskon menggantung belum boleh masuk produksi.
+      if (Number(order.discount) > 0 && !order.discount_approved_by) {
+        throw new Error("Diskon masih menunggu keputusan Owner — order belum bisa masuk produksi.");
+      }
 
       const dpRequired = Number(order.dp_required ?? Math.round(Number(order.total) * 0.5));
       if (Number(order.paid_amount) + 1e-6 < dpRequired) {
@@ -276,6 +286,10 @@ export async function assignProductionJob(
       ]);
       if (machines.length !== machineIds.length) throw new Error("Ada mesin yang tidak valid.");
       if (operators.length !== operatorIds.length) throw new Error("Ada operator yang tidak valid.");
+
+      // Aturan 17: mesin MAINTENANCE / INACTIVE tidak boleh menerima job baru.
+      const down = machines.find((m) => m.status !== "ACTIVE");
+      if (down) throw new Error(`Mesin ${down.name} sedang ${down.status} — tidak bisa menerima job.`);
 
       const jobCodes: string[] = [];
       for (const a of assignments) {
@@ -300,7 +314,7 @@ export async function assignProductionJob(
 
       await tx.order.update({ where: { id: orderId }, data: { status: "PRODUCTION_ASSIGNED" } });
       return { jobCodes };
-    });
+    }));
 
     await logAction(actor.id, "PRODUCTION_ASSIGNED", "Order", orderId, null, {
       job_codes: result.jobCodes,

@@ -235,7 +235,7 @@ export async function reassignProductionJob(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "admin" && actor.role !== "owner") return fail("Hanya Admin/Owner yang bisa reassign job.");
+    if (actor.role !== "admin" && actor.role !== "owner") return fail("Hanya Admin/Owner yang boleh reassign job.");
     if (!input.reason?.trim()) return fail("Alasan reassignment wajib diisi.");
 
     const job = await findJobByCode(prisma, tenant.id, jobCode);
@@ -259,6 +259,10 @@ export async function reassignProductionJob(
     ]);
     if (!machine) return fail("Mesin tidak valid.");
     if (!operator) return fail("Operator tidak valid.");
+    // Aturan 17: jangan pindahkan job ke mesin yang sedang MAINTENANCE / INACTIVE.
+    if (machine.status !== "ACTIVE" && machine.id !== job.machine_id) {
+      return fail(`Mesin ${machine.name} sedang ${machine.status} — tidak bisa menerima job.`);
+    }
 
     const before = { machine_id: job.machine_id, operator_id: job.operator_id };
     await prisma.productionJob.update({
@@ -312,7 +316,7 @@ export async function finishProduction(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!(input.actualQty > 0)) return fail("Actual quantity tidak boleh 0.");
+    if (!(input.actualQty > 0)) return fail("Jumlah aktual tidak boleh 0.");
     if ((input.wasteQty ?? 0) > 0 && !input.wasteReason?.trim()) {
       return fail("Waste > 0 wajib disertai alasan.");
     }
@@ -340,9 +344,18 @@ export async function finishProduction(
         if (!material) throw new Error("Material tidak ditemukan.");
 
         const usageTotal = m.usageQty + (m.wasteQty ?? 0);
-        const before = Number(material.current_stock);
-        const after = before - usageTotal; // boleh minus — dicatat sbg anomali, produksi tidak diblokir
-        await tx.material.update({ where: { id: material.id }, data: { current_stock: after } });
+        // Pengurangan atomik — cegah lost update saat 2 operator pakai bahan shared
+        // bersamaan. Stok boleh minus (dicatat sbg anomali, produksi tidak diblokir).
+        await tx.material.update({
+          where: { id: material.id },
+          data: { current_stock: { decrement: usageTotal } },
+        });
+        const fresh = await tx.material.findUnique({
+          where: { id: material.id },
+          select: { current_stock: true },
+        });
+        const after = Number(fresh!.current_stock);
+        const before = after + usageTotal;
 
         await tx.materialMovement.create({
           data: {
@@ -439,7 +452,7 @@ export async function submitQC(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.role)) return fail("Hanya role Gudang yang bisa melakukan QC.");
+    if (!isGudang(actor.role)) return fail("Hanya role Gudang yang boleh melakukan QC.");
     if (input.result === "FAIL") {
       if (!input.notes || input.notes.trim().length < 20) {
         return fail("QC FAIL wajib deskripsi masalah minimal 20 karakter.");
@@ -524,7 +537,7 @@ export async function decideRework(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner") return fail("Hanya Owner yang bisa memutuskan rework.");
+    if (actor.role !== "owner") return fail("Hanya Owner yang boleh memutuskan rework.");
     if (!input.reason?.trim()) return fail("Alasan keputusan wajib diisi.");
 
     const result = await prisma.$transaction(async (tx) => {
@@ -611,7 +624,7 @@ export async function startFinishing(jobCode: string): Promise<ActionResult<{ jo
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.role)) return fail("Hanya role Gudang yang bisa mulai finishing.");
+    if (!isGudang(actor.role)) return fail("Hanya role Gudang yang boleh mulai finishing.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -650,8 +663,8 @@ export async function finishFinishing(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.role)) return fail("Hanya role Gudang yang bisa menyelesaikan finishing.");
-    if (!(input.actualQty > 0)) return fail("Actual quantity finishing tidak boleh 0.");
+    if (!isGudang(actor.role)) return fail("Hanya role Gudang yang boleh menyelesaikan finishing.");
+    if (!(input.actualQty > 0)) return fail("Jumlah aktual finishing tidak boleh 0.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);

@@ -9,6 +9,9 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 const prisma = globalForPrisma.prisma || new PrismaClient();
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
+// Ambang percobaan login gagal sebelum akun dikunci sementara.
+const LOCKOUT_THRESHOLD = 5;
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
@@ -53,23 +56,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         if (!user || !user.active) return null;
 
+        // Kunci akun sementara setelah percobaan gagal berturut-turut.
+        if (user.locked_until && user.locked_until > new Date()) return null;
+
         const isPasswordValid = await bcrypt.compare(
           credentials.password as string,
           user.password_hash
         );
 
         if (!isPasswordValid) {
+          const nextCount = user.failed_login_count + 1;
+          // ≥5 gagal → kunci; durasi naik bertahap (15, 30, … maks 60 menit).
+          const lockMinutes = nextCount >= LOCKOUT_THRESHOLD ? Math.min(60, (nextCount - LOCKOUT_THRESHOLD + 1) * 15) : 0;
           await prisma.user.update({
             where: { id: user.id },
-            data: { failed_login_count: { increment: 1 } },
+            data: {
+              failed_login_count: nextCount,
+              locked_until: lockMinutes > 0 ? new Date(Date.now() + lockMinutes * 60_000) : user.locked_until,
+            },
           });
           return null;
         }
 
-        // Reset failed logins
+        // Login sukses → reset counter & kunci.
         await prisma.user.update({
           where: { id: user.id },
-          data: { failed_login_count: 0, last_login_at: new Date() },
+          data: { failed_login_count: 0, locked_until: null, last_login_at: new Date() },
         });
 
         // Build roles array: primary role + any extra roles

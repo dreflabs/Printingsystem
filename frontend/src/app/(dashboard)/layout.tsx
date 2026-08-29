@@ -13,15 +13,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     getSessionUser().then((r) => {
-      if (r.ok) {
-        setUser(r.user);
-        // Keep localStorage in sync for legacy components still reading it.
-        try {
-          localStorage.setItem("userRole", r.user.role);
-          localStorage.setItem("userName", r.user.name);
-          localStorage.setItem("userRoles", JSON.stringify(r.user.roles));
-        } catch { /* ignore */ }
-      }
+      if (r.ok) setUser(r.user);
       setReady(true);
     });
   }, []);

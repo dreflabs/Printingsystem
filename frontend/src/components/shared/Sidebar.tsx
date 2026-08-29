@@ -18,6 +18,7 @@ import {
   Users,
   ChevronDown,
   Layers,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/actions/session";
@@ -50,6 +51,18 @@ const NAV_ITEMS: NavItem[] = [
     href: "/owner/users",
     icon: <Users className="h-5 w-5" />,
     roles: ["owner"],
+  },
+  {
+    label: "Laporan Bulanan",
+    href: "/owner/reports",
+    icon: <BarChart2 className="h-5 w-5" />,
+    roles: ["owner"],
+  },
+  {
+    label: "Absensi Pegawai",
+    href: "/admin/attendance",
+    icon: <Clock className="h-5 w-5" />,
+    roles: ["owner", "admin"],
   },
   {
     label: "Dashboard",

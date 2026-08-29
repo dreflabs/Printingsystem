@@ -139,7 +139,7 @@ export async function getOwnerQueues() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner" && actor.role !== "admin") return fail("Tidak berwenang.");
+    if (actor.role !== "owner" && actor.role !== "admin") return fail("Hanya Owner/Admin yang boleh melihat data ini.");
 
     const [pendingDiscounts, reworkPending, auditsPending, lowStock, overdueCount, incidents] = await Promise.all([
       prisma.order.findMany({
@@ -202,7 +202,7 @@ export async function getOwnerDashboard() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner" && actor.role !== "admin") return fail("Tidak berwenang.");
+    if (actor.role !== "owner" && actor.role !== "admin") return fail("Hanya Owner/Admin yang boleh melihat data ini.");
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -339,7 +339,7 @@ export async function getProductionOverview() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner" && actor.role !== "admin") return fail("Tidak berwenang.");
+    if (actor.role !== "owner" && actor.role !== "admin") return fail("Hanya Owner/Admin yang boleh melihat data ini.");
     const T = { tenant_id: tenant.id };
 
     const [jobs, machines, materials, operators] = await Promise.all([
@@ -527,5 +527,55 @@ export async function getOrderDetail(orderId: string) {
   } catch (e) {
     console.error("getOrderDetail:", e);
     return fail(e instanceof Error ? e.message : "Gagal memuat detail order.");
+  }
+}
+
+/**
+ * Data label QR untuk sebuah Production Job (BARCODE-QR §"Label content").
+ * Terima job_code atau order_code. Dipakai halaman cetak `/print/label/[id]`.
+ */
+export async function getJobLabel(codeOrId: string) {
+  try {
+    const tenant = await requireTenant();
+    await requireUser();
+    const c = codeOrId.trim().replace(/^JOB:/i, "").trim();
+
+    let job = await prisma.productionJob.findFirst({
+      where: { tenant_id: tenant.id, OR: [{ job_code: c }, { id: c }] },
+      include: { order: { include: { customer: true, items: true } } },
+    });
+    if (!job) {
+      const order = await prisma.order.findFirst({
+        where: { tenant_id: tenant.id, order_code: c },
+        include: { production_jobs: { orderBy: { created_at: "desc" }, take: 1 } },
+      });
+      if (order?.production_jobs[0]) {
+        job = await prisma.productionJob.findFirst({
+          where: { id: order.production_jobs[0].id },
+          include: { order: { include: { customer: true, items: true } } },
+        });
+      }
+    }
+    if (!job) return fail("Job tidak ditemukan.");
+
+    const items = job.order.items;
+    return ok({
+      company: { name: tenant.name, phone: tenant.owner_phone ?? null },
+      jobCode: job.job_code,
+      orderCode: job.order.order_code,
+      customerName: job.order.customer?.name ?? "-",
+      quantity: job.planned_qty || items.reduce((a, i) => a + i.quantity, 0),
+      items: items.map((i) => ({
+        description: i.description ?? "Produk cetak",
+        quantity: i.quantity,
+        size: i.size ?? null,
+        finishing: i.finishing ?? null,
+      })),
+      deadline: job.order.deadline,
+      printedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("getJobLabel:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat data label.");
   }
 }

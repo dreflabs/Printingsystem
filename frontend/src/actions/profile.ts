@@ -1,11 +1,10 @@
 "use server";
 
+import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { PrismaClient } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
 
 /**
  * Gets a user from the DB based on the selected role in the UI.
@@ -126,7 +125,7 @@ export async function changePassword(userId: string, oldPassword: string, newPas
       throw new Error("Password lama yang Anda masukkan salah.");
     }
 
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const newHash = await bcrypt.hash(newPassword, 12);
     
     await prisma.user.update({
       where: { id: userId },

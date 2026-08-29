@@ -51,7 +51,7 @@ function ReassignModal({ job, opts, onClose, onDone }: {
         <input className={inp} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Alasan reassignment (wajib)…" />
         <button disabled={busy || !machineId || !operatorId || !reason.trim()} onClick={submit}
           className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40">
-          {busy ? "Memproses…" : "Reassign Job"}
+          {busy ? "Memproses…" : "Alihkan Job"}
         </button>
       </div>
     </div>

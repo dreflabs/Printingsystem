@@ -6,6 +6,7 @@ import { Button, Input, Textarea, Select } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { getOrderFormData, createPrintingOrder, type CreatePrintingOrderInput } from "@/actions/orders";
 import { addPayment } from "@/actions/orders";
+import { getSessionUser } from "@/actions/session";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface OrderForm {
@@ -270,7 +271,7 @@ function Step3({
         </div>
       )}
 
-      {role !== "designer" && (
+      {role !== "designer_sales" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="Jumlah DP (Rp)"
@@ -299,7 +300,7 @@ function Step3({
             <span className="text-muted">Total Order</span>
             <span className="text-primary font-semibold">Rp {form.totalPrice}</span>
           </div>
-          {role !== "designer" ? (
+          {role !== "designer_sales" ? (
             <>
               <div className="flex justify-between">
                 <span className="text-muted">DP Dibayar</span>
@@ -344,8 +345,10 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRole(localStorage.getItem("userRole") || "");
+    getSessionUser().then((r) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (r.ok) setRole(r.user.role);
+    });
   }, []);
 
   useEffect(() => {
@@ -414,7 +417,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
       }
 
       const dp = parseRp(form.dpAmount);
-      if (role !== "designer" && dp > 0 && form.dpMethod) {
+      if (role !== "designer_sales" && dp > 0 && form.dpMethod) {
         const pay = await addPayment(res.data.orderId, {
           amount: dp,
           method: form.dpMethod as "CASH" | "TRANSFER" | "QRIS",

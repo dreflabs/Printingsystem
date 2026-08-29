@@ -15,7 +15,7 @@ type QCHistoryRecord = Prisma.QcRecordGetPayload<{
 }>;
 
 const CHECKLIST_ITEMS = [
-  { id: "qty", label: "Jumlah (Quantity vs Planned)" },
+  { id: "qty", label: "Jumlah (aktual vs rencana)" },
   { id: "size", label: "Ukuran (Size sesuai order)" },
   { id: "color", label: "Warna (Color accuracy)" },
   { id: "print", label: "Kualitas cetak (bintik, blur, stripe)" },

@@ -19,7 +19,7 @@ export async function requestOrderCancellation(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "admin" && actor.role !== "owner") return fail("Hanya Admin/Owner yang bisa mengajukan pembatalan.");
+    if (actor.role !== "admin" && actor.role !== "owner") return fail("Hanya Admin/Owner yang boleh mengajukan pembatalan.");
     if (!reason?.trim()) return fail("Alasan pembatalan wajib diisi.");
 
     const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
@@ -49,7 +49,7 @@ export async function decideOrderCancellation(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner") return fail("Hanya Owner yang bisa memutuskan pembatalan.");
+    if (actor.role !== "owner") return fail("Hanya Owner yang boleh memutuskan pembatalan.");
 
     const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
     if (!order) return fail("Order tidak ditemukan.");
@@ -132,10 +132,10 @@ export async function cancelOrder(
       // Otorisasi
       if (preProduction) {
         if (actor.role !== "admin" && actor.role !== "owner") {
-          throw new Error("Hanya Admin/Owner yang bisa membatalkan order.");
+          throw new Error("Hanya Admin/Owner yang boleh membatalkan order.");
         }
       } else if (actor.role !== "owner") {
-        throw new Error("Order sudah masuk produksi — hanya Owner yang bisa membatalkan (DP HANGUS).");
+        throw new Error("Order sudah masuk produksi — hanya Owner yang boleh membatalkan (DP HANGUS).");
       }
 
       // Perhitungan refund

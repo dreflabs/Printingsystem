@@ -248,8 +248,8 @@ export default function ScanPage() {
             <div className="p-5 grid grid-cols-2 gap-3">
               {[
                 { label: "Status Order", val: ctx.orderStatus, icon: Package },
-                { label: "Planned Qty", val: `${ctx.plannedQty} pcs`, icon: Package },
-                { label: "Actual Qty", val: `${ctx.actualQty} pcs`, icon: Package },
+                { label: "Qty Rencana", val: `${ctx.plannedQty} pcs`, icon: Package },
+                { label: "Qty Aktual", val: `${ctx.actualQty} pcs`, icon: Package },
                 { label: "Operator Job Ini", val: ctx.isAssignedOperator ? "Anda" : "Bukan Anda", icon: Package },
               ].map((info) => (
                 <div key={info.label} className="bg-elevated rounded-xl p-3">
@@ -343,9 +343,9 @@ function ActionForm({
   if (action === "finish_production")
     return wrap(
       <>
-        <input className={field} type="number" placeholder="Actual qty" value={f.actualQty ?? ""} onChange={(e) => set("actualQty", e.target.value)} />
+        <input className={field} type="number" placeholder="Qty aktual" value={f.actualQty ?? ""} onChange={(e) => set("actualQty", e.target.value)} />
         <div className="grid grid-cols-2 gap-2">
-          <input className={field} type="number" placeholder="Waste qty" value={f.wasteQty ?? ""} onChange={(e) => set("wasteQty", e.target.value)} />
+          <input className={field} type="number" placeholder="Qty waste" value={f.wasteQty ?? ""} onChange={(e) => set("wasteQty", e.target.value)} />
           <input className={field} placeholder="Alasan waste" value={f.wasteReason ?? ""} onChange={(e) => set("wasteReason", e.target.value)} />
         </div>
         <select className={field} value={f.materialId ?? ""} onChange={(e) => set("materialId", e.target.value)}>

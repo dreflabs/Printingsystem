@@ -7,6 +7,9 @@ const { auth } = NextAuth(authConfig);
 // Rute publik (tak butuh login)
 const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password", "/reset-password", "/platform/login"];
 
+// Halaman auth: user yang sudah login tidak perlu melihatnya lagi.
+const AUTH_PAGES = ["/login", "/register", "/forgot-password", "/reset-password", "/platform/login"];
+
 // Prefix rute → role yang boleh mengakses
 const ROUTE_ACCESS: { prefix: string; roles: string[] }[] = [
   { prefix: "/owner", roles: ["owner"] },
@@ -58,12 +61,20 @@ export default auth((req) => {
   if (tenantSlug) requestHeaders.set("x-tenant-slug", tenantSlug);
   const pass = () => NextResponse.next({ request: { headers: requestHeaders } });
 
+  const isLoggedIn = !!req.auth;
+  const isPlatform = (req.auth?.user as { platform?: boolean } | undefined)?.platform === true;
+
+  // Sudah login tapi membuka halaman auth → arahkan ke dashboard yang sesuai.
+  if (isLoggedIn && AUTH_PAGES.includes(path)) {
+    if (isPlatform) return NextResponse.redirect(new URL("/platform", nextUrl));
+    const roles: string[] = (req.auth?.user as { roles?: string[]; role?: string } | undefined)?.roles
+      ?? ((req.auth?.user as { role?: string } | undefined)?.role ? [(req.auth!.user as { role?: string }).role!] : []);
+    return NextResponse.redirect(new URL(getHomeForRoles(roles), nextUrl));
+  }
+
   if (path.startsWith("/api/auth") || path.startsWith("/print") || PUBLIC_PATHS.includes(path)) {
     return pass();
   }
-
-  const isLoggedIn = !!req.auth;
-  const isPlatform = (req.auth?.user as { platform?: boolean } | undefined)?.platform === true;
 
   // ── Platform (Super Admin) area — never bypassed ──
   if (path.startsWith("/platform")) {

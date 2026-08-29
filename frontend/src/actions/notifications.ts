@@ -16,7 +16,7 @@ export async function retryNotification(id: string): Promise<ActionResult<null>>
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "admin" && actor.role !== "owner") return fail("Tidak berwenang.");
+    if (actor.role !== "admin" && actor.role !== "owner") return fail("Hanya Owner/Admin yang boleh mengirim ulang notifikasi.");
 
     const evt = await prisma.notificationEvent.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!evt) return fail("Notifikasi tidak ditemukan.");

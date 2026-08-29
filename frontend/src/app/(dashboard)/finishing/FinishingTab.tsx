@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Package, Wrench, CheckCircle2, Tag, ScanLine } from "lucide-react";
+import { Package, Wrench, CheckCircle2, Tag, ScanLine, QrCode } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { getGudangQueues } from "@/actions/queries";
@@ -19,6 +19,20 @@ type Row = {
 
 const fmtDeadline = (d: string | Date | null) =>
   d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—";
+
+function LabelButton({ jobCode, className }: { jobCode: string; className?: string }) {
+  return (
+    <button
+      onClick={() => window.open(`/print/label/${encodeURIComponent(jobCode)}`, "_blank", "noopener")}
+      className={cn(
+        "shrink-0 inline-flex items-center gap-1.5 h-10 px-3 rounded-xl bg-elevated border border-border text-xs font-bold text-muted hover:text-primary hover:border-accent-teal transition-all cursor-pointer",
+        className
+      )}
+    >
+      <QrCode className="h-3.5 w-3.5" /> Cetak Label
+    </button>
+  );
+}
 
 export function FinishingTab() {
   const [queue, setQueue] = useState<Row[]>([]);
@@ -93,8 +107,13 @@ export function FinishingTab() {
             <span className="h-2 w-2 rounded-full bg-accent-teal animate-pulse" />
             <span className="text-xs font-semibold text-accent-teal uppercase tracking-wide">Finishing Berjalan</span>
           </div>
-          <p className="font-bold text-primary text-lg">{active.jobCode}</p>
-          <p className="text-sm text-muted mb-4">{active.orderCode} · {active.customerName} · Planned {active.plannedQty} pcs</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-bold text-primary text-lg">{active.jobCode}</p>
+              <p className="text-sm text-muted mb-4">{active.orderCode} · {active.customerName} · Planned {active.plannedQty} pcs</p>
+            </div>
+            <LabelButton jobCode={active.jobCode} />
+          </div>
           {!showDoneForm ? (
             <button
               onClick={() => { setQty(String(active.plannedQty || "")); setShowDoneForm(true); }}
@@ -134,6 +153,41 @@ export function FinishingTab() {
         <ScanLine className="h-5 w-5" /> SCAN QR untuk mulai / simpan job
       </a>
 
+      {storageReady.length > 0 && (
+        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
+          <div className="flex items-center gap-2 p-5 border-b border-border">
+            <CheckCircle2 className="h-5 w-5 text-status-green" />
+            <h2 className="text-base font-semibold text-primary">Siap Simpan ke Rak</h2>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-green/10 text-status-green border border-status-green/30">
+              {storageReady.length} Item
+            </span>
+          </div>
+          <div className="divide-y divide-border/50">
+            {storageReady.map((j) => (
+              <div key={j.jobCode} className="flex items-center gap-4 p-4 hover:bg-elevated/30 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="font-mono text-xs text-accent-teal">{j.jobCode}</span>
+                    <StatusPill status={j.status} />
+                  </div>
+                  <p className="font-bold text-primary text-base mb-0.5">{j.orderCode} · {j.customerName}</p>
+                  <span className="inline-flex items-center gap-1.5 bg-elevated px-2 py-1 rounded-md text-primary text-xs font-medium border border-border">
+                    <Tag className="h-3.5 w-3.5 text-accent-teal" /> {j.actualQty || j.plannedQty} pcs
+                  </span>
+                </div>
+                <LabelButton jobCode={j.jobCode} />
+                <a
+                  href="/scan"
+                  className="shrink-0 h-10 px-4 rounded-xl bg-accent-teal/20 border border-accent-teal/40 text-accent-teal text-xs font-bold hover:bg-accent-teal/30 transition-all cursor-pointer inline-flex items-center"
+                >
+                  Simpan
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
         <div className="flex items-center gap-2 p-5 border-b border-border">
           <Wrench className="h-5 w-5 text-status-yellow-text" />
@@ -160,6 +214,7 @@ export function FinishingTab() {
                 <p className="text-muted mb-1">Deadline:</p>
                 <p className="font-bold text-status-red">{fmtDeadline(j.deadline)}</p>
               </div>
+              <LabelButton jobCode={j.jobCode} />
               <button
                 disabled={busy}
                 onClick={() => begin(j.jobCode)}

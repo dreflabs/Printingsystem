@@ -60,7 +60,7 @@ function MaterialModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
           
           <div>
             <label className="text-xs font-medium text-muted mb-1 block">Nama Material *</label>
-            <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full h-11 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal" placeholder="Cth: Flexy Korea 440gsm" />
+            <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full h-11 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal" placeholder="Cth: Flexi Korea 440gsm" />
           </div>
           
           <div className="grid grid-cols-2 gap-4">

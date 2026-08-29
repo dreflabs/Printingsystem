@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
+import { retryOnUnique } from "@/lib/retry";
 import { ok, fail, type ActionResult } from "@/types";
 
 type OrderTypeInput = "walkin" | "online" | "makloon";
@@ -91,11 +92,18 @@ export async function createPrintingOrder(
     const dpPct = input.dpOverridePct ?? 50;
     if (dpPct < 0 || dpPct > 100) return fail("Persen DP tidak valid.");
     if (input.dpOverridePct != null && input.dpOverridePct < 50) {
+      // Aturan 13 / 04-PAYMENT.md:
+      //  - walk-in: override <50% HANYA Owner (Admin dilarang).
+      //  - online/makloon: Admin boleh sampai min 30%, Owner bebas.
+      const isWalkin = input.orderType === "walkin";
       if (actor.role !== "admin" && actor.role !== "owner") {
-        return fail("Hanya Admin/Owner yang boleh override DP di bawah 50%.");
+        return fail("Hanya Owner/Admin yang boleh override DP di bawah 50%.");
+      }
+      if (isWalkin && actor.role !== "owner") {
+        return fail("Override DP di bawah 50% untuk order walk-in hanya boleh oleh Owner.");
       }
       if (actor.role === "admin" && input.dpOverridePct < 30) {
-        return fail("Admin hanya boleh override DP sampai minimal 30%.");
+        return fail("Admin hanya boleh override DP sampai minimal 30% (order online/makloon).");
       }
       if (!input.dpOverrideReason) return fail("Override DP wajib menyertakan alasan.");
     }
@@ -105,7 +113,7 @@ export async function createPrintingOrder(
       return fail("Diskon wajib menyertakan alasan.");
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await retryOnUnique(() => prisma.$transaction(async (tx) => {
       // 1. Customer
       let customerId: string | null = null;
       if ("id" in input.customer) {
@@ -128,11 +136,12 @@ export async function createPrintingOrder(
         customerId = created.id;
       }
 
-      // 2. Totals
+      // 2. Totals — diskon TIDAK dipotong sebelum di-approve Owner (aturan 14).
+      //    `discount` disimpan sebagai permintaan; total/dp/balance tetap harga penuh
+      //    sampai decideDiscount(approve) dipanggil.
       let subtotal = 0;
       for (const i of items) subtotal += i.unitPrice * i.quantity;
-      const discountApplied = discount; // dicatat walau masih menggantung
-      const total = Math.max(0, subtotal - discountApplied);
+      const total = subtotal;
       const dpRequired = Math.round((total * dpPct) / 100);
 
       // 3. Order (DRAFT)
@@ -146,9 +155,8 @@ export async function createPrintingOrder(
           designer_id: input.designerId || null,
           status: "DRAFT",
           subtotal,
-          discount: discountApplied,
+          discount, // permintaan diskon — belum dipotong; discount_approved_by null = menggantung
           discount_reason: discount > 0 ? input.discountReason : null,
-          // discount_approved_by tetap null = menggantung
           total,
           dp_required: dpRequired,
           dp_override_pct: input.dpOverridePct ?? null,
@@ -209,7 +217,7 @@ export async function createPrintingOrder(
         dpRequired,
         discountPending: discount > 0,
       };
-    });
+    }));
 
     await logAction(actor.id, "ORDER_CREATED", "Order", result.orderId, null, {
       order_code: result.orderCode,
@@ -320,8 +328,9 @@ export async function decideDiscount(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner" && actor.role !== "admin") {
-      return fail("Hanya Owner/Admin yang boleh memutuskan diskon.");
+    // Aturan 14: keputusan diskon HANYA Owner (Admin cuma mengajukan).
+    if (actor.role !== "owner") {
+      return fail("Hanya Owner yang boleh memutuskan diskon.");
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -337,6 +346,11 @@ export async function decideDiscount(
       const total = Math.max(0, subtotal - discount);
       const dpPct = Number(order.dp_override_pct ?? 50);
       const dpRequired = Math.round((total * dpPct) / 100);
+      const paid = Number(order.paid_amount);
+
+      // Diskon di-approve bisa membuat DP jadi terpenuhi → majukan status.
+      let status = order.status;
+      if (order.status === "WAITING_PAYMENT" && paid + 1e-6 >= dpRequired) status = "CONFIRMED";
 
       await tx.order.update({
         where: { id: order.id },
@@ -344,7 +358,8 @@ export async function decideDiscount(
           discount,
           total,
           dp_required: dpRequired,
-          balance: Math.max(0, total - Number(order.paid_amount)),
+          balance: Math.max(0, total - paid),
+          status,
           discount_approved_by: decision.approve ? actor.id : null,
           discount_approved_at: decision.approve ? new Date() : null,
           discount_reason: decision.note || order.discount_reason,

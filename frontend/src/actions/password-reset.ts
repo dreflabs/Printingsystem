@@ -22,7 +22,12 @@ function sha256(v: string) {
 }
 
 function deliverResetLink(email: string, link: string) {
-  // TODO: swap for real transactional email once a provider is configured.
+  // Belum ada provider email. Di dev, tautan ditulis ke konsol server; di produksi
+  // JANGAN bocorkan ke log — kirim lewat provider transaksional saat sudah ada.
+  if (process.env.NODE_ENV === "production") {
+    console.error(`[password-reset] Provider email belum dikonfigurasi — reset untuk ${email} tidak terkirim.`);
+    return;
+  }
   console.log(`\n[password-reset] Reset link for ${email}:\n  ${link}\n`);
 }
 
@@ -83,7 +88,7 @@ export async function resetPassword(
       return fail("Tautan reset tidak valid atau sudah kedaluwarsa.");
     }
 
-    const password_hash = await bcrypt.hash(newPassword, 10);
+    const password_hash = await bcrypt.hash(newPassword, 12);
 
     await prisma.$transaction([
       prisma.user.update({

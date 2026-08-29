@@ -72,7 +72,13 @@ export default auth((req) => {
     return NextResponse.redirect(new URL(getHomeForRoles(roles), nextUrl));
   }
 
-  if (path.startsWith("/api/auth") || path.startsWith("/print") || PUBLIC_PATHS.includes(path)) {
+  // /api/jobs/* punya auth sendiri (Bearer JOBS_SECRET) — dipanggil cron eksternal, bukan sesi.
+  if (
+    path.startsWith("/api/auth") ||
+    path.startsWith("/api/jobs") ||
+    path.startsWith("/print") ||
+    PUBLIC_PATHS.includes(path)
+  ) {
     return pass();
   }
 

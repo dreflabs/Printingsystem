@@ -690,6 +690,7 @@ model NotificationEvent {
   provider_message_id String?
   error_message       String?
   sent_at             DateTime?
+  last_attempt_at     DateTime? // waktu percobaan kirim terakhir — dipakai job dispatcher untuk jeda retry 5 menit
   is_resend           Boolean   @default(false)
   resent_by           String?
   resender            User?     @relation(fields: [resent_by], references: [id])
@@ -812,15 +813,15 @@ model AttendanceRecord {
   id                 String           @id @default(uuid())
   tenant_id          String
   tenant             Tenant           @relation(fields: [tenant_id], references: [id])
-  import_id          String
-  import             AttendanceImport @relation(fields: [import_id], references: [id])
+  import_id          String?           // null = baris dibuat dari tombol istirahat Print Pilot, belum ada import fingerprint
+  import             AttendanceImport? @relation(fields: [import_id], references: [id])
   user_id            String?
-  user               User?            @relation(fields: [user_id], references: [id])
+  user               User?             @relation(fields: [user_id], references: [id])
   employee_name      String
   date               DateTime
   check_in           DateTime?
   check_out          DateTime?
-  check_in_status    String // ON_TIME/LATE
+  check_in_status    String // ON_TIME/LATE/UNKNOWN
   late_minutes       Int              @default(0)
   break_start        DateTime?
   break_end          DateTime?

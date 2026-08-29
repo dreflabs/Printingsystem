@@ -387,6 +387,54 @@ export async function decideDiscount(
   }
 }
 
+/**
+ * Ajukan diskon pada order yang sudah ada (tombol "Ajukan Diskon").
+ * Admin & Owner boleh mengajukan; keputusan tetap lewat decideDiscount() (Owner).
+ * Diskon tidak bisa diajukan setelah order CLOSED (DEADLINE-DISCOUNT.md).
+ */
+export async function requestDiscount(
+  orderId: string,
+  input: { amount: number; reason: string }
+): Promise<ActionResult<{ discount: number }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (actor.role !== "owner" && actor.role !== "admin") {
+      return fail("Hanya Owner atau Admin yang boleh mengajukan diskon.");
+    }
+
+    const amount = Math.max(0, Math.round(input.amount ?? 0));
+    if (amount <= 0) return fail("Nominal diskon harus lebih dari 0.");
+    if (!input.reason || input.reason.trim().length < 5) return fail("Alasan diskon wajib diisi (min. 5 karakter).");
+
+    const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
+    if (!order) return fail("Order tidak ditemukan.");
+    if (["CLOSED", "CANCELLED"].includes(order.status)) return fail("Diskon tidak bisa diajukan pada order yang sudah selesai/batal.");
+    if (Number(order.discount) > 0 && order.discount_approved_by) {
+      return fail("Order ini sudah punya diskon yang disetujui. Buat koreksi untuk mengubahnya.");
+    }
+    if (amount >= Number(order.subtotal)) return fail("Diskon tidak boleh melebihi subtotal order.");
+
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        discount: amount,
+        discount_reason: input.reason.trim(),
+        discount_approved_by: null,
+        discount_approved_at: null,
+      },
+    });
+
+    await logAction(actor.id, "DISCOUNT_REQUESTED", "Order", orderId, { discount: Number(order.discount) }, { discount: amount, reason: input.reason.trim() });
+    revalidatePath("/admin");
+    revalidatePath("/owner");
+    return ok({ discount: amount });
+  } catch (e) {
+    console.error("requestDiscount:", e);
+    return fail(e instanceof Error ? e.message : "Gagal mengajukan diskon.");
+  }
+}
+
 /** Data pendukung form order baru. */
 export async function getOrderFormData() {
   try {

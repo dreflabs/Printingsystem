@@ -3,6 +3,7 @@ import { authConfig } from "./auth.config";
 import CredentialsProvider from "next-auth/providers/credentials";
 import * as bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
+import { rateLimit, resetRateLimit } from "./rate-limit";
 
 // Global Prisma instance to avoid hot-reloading issues
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
@@ -26,10 +27,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const identifier = credentials.username as string;
         const pw = credentials.password as string;
 
+        // Rem brute-force: maks. 10 percobaan / 15 menit per identifier.
+        const rlKey = `login:${identifier.toLowerCase().trim()}`;
+        if (!rateLimit(rlKey, 10, 15 * 60_000).ok) return null;
+
         // ── Platform login (Super Admin) — identified by email, stored in super_admins ──
         if (identifier.includes("@")) {
           const sa = await prisma.superAdmin.findFirst({ where: { email: identifier } });
           if (sa && sa.active && (await bcrypt.compare(pw, sa.password_hash))) {
+            resetRateLimit(rlKey);
             await prisma.superAdmin.update({
               where: { id: sa.id },
               data: { last_login_at: new Date() },
@@ -79,6 +85,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         // Login sukses → reset counter & kunci.
+        resetRateLimit(rlKey);
         await prisma.user.update({
           where: { id: user.id },
           data: { failed_login_count: 0, locked_until: null, last_login_at: new Date() },

@@ -415,17 +415,40 @@ export async function getProductionOverview() {
 // ORDER LIST + DETAIL
 // ─────────────────────────────────────────────────────────────
 
-export async function getOrders(params?: { status?: string; search?: string; type?: "PRINTING" | "RETAIL"; limit?: number }) {
+export async function getOrders(params?: {
+  status?: string;
+  search?: string;
+  type?: "PRINTING" | "RETAIL";
+  limit?: number;
+  /** hanya order yang sudah lewat deadline & belum selesai */
+  overdueOnly?: boolean;
+  /** deadline dalam rentang [deadlineFrom, deadlineTo] (ISO date) */
+  deadlineFrom?: string;
+  deadlineTo?: string;
+}) {
   try {
     const tenant = await requireTenant();
     await requireUser();
     const limit = Math.min(Math.max(params?.limit ?? 50, 1), 200);
+
+    const NOT_DONE = ["CLOSED", "CANCELLED", "PICKED_UP"];
+    const deadlineRange =
+      params?.deadlineFrom || params?.deadlineTo
+        ? {
+            ...(params.deadlineFrom ? { gte: new Date(params.deadlineFrom) } : {}),
+            ...(params.deadlineTo ? { lte: new Date(params.deadlineTo) } : {}),
+          }
+        : undefined;
 
     const orders = await prisma.order.findMany({
       where: {
         tenant_id: tenant.id,
         ...(params?.status ? { status: params.status } : {}),
         ...(params?.type ? { order_type: params.type } : {}),
+        ...(params?.overdueOnly
+          ? { deadline: { lt: new Date() }, status: { notIn: NOT_DONE } }
+          : {}),
+        ...(deadlineRange ? { deadline: deadlineRange } : {}),
         ...(params?.search
           ? { OR: [{ order_code: { contains: params.search, mode: "insensitive" } }, { customer: { name: { contains: params.search, mode: "insensitive" } } }] }
           : {}),

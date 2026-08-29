@@ -6,6 +6,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { parseCsv } from "@/lib/csv";
+import { sendWhatsApp } from "@/lib/wa";
 import { ok, fail } from "@/types";
 
 // Batas jam masuk 09:15 WIB (ABSENSI-FINGERPRINT.md). Lewat ini = TERLAMBAT.
@@ -218,6 +219,7 @@ export async function commitAttendanceImport(input: {
     });
 
     let lateCount = 0;
+    const lateEntries: { name: string; jam: string }[] = [];
     const unmatched = new Set<string>();
     const days = list.map((d) => d.day.getTime());
     const periodStart = new Date(Math.min(...days));
@@ -235,6 +237,10 @@ export async function commitAttendanceImport(input: {
           status = "LATE";
           lateMin = mod - LATE_MIN_OF_DAY;
           lateCount++;
+          lateEntries.push({
+            name: d.name,
+            jam: `${String(d.checkIn.getHours()).padStart(2, "0")}:${String(d.checkIn.getMinutes()).padStart(2, "0")}`,
+          });
         }
       } else {
         status = "ON_TIME"; // tak ada jam masuk → jangan tandai terlambat
@@ -278,6 +284,16 @@ export async function commitAttendanceImport(input: {
     });
     revalidatePath("/admin/attendance");
 
+    // Notifikasi WA ke Owner: ringkasan import + daftar pegawai terlambat
+    // (ABSENSI-FINGERPRINT.md). Fire-and-forget — kegagalan WA tidak membatalkan import.
+    void notifyOwnersLateImport(tenant.id, {
+      periodStart,
+      periodEnd,
+      present: recordData.filter((r) => r.check_in).length,
+      lateCount,
+      lateEntries,
+    });
+
     return ok({
       importId: result.id,
       rowCount: recordData.length,
@@ -290,6 +306,38 @@ export async function commitAttendanceImport(input: {
   } catch (e) {
     console.error("commitAttendanceImport:", e);
     return fail(e instanceof Error ? e.message : "Gagal mengimpor absensi.");
+  }
+}
+
+async function notifyOwnersLateImport(
+  tenantId: string,
+  info: { periodStart: Date; periodEnd: Date; present: number; lateCount: number; lateEntries: { name: string; jam: string }[] }
+) {
+  try {
+    const owners = await prisma.user.findMany({
+      where: { tenant_id: tenantId, active: true, role: { name: "owner" }, phone: { not: null } },
+      select: { phone: true },
+    });
+    if (owners.length === 0) return;
+
+    const sameDay = info.periodStart.toDateString() === info.periodEnd.toDateString();
+    const periode = sameDay
+      ? info.periodStart.toLocaleDateString("id-ID")
+      : `${info.periodStart.toLocaleDateString("id-ID")} – ${info.periodEnd.toLocaleDateString("id-ID")}`;
+
+    const lines = [
+      `Data absensi ${periode} berhasil diimpor. ${info.present} pegawai hadir, ${info.lateCount} terlambat.`,
+    ];
+    if (info.lateEntries.length > 0) {
+      lines.push("", "Terlambat masuk:");
+      for (const e of info.lateEntries.slice(0, 30)) lines.push(`• ${e.name} — jam masuk ${e.jam}`);
+    }
+    const body = lines.join("\n");
+    for (const o of owners) {
+      if (o.phone) await sendWhatsApp({ to: o.phone, body });
+    }
+  } catch (e) {
+    console.error("notifyOwnersLateImport:", e);
   }
 }
 

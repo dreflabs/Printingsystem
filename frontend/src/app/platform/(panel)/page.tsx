@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Building2, DollarSign, Users, PauseCircle, PlayCircle, LogIn, AlertTriangle, X } from "lucide-react";
+import { Building2, DollarSign, Users, PauseCircle, PlayCircle, LogIn, AlertTriangle, X, Eye } from "lucide-react";
 import { getPlatformMetrics, listTenants, setTenantStatus, impersonateTenant } from "@/actions/platform";
+import { TenantDetailDrawer } from "@/components/platform/TenantDetailDrawer";
 
 type Metrics = { mrr: number; totalTenants: number; trial: number; active: number; suspended: number; churned: number };
 type Tenant = {
@@ -29,6 +30,7 @@ export default function PlatformDashboard() {
     | { kind: "suspend" | "activate" | "impersonate"; tenant: Tenant; reason: string }
     | null
   >(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [m, t] = await Promise.all([getPlatformMetrics(), listTenants()]);
@@ -170,6 +172,13 @@ export default function PlatformDashboard() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
+                        onClick={() => setDetailId(t.id)}
+                        className="inline-flex items-center gap-1 text-xs text-muted hover:text-primary"
+                      >
+                        <Eye className="h-3.5 w-3.5" /> Detail
+                      </button>
+                      <span className="text-border">·</span>
+                      <button
                         disabled={busy === t.id}
                         onClick={() => openPrompt("impersonate", t)}
                         className="inline-flex items-center gap-1 text-xs text-accent-teal hover:underline disabled:opacity-40"
@@ -197,9 +206,18 @@ export default function PlatformDashboard() {
       </div>
 
       <p className="text-xs text-muted">
-        Belum ada di versi ini: MFA, hard-delete tenant (butuh alur reminder 90 hari), billing / force-mark-paid,
-        broadcast notification, enforcement read-only saat impersonate SUPPORT. Semua aksi tercatat di <code>tenant_audit_logs</code>.
+        Belum ada di versi ini: MFA, hard-delete tenant (butuh alur reminder 90 hari), billing / generate &amp; force-mark-paid invoice,
+        broadcast notification, kelola akun Super Admin. Suspend tenant kini benar-benar memblokir login &amp; akses; impersonate
+        SUPPORT bersifat lihat-saja untuk aksi uang/pembatalan/koreksi. Semua aksi tercatat di <code>tenant_audit_logs</code>.
       </p>
+
+      {detailId && (
+        <TenantDetailDrawer
+          tenantId={detailId}
+          onClose={() => setDetailId(null)}
+          onChanged={load}
+        />
+      )}
     </div>
   );
 }

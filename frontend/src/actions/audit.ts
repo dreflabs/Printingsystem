@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser } from "@/lib/actor";
+import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";
 
@@ -41,7 +41,7 @@ export async function submitFinalAudit(
 ): Promise<ActionResult<{ result: string; orderStatus: string }>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (!isAdmin(actor.role)) return fail("Hanya Admin/Owner yang boleh submit final audit.");
 
     const result = await prisma.$transaction(async (tx) => {
@@ -120,7 +120,7 @@ export async function approveFinalAudit(
 ): Promise<ActionResult<{ orderStatus: string }>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (actor.role !== "owner") return fail("Hanya Owner yang boleh menyetujui audit.");
 
     const result = await prisma.$transaction(async (tx) => {
@@ -179,7 +179,7 @@ export async function createCorrection(
 ): Promise<ActionResult<{ correctionId: string; needsApproval: boolean }>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh membuat koreksi.");
     if (actor.role === "admin" && input.category === "FINANCIAL") {
       return fail("Koreksi keuangan hanya boleh dibuat Owner.");
@@ -230,7 +230,7 @@ export async function approveCorrection(
 ): Promise<ActionResult<null>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (actor.role !== "owner") return fail("Hanya Owner yang boleh menyetujui koreksi.");
 
     const correction = await prisma.correction.findFirst({

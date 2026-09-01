@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser } from "@/lib/actor";
+import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";
 
@@ -18,7 +18,7 @@ const UNFREEZABLE = ["CLOSED", "CANCELLED", "PICKED_UP", "ON_HOLD"];
 export async function freezeOrder(orderId: string, reason: string): Promise<ActionResult<null>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (actor.role !== "owner") return fail("Hanya Owner yang boleh membekukan order.");
     if (!reason?.trim()) return fail("Alasan pembekuan wajib diisi.");
 
@@ -47,7 +47,7 @@ export async function freezeOrder(orderId: string, reason: string): Promise<Acti
 export async function unfreezeOrder(orderId: string, note?: string): Promise<ActionResult<{ restoredTo: string }>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (actor.role !== "owner") return fail("Hanya Owner yang boleh mencairkan order.");
 
     const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });

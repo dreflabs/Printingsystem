@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser } from "@/lib/actor";
+import { requireUser, requireMutableActor } from "@/lib/actor";
 import { retryOnUnique } from "@/lib/retry";
 import { logAction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";
@@ -64,7 +64,7 @@ export async function processRetailOrder(
 ): Promise<ActionResult<ProcessRetailOrderResult>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
 
     const items = input.items?.filter((i) => i.quantity > 0) ?? [];
     if (items.length === 0) return fail("Keranjang kosong.");
@@ -223,7 +223,7 @@ export async function voidRetailOrder(
 ): Promise<ActionResult<{ orderCode: string; refundAmount: number; restocked: number }>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (actor.role !== "admin" && actor.role !== "owner") {
       return fail("Hanya Admin atau Owner yang boleh membatalkan transaksi retail.");
     }

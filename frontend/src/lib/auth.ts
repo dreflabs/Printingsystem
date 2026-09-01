@@ -57,10 +57,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           include: {
             role: true,
             extra_roles: { include: { role: true } },
+            tenant: { select: { status: true } },
           },
         });
 
         if (!user || !user.active) return null;
+
+        // Tenant di-suspend / churned → semua user-nya tidak bisa login.
+        if (user.tenant.status === "SUSPENDED" || user.tenant.status === "CHURNED") return null;
 
         // Kunci akun sementara setelah percobaan gagal berturut-turut.
         if (user.locked_until && user.locked_until > new Date()) return null;

@@ -1,3 +1,5 @@
+Jalan
+
 # USER MANAGEMENT
 
 ## Prinsip Dasar
@@ -14,6 +16,7 @@
 **Siapa:** Hanya Owner
 
 **Data yang diinput:**
+
 - Nama lengkap
 - Username (unik, untuk login)
 - Email (opsional, untuk notifikasi sistem)
@@ -21,6 +24,7 @@
 - Status: Aktif / Nonaktif
 
 **Setelah dibuat:**
+
 - Sistem generate password sementara: `printpilot123!`
 - Owner memberikan password sementara ke pegawai secara langsung
 - Pegawai wajib ganti password saat login pertama kali
@@ -34,6 +38,7 @@ User bisa memiliki lebih dari satu role sekaligus. Ini sangat berguna untuk perc
 **Contoh:** Satu karyawan bisa menjadi Admin + Operator + Finishing sekaligus.
 
 Di sidebar, user multi-role akan melihat:
+
 - **Role Switcher** — dropdown untuk berpindah antar dashboard
 - Label **"Solo Mode ✓"** sebagai indikator
 
@@ -46,6 +51,7 @@ Di sidebar, user multi-role akan melihat:
 **Siapa:** Hanya Owner
 
 **Aturan:**
+
 - Role tidak bisa diubah jika user punya job/order yang sedang aktif (status IN_PROGRESS)
 - Jika terpaksa ubah, Owner harus reassign job yang aktif dulu
 - Role `owner` tidak bisa dihapus dari akun Owner
@@ -57,6 +63,7 @@ Di sidebar, user multi-role akan melihat:
 **Siapa:** Hanya Owner
 
 **Yang terjadi saat nonaktifkan:**
+
 - User tidak bisa login lagi
 - Job yang sedang dikerjakan user tersebut muncul di dashboard Admin sebagai "Perlu Reassign"
 - Semua data historis user tetap tersimpan (tidak dihapus)
@@ -68,7 +75,7 @@ Di sidebar, user multi-role akan melihat:
 
 ## Reset Password
 
-- **Untuk Owner:** Memiliki akses alur *self-service* "Lupa Password" via verifikasi tautan email (lihat `06-SECURITY/FORGOT-PASSWORD.md`).
+- **Untuk Owner:** Memiliki akses alur _self-service_ "Lupa Password" via verifikasi tautan email (lihat `06-SECURITY/FORGOT-PASSWORD.md`).
 - **Untuk Pegawai:** Tidak ada opsi lupa password mandiri. Jika lupa:
   - Owner reset password dari panel user management
   - Password baru diberikan langsung (offline), bukan via email
@@ -88,6 +95,7 @@ Di sidebar, user multi-role akan melihat:
 ## Dashboard Admin — Tambahan (Produksi)
 
 Admin melihat:
+
 - Semua job yang sedang dalam antrian produksi
 - Job yang belum di-assign ke operator
 - Job yang overdue (melebihi deadline)
@@ -101,6 +109,7 @@ Admin melihat:
 ## Database
 
 Field di tabel `users`:
+
 ```
 role_id                (FK ke Role — primary role, backward compat)
 failed_login_count     (reset setiap sukses login)
@@ -111,6 +120,7 @@ deactivated_by
 ```
 
 Tabel tambahan untuk multi-role:
+
 ```
 UserRole               (join table: user_id + role_id, many-to-many)
 ```

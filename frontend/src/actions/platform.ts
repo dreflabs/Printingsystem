@@ -170,3 +170,142 @@ export async function getImpersonationState() {
   const slug = (await cookies()).get(IMPERSONATE_COOKIE)?.value ?? null;
   return ok({ impersonating: !!slug, slug });
 }
+
+const PLANS = ["STARTER", "PRO", "ENTERPRISE"] as const;
+export type PlanName = (typeof PLANS)[number];
+
+/** Detail satu tenant: profil, langganan, onboarding, audit log terakhir. */
+export async function getTenantDetail(tenantId: string) {
+  try {
+    await requireSuperAdmin();
+
+    const t = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: {
+        _count: { select: { users: true, orders: true, customers: true } },
+        users: {
+          orderBy: { created_at: "asc" },
+          select: { id: true, name: true, username: true, email: true, active: true, role: { select: { name: true } }, last_login_at: true },
+        },
+        subscription_plans: {
+          orderBy: { started_at: "desc" },
+          include: { plan: { select: { name: true, price_monthly: true } } },
+        },
+        onboarding_steps: { orderBy: { completed_at: "asc" } },
+        tenant_audit_logs: {
+          orderBy: { created_at: "desc" },
+          take: 50,
+          include: { actor: { select: { name: true, role: true } } },
+        },
+      },
+    });
+    if (!t) return fail("Tenant tidak ditemukan.");
+
+    return ok({
+      id: t.id,
+      slug: t.slug,
+      name: t.name,
+      status: t.status,
+      plan: t.plan,
+      maxUsers: t.max_users,
+      trialEndsAt: t.trial_ends_at,
+      currentPeriodStart: t.current_period_start,
+      currentPeriodEnd: t.current_period_end,
+      billingEmail: t.billing_email,
+      customDomain: t.custom_domain,
+      waProvider: t.wa_provider,
+      ownerName: t.owner_name,
+      ownerPhone: t.owner_phone,
+      createdAt: t.created_at,
+      counts: { users: t._count.users, orders: t._count.orders, customers: t._count.customers },
+      users: t.users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        username: u.username,
+        email: u.email,
+        role: u.role.name,
+        active: u.active,
+        lastLoginAt: u.last_login_at,
+      })),
+      subscriptions: t.subscription_plans.map((s) => ({
+        id: s.id,
+        planName: s.plan.name,
+        priceMonthly: num(s.plan.price_monthly),
+        status: s.status,
+        startedAt: s.started_at,
+        endsAt: s.ends_at,
+      })),
+      onboarding: t.onboarding_steps.map((o) => ({ step: o.step, completedAt: o.completed_at })),
+      auditLogs: t.tenant_audit_logs.map((l) => ({
+        id: l.id,
+        action: l.action,
+        actor: l.actor?.name ?? "Sistem",
+        actorRole: l.actor?.role ?? l.actor_type,
+        detail: l.detail_json,
+        createdAt: l.created_at,
+      })),
+    });
+  } catch (e) {
+    console.error("getTenantDetail:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat detail tenant.");
+  }
+}
+
+/** Ubah paket & batas user tenant — hanya sub-level SUPER_ADMIN. */
+export async function updateTenantPlan(
+  tenantId: string,
+  input: { plan: PlanName; maxUsers?: number | null; reason?: string }
+) {
+  try {
+    const actor = await requireSubLevel("SUPER_ADMIN");
+    if (!PLANS.includes(input.plan)) return fail("Paket tidak dikenal.");
+    const maxUsers =
+      input.maxUsers == null || Number.isNaN(input.maxUsers)
+        ? null
+        : Math.max(1, Math.round(input.maxUsers));
+
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) return fail("Tenant tidak ditemukan.");
+    if (tenant.plan === input.plan && tenant.max_users === maxUsers) {
+      return fail("Tidak ada perubahan.");
+    }
+
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { plan: input.plan, max_users: maxUsers },
+    });
+    await logTenant(tenantId, actor.id, "PLAN_CHANGED", {
+      from: { plan: tenant.plan, max_users: tenant.max_users },
+      to: { plan: input.plan, max_users: maxUsers },
+      reason: input.reason,
+    });
+
+    revalidatePath("/platform");
+    return ok({ plan: input.plan, maxUsers });
+  } catch (e) {
+    console.error("updateTenantPlan:", e);
+    return fail(e instanceof Error ? e.message : "Gagal mengubah paket.");
+  }
+}
+
+/** Daftar akun Super Admin (untuk halaman pengaturan platform). */
+export async function listSuperAdmins() {
+  try {
+    await requireSuperAdmin();
+    const admins = await prisma.superAdmin.findMany({ orderBy: { created_at: "asc" } });
+    return ok(
+      admins.map((a) => ({
+        id: a.id,
+        name: a.name,
+        email: a.email,
+        role: a.role,
+        active: a.active,
+        lastLoginAt: a.last_login_at,
+        createdAt: a.created_at,
+      }))
+    );
+  } catch (e) {
+    console.error("listSuperAdmins:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat daftar Super Admin.");
+  }
+}

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser } from "@/lib/actor";
+import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { retryOnUnique } from "@/lib/retry";
 import { ok, fail, type ActionResult } from "@/types";
@@ -83,7 +83,7 @@ export async function createPrintingOrder(
 ): Promise<ActionResult<CreatePrintingOrderResult>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
 
     const items = (input.items ?? []).filter((i) => i.quantity > 0);
     if (items.length === 0) return fail("Order harus punya minimal 1 item.");
@@ -259,7 +259,7 @@ export async function addPayment(
 ): Promise<ActionResult<AddPaymentResult>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (actor.role !== "admin" && actor.role !== "owner") {
       return fail("Hanya Admin/Owner yang boleh mengkonfirmasi pembayaran.");
     }
@@ -327,7 +327,7 @@ export async function decideDiscount(
 ): Promise<ActionResult<{ discount: number; total: number; dpRequired: number; approved: boolean }>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     // Aturan 14: keputusan diskon HANYA Owner (Admin cuma mengajukan).
     if (actor.role !== "owner") {
       return fail("Hanya Owner yang boleh memutuskan diskon.");
@@ -398,7 +398,7 @@ export async function requestDiscount(
 ): Promise<ActionResult<{ discount: number }>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (actor.role !== "owner" && actor.role !== "admin") {
       return fail("Hanya Owner atau Admin yang boleh mengajukan diskon.");
     }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser } from "@/lib/actor";
+import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";
 
@@ -18,7 +18,7 @@ export async function requestOrderCancellation(
 ): Promise<ActionResult<null>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (actor.role !== "admin" && actor.role !== "owner") return fail("Hanya Admin/Owner yang boleh mengajukan pembatalan.");
     if (!reason?.trim()) return fail("Alasan pembatalan wajib diisi.");
 
@@ -48,7 +48,7 @@ export async function decideOrderCancellation(
 ): Promise<ActionResult<{ decision: "APPROVED" | "REJECTED" }>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (actor.role !== "owner") return fail("Hanya Owner yang boleh memutuskan pembatalan.");
 
     const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
@@ -115,7 +115,7 @@ export async function cancelOrder(
 ): Promise<ActionResult<CancelOrderResult>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (!input.reason?.trim()) return fail("Alasan pembatalan wajib diisi.");
 
     const result = await prisma.$transaction(async (tx) => {

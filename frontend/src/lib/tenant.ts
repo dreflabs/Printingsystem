@@ -68,5 +68,21 @@ export async function requireTenant() {
   if (!tenant) {
     throw new Error("Tenant context is missing. Request must be made from a valid tenant subdomain.");
   }
+
+  // Tenant di-suspend / churned → blokir semua akses, KECUALI Super Admin
+  // yang sedang impersonate (untuk investigasi / pemulihan).
+  if (tenant.status === "SUSPENDED" || tenant.status === "CHURNED") {
+    let impersonating = false;
+    try {
+      impersonating = !!(await cookies()).get(IMPERSONATE_COOKIE)?.value;
+    } catch {
+      /* cookies() unavailable outside request scope */
+    }
+    if (!impersonating) {
+      const label = tenant.status === "SUSPENDED" ? "dinonaktifkan sementara" : "tidak aktif";
+      throw new Error(`TENANT_SUSPENDED: Akun percetakan ini ${label}. Silakan hubungi tim Print Pilot.`);
+    }
+  }
+
   return tenant;
 }

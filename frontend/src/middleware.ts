@@ -109,6 +109,7 @@ export default auth((req) => {
 
   // Platform user on tenant routes: allowed only while impersonating; otherwise send home.
   if (isPlatform && !req.cookies.get("pp_impersonate")) {
+    console.log("[DEBUG middleware] no pp_impersonate cookie. path=", path, "all cookies=", req.cookies.getAll().map((c) => c.name));
     return NextResponse.redirect(new URL("/platform", nextUrl));
   }
 

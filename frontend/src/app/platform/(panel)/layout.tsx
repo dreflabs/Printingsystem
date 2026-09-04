@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { ShieldCheck, LogOut } from "lucide-react";
-import { getPlatformActor } from "@/lib/platform";
+import { getPlatformActor, IMPERSONATE_COOKIE } from "@/lib/platform";
 import { signOut } from "@/lib/auth";
 
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
@@ -25,6 +26,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
             <form
               action={async () => {
                 "use server";
+                (await cookies()).delete(IMPERSONATE_COOKIE);
                 await signOut({ redirectTo: "/platform/login" });
               }}
             >

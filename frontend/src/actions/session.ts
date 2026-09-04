@@ -1,7 +1,9 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { auth, signOut } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/actor";
+import { IMPERSONATE_COOKIE } from "@/lib/platform";
 
 export interface SessionUser {
   id: string;
@@ -41,5 +43,6 @@ export async function getSessionUser(): Promise<
 }
 
 export async function signOutAction() {
+  (await cookies()).delete(IMPERSONATE_COOKIE);
   await signOut({ redirectTo: "/login" });
 }

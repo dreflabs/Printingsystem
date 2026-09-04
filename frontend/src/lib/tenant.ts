@@ -1,5 +1,6 @@
 import { headers, cookies } from "next/headers";
 import { PrismaClient } from "@prisma/client";
+import { auth } from "@/lib/auth";
 import { IMPERSONATE_COOKIE } from "@/lib/platform";
 
 // In development/production, you should use the global prisma instance, 
@@ -22,12 +23,19 @@ export async function getTenantSlug(): Promise<string | null> {
  * Gets the current Tenant object from the database based on the subdomain
  */
 export async function getCurrentTenant() {
-  // Super Admin impersonation: a valid pp_impersonate cookie overrides subdomain resolution.
+  // Super Admin impersonation: a valid pp_impersonate cookie overrides subdomain resolution —
+  // but only when the current session actually belongs to a platform (Super Admin) user.
+  // Otherwise a stale/leftover cookie could leak a previously-impersonated tenant's data
+  // into a different user's session on the same browser.
   try {
     const imp = (await cookies()).get(IMPERSONATE_COOKIE)?.value;
     if (imp) {
-      const t = await prisma.tenant.findUnique({ where: { slug: imp } });
-      if (t) return t;
+      const session = await auth();
+      const isPlatform = (session?.user as { platform?: boolean } | undefined)?.platform === true;
+      if (isPlatform) {
+        const t = await prisma.tenant.findUnique({ where: { slug: imp } });
+        if (t) return t;
+      }
     }
   } catch { /* cookies() unavailable outside request scope */ }
 

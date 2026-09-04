@@ -109,13 +109,15 @@ export default auth((req) => {
 
   // Platform user on tenant routes: allowed only while impersonating; otherwise send home.
   if (isPlatform && !req.cookies.get("pp_impersonate")) {
-    console.log("[DEBUG middleware] no pp_impersonate cookie. path=", path, "all cookies=", req.cookies.getAll().map((c) => c.name));
     return NextResponse.redirect(new URL("/platform", nextUrl));
   }
 
-  // Multi-role RBAC: allow if ANY of the user's roles is in the allowed list
+  // Multi-role RBAC: allow if ANY of the user's roles is in the allowed list.
+  // Skip for an impersonating platform admin — their session role is SUPER_ADMIN,
+  // not the tenant role, and the effective actor (owner) is resolved server-side
+  // in lib/actor.ts instead.
   const rule = ROUTE_ACCESS.find((r) => path === r.prefix || path.startsWith(r.prefix + "/"));
-  if (rule && userRoles.length > 0 && !userRoles.some((r) => rule.roles.includes(r))) {
+  if (!isPlatform && rule && userRoles.length > 0 && !userRoles.some((r) => rule.roles.includes(r))) {
     return NextResponse.redirect(new URL(getHomeForRoles(userRoles), nextUrl));
   }
 

@@ -134,7 +134,6 @@ export async function impersonateTenant(tenantId: string, reason: string) {
       path: "/",
       maxAge: 60 * 60, // 1 jam
     });
-    console.log("[DEBUG impersonateTenant] cookie set attempted for slug=", tenant.slug);
     await logTenant(tenantId, actor.id, "IMPERSONATE_START", {
       super_admin: actor.name,
       sub_level: actor.subLevel,

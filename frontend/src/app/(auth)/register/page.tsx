@@ -137,7 +137,7 @@ export default function RegisterPage() {
               </p>
             </div>
 
-            <div className="space-y-6 relative before:absolute before:inset-0 before:ml-[15px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-border before:-z-10 hidden md:block">
+            <div className="space-y-6 relative before:absolute before:left-4 before:-translate-x-1/2 before:top-4 before:bottom-4 before:w-0.5 before:bg-border before:-z-10 hidden md:block">
               {STEPS.map((item) => (
                 <div key={item.s} className="flex gap-4 items-start">
                   <div

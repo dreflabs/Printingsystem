@@ -8,7 +8,8 @@ const { auth } = NextAuth(authConfig);
 const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password", "/reset-password", "/platform/login"];
 
 // Halaman auth: user yang sudah login tidak perlu melihatnya lagi.
-const AUTH_PAGES = ["/login", "/register", "/forgot-password", "/reset-password", "/platform/login"];
+// "/" disertakan agar user yang baru login (callbackUrl default) tidak nyangkut di homepage.
+const AUTH_PAGES = ["/", "/login", "/register", "/forgot-password", "/reset-password", "/platform/login"];
 
 // Prefix rute → role yang boleh mengakses
 const ROUTE_ACCESS: { prefix: string; roles: string[] }[] = [

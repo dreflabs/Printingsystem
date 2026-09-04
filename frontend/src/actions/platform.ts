@@ -270,10 +270,38 @@ export async function updateTenantPlan(
       return fail("Tidak ada perubahan.");
     }
 
-    await prisma.tenant.update({
-      where: { id: tenantId },
-      data: { plan: input.plan, max_users: maxUsers },
+    const planChanged = tenant.plan !== input.plan;
+    let newPlanRow: { id: string } | null = null;
+    if (planChanged) {
+      newPlanRow = await prisma.subscriptionPlan.findUnique({
+        where: { slug: input.plan.toLowerCase() },
+        select: { id: true },
+      });
+      if (!newPlanRow) {
+        return fail(
+          `Paket "${input.plan}" belum ada di katalog SubscriptionPlan (slug "${input.plan.toLowerCase()}"). Buat plan-nya dulu sebelum mengubah tenant ke paket ini.`
+        );
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: { plan: input.plan, max_users: maxUsers },
+      });
+
+      // Keep TenantSubscription (and therefore MRR) in sync with Tenant.plan.
+      if (planChanged && newPlanRow) {
+        await tx.tenantSubscription.updateMany({
+          where: { tenant_id: tenantId, status: "ACTIVE" },
+          data: { status: "CANCELLED", ends_at: new Date() },
+        });
+        await tx.tenantSubscription.create({
+          data: { tenant_id: tenantId, plan_id: newPlanRow.id, status: "ACTIVE" },
+        });
+      }
     });
+
     await logTenant(tenantId, actor.id, "PLAN_CHANGED", {
       from: { plan: tenant.plan, max_users: tenant.max_users },
       to: { plan: input.plan, max_users: maxUsers },

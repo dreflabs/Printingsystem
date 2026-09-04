@@ -281,7 +281,7 @@ export default function OwnerPage() {
       <div className="bg-card border border-border rounded-2xl p-5 space-y-6">
         <div className="flex items-center gap-2 border-b border-border pb-3">
           <Bell className="h-5 w-5 text-accent-teal" />
-          <h2 className="text-base font-bold">Alert Kritis & Antrian Approval</h2>
+          <h2 className="text-base font-bold text-primary">Alert Kritis & Antrian Approval</h2>
         </div>
 
         {/* Tier 1 — butuh keputusan */}
@@ -355,7 +355,7 @@ export default function OwnerPage() {
         <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <Activity className="h-5 w-5 text-accent-teal" />
-            <h3 className="font-bold text-base">Pipeline Produksi</h3>
+            <h3 className="font-bold text-base text-primary">Pipeline Produksi</h3>
           </div>
           <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
             {pipelineStages.map((s) => (
@@ -372,7 +372,7 @@ export default function OwnerPage() {
         <div className="bg-card border border-border rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <Users className="h-5 w-5 text-accent-teal" />
-            <h3 className="font-bold text-base">Absensi Hari Ini</h3>
+            <h3 className="font-bold text-base text-primary">Absensi Hari Ini</h3>
           </div>
           <div className="space-y-3 text-sm">
             <div className="flex justify-between"><span className="text-muted flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-status-green" /> Hadir</span><span className="font-bold">{d?.attendance.present ?? "—"}</span></div>

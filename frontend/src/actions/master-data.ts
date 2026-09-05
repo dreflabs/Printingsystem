@@ -6,12 +6,16 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { ok, fail } from "@/types";
 
+const isAdmin = (r: string) => r === "admin" || r === "owner";
+const isGudang = (r: string) => r === "gudang" || r === "owner";
+
 // -- RETAIL PRODUCTS --
 
 export async function getRetailProducts() {
   try {
     const tenant = await requireTenant();
-    
+    await requireUser();
+
     const products = await prisma.retailProduct.findMany({
       where: {
         tenant_id: tenant.id,
@@ -41,7 +45,9 @@ export async function createRetailProduct(data: {
 }) {
   try {
     const tenant = await requireTenant();
-    
+    const actor = await requireUser();
+    if (!isAdmin(actor.role)) return { success: false, error: "Hanya Owner/Admin yang boleh mengelola produk retail." };
+
     const product = await prisma.retailProduct.create({
       data: {
         tenant_id: tenant.id,
@@ -68,6 +74,7 @@ export async function createRetailProduct(data: {
 export async function getPrintingProducts() {
   try {
     const tenant = await requireTenant();
+    await requireUser();
 
     const products = await prisma.product.findMany({
       where: {
@@ -91,6 +98,8 @@ export async function createPrintingProduct(data: {
 }) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengelola produk cetak.");
     const product = await prisma.product.create({
       data: {
         tenant_id: tenant.id,
@@ -113,6 +122,8 @@ export async function updatePrintingProduct(
 ) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengelola produk cetak.");
     const existing = await prisma.product.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!existing) return fail("Produk tidak ditemukan.");
     const product = await prisma.product.update({ where: { id }, data });
@@ -139,6 +150,7 @@ async function nextCode(model: "customer" | "material" | "machine", tenantId: st
 export async function getCustomers() {
   try {
     const tenant = await requireTenant();
+    await requireUser();
     const customers = await prisma.customer.findMany({
       where: { tenant_id: tenant.id },
       orderBy: { name: "asc" },
@@ -165,6 +177,7 @@ export async function createCustomer(data: {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengelola data customer.");
     if (!data.name?.trim()) return fail("Nama customer wajib diisi.");
     const customer = await prisma.customer.create({
       data: {
@@ -204,6 +217,8 @@ export async function updateCustomer(
 ) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengelola data customer.");
     const existing = await prisma.customer.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!existing) return fail("Customer tidak ditemukan.");
     const customer = await prisma.customer.update({ where: { id }, data });
@@ -220,6 +235,7 @@ export async function updateCustomer(
 export async function getMaterials() {
   try {
     const tenant = await requireTenant();
+    await requireUser();
     const materials = await prisma.material.findMany({
       where: { tenant_id: tenant.id },
       orderBy: { name: "asc" },
@@ -257,6 +273,7 @@ export async function createMaterial(data: {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    if (!isGudang(actor.role)) return fail("Hanya Owner/Gudang yang boleh menambah material baru.");
     if (!data.name?.trim()) return fail("Nama material wajib diisi.");
     if (!(data.conversion_factor > 0)) return fail("Faktor konversi harus lebih dari 0.");
 
@@ -314,6 +331,8 @@ export async function updateMaterial(
 ) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isGudang(actor.role)) return fail("Hanya Owner/Gudang yang boleh mengubah data material.");
     const existing = await prisma.material.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!existing) return fail("Material tidak ditemukan.");
 
@@ -346,6 +365,7 @@ export async function adjustMaterialStock(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    if (!isGudang(actor.role)) return fail("Hanya Owner/Gudang yang boleh menyesuaikan stok material.");
     if (!data.reason?.trim()) return fail("Alasan penyesuaian wajib diisi.");
 
     const result = await prisma.$transaction(async (tx) => {
@@ -388,6 +408,7 @@ export async function adjustMaterialStock(
 export async function getMachines() {
   try {
     const tenant = await requireTenant();
+    await requireUser();
     const machines = await prisma.machine.findMany({
       where: { tenant_id: tenant.id },
       orderBy: { name: "asc" },
@@ -408,6 +429,8 @@ export async function createMachine(data: {
 }) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengelola data mesin.");
     if (!data.name?.trim()) return fail("Nama mesin wajib diisi.");
     const machine = await prisma.machine.create({
       data: {
@@ -438,6 +461,8 @@ export async function updateMachine(
 ) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengelola data mesin.");
     const existing = await prisma.machine.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!existing) return fail("Mesin tidak ditemukan.");
     const machine = await prisma.machine.update({ where: { id }, data });

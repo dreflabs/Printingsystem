@@ -261,6 +261,7 @@ export async function approveCorrection(
 export async function listCorrections(orderId?: string) {
   try {
     const tenant = await requireTenant();
+    await requireUser();
     const corrections = await prisma.correction.findMany({
       where: { tenant_id: tenant.id, ...(orderId ? { order_id: orderId } : {}) },
       orderBy: { created_at: "desc" },

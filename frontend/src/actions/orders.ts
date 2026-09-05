@@ -84,6 +84,9 @@ export async function createPrintingOrder(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
+    if (!["owner", "admin", "designer_sales"].includes(actor.role)) {
+      return fail("Hanya Owner/Admin/Designer Sales yang boleh membuat order.");
+    }
 
     const items = (input.items ?? []).filter((i) => i.quantity > 0);
     if (items.length === 0) return fail("Order harus punya minimal 1 item.");

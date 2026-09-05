@@ -27,6 +27,7 @@ async function nextJobCode(tx: Prisma.TransactionClient, tenantId: string): Prom
 export async function getDesignJob(orderId: string) {
   try {
     const tenant = await requireTenant();
+    await requireUser();
     const job = await prisma.designJob.findFirst({
       where: { order_id: orderId, tenant_id: tenant.id },
       include: { versions: { orderBy: { version_no: "asc" } } },
@@ -56,6 +57,9 @@ export async function uploadDesignVersion(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    if (!isAdmin(actor.role) && actor.role !== "designer_sales") {
+      return fail("Hanya Designer Sales/Admin/Owner yang boleh upload desain.");
+    }
     if (!input.filePath?.trim()) return fail("Path file desain wajib diisi.");
 
     const result = await prisma.$transaction(async (tx) => {
@@ -200,6 +204,9 @@ export async function requestDesignRevision(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    if (!isAdmin(actor.role) && actor.role !== "designer_sales") {
+      return fail("Hanya Designer Sales/Admin/Owner yang boleh meminta revisi desain.");
+    }
     if (!input.reason?.trim()) return fail("Alasan revisi wajib diisi.");
 
     const result = await prisma.$transaction(async (tx) => {

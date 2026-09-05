@@ -42,6 +42,7 @@ async function findJobByCode(tx: Prisma.TransactionClient, tenantId: string, cod
 export async function getStorageLocations() {
   try {
     const tenant = await requireTenant();
+    await requireUser();
     const locs = await prisma.storageLocation.findMany({
       where: { tenant_id: tenant.id },
       orderBy: { location_code: "asc" },
@@ -497,6 +498,7 @@ export async function releaseOrder(
 export async function getStorageLocationsWithItems() {
   try {
     const tenant = await requireTenant();
+    await requireUser();
     const locs = await prisma.storageLocation.findMany({
       where: { tenant_id: tenant.id },
       orderBy: [{ floor: "desc" }, { zone: "asc" }, { rack: "asc" }, { slot: "asc" }],
@@ -517,6 +519,7 @@ export async function getStorageLocationsWithItems() {
 export async function searchStorageItems(query: string) {
   try {
     const tenant = await requireTenant();
+    await requireUser();
     if (!query || query.trim().length < 3) return ok([]);
     const q = query.trim();
     const items = await prisma.storageItem.findMany({

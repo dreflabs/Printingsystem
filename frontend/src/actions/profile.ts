@@ -2,49 +2,16 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
+import { requireUser } from "@/lib/actor";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 
-
-/**
- * Gets a user from the DB based on the selected role in the UI.
- */
-export async function getCurrentUserProfile(role: string) {
-  try {
-    const tenant = await requireTenant();
-    
-    const dbRole = await prisma.role.findUnique({
-      where: { name: role }
-    });
-    if (!dbRole) return null;
-
-    const user = await prisma.user.findFirst({
-      where: { 
-        tenant_id: tenant.id,
-        role_id: dbRole.id,
-      },
-      select: {
-        id: true,
-        name: true,
-        username: true,
-        email: true,
-        phone: true,
-        avatar_url: true,
-        role: true
-      }
-    });
-
-    return user;
-  } catch (error) {
-    console.error("Error getting user profile:", error);
-    return null;
-  }
-}
-
-/** Profil user berdasarkan ID (dipakai Header untuk user yang sedang login). */
+/** Profil user berdasarkan ID (dipakai Header untuk user yang sedang login) — hanya profil milik sendiri. */
 export async function getUserProfileById(userId: string) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (userId !== actor.id) return null;
     return await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
       select: { id: true, name: true, username: true, email: true, phone: true, avatar_url: true },
@@ -58,12 +25,14 @@ export async function getUserProfileById(userId: string) {
 export async function updateProfile(userId: string, data: { name: string; username: string; email: string; phone: string; avatar_url: string }) {
   try {
     const tenant = await requireTenant();
-    
+    const actor = await requireUser();
+    if (userId !== actor.id) throw new Error("Tidak bisa mengubah profil pengguna lain.");
+
     // Check if user exists and belongs to tenant
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id }
     });
-    
+
     if (!user) throw new Error("User not found or access denied");
 
     // Validate uniqueness of username and email
@@ -113,7 +82,9 @@ export async function updateProfile(userId: string, data: { name: string; userna
 export async function changePassword(userId: string, oldPassword: string, newPassword: string) {
   try {
     const tenant = await requireTenant();
-    
+    const actor = await requireUser();
+    if (userId !== actor.id) throw new Error("Tidak bisa mengubah password pengguna lain.");
+
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id }
     });

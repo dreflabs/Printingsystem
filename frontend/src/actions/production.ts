@@ -512,6 +512,7 @@ export async function submitQC(
 export async function getQCHistory() {
   try {
     const tenant = await requireTenant();
+    await requireUser();
     const records = await prisma.qcRecord.findMany({
       where: { tenant_id: tenant.id },
       orderBy: { created_at: "desc" },

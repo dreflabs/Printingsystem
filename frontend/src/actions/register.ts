@@ -8,6 +8,32 @@ const DEFAULT_ROLES = ["owner", "admin", "designer_sales", "operator", "gudang"]
 const TRIAL_DAYS = 14;
 const BCRYPT_ROUNDS = 12;
 
+/** Katalog paket yang bisa dipilih sendiri lewat form pendaftaran (Enterprise = via Sales, bukan self-serve). */
+const PLAN_CATALOG = {
+  starter: {
+    name: "Starter",
+    slug: "starter",
+    price_monthly: 299000,
+    max_users: 5,
+    max_orders_per_month: 200,
+    features_json: JSON.stringify(["dashboard", "kanban", "qc"]),
+    tenantPlan: "STARTER",
+  },
+  pro: {
+    name: "Pro",
+    slug: "pro",
+    price_monthly: 599000,
+    max_users: 15,
+    max_orders_per_month: null,
+    features_json: JSON.stringify(["dashboard", "kanban", "qc", "storage", "whatsapp_unlimited", "audit_trail"]),
+    tenantPlan: "PRO",
+  },
+} as const;
+type PlanKey = keyof typeof PLAN_CATALOG;
+function resolvePlanKey(v: unknown): PlanKey {
+  return v === "pro" ? "pro" : "starter";
+}
+
 export type RegisterTenantInput = {
   ownerName: string;
   email: string;
@@ -16,6 +42,8 @@ export type RegisterTenantInput = {
   shopName: string;
   subdomain: string;
   address?: string;
+  /** Paket yang diklik di landing page ("starter" default, "pro" opsional). Enterprise tidak self-serve. */
+  plan?: string;
 };
 
 export type RegisterTenantResult = {
@@ -64,6 +92,8 @@ export async function registerTenant(
 
     const password_hash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
     const usernameBase = slugify(email.split("@")[0]) || "owner";
+    const planKey = resolvePlanKey(input.plan);
+    const planDef = PLAN_CATALOG[planKey];
 
     const result = await prisma.$transaction(async (tx) => {
       // Roles are global (no tenant_id) — ensure the standard set exists.
@@ -78,15 +108,15 @@ export async function registerTenant(
       }
 
       const plan = await tx.subscriptionPlan.upsert({
-        where: { slug: "starter" },
+        where: { slug: planDef.slug },
         update: {},
         create: {
-          name: "Starter",
-          slug: "starter",
-          price_monthly: 299000,
-          max_users: 5,
-          max_orders_per_month: 200,
-          features_json: JSON.stringify(["dashboard", "kanban", "qc"]),
+          name: planDef.name,
+          slug: planDef.slug,
+          price_monthly: planDef.price_monthly,
+          max_users: planDef.max_users,
+          max_orders_per_month: planDef.max_orders_per_month,
+          features_json: planDef.features_json,
         },
       });
 
@@ -97,7 +127,7 @@ export async function registerTenant(
         data: {
           slug,
           name: shopName,
-          plan: "STARTER",
+          plan: planDef.tenantPlan,
           status: "TRIAL",
           trial_ends_at: trialEnds,
           billing_email: email,
@@ -141,7 +171,7 @@ export async function registerTenant(
           tenant_id: tenant.id,
           actor_type: "SYSTEM",
           action: "TENANT_SELF_SIGNUP",
-          detail_json: JSON.stringify({ slug, email, plan: "STARTER", address }),
+          detail_json: JSON.stringify({ slug, email, plan: planDef.tenantPlan, address }),
         },
       });
 

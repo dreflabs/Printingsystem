@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import {
   Building2,
@@ -43,6 +44,8 @@ const STEPS = [
 ];
 
 export default function RegisterPage() {
+  const searchParams = useSearchParams();
+  const plan = searchParams.get("plan") === "pro" ? "pro" : "starter";
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +95,7 @@ export default function RegisterPage() {
       shopName: formData.shopName,
       subdomain: formData.subdomain,
       address: formData.address || undefined,
+      plan,
     });
     if (!res.success) {
       setIsLoading(false);
@@ -130,6 +134,9 @@ export default function RegisterPage() {
           <div className="md:w-1/3 space-y-8">
             <div className="mb-10">
               <h1 className="text-3xl font-bold text-primary mb-2">Mulai Gratis.</h1>
+              <span className="inline-block mb-3 px-2.5 py-1 rounded-full bg-accent-teal/10 text-accent-teal text-xs font-bold">
+                Paket {plan === "pro" ? "Pro — Rp 599rb/bln" : "Starter — Rp 299rb/bln"} setelah trial
+              </span>
               <p className="text-muted text-sm">
                 Siapkan workspace percetakan Anda dalam 3 langkah.
                 <br />

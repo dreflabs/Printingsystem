@@ -66,13 +66,13 @@ export default function MarketingPage() {
                 </Link>
               </div>
 
-              <p className="mt-6 text-xs text-muted font-medium">Uji coba gratis 7 hari. Tanpa kartu kredit.</p>
+              <p className="mt-6 text-xs text-muted font-medium">Uji coba gratis 14 hari. Tanpa kartu kredit.</p>
 
               <div className="mt-12 grid grid-cols-3 gap-6 max-w-md pt-8 border-t border-border">
                 {[
                   { label: "Titik Scan QR Produksi", value: "10" },
                   { label: "Role Akses Terpisah", value: "5" },
-                  { label: "Hari Trial Gratis", value: "7" },
+                  { label: "Hari Trial Gratis", value: "14" },
                 ].map((s) => (
                   <div key={s.label}>
                     <p className="text-2xl font-extrabold text-primary font-mono">{s.value}</p>

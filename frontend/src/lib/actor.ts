@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { IMPERSONATE_COOKIE } from "@/lib/platform";
+import { IMPERSONATE_COOKIE, getPlatformActor } from "@/lib/platform";
 
 export interface Actor {
   id: string;
@@ -29,6 +29,12 @@ export async function getCurrentUser(): Promise<Actor | null> {
 
   // ── 1. Super Admin sedang impersonate ────────────────────────────────
   if (su?.platform) {
+    // Re-validasi ke DB (bukan hanya klaim JWT) supaya Super Admin yang
+    // dinonaktifkan atau di-downgrade sub-level langsung kehilangan hak
+    // impersonate, tanpa menunggu JWT lama kedaluwarsa.
+    const actor = await getPlatformActor();
+    if (!actor) return null;
+
     let slug: string | undefined;
     try {
       slug = (await cookies()).get(IMPERSONATE_COOKIE)?.value;
@@ -46,10 +52,10 @@ export async function getCurrentUser(): Promise<Actor | null> {
     });
     if (!owner) return null;
 
-    const readOnly = (su.subLevel ?? "SUPPORT") !== "SUPER_ADMIN";
+    const readOnly = actor.subLevel !== "SUPER_ADMIN";
     return {
       id: owner.id,
-      name: `${su.name ?? "Super Admin"} (Super Admin)`,
+      name: `${actor.name} (Super Admin)`,
       role: owner.role.name,
       impersonated: true,
       readOnly,
@@ -95,6 +101,16 @@ export async function requireUser(): Promise<Actor> {
  * Seperti `requireUser()`, tapi menolak aktor read-only (Super Admin SUPPORT
  * yang sedang impersonate). Dipakai di aksi yang mengubah data penting
  * (uang, pembatalan, koreksi, manajemen user).
+ *
+ * CATATAN SCOPE (sengaja, bukan bug): SUPPORT yang impersonate HANYA diblokir
+ * dari action yang memanggil requireMutableActor() secara eksplisit — bukan
+ * dari semua mutasi. Action operasional non-finansial (stok material, desain,
+ * produksi, absensi, dll.) yang memakai requireUser() biasa TETAP bisa
+ * dijalankan SUPPORT saat impersonate, karena SUPPORT dimaksudkan untuk bisa
+ * membantu operasional tenant, hanya dilarang menyentuh uang/pembatalan/
+ * koreksi. Kalau kebijakan berubah jadi "SUPPORT = view-only penuh", balik
+ * default-nya: pakai requireMutableActor() di semua action lalu whitelist
+ * action yang boleh SUPPORT jalankan.
  */
 export async function requireMutableActor(): Promise<Actor> {
   const actor = await requireUser();

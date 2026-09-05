@@ -130,6 +130,7 @@ export async function impersonateTenant(tenantId: string, reason: string) {
 
     (await cookies()).set(IMPERSONATE_COOKIE, tenant.slug, {
       httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60, // 1 jam
@@ -312,6 +313,9 @@ export async function updateTenantPlan(
     return ok({ plan: input.plan, maxUsers });
   } catch (e) {
     console.error("updateTenantPlan:", e);
+    if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002") {
+      return fail("Perubahan paket tenant ini sedang diproses di tempat lain. Muat ulang halaman dan coba lagi.");
+    }
     return fail(e instanceof Error ? e.message : "Gagal mengubah paket.");
   }
 }

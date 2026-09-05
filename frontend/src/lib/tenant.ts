@@ -1,7 +1,6 @@
 import { headers, cookies } from "next/headers";
 import { PrismaClient } from "@prisma/client";
-import { auth } from "@/lib/auth";
-import { IMPERSONATE_COOKIE } from "@/lib/platform";
+import { IMPERSONATE_COOKIE, getPlatformActor } from "@/lib/platform";
 
 // In development/production, you should use the global prisma instance, 
 // but for simplicity here we assume you export one from lib/prisma.ts or auth.ts
@@ -30,9 +29,10 @@ export async function getCurrentTenant() {
   try {
     const imp = (await cookies()).get(IMPERSONATE_COOKIE)?.value;
     if (imp) {
-      const session = await auth();
-      const isPlatform = (session?.user as { platform?: boolean } | undefined)?.platform === true;
-      if (isPlatform) {
+      // Re-validated against the DB (not just the JWT claim) so a deactivated
+      // Super Admin loses impersonation access immediately, not at JWT expiry.
+      const actor = await getPlatformActor();
+      if (actor) {
         const t = await prisma.tenant.findUnique({ where: { slug: imp } });
         if (t) return t;
       }
@@ -82,7 +82,10 @@ export async function requireTenant() {
   if (tenant.status === "SUSPENDED" || tenant.status === "CHURNED") {
     let impersonating = false;
     try {
-      impersonating = !!(await cookies()).get(IMPERSONATE_COOKIE)?.value;
+      const imp = (await cookies()).get(IMPERSONATE_COOKIE)?.value;
+      if (imp) {
+        impersonating = (await getPlatformActor()) !== null;
+      }
     } catch {
       /* cookies() unavailable outside request scope */
     }

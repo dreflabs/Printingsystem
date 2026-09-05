@@ -34,22 +34,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // ── Platform login (Super Admin) — identified by email, stored in super_admins ──
         if (identifier.includes("@")) {
           const sa = await prisma.superAdmin.findFirst({ where: { email: identifier } });
-          if (sa && sa.active && (await bcrypt.compare(pw, sa.password_hash))) {
-            resetRateLimit(rlKey);
+          if (!sa || !sa.active) return null;
+
+          // Kunci akun sementara setelah percobaan gagal berturut-turut.
+          if (sa.locked_until && sa.locked_until > new Date()) return null;
+
+          const isPasswordValid = await bcrypt.compare(pw, sa.password_hash);
+          if (!isPasswordValid) {
+            const nextCount = sa.failed_login_count + 1;
+            const lockMinutes = nextCount >= LOCKOUT_THRESHOLD ? Math.min(60, (nextCount - LOCKOUT_THRESHOLD + 1) * 15) : 0;
             await prisma.superAdmin.update({
               where: { id: sa.id },
-              data: { last_login_at: new Date() },
+              data: {
+                failed_login_count: nextCount,
+                locked_until: lockMinutes > 0 ? new Date(Date.now() + lockMinutes * 60_000) : sa.locked_until,
+              },
             });
-            return {
-              id: sa.id,
-              name: sa.name,
-              role: "SUPER_ADMIN",
-              roles: ["SUPER_ADMIN"],
-              platform: true,
-              subLevel: sa.role, // SUPER_ADMIN / SUPPORT / FINANCE
-            };
+            return null;
           }
-          return null;
+
+          resetRateLimit(rlKey);
+          await prisma.superAdmin.update({
+            where: { id: sa.id },
+            data: { failed_login_count: 0, locked_until: null, last_login_at: new Date() },
+          });
+          return {
+            id: sa.id,
+            name: sa.name,
+            role: "SUPER_ADMIN",
+            roles: ["SUPER_ADMIN"],
+            platform: true,
+            subLevel: sa.role, // SUPER_ADMIN / SUPPORT / FINANCE
+          };
         }
 
         const user = await prisma.user.findFirst({

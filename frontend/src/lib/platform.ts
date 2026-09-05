@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export type SuperAdminSubLevel = "SUPER_ADMIN" | "SUPPORT" | "FINANCE";
 
@@ -8,14 +9,23 @@ export interface PlatformActor {
   subLevel: SuperAdminSubLevel;
 }
 
-/** Sesi platform (Super Admin) yang sedang login, atau null. */
+/**
+ * Sesi platform (Super Admin) yang sedang login, atau null.
+ * Selalu divalidasi ulang ke DB (bukan hanya klaim JWT) supaya akun yang
+ * dinonaktifkan (active: false) langsung kehilangan akses tanpa menunggu
+ * token JWT lama kedaluwarsa.
+ */
 export async function getPlatformActor(): Promise<PlatformActor | null> {
   const session = await auth();
   const u = session?.user as
     | { id?: string; name?: string | null; platform?: boolean; subLevel?: SuperAdminSubLevel }
     | undefined;
   if (!u?.platform || !u.id) return null;
-  return { id: u.id, name: u.name ?? "Super Admin", subLevel: u.subLevel ?? "SUPPORT" };
+
+  const record = await prisma.superAdmin.findUnique({ where: { id: u.id } });
+  if (!record || !record.active) return null;
+
+  return { id: record.id, name: record.name ?? "Super Admin", subLevel: (record.role as SuperAdminSubLevel) ?? "SUPPORT" };
 }
 
 export async function requireSuperAdmin(): Promise<PlatformActor> {

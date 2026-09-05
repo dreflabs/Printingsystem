@@ -4,6 +4,13 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function main() {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PROD_SEED !== 'true') {
+    throw new Error(
+      'seed.ts menghapus SELURUH data dan membuat kredensial default — tidak boleh dijalankan di production. ' +
+      'Set ALLOW_PROD_SEED=true secara eksplisit jika ini benar-benar disengaja.'
+    )
+  }
+
   console.log('Seeding SaaS database...')
 
   // 1. Bersihkan database
@@ -46,11 +53,13 @@ async function main() {
   await prisma.superAdmin.deleteMany()
 
   // 2. Buat Super Admin
-  const hashedAdminPassword = await bcrypt.hash('superadmin123', 10)
+  // Kata sandi default hanya untuk dev/staging lokal — override via env di lingkungan lain.
+  const seedAdminPassword = process.env.SEED_SUPER_ADMIN_PASSWORD || 'superadmin123'
+  const hashedAdminPassword = await bcrypt.hash(seedAdminPassword, 10)
   const superAdmin = await prisma.superAdmin.create({
     data: {
       name: 'Super Admin',
-      email: 'admin@printpilot.id',
+      email: process.env.SEED_SUPER_ADMIN_EMAIL || 'admin@printpilot.id',
       password_hash: hashedAdminPassword,
       role: 'SUPER_ADMIN'
     }

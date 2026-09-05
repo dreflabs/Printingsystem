@@ -19,6 +19,7 @@ import {
   ChevronDown,
   Layers,
   Clock,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/actions/session";
@@ -62,6 +63,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Absensi Pegawai",
     href: "/admin/attendance",
     icon: <Clock className="h-5 w-5" />,
+    roles: ["owner", "admin"],
+  },
+  {
+    label: "Gaji Pegawai",
+    href: "/admin/payroll",
+    icon: <Wallet className="h-5 w-5" />,
     roles: ["owner", "admin"],
   },
   {

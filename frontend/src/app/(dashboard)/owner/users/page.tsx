@@ -1,11 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock } from "lucide-react";
+import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserFormModal } from "@/components/owner/UserFormModal";
 import { ConfirmDialog } from "@/components/ui";
 import { getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword, unlockEmployeeAccount } from "@/actions/user-management";
+import { setEmployeeBaseSalary } from "@/actions/payroll";
+
+const formatRp = (n: number) => "Rp " + n.toLocaleString("id-ID");
 
 type PendingConfirm = {
   title: string;
@@ -26,6 +29,8 @@ export default function OwnerUsersPage() {
   const [actionMessage, setActionMessage] = useState<{type: "success" | "error", text: string} | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
+  const [savingSalaryId, setSavingSalaryId] = useState<string | null>(null);
 
   const runPendingConfirm = async () => {
     if (!pendingConfirm) return;
@@ -124,6 +129,29 @@ export default function OwnerUsersPage() {
     });
   };
 
+  const handleSaveSalary = async (userId: string) => {
+    const raw = salaryDrafts[userId];
+    const amount = Number(raw);
+    if (raw === undefined || !Number.isFinite(amount) || amount < 0) {
+      setActionMessage({ type: "error", text: "Nominal gaji tidak valid." });
+      return;
+    }
+    setSavingSalaryId(userId);
+    const result = await setEmployeeBaseSalary(userId, amount);
+    setSavingSalaryId(null);
+    if (result.success) {
+      setActionMessage({ type: "success", text: "Gaji pokok berhasil disimpan." });
+      setSalaryDrafts((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      loadUsers();
+    } else {
+      setActionMessage({ type: "error", text: "Gagal menyimpan gaji: " + result.error });
+    }
+  };
+
   const filteredUsers = users.filter(u =>
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -198,17 +226,18 @@ export default function OwnerUsersPage() {
                 <th className="px-6 py-4">Informasi Pegawai</th>
                 <th className="px-6 py-4">Role / Peran</th>
                 <th className="px-6 py-4">Status Akun</th>
+                <th className="px-6 py-4">Gaji Pokok</th>
                 <th className="px-6 py-4 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-muted">Memuat data pegawai...</td>
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted">Memuat data pegawai...</td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-muted flex flex-col items-center justify-center">
+                  <td colSpan={5} className="px-6 py-12 text-center text-muted flex flex-col items-center justify-center">
                     <Users className="h-12 w-12 mb-3 opacity-20" />
                     Belum ada data pegawai ditemukan.
                   </td>
@@ -255,6 +284,31 @@ export default function OwnerUsersPage() {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1.5">
+                        <Wallet className="h-3.5 w-3.5 text-muted shrink-0" />
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="Belum diset"
+                          value={salaryDrafts[user.id] ?? (user.base_salary ?? "")}
+                          onChange={(e) => setSalaryDrafts((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                          className="w-28 px-2 py-1 bg-base border border-border rounded-lg text-xs text-primary focus:outline-none focus:border-accent-teal"
+                        />
+                        {salaryDrafts[user.id] !== undefined && Number(salaryDrafts[user.id]) !== (user.base_salary ?? null) && (
+                          <button
+                            onClick={() => handleSaveSalary(user.id)}
+                            disabled={savingSalaryId === user.id}
+                            className="text-[10px] font-bold text-accent-teal hover:underline disabled:opacity-50"
+                          >
+                            {savingSalaryId === user.id ? "..." : "Simpan"}
+                          </button>
+                        )}
+                      </div>
+                      {user.base_salary != null && salaryDrafts[user.id] === undefined && (
+                        <span className="text-[10px] text-muted mt-0.5 block">{formatRp(user.base_salary)}/bulan</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-right">
                       {user.role.name !== "owner" && (

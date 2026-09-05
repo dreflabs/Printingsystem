@@ -18,6 +18,7 @@ const USER_SELECT = {
   locked_until: true,
   last_login_at: true,
   created_at: true,
+  base_salary: true,
   role: { select: { name: true } },
   extra_roles: { select: { role: { select: { name: true } } } },
 } as const;
@@ -33,7 +34,8 @@ export async function getTenantUsers() {
       select: USER_SELECT,
       orderBy: { created_at: "desc" },
     });
-    return users;
+    // Decimal tidak bisa lewat batas Server Action — konversi ke number/null.
+    return users.map((u) => ({ ...u, base_salary: u.base_salary == null ? null : Number(u.base_salary) }));
   } catch (error) {
     console.error("Error fetching tenant users:", error);
     throw new Error("Failed to fetch users");

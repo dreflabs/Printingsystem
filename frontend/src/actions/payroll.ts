@@ -192,7 +192,10 @@ export async function setEmployeeBaseSalary(userId: string, amount: number) {
     if (!user) return fail("Pegawai tidak ditemukan.");
 
     await prisma.user.update({ where: { id: userId }, data: { base_salary: amount } });
-    await logAction(actor.id, "EMPLOYEE_BASE_SALARY_SET", "User", userId, { base_salary: user.base_salary ? num(user.base_salary) : null }, { base_salary: amount });
+    // Nominal gaji SENGAJA tidak dicatat di sini — /api/audit-logs bisa dibaca role
+    // admin juga, dan itu akan membocorkan nominal yang justru disembunyikan dari
+    // Admin di getPayrollPeriods/getPayrollPeriodDetail.
+    await logAction(actor.id, "EMPLOYEE_BASE_SALARY_SET", "User", userId, { changed: true }, { changed: true });
 
     revalidatePath("/owner/users");
     revalidatePath("/owner/payroll");
@@ -212,7 +215,9 @@ export async function updatePayrollLateDeductionRate(rupiahPerMinute: number) {
     if (!Number.isFinite(rupiahPerMinute) || rupiahPerMinute < 0) return fail("Nominal tidak valid.");
 
     await prisma.tenant.update({ where: { id: tenant.id }, data: { payroll_late_deduction_per_minute: rupiahPerMinute } });
-    await logAction(actor.id, "PAYROLL_LATE_RATE_UPDATED", "Tenant", tenant.id, { rate: num(tenant.payroll_late_deduction_per_minute) }, { rate: rupiahPerMinute });
+    // Nominal tarif SENGAJA tidak dicatat di sini — /api/audit-logs juga bisa
+    // dibaca role admin, yang akan membocorkan nominal payroll ke Admin.
+    await logAction(actor.id, "PAYROLL_LATE_RATE_UPDATED", "Tenant", tenant.id, { changed: true }, { changed: true });
 
     revalidatePath("/owner/payroll");
     return ok(null);

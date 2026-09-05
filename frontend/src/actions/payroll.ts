@@ -243,7 +243,9 @@ export async function getPayrollPeriods() {
       include: { records: { select: { net_salary: true, status: true } } },
     });
 
-    const canSeeAmount = actor.role === "owner";
+    // readOnly = Super Admin sub-level SUPPORT sedang impersonate — meski actor.role
+    // di sini "owner" (role tenant target), SUPPORT tidak boleh lihat nominal gaji.
+    const canSeeAmount = actor.role === "owner" && !actor.readOnly;
     return ok(
       periods.map((p) => ({
         id: p.id,
@@ -279,7 +281,9 @@ export async function getPayrollPeriodDetail(periodId: string) {
     });
     if (!period) return fail("Periode tidak ditemukan.");
 
-    const canSeeAmount = actor.role === "owner";
+    // readOnly = Super Admin sub-level SUPPORT sedang impersonate — tidak boleh
+    // lihat nominal gaji meski actor.role di sini "owner" (role tenant target).
+    const canSeeAmount = actor.role === "owner" && !actor.readOnly;
     return ok({
       id: period.id,
       year: period.year,
@@ -319,7 +323,9 @@ export async function getPayslip(recordId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh melihat slip gaji.");
+    // Slip gaji tidak punya varian tanpa nominal — SUPPORT (readOnly) yang
+    // impersonate ditolak sepenuhnya di sini, bukan cuma disembunyikan angkanya.
+    if (actor.role !== "owner" || actor.readOnly) return fail("Hanya Owner yang boleh melihat slip gaji.");
 
     const record = await prisma.payrollRecord.findFirst({
       where: { id: recordId, tenant_id: tenant.id },

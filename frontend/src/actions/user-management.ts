@@ -2,19 +2,35 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
+import { requireUser, requireMutableActor } from "@/lib/actor";
+import { logAction } from "@/lib/logger";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 
+const USER_SELECT = {
+  id: true,
+  name: true,
+  username: true,
+  email: true,
+  active: true,
+  must_change_password: true,
+  failed_login_count: true,
+  locked_until: true,
+  last_login_at: true,
+  created_at: true,
+  role: { select: { name: true } },
+  extra_roles: { select: { role: { select: { name: true } } } },
+} as const;
 
 export async function getTenantUsers() {
   try {
     const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh melihat daftar pegawai.");
+
     const users = await prisma.user.findMany({
       where: { tenant_id: tenant.id },
-      include: {
-        role: true,
-        extra_roles: { include: { role: true } },
-      },
+      select: USER_SELECT,
       orderBy: { created_at: "desc" },
     });
     return users;
@@ -33,6 +49,11 @@ export async function createEmployee(data: {
 }) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh menambah pegawai.");
+    if (data.role_name === "owner" || data.extra_role_names?.includes("owner")) {
+      throw new Error("Role Owner tidak bisa dibuat lewat form ini.");
+    }
 
     // Find the primary role ID
     const role = await prisma.role.findUnique({ where: { name: data.role_name } });
@@ -80,6 +101,13 @@ export async function createEmployee(data: {
       }
     }
 
+    await logAction(actor.id, "EMPLOYEE_CREATED", "User", newUser.id, null, {
+      name: data.name,
+      username: data.username,
+      role: data.role_name,
+      extra_roles: data.extra_role_names ?? [],
+    });
+
     revalidatePath("/owner/users");
     return { success: true, user: newUser, tempPassword: defaultPassword };
   } catch (error: unknown) {
@@ -96,6 +124,8 @@ export async function createEmployee(data: {
 export async function updateUserRoles(userId: string, roleNames: string[]) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh mengubah role pegawai.");
     if (roleNames.length === 0) throw new Error("Minimal 1 role harus dipilih");
 
     const user = await prisma.user.findFirst({
@@ -106,6 +136,10 @@ export async function updateUserRoles(userId: string, roleNames: string[]) {
     if (user.role.name === "owner" && !roleNames.includes("owner")) {
       throw new Error("Role Owner tidak bisa dihapus dari akun Owner");
     }
+    if (roleNames.includes("owner") && user.role.name !== "owner") {
+      throw new Error("Role Owner tidak bisa ditambahkan lewat form ini.");
+    }
+    const oldRoleNames = [user.role.name];
 
     const allRoles = await prisma.role.findMany({
       where: { name: { in: roleNames } },
@@ -135,6 +169,8 @@ export async function updateUserRoles(userId: string, roleNames: string[]) {
       });
     }
 
+    await logAction(actor.id, "USER_ROLES_UPDATED", "User", userId, oldRoleNames, roleNames);
+
     revalidatePath("/owner/users");
     return { success: true };
   } catch (error: unknown) {
@@ -146,6 +182,8 @@ export async function updateUserRoles(userId: string, roleNames: string[]) {
 export async function toggleEmployeeStatus(userId: string, active: boolean) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh mengaktifkan/menonaktifkan pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
@@ -162,6 +200,8 @@ export async function toggleEmployeeStatus(userId: string, active: boolean) {
       },
     });
 
+    await logAction(actor.id, active ? "EMPLOYEE_ACTIVATED" : "EMPLOYEE_DEACTIVATED", "User", userId, { active: user.active }, { active });
+
     revalidatePath("/owner/users");
     return { success: true };
   } catch (error: unknown) {
@@ -176,6 +216,8 @@ export async function toggleEmployeeStatus(userId: string, active: boolean) {
 export async function unlockEmployeeAccount(userId: string) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh membuka kunci akun pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
@@ -186,6 +228,8 @@ export async function unlockEmployeeAccount(userId: string) {
       where: { id: userId },
       data: { failed_login_count: 0, locked_until: null },
     });
+
+    await logAction(actor.id, "EMPLOYEE_ACCOUNT_UNLOCKED", "User", userId);
 
     revalidatePath("/owner/users");
     return { success: true };
@@ -198,6 +242,8 @@ export async function unlockEmployeeAccount(userId: string) {
 export async function resetEmployeePassword(userId: string) {
   try {
     const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh me-reset password pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
@@ -219,6 +265,8 @@ export async function resetEmployeePassword(userId: string) {
         locked_until: null,
       },
     });
+
+    await logAction(actor.id, "EMPLOYEE_PASSWORD_RESET", "User", userId);
 
     revalidatePath("/owner/users");
     return { success: true, newPassword };

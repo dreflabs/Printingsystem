@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser } from "@/lib/actor";
+import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";
 
@@ -536,7 +536,7 @@ export async function decideRework(
 ): Promise<ActionResult<{ decision: string; childJobCode?: string }>> {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
+    const actor = await requireMutableActor();
     if (actor.role !== "owner") return fail("Hanya Owner yang boleh memutuskan rework.");
     if (!input.reason?.trim()) return fail("Alasan keputusan wajib diisi.");
 

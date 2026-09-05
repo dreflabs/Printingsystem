@@ -131,66 +131,6 @@ export async function getDesignQueue() {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// OWNER — antrian keputusan + ringkasan
-// ─────────────────────────────────────────────────────────────
-
-export async function getOwnerQueues() {
-  try {
-    const tenant = await requireTenant();
-    const actor = await requireUser();
-    if (actor.role !== "owner" && actor.role !== "admin") return fail("Hanya Owner/Admin yang boleh melihat data ini.");
-
-    const [pendingDiscounts, reworkPending, auditsPending, lowStock, overdueCount, incidents] = await Promise.all([
-      prisma.order.findMany({
-        where: { tenant_id: tenant.id, discount: { gt: 0 }, discount_approved_by: null, status: { notIn: ["CANCELLED"] } },
-        select: { id: true, order_code: true, discount: true, discount_reason: true, total: true, customer: { select: { name: true } } },
-      }),
-      prisma.productionJob.findMany({
-        where: { tenant_id: tenant.id, status: "FAILED_REWORK" },
-        select: { job_code: true, rework_reason: true, order: { select: { order_code: true } } },
-      }),
-      prisma.order.findMany({
-        where: { tenant_id: tenant.id, status: "FINAL_AUDIT_COMPLETE" },
-        select: { id: true, order_code: true, customer: { select: { name: true } } },
-      }),
-      prisma.material.findMany({
-        where: { tenant_id: tenant.id, active: true },
-        select: { name: true, current_stock: true, min_stock: true, unit_stock: true },
-      }),
-      prisma.order.count({
-        where: { tenant_id: tenant.id, deadline: { lt: new Date() }, status: { notIn: ["CLOSED", "CANCELLED", "PICKED_UP"] } },
-      }),
-      prisma.order.count({ where: { tenant_id: tenant.id, status: "INCIDENT" } }),
-    ]);
-
-    return ok({
-      pendingDiscounts: pendingDiscounts.map((o) => ({
-        orderId: o.id,
-        orderCode: o.order_code,
-        customerName: o.customer?.name ?? "-",
-        discount: num(o.discount),
-        total: num(o.total),
-        reason: o.discount_reason,
-      })),
-      reworkPending: reworkPending.map((j) => ({
-        jobCode: j.job_code,
-        orderCode: j.order.order_code,
-        reason: j.rework_reason,
-      })),
-      auditsPending: auditsPending.map((o) => ({ orderId: o.id, orderCode: o.order_code, customerName: o.customer?.name ?? "-" })),
-      lowStock: lowStock
-        .filter((m) => num(m.current_stock) <= num(m.min_stock))
-        .map((m) => ({ name: m.name, current: num(m.current_stock), min: num(m.min_stock), unit: m.unit_stock })),
-      overdueCount,
-      incidentCount: incidents,
-    });
-  } catch (e) {
-    console.error("getOwnerQueues:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat antrian owner.");
-  }
-}
-
 const IN_PROGRESS = [
   "PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_COMPLETE",
   "QC_PENDING", "QC_PASSED", "QC_REWORK_PENDING",
@@ -202,7 +142,7 @@ export async function getOwnerDashboard() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner" && actor.role !== "admin") return fail("Hanya Owner/Admin yang boleh melihat data ini.");
+    if (actor.role !== "owner") return fail("Hanya Owner yang boleh melihat data ini.");
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());

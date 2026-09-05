@@ -12,3 +12,7 @@
 09-TECHNICAL = implementation rules
 10-DATA = sample/seed data
 11-FUTURE = future integrations
+12-IMPLEMENTATION = per-lane implementation notes (frontend/Rere, backend/Drefan)
+13-SAAS = multi-tenant SaaS spec (billing, super admin, tenant onboarding, marketing page)
+
+Application code lives in `frontend/` (Next.js app — see `frontend/README.md` to run it).

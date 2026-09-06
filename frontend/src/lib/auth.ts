@@ -13,74 +13,119 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 // Ambang percobaan login gagal sebelum akun dikunci sementara.
 const LOCKOUT_THRESHOLD = 5;
 
+// Bentuk slug workspace yang sah (samakan dengan aturan di registerTenant).
+const SLUG_RE = /^[a-z0-9]{3,30}$/;
+
+/**
+ * Tentukan workspace (tenant) mana yang dipakai untuk resolusi login.
+ * Prioritas:
+ *  1. Field "workspace" yang dikirim form login secara eksplisit.
+ *  2. Header x-tenant-slug yang diinjeksi middleware saat diakses dari subdomain.
+ * Nilai yang tidak berbentuk slug valid diabaikan.
+ */
+function resolveWorkspaceSlug(
+  credentials: Partial<Record<"workspace", unknown>>,
+  req: Request | undefined
+): string | null {
+  const fromForm = String(credentials.workspace ?? "").toLowerCase().trim();
+  if (SLUG_RE.test(fromForm)) return fromForm;
+
+  const fromHeader = (req?.headers.get("x-tenant-slug") ?? "").toLowerCase().trim();
+  if (SLUG_RE.test(fromHeader)) return fromHeader;
+
+  return null;
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
     CredentialsProvider({
       name: "Credentials",
       credentials: {
+        workspace: { label: "Workspace", type: "text", placeholder: "subdomain" },
         username: { label: "Username", type: "text", placeholder: "username" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.username || !credentials?.password) return null;
-        const identifier = credentials.username as string;
+        const identifier = (credentials.username as string).trim();
         const pw = credentials.password as string;
 
         // Rem brute-force: maks. 10 percobaan / 15 menit per identifier.
-        const rlKey = `login:${identifier.toLowerCase().trim()}`;
+        const rlKey = `login:${identifier.toLowerCase()}`;
         if (!rateLimit(rlKey, 10, 15 * 60_000).ok) return null;
 
         // ── Platform login (Super Admin) — identified by email, stored in super_admins ──
+        // Hanya berlaku bila email tsb memang terdaftar sebagai Super Admin.
+        // Jika bukan, jangan berhenti di sini — lanjut ke login user tenant (owner
+        // yang login pakai email).
         if (identifier.includes("@")) {
           const sa = await prisma.superAdmin.findFirst({ where: { email: identifier } });
-          if (!sa || !sa.active) return null;
+          if (sa) {
+            if (!sa.active) return null;
 
-          // Kunci akun sementara setelah percobaan gagal berturut-turut.
-          if (sa.locked_until && sa.locked_until > new Date()) return null;
+            // Kunci akun sementara setelah percobaan gagal berturut-turut.
+            if (sa.locked_until && sa.locked_until > new Date()) return null;
 
-          const isPasswordValid = await bcrypt.compare(pw, sa.password_hash);
-          if (!isPasswordValid) {
-            const nextCount = sa.failed_login_count + 1;
-            const lockMinutes = nextCount >= LOCKOUT_THRESHOLD ? Math.min(60, (nextCount - LOCKOUT_THRESHOLD + 1) * 15) : 0;
+            const isPasswordValid = await bcrypt.compare(pw, sa.password_hash);
+            if (!isPasswordValid) {
+              const nextCount = sa.failed_login_count + 1;
+              const lockMinutes = nextCount >= LOCKOUT_THRESHOLD ? Math.min(60, (nextCount - LOCKOUT_THRESHOLD + 1) * 15) : 0;
+              await prisma.superAdmin.update({
+                where: { id: sa.id },
+                data: {
+                  failed_login_count: nextCount,
+                  locked_until: lockMinutes > 0 ? new Date(Date.now() + lockMinutes * 60_000) : sa.locked_until,
+                },
+              });
+              return null;
+            }
+
+            resetRateLimit(rlKey);
             await prisma.superAdmin.update({
               where: { id: sa.id },
-              data: {
-                failed_login_count: nextCount,
-                locked_until: lockMinutes > 0 ? new Date(Date.now() + lockMinutes * 60_000) : sa.locked_until,
-              },
+              data: { failed_login_count: 0, locked_until: null, last_login_at: new Date() },
             });
-            return null;
+            return {
+              id: sa.id,
+              name: sa.name,
+              role: "SUPER_ADMIN",
+              roles: ["SUPER_ADMIN"],
+              platform: true,
+              subLevel: sa.role, // SUPER_ADMIN / SUPPORT / FINANCE
+            };
           }
-
-          resetRateLimit(rlKey);
-          await prisma.superAdmin.update({
-            where: { id: sa.id },
-            data: { failed_login_count: 0, locked_until: null, last_login_at: new Date() },
-          });
-          return {
-            id: sa.id,
-            name: sa.name,
-            role: "SUPER_ADMIN",
-            roles: ["SUPER_ADMIN"],
-            platform: true,
-            subLevel: sa.role, // SUPER_ADMIN / SUPPORT / FINANCE
-          };
         }
 
+        // ── Login user tenant — WAJIB diketahui workspace-nya ──
+        // username hanya unik per-tenant (@@unique([tenant_id, username])), jadi
+        // pencarian global akan salah orang. Workspace diambil dari field form
+        // login atau dari subdomain (header x-tenant-slug).
+        const workspace = resolveWorkspaceSlug(credentials, req);
+        if (!workspace) return null;
+
+        const tenant = await prisma.tenant.findUnique({
+          where: { slug: workspace },
+          select: { id: true, status: true },
+        });
+        if (!tenant) return null;
+
+        // Tenant di-suspend / churned → semua user-nya tidak bisa login.
+        if (tenant.status === "SUSPENDED" || tenant.status === "CHURNED") return null;
+
+        // Cari di dalam tenant tsb — cocokkan username ATAU email.
         const user = await prisma.user.findFirst({
-          where: { username: identifier },
+          where: {
+            tenant_id: tenant.id,
+            OR: [{ username: identifier }, { email: identifier.toLowerCase() }],
+          },
           include: {
             role: true,
             extra_roles: { include: { role: true } },
-            tenant: { select: { status: true } },
           },
         });
 
         if (!user || !user.active) return null;
-
-        // Tenant di-suspend / churned → semua user-nya tidak bisa login.
-        if (user.tenant.status === "SUSPENDED" || user.tenant.status === "CHURNED") return null;
 
         // Kunci akun sementara setelah percobaan gagal berturut-turut.
         if (user.locked_until && user.locked_until > new Date()) return null;

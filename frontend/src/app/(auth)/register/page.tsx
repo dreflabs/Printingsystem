@@ -107,6 +107,7 @@ export default function RegisterPage() {
     // Auto-login ke workspace baru — tak perlu ketik ulang kredensial.
     await signIn("credentials", {
       redirect: false,
+      workspace: res.data.slug,
       username: res.data.ownerUsername,
       password: formData.password,
     });
@@ -391,10 +392,16 @@ export default function RegisterPage() {
                     </span>{" "}
                     (masa uji coba 14 hari).
                   </p>
-                  <div className="mb-8 rounded-xl border border-border bg-elevated px-4 py-3 text-xs text-muted max-w-sm">
-                    Username Owner Anda:{" "}
-                    <span className="font-mono font-bold text-primary">{ownerUsername}</span>. Simpan untuk login
-                    berikutnya.
+                  <div className="mb-8 rounded-xl border border-border bg-elevated px-4 py-3 text-xs text-muted max-w-sm space-y-1 text-left">
+                    <p>
+                      Workspace:{" "}
+                      <span className="font-mono font-bold text-primary">{formData.subdomain}</span>
+                    </p>
+                    <p>
+                      Username Owner:{" "}
+                      <span className="font-mono font-bold text-primary">{ownerUsername}</span>
+                    </p>
+                    <p className="pt-1">Simpan keduanya — dipakai bersama untuk login berikutnya.</p>
                   </div>
 
                   <a

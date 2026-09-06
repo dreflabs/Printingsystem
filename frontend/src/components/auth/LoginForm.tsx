@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Lock, User, LogIn, Eye, EyeOff } from "lucide-react";
+import { Lock, User, LogIn, Eye, EyeOff, Building2 } from "lucide-react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 
@@ -12,8 +12,23 @@ function safeCallback(raw: string | null): string {
   return raw;
 }
 
+/** Jika dibuka dari subdomain workspace (mis. narativa.printpilot.id), ambil slug-nya. */
+function workspaceFromHost(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const host = window.location.hostname;
+    const m =
+      host.match(/^([a-z0-9]{3,30})\.printpilot\.id$/) ||
+      host.match(/^([a-z0-9]{3,30})\.localhost$/);
+    return m ? m[1] : "";
+  } catch {
+    return "";
+  }
+}
+
 export function LoginForm() {
   const [loading, setLoading] = useState(false);
+  const [workspace, setWorkspace] = useState(workspaceFromHost);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -36,12 +51,13 @@ export function LoginForm() {
     try {
       const result = await signIn("credentials", {
         redirect: false,
+        workspace: workspace.trim().toLowerCase(),
         username: username.trim(),
         password,
       });
 
       if (result?.error) {
-        setError("Username atau kata sandi salah.");
+        setError("Workspace, username, atau kata sandi salah.");
         setLoading(false);
         return;
       }
@@ -84,6 +100,31 @@ export function LoginForm() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1">
+              <label htmlFor="login-workspace" className="text-xs font-medium text-muted ml-1">
+                Workspace
+              </label>
+              <div className="relative group">
+                <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted group-focus-within:text-accent-teal transition-colors" />
+                <input
+                  id="login-workspace"
+                  name="workspace"
+                  type="text"
+                  autoComplete="organization"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  required
+                  value={workspace}
+                  onChange={(e) => setWorkspace(e.target.value)}
+                  className="w-full h-11 bg-elevated border border-border rounded-xl pl-10 pr-4 text-sm text-primary outline-none focus:border-accent-teal transition-all placeholder:text-muted"
+                  placeholder="subdomain workspace, mis. narativa"
+                />
+              </div>
+              <p className="text-[10px] text-muted ml-1">
+                Bagian sebelum <span className="font-mono">.printpilot.id</span> pada alamat workspace Anda.
+              </p>
+            </div>
+
             <div className="space-y-1">
               <label htmlFor="login-username" className="text-xs font-medium text-muted ml-1">
                 Username

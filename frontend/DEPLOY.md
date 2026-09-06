@@ -192,13 +192,71 @@ provider apa adanya. Tabel lengkap ada di [`JOBS.md`](./JOBS.md).
 
 ## 7. Backup database
 
-**Wajib, dan sering terlupakan.** Resource database → tab **Backups**:
+**Wajib, dan sering terlupakan.**
+
+### 7a. Backup terjadwal Coolify (utama)
+
+Resource database → tab **Backups**:
 
 1. Tambah jadwal harian, cron `0 2 * * *`, retensi minimal 7 hari.
-2. Kalau tersedia, arahkan ke S3 supaya backup tidak ikut hilang bersama VPS.
+2. Kalau tersedia, arahkan ke S3 — backup yang hanya ada di VPS ikut hilang
+   bersama VPS-nya.
 3. Jalankan sekali manual dan pastikan file backup benar-benar terbentuk.
 
-Backup yang belum pernah diuji restore bukan backup.
+### 7b. Backup + verifikasi lewat script
+
+Coolify tidak memeriksa apakah backup-nya masuk akal, dan tidak pernah menguji
+restore. Dua celah itu ditutup dua script berikut. Jalankan dari **host VPS** —
+container aplikasi Next.js tidak memuat `pg_dump`.
+
+```sh
+# dump + verifikasi + rotasi
+DATABASE_URL="postgres://…" \
+BACKUP_DIR=/var/backups/printpilot \
+PP_DB_CONTAINER=<nama-container-postgres> \
+./scripts/db-backup.sh
+```
+
+Bukan hanya men-dump: file hasilnya dibaca ulang dan ditolak kalau terlalu kecil
+atau memuat terlalu sedikit tabel. Ini persis yang menyelamatkan kamu kalau
+volume database sempat kosong — backup dari database kosong akan **gagal keras**,
+bukan menimpa backup bagus dengan file kosong.
+
+Env: `BACKUP_DIR` (default `./backups`), `BACKUP_KEEP` (default 7),
+`BACKUP_MIN_TABLES` (default 20), `PP_DB_CONTAINER` (bila `pg_dump` tidak ada
+di host).
+
+### 7c. Latihan restore — lakukan sekali, lalu berkala
+
+> Backup yang belum pernah diuji restore bukan backup, itu harapan.
+
+```sh
+DATABASE_URL="postgres://…" \
+BACKUP_DIR=/var/backups/printpilot \
+PP_DB_CONTAINER=<nama-container-postgres> \
+./scripts/db-verify-restore.sh
+```
+
+Memulihkan backup terbaru ke database sementara bernama acak, menghitung isi
+`Tenant` / `User` / `Role` / `Order` / `SuperAdmin`, lalu menghapus database
+sementara itu. **Database produksi tidak pernah disentuh** — tidak ada satu pun
+perintah tulis ke sana.
+
+Contoh keluaran sehat:
+
+```
+verify-restore: Tenant: 3 baris
+verify-restore: User: 8 baris
+verify-restore: SuperAdmin: 1 baris
+verify-restore: ok — backup terbukti bisa dipulihkan
+```
+
+Jadwalkan mingguan (`0 3 * * 0`) supaya backup rusak ketahuan sebelum kamu
+membutuhkannya.
+
+> Nama tabel memakai **PascalCase** dan wajib dikutip ganda di SQL —
+> `SELECT count(*) FROM "Tenant";`, bukan `FROM tenants`. Schema Prisma tidak
+> memakai `@@map`, dan Postgres melipat identifier tanpa kutip jadi huruf kecil.
 
 ---
 

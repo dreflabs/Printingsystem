@@ -31,17 +31,38 @@ function deliverResetLink(email: string, link: string) {
   console.log(`\n[password-reset] Reset link for ${email}:\n  ${link}\n`);
 }
 
-export async function requestPasswordReset(email: string): Promise<ActionResult<null>> {
+export async function requestPasswordReset(
+  email: string,
+  workspace: string
+): Promise<ActionResult<null>> {
   try {
     const normalized = email?.trim().toLowerCase();
     if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
       return fail("Alamat email tidak valid.");
     }
 
-    const user = await prisma.user.findFirst({
-      where: { email: normalized, active: true },
-      include: { role: true },
+    // Email hanya unik PER TENANT (@@unique([tenant_id, email])), jadi alamat yang
+    // sama boleh dipakai Owner di dua percetakan berbeda. Tanpa menyebut workspace,
+    // `findFirst` bisa menerbitkan token untuk akun percetakan LAIN: pemintanya tak
+    // pernah bisa masuk ke workspace-nya sendiri, sementara akun orang lain yang
+    // kata sandinya berubah.
+    const slug = workspace?.trim().toLowerCase();
+    if (!slug || !/^[a-z0-9]{3,30}$/.test(slug)) {
+      return fail("Workspace tidak valid.", { workspace: "Isi subdomain workspace Anda." });
+    }
+
+    const tenant = await prisma.tenant.findUnique({
+      where: { slug },
+      select: { id: true },
     });
+
+    // Workspace tidak ada → tetap balas ok di bawah, jangan bocorkan mana yang terdaftar.
+    const user = tenant
+      ? await prisma.user.findFirst({
+          where: { tenant_id: tenant.id, email: normalized, active: true },
+          include: { role: true },
+        })
+      : null;
 
     // Only Owners may self-reset. Always return ok to avoid account enumeration.
     if (user && user.role.name === "owner") {

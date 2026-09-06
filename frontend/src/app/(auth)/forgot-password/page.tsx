@@ -2,21 +2,36 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, KeyRound, Mail, ShieldCheck, CheckCircle2, Printer } from "lucide-react";
+import { ArrowLeft, KeyRound, Mail, ShieldCheck, CheckCircle2, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { requestPasswordReset } from "@/actions/password-reset";
+
+/** Jika dibuka dari subdomain workspace (mis. narativa.printpilot.id), ambil slug-nya. */
+function workspaceFromHost(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const host = window.location.hostname;
+    const m =
+      host.match(/^([a-z0-9]{3,30})\.printpilot\.id$/) ||
+      host.match(/^([a-z0-9]{3,30})\.localhost$/);
+    return m ? m[1] : "";
+  } catch {
+    return "";
+  }
+}
 
 export default function ForgotPasswordPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState("");
+  const [workspace, setWorkspace] = useState(workspaceFromHost);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
-    const res = await requestPasswordReset(email);
+    const res = await requestPasswordReset(email, workspace.trim().toLowerCase());
     setIsLoading(false);
     if (!res.success) {
       setError(res.error);
@@ -49,7 +64,7 @@ export default function ForgotPasswordPage() {
             
             <h1 className="text-2xl font-bold text-primary mb-2">Lupa Password?</h1>
             <p className="text-muted text-sm leading-relaxed">
-              Masukkan email yang terdaftar sebagai Owner. Kami akan mengirimkan tautan untuk mereset password Anda. 
+              Masukkan workspace dan email yang terdaftar sebagai Owner. Kami akan mengirimkan tautan untuk mereset password Anda. 
               <br/><br/>
               <span className="font-semibold text-status-yellow-text">Catatan:</span> Pegawai harus meminta Owner untuk mereset password mereka.
             </p>
@@ -70,6 +85,26 @@ export default function ForgotPasswordPage() {
                   {error}
                 </div>
               )}
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-primary">Workspace</label>
+                <div className="relative">
+                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
+                  <input
+                    type="text"
+                    required
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    value={workspace}
+                    onChange={(e) => setWorkspace(e.target.value)}
+                    placeholder="subdomain workspace, mis. narativa"
+                    className="w-full h-12 pl-10 pr-4 rounded-xl border border-border bg-base outline-none focus:border-accent-teal focus:ring-1 focus:ring-accent-teal transition-all"
+                  />
+                </div>
+                <p className="text-[11px] text-muted">
+                  Bagian sebelum <span className="font-mono">.printpilot.id</span> pada alamat workspace Anda.
+                </p>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-primary">Email Owner</label>
                 <div className="relative">

@@ -61,9 +61,14 @@ export async function createEmployee(data: {
     const role = await prisma.role.findUnique({ where: { name: data.role_name } });
     if (!role) throw new Error("Role not found");
 
-    // Check if username/email already exists
+    // Username & email hanya unik PER TENANT (@@unique([tenant_id, username]) dan
+    // @@unique([tenant_id, email])), jadi pemeriksaannya wajib dibatasi tenant ini.
+    // Tanpa `tenant_id`, Owner tidak bisa memakai nama umum seperti "admin" atau
+    // "kasir" hanya karena percetakan lain sudah memakainya — dan pesan galatnya
+    // membocorkan keberadaan akun di percetakan lain.
     const existing = await prisma.user.findFirst({
       where: {
+        tenant_id: tenant.id,
         OR: [{ username: data.username }, { email: data.email }],
       },
     });

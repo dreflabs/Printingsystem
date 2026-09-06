@@ -35,17 +35,20 @@ export async function updateProfile(userId: string, data: { name: string; userna
 
     if (!user) throw new Error("User not found or access denied");
 
-    // Validate uniqueness of username and email
+    // Username & email hanya unik PER TENANT, jadi pemeriksaannya dibatasi ke
+    // percetakan ini. Tanpa `tenant_id`, pengguna ditolak hanya karena percetakan
+    // lain memakai nama yang sama — dan pesan galatnya bisa dipakai menebak akun
+    // di percetakan lain.
     if (data.username !== user.username) {
       const existingUsername = await prisma.user.findFirst({
-        where: { username: data.username, id: { not: userId } }
+        where: { tenant_id: tenant.id, username: data.username, id: { not: userId } }
       });
       if (existingUsername) throw new Error("Username sudah digunakan oleh akun lain.");
     }
 
     if (data.email !== user.email) {
       const existingEmail = await prisma.user.findFirst({
-        where: { email: data.email, id: { not: userId } }
+        where: { tenant_id: tenant.id, email: data.email, id: { not: userId } }
       });
       if (existingEmail) throw new Error("Email sudah digunakan oleh akun lain.");
     }

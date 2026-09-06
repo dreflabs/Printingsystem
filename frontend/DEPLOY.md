@@ -48,8 +48,8 @@ done
 | `AUTH_BYPASS` | ya | `0` |
 | `JOBS_SECRET` | ya | string acak, min. 16 karakter |
 | `APP_URL` | ya | URL publik aplikasi, untuk tautan reset password |
-| `WA_PROVIDER_URL` / `WA_PROVIDER_TOKEN` | tidak | kosong = mode simulasi |
-| `MAIL_PROVIDER_URL` / `MAIL_PROVIDER_TOKEN` / `MAIL_FROM` | tidak | kosong = mode simulasi |
+| `WA_PROVIDER` + `WA_PROVIDER_URL` / `WA_PROVIDER_TOKEN` | tidak | lihat §6b; kosong = mode simulasi |
+| `MAIL_PROVIDER` + `MAIL_PROVIDER_URL` / `MAIL_PROVIDER_TOKEN` / `MAIL_FROM` | tidak | lihat §6b; kosong = mode simulasi |
 | `ALLOW_PROD_SEED` | **jangan diisi** | membuka kunci seed yang menghapus seluruh data |
 
 `DATABASE_URL` harus ditandai **Build Variable** karena dipakai `prisma generate`
@@ -151,6 +151,42 @@ Resource aplikasi → **Scheduled Tasks**, tambah tiga task:
 
 Jalankan sekali manual dan pastikan lognya berisi `ok`. Detail dan alternatif
 crontab ada di [`JOBS.md`](./JOBS.md).
+
+### 6b. Provider WhatsApp & email
+
+Selama belum dikonfigurasi, notifikasi berjalan dalam **mode simulasi**: pesan
+hanya dicatat ke log dan dianggap terkirim. Di produksi, tanpa konfigurasi
+pengiriman dikembalikan gagal — termasuk tautan reset password, jadi Owner belum
+benar-benar bisa reset password sendiri sampai email tersambung.
+
+`WA_PROVIDER` dan `MAIL_PROVIDER` **wajib cocok dengan provider yang dipakai** —
+bukan sekadar URL + token. Bentuk header dan badan permintaannya berbeda-beda:
+
+| `WA_PROVIDER` | Header | URL |
+|---|---|---|
+| `fonnte` | `Authorization: <token>` tanpa Bearer | default `https://api.fonnte.com/send` |
+| `wablas` | `Authorization: <token>` tanpa Bearer | `https://<domain>.wablas.com/api/send-message` |
+| `meta` | `Authorization: Bearer <token>` | `https://graph.facebook.com/v21.0/<PHONE_NUMBER_ID>/messages` |
+
+| `MAIL_PROVIDER` | Header | URL |
+|---|---|---|
+| `resend` | `Authorization: Bearer <key>` | default `https://api.resend.com/emails` |
+| `brevo` | `api-key: <key>` | default `https://api.brevo.com/v3/smtp/email` |
+
+`MAIL_FROM` harus memakai domain yang sudah diverifikasi di provider, kalau tidak
+pengiriman ditolak.
+
+**Uji sebelum diandalkan** — dari Terminal resource aplikasi:
+
+```sh
+curl -X POST -H "Authorization: Bearer $JOBS_SECRET" \
+     -H "Content-Type: application/json" \
+     -d '{"wa":"08123456789","mail":"kamu@contoh.id"}' \
+     http://127.0.0.1:3000/api/jobs/test-notification
+```
+
+`200` = terkirim. `502` = ada yang gagal, dan balasannya memuat pesan error
+provider apa adanya. Tabel lengkap ada di [`JOBS.md`](./JOBS.md).
 
 ---
 

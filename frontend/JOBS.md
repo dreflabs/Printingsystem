@@ -80,14 +80,50 @@ dan pastikan layanannya melaporkan status HTTP bukan-200 sebagai kegagalan.)
 
 ## Provider (abstraction layer)
 
-- **WhatsApp** — `src/lib/wa.ts`. Set `WA_PROVIDER_URL` + `WA_PROVIDER_TOKEN`
-  (Fonnte / Wablas / WA Business API). Kosong = mode **simulasi** (log ke stdout,
-  dianggap terkirim) — hanya di non-produksi.
-- **Email** — `src/lib/mail.ts`. Set `MAIL_PROVIDER_URL` + `MAIL_PROVIDER_TOKEN` + `MAIL_FROM`.
-  Kosong = mode simulasi.
-
 Core workflow tidak pernah meng-import provider langsung — hanya lewat
 `sendWhatsApp()` / `sendEmail()`.
+
+**Tiap provider butuh adapter sendiri.** Bentuk header, badan permintaan, dan cara
+melaporkan gagal berbeda-beda, jadi tidak cukup hanya mengisi URL + token:
+
+| `WA_PROVIDER` | Header | Badan | URL |
+|---|---|---|---|
+| `fonnte` | `Authorization: <token>` (tanpa Bearer) | `{target, message}` | default `https://api.fonnte.com/send` |
+| `wablas` | `Authorization: <token>` (tanpa Bearer) | `{phone, message}` | `https://<domain>.wablas.com/api/send-message` |
+| `meta` | `Authorization: Bearer <token>` | payload WhatsApp Cloud API | `https://graph.facebook.com/v21.0/<PHONE_NUMBER_ID>/messages` |
+| `generic` | `Authorization: Bearer <token>` | `{target, message}` | wajib diisi |
+
+| `MAIL_PROVIDER` | Header | Badan | URL |
+|---|---|---|---|
+| `resend` | `Authorization: Bearer <key>` | `{from, to[], subject, text}` | default `https://api.resend.com/emails` |
+| `brevo` | `api-key: <key>` | `{sender:{email}, to:[{email}], subject, textContent}` | default `https://api.brevo.com/v3/smtp/email` |
+| `generic` | `Authorization: Bearer <key>` | `{from, to, subject, text}` | wajib diisi |
+
+Nomor tujuan dinormalkan otomatis ke bentuk `628…` (`081234567890`,
+`+62 812-3456-7890`, dan `81234567890` semuanya jadi `6281234567890`).
+
+**Jebakan yang sudah ditangani:** Fonnte dan Wablas membalas **HTTP 200 walaupun
+pengiriman gagal**, dengan `{"status": false, "reason": "..."}` di badan respons.
+Adapter memeriksa badan respons, bukan hanya kode HTTP — kegagalan seperti ini
+dulu tercatat sebagai sukses.
+
+Token kosong = mode **simulasi** (log ke stdout, dianggap terkirim), hanya di
+non-produksi. Di produksi tanpa konfigurasi → dikembalikan gagal, tidak melempar.
+
+## Menguji konfigurasi provider
+
+Jangan menunggu notifikasi pelanggan pertama untuk tahu konfigurasinya benar:
+
+```sh
+curl -X POST -H "Authorization: Bearer $JOBS_SECRET" \
+     -H "Content-Type: application/json" \
+     -d '{"wa":"08123456789","mail":"kamu@contoh.id"}' \
+     http://127.0.0.1:3000/api/jobs/test-notification
+```
+
+Balasannya memuat hasil per kanal beserta pesan error provider apa adanya
+(token salah, nomor belum terdaftar, domain pengirim belum diverifikasi, dsb).
+HTTP `200` = semua terkirim, `502` = ada yang gagal.
 
 ## Catatan
 

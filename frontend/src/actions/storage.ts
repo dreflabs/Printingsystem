@@ -7,6 +7,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";
+import { buildLocationCode, defaultLocationName, buildStorageLocations } from "@/lib/starter-data";
 
 const isGudang = (r: string) => r === "gudang";
 const isAdmin = (r: string) => r === "admin" || r === "owner";
@@ -58,15 +59,6 @@ export async function getStorageLocations() {
     console.error("getStorageLocations:", e);
     return fail(e instanceof Error ? e.message : "Gagal memuat lokasi storage.");
   }
-}
-
-function buildLocationCode(zone: string, rack?: string, slot?: string, floor = 3) {
-  const parts = [`LT${floor}`, zone.trim().toUpperCase(), rack?.trim(), slot?.trim()].filter(Boolean);
-  return parts.join("-");
-}
-
-function defaultLocationName(zone: string, rack?: string, slot?: string, floor = 3) {
-  return `Lantai ${floor} Zona ${zone.toUpperCase()}${rack ? ` Rak ${rack}` : ""}${slot ? ` Slot ${slot}` : ""}`;
 }
 
 export async function createStorageLocation(data: {
@@ -158,53 +150,18 @@ export async function seedDefaultStorageLayout() {
     const actor = await requireUser();
     if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh membuat layout rak.");
 
-    const layout = [
-      { zone: "A", floor: 3, racks: 3, slots: 4, capacityMax: 3 },
-      { zone: "B", floor: 3, racks: 2, slots: 4, capacityMax: 6 },
-      { zone: "C", floor: 3, racks: 1, slots: 4, capacityMax: 2 },
-      { zone: "D", floor: 3, racks: 1, slots: 2, capacityMax: 20 },
-      { zone: "COUNTER", floor: 1, racks: 1, slots: 3, capacityMax: 10 },
-    ];
-
+    // Layout-nya dipakai bersama dengan pendaftaran tenant baru (lib/starter-data),
+    // supaya rak bawaan dan rak hasil tombol ini selalu identik.
     const existing = new Set(
-      (await prisma.storageLocation.findMany({ where: { tenant_id: tenant.id }, select: { location_code: true } })).map(
-        (l) => l.location_code
-      )
+      (
+        await prisma.storageLocation.findMany({
+          where: { tenant_id: tenant.id },
+          select: { location_code: true },
+        })
+      ).map((l) => l.location_code)
     );
 
-    const rows: {
-      tenant_id: string;
-      location_code: string;
-      name: string;
-      floor: number;
-      zone: string;
-      rack: string | null;
-      slot: string | null;
-      capacity_max: number;
-      qr_code_value: string;
-    }[] = [];
-
-    for (const grp of layout) {
-      for (let r = 1; r <= grp.racks; r++) {
-        for (let s = 1; s <= grp.slots; s++) {
-          const rack = grp.zone === "COUNTER" ? undefined : String(r).padStart(2, "0");
-          const slot = String(s).padStart(2, "0");
-          const code = buildLocationCode(grp.zone, rack, slot, grp.floor);
-          if (existing.has(code)) continue;
-          rows.push({
-            tenant_id: tenant.id,
-            location_code: code,
-            name: defaultLocationName(grp.zone, rack, slot, grp.floor),
-            floor: grp.floor,
-            zone: grp.zone,
-            rack: rack ?? null,
-            slot,
-            capacity_max: grp.capacityMax,
-            qr_code_value: `LOC:${code}`,
-          });
-        }
-      }
-    }
+    const rows = buildStorageLocations(tenant.id, existing);
 
     if (rows.length === 0) return ok({ created: 0 });
     await prisma.storageLocation.createMany({ data: rows });

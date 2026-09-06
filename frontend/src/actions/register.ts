@@ -3,6 +3,11 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { ok, fail, type ActionResult } from "@/types/actions";
+import {
+  buildStarterMachines,
+  buildStarterMaterials,
+  buildStorageLocations,
+} from "@/lib/starter-data";
 
 const DEFAULT_ROLES = ["owner", "admin", "designer_sales", "operator", "gudang"] as const;
 const TRIAL_DAYS = 14;
@@ -147,7 +152,7 @@ export async function registerTenant(
         },
       });
 
-      await tx.user.create({
+      const owner = await tx.user.create({
         data: {
           tenant_id: tenant.id,
           name: ownerName,
@@ -159,6 +164,14 @@ export async function registerTenant(
           active: true,
         },
       });
+
+      // Data awal supaya alur kerja bisa diselesaikan sejak hari pertama.
+      // Tanpa ini tenant baru buntu: ProductionJob mewajibkan machine_id,
+      // finishProduction mewajibkan pemakaian bahan, dan SCAN7 butuh lokasi rak.
+      // Semua stok sengaja 0 — ini kerangka, bukan tebakan soal bisnis Owner.
+      await tx.machine.createMany({ data: buildStarterMachines(tenant.id) });
+      await tx.material.createMany({ data: buildStarterMaterials(tenant.id, owner.id) });
+      await tx.storageLocation.createMany({ data: buildStorageLocations(tenant.id) });
 
       // Catatan: email belum diverifikasi (belum ada provider email) — jangan
       // tandai VERIFIED. Tambahkan langkah itu saat verifikasi email diaktifkan.

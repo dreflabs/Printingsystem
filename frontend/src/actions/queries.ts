@@ -5,6 +5,23 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { ok, fail } from "@/types";
 
+/**
+ * Siapa yang boleh dipilih sebagai operator produksi.
+ *
+ * Memeriksa peran utama DAN peran tambahan: fitur multi-peran sudah ada
+ * (`extra_roles`), tapi pemilih operator dulu hanya melihat `role` utama —
+ * sehingga Owner atau Admin yang juga bertugas sebagai operator tidak pernah
+ * muncul. Ini juga jalan keluar untuk percetakan kecil yang baru mendaftar dan
+ * belum punya pegawai: Owner cukup menambahkan peran operator pada dirinya.
+ */
+const OPERATOR_ROLE = {
+  OR: [
+    { role: { name: "operator" } },
+    { extra_roles: { some: { role: { name: "operator" } } } },
+  ],
+};
+
+
 const num = (v: unknown) => Number(v ?? 0);
 
 // ─────────────────────────────────────────────────────────────
@@ -206,7 +223,7 @@ export async function getOwnerDashboard() {
 
     const [machines, operators] = await Promise.all([
       prisma.machine.findMany({ where: { ...T, status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-      prisma.user.findMany({ where: { ...T, active: true, role: { name: "operator" } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      prisma.user.findMany({ where: { ...T, active: true, ...OPERATOR_ROLE }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     ]);
 
     const bucket = (s: string) =>
@@ -295,7 +312,7 @@ export async function getProductionOverview() {
       }),
       prisma.machine.findMany({ where: T, orderBy: { name: "asc" } }),
       prisma.material.findMany({ where: { ...T, active: true }, select: { id: true, name: true, current_stock: true, min_stock: true, unit_stock: true } }),
-      prisma.user.findMany({ where: { ...T, active: true, role: { name: "operator" } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      prisma.user.findMany({ where: { ...T, active: true, ...OPERATOR_ROLE }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     ]);
 
     const activeByMachine = new Map<string, { jobCode: string; qty: number; product: string }>();

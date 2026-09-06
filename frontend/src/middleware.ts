@@ -80,9 +80,11 @@ export default auth((req) => {
   }
 
   // /api/jobs/* punya auth sendiri (Bearer JOBS_SECRET) — dipanggil cron eksternal, bukan sesi.
+  // /api/health dipanggil orchestrator tanpa sesi — tidak boleh dialihkan ke /login.
   if (
     path.startsWith("/api/auth") ||
     path.startsWith("/api/jobs") ||
+    path.startsWith("/api/health") ||
     path.startsWith("/print") ||
     PUBLIC_PATHS.includes(path)
   ) {

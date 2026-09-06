@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "bootstrap:superadmin": "node prisma/bootstrap-superadmin.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

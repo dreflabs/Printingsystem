@@ -5,19 +5,21 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "prisma migrate deploy && next start",
+    "lint": "eslint",
+    "postinstall": "prisma generate",
+    "bootstrap:superadmin": "node prisma/bootstrap-superadmin.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "@yudiel/react-qr-scanner": "^2.6.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
-    "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.33.0",
     "next": "16.3.1",
     "next-auth": "^5.0.0-beta.32",
     "prisma": "^5.22.0",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^3.10.1",

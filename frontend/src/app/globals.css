@@ -1,26 +1,53 @@
 @import "tailwindcss";
 
 @theme {
-  --color-base: #F8FAFC;
-  --color-card: #FFFFFF;
-  --color-elevated: #F1F5F9;
+  /* ── Surfaces ─────────────────────────────────────────────── */
+  --color-base: #F8FAFC;      /* latar halaman */
+  --color-card: #FFFFFF;      /* kartu / panel */
+  --color-elevated: #F1F5F9;  /* chip / inset / field */
+  --color-overlay: rgba(15, 23, 42, 0.55); /* scrim modal */
 
-  /* Primary Accent: Professional Modern Blue */
-  --color-accent-teal: #2563EB;
-  --color-accent-blue: #2563EB;
+  /* ── Aksen utama: Teal ────────────────────────────────────── */
+  --color-accent-teal: #0492B2;
 
-  /* Status Tokens */
-  --color-status-green: #059669;   /* Selesai / Lunas / PASS */
-  --color-status-yellow: #D97706;  /* Menunggu / Pending / Review (Amber) */
-  --color-status-red: #DC2626;     /* KHUSUS URGENT: Overdue, Gagal, Defect */
-  --color-status-blue: #2563EB;    /* Produksi / Aktif */
+  /* ── Status ───────────────────────────────────────────────── */
+  --color-status-green: #059669;        /* Selesai / Lunas / PASS */
+  --color-status-yellow: #D97706;       /* Menunggu / Pending — fill, dot, border */
+  --color-status-yellow-text: #B45309;  /* amber gelap untuk TEKS kecil (WCAG AA) */
+  --color-status-red: #DC2626;          /* Urgent: Overdue / Gagal / Defect */
+  --color-status-blue: #2563EB;         /* Produksi / Aktif */
 
+  /* ── Teks & garis ─────────────────────────────────────────── */
   --color-primary: #0F172A;
   --color-muted: #64748B;
+  --color-muted-light: #94A3B8;  /* metadata sekunder (timestamp, dsb) */
   --color-border: #E2E8F0;
+
+  /* ── Radius ───────────────────────────────────────────────── */
+  --radius-card: 1rem;        /* rounded-card — kartu, panel, modal */
+  --radius-control: 0.75rem;  /* rounded-control — tombol, input */
+
+  /* ── Elevation ────────────────────────────────────────────── */
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-modal: 0 8px 48px rgba(15, 23, 42, 0.18);
 
   --font-sans: var(--font-inter);
 }
+
+/* ── Dark mode scaffold — struktur siap, aktifkan dengan uncomment ──
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-base: #0B1220;
+    --color-card: #111827;
+    --color-elevated: #1E293B;
+    --color-overlay: rgba(0, 0, 0, 0.6);
+    --color-primary: #F1F5F9;
+    --color-muted: #94A3B8;
+    --color-muted-light: #64748B;
+    --color-border: #1E293B;
+  }
+}
+── */
 
 @layer base {
 

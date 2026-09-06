@@ -1,10 +1,24 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search } from "lucide-react";
+import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserFormModal } from "@/components/owner/UserFormModal";
-import { getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword } from "@/actions/user-management";
+import { ConfirmDialog } from "@/components/ui";
+import { getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword, unlockEmployeeAccount } from "@/actions/user-management";
+import { setEmployeeBaseSalary } from "@/actions/payroll";
+
+const formatRp = (n: number) => "Rp " + n.toLocaleString("id-ID");
+
+type PendingConfirm = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  variant: "danger" | "primary";
+  run: () => Promise<void>;
+};
+
+const isLocked = (user: any) => !!user.locked_until && new Date(user.locked_until) > new Date();
 
 export default function OwnerUsersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -13,6 +27,18 @@ export default function OwnerUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [actionMessage, setActionMessage] = useState<{type: "success" | "error", text: string} | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
+  const [savingSalaryId, setSavingSalaryId] = useState<string | null>(null);
+
+  const runPendingConfirm = async () => {
+    if (!pendingConfirm) return;
+    setConfirmBusy(true);
+    await pendingConfirm.run();
+    setConfirmBusy(false);
+    setPendingConfirm(null);
+  };
 
   useEffect(() => {
     loadUsers();
@@ -44,58 +70,107 @@ export default function OwnerUsersPage() {
     setIsSaving(false);
   };
 
-  const handleToggleStatus = async (userId: string, currentStatus: boolean, roleName: string) => {
+  const handleToggleStatus = (userId: string, currentStatus: boolean, roleName: string) => {
     if (roleName === "owner") {
-      alert("Akun owner tidak bisa dinonaktifkan.");
+      setActionMessage({ type: "error", text: "Akun Owner tidak bisa dinonaktifkan." });
       return;
     }
-    
-    const confirmMsg = currentStatus 
-      ? "Apakah Anda yakin ingin MENONAKTIFKAN pegawai ini? Mereka tidak akan bisa login lagi."
-      : "Apakah Anda yakin ingin MENGAKTIFKAN kembali pegawai ini?";
-      
-    if (!confirm(confirmMsg)) return;
+    setActionMessage(null);
+    setPendingConfirm({
+      title: currentStatus ? "Nonaktifkan Pegawai" : "Aktifkan Pegawai",
+      message: currentStatus
+        ? "Pegawai ini tidak akan bisa login lagi sampai diaktifkan kembali. Lanjutkan?"
+        : "Pegawai ini akan bisa login kembali. Lanjutkan?",
+      confirmLabel: currentStatus ? "Ya, Nonaktifkan" : "Ya, Aktifkan",
+      variant: currentStatus ? "danger" : "primary",
+      run: async () => {
+        const result = await toggleEmployeeStatus(userId, !currentStatus);
+        if (result.success) {
+          setActionMessage({ type: "success", text: currentStatus ? "Pegawai dinonaktifkan." : "Pegawai diaktifkan kembali." });
+          loadUsers();
+        } else {
+          setActionMessage({ type: "error", text: "Gagal mengubah status: " + result.error });
+        }
+      },
+    });
+  };
 
-    const result = await toggleEmployeeStatus(userId, !currentStatus);
+  const handleUnlock = async (userId: string, name: string) => {
+    setActionMessage(null);
+    const result = await unlockEmployeeAccount(userId);
     if (result.success) {
+      setActionMessage({ type: "success", text: `Kunci akun ${name} berhasil dibuka. Pegawai bisa login kembali.` });
       loadUsers();
     } else {
-      alert("Gagal mengubah status: " + result.error);
+      setActionMessage({ type: "error", text: "Gagal membuka kunci: " + result.error });
     }
   };
 
-  const handleResetPassword = async (userId: string, roleName: string) => {
+  const handleResetPassword = (userId: string, roleName: string) => {
     if (roleName === "owner") {
-      alert("Reset password Owner harus dilakukan secara mandiri melalui menu Lupa Password.");
+      setActionMessage({ type: "error", text: "Reset password Owner dilakukan mandiri lewat menu Lupa Password." });
       return;
     }
+    setActionMessage(null);
+    setPendingConfirm({
+      title: "Reset Password Pegawai",
+      message: "Password diganti ke bawaan (printpilot123!) dan pegawai wajib menggantinya saat login berikutnya. Lanjutkan?",
+      confirmLabel: "Ya, Reset",
+      variant: "danger",
+      run: async () => {
+        const result = await resetEmployeePassword(userId);
+        if (result.success) {
+          setActionMessage({ type: "success", text: `Password direset ke: ${result.newPassword} — pegawai wajib menggantinya saat login.` });
+          loadUsers();
+        } else {
+          setActionMessage({ type: "error", text: "Gagal mereset password: " + result.error });
+        }
+      },
+    });
+  };
 
-    if (!confirm("Apakah Anda yakin ingin MERESET password pegawai ini menjadi password bawaan (printpilot123!)?")) return;
-
-    const result = await resetEmployeePassword(userId);
+  const handleSaveSalary = async (userId: string) => {
+    const raw = salaryDrafts[userId];
+    const amount = Number(raw);
+    if (raw === undefined || !Number.isFinite(amount) || amount < 0) {
+      setActionMessage({ type: "error", text: "Nominal gaji tidak valid." });
+      return;
+    }
+    setSavingSalaryId(userId);
+    const result = await setEmployeeBaseSalary(userId, amount);
+    setSavingSalaryId(null);
     if (result.success) {
-      alert("Password berhasil direset menjadi: " + result.newPassword + "\\nPegawai akan dipaksa mengganti password saat login berikutnya.");
+      setActionMessage({ type: "success", text: "Gaji pokok berhasil disimpan." });
+      setSalaryDrafts((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
       loadUsers();
     } else {
-      alert("Gagal mereset password: " + result.error);
+      setActionMessage({ type: "error", text: "Gagal menyimpan gaji: " + result.error });
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  const filteredUsers = users.filter(u =>
+    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.role.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getRoleBadge = (roleName: string) => {
-    const roles: Record<string, string> = {
-      owner: "bg-accent-teal/10 text-accent-teal border-accent-teal/20",
-      admin: "bg-accent-teal/10 text-accent-teal border-accent-teal/20",
-      designer_sales: "bg-status-yellow/10 text-status-yellow border-status-yellow/20",
-      operator: "bg-status-blue/10 text-status-blue border-status-blue/20",
-      finishing: "bg-status-green/10 text-status-green border-status-green/20",
-    };
-    return roles[roleName] || "bg-base text-muted border-border";
+  const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
+    owner:          { label: "Owner",             cls: "bg-accent-teal/10 text-accent-teal border-accent-teal/20" },
+    admin:          { label: "Admin",             cls: "bg-accent-teal/10 text-accent-teal border-accent-teal/20" },
+    designer_sales: { label: "Designer/Setting",  cls: "bg-status-yellow/10 text-status-yellow-text border-status-yellow/20" },
+    operator:       { label: "Operator Cetak",    cls: "bg-status-blue/10 text-status-blue border-status-blue/20" },
+    gudang:         { label: "Finishing & Gudang", cls: "bg-status-green/10 text-status-green border-status-green/20" },
+  };
+
+  /** Returns all role names for a user (primary + extra) */
+  const getUserRoles = (user: any): string[] => {
+    const primary = user.role?.name;
+    const extra: string[] = (user.extra_roles ?? []).map((ur: any) => ur.role?.name).filter(Boolean);
+    return Array.from(new Set([primary, ...extra].filter(Boolean)));
   };
 
   return (
@@ -151,17 +226,18 @@ export default function OwnerUsersPage() {
                 <th className="px-6 py-4">Informasi Pegawai</th>
                 <th className="px-6 py-4">Role / Peran</th>
                 <th className="px-6 py-4">Status Akun</th>
+                <th className="px-6 py-4">Gaji Pokok</th>
                 <th className="px-6 py-4 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-muted">Memuat data pegawai...</td>
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted">Memuat data pegawai...</td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-muted flex flex-col items-center justify-center">
+                  <td colSpan={5} className="px-6 py-12 text-center text-muted flex flex-col items-center justify-center">
                     <Users className="h-12 w-12 mb-3 opacity-20" />
                     Belum ada data pegawai ditemukan.
                   </td>
@@ -178,9 +254,16 @@ export default function OwnerUsersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold border capitalize", getRoleBadge(user.role.name))}>
-                        {user.role.name.replace("_", " ")}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {getUserRoles(user).map((roleName) => {
+                          const badge = ROLE_BADGE[roleName] ?? { label: roleName, cls: "bg-base text-muted border-border" };
+                          return (
+                            <span key={roleName} className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border", badge.cls)}>
+                              {badge.label}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col items-start gap-1">
@@ -191,18 +274,57 @@ export default function OwnerUsersPage() {
                           {user.active ? "Aktif" : "Nonaktif"}
                         </span>
                         {user.must_change_password && (
-                          <span className="text-[10px] text-status-yellow font-medium flex items-center gap-1 bg-status-yellow/10 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] text-status-yellow-text font-medium flex items-center gap-1 bg-status-yellow/10 px-1.5 py-0.5 rounded">
                             <KeyRound className="h-3 w-3" /> Wajib ubah sandi
+                          </span>
+                        )}
+                        {isLocked(user) && (
+                          <span className="text-[10px] text-status-red font-medium flex items-center gap-1 bg-status-red/10 px-1.5 py-0.5 rounded">
+                            <LockKeyhole className="h-3 w-3" /> Terkunci ({user.failed_login_count}× gagal)
                           </span>
                         )}
                       </div>
                     </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1.5">
+                        <Wallet className="h-3.5 w-3.5 text-muted shrink-0" />
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="Belum diset"
+                          value={salaryDrafts[user.id] ?? (user.base_salary ?? "")}
+                          onChange={(e) => setSalaryDrafts((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                          className="w-28 px-2 py-1 bg-base border border-border rounded-lg text-xs text-primary focus:outline-none focus:border-accent-teal"
+                        />
+                        {salaryDrafts[user.id] !== undefined && Number(salaryDrafts[user.id]) !== (user.base_salary ?? null) && (
+                          <button
+                            onClick={() => handleSaveSalary(user.id)}
+                            disabled={savingSalaryId === user.id}
+                            className="text-[10px] font-bold text-accent-teal hover:underline disabled:opacity-50"
+                          >
+                            {savingSalaryId === user.id ? "..." : "Simpan"}
+                          </button>
+                        )}
+                      </div>
+                      {user.base_salary != null && salaryDrafts[user.id] === undefined && (
+                        <span className="text-[10px] text-muted mt-0.5 block">{formatRp(user.base_salary)}/bulan</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-right">
                       {user.role.name !== "owner" && (
                         <div className="flex items-center justify-end gap-2">
+                          {isLocked(user) && (
+                            <button
+                              onClick={() => handleUnlock(user.id, user.name)}
+                              className="p-2 text-status-red bg-status-red/10 hover:text-status-green hover:bg-status-green/10 rounded-lg transition-colors"
+                              title="Buka Kunci Akun"
+                            >
+                              <Unlock className="h-4 w-4" />
+                            </button>
+                          )}
                           <button
                             onClick={() => handleResetPassword(user.id, user.role.name)}
-                            className="p-2 text-muted hover:text-status-yellow hover:bg-status-yellow/10 rounded-lg transition-colors group relative"
+                            className="p-2 text-muted hover:text-status-yellow-text hover:bg-status-yellow/10 rounded-lg transition-colors group relative"
                             title="Reset Password"
                           >
                             <KeyRound className="h-4 w-4" />
@@ -238,6 +360,17 @@ export default function OwnerUsersPage() {
           onSave={handleSaveUser}
         />
       )}
+
+      <ConfirmDialog
+        open={!!pendingConfirm}
+        onClose={() => !confirmBusy && setPendingConfirm(null)}
+        onConfirm={runPendingConfirm}
+        title={pendingConfirm?.title ?? ""}
+        message={pendingConfirm?.message ?? ""}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        variant={pendingConfirm?.variant}
+        isLoading={confirmBusy}
+      />
     </div>
   );
 }

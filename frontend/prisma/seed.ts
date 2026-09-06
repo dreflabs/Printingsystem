@@ -4,6 +4,13 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function main() {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PROD_SEED !== 'true') {
+    throw new Error(
+      'seed.ts menghapus SELURUH data dan membuat kredensial default — tidak boleh dijalankan di production. ' +
+      'Set ALLOW_PROD_SEED=true secara eksplisit jika ini benar-benar disengaja.'
+    )
+  }
+
   console.log('Seeding SaaS database...')
 
   // 1. Bersihkan database
@@ -46,11 +53,13 @@ async function main() {
   await prisma.superAdmin.deleteMany()
 
   // 2. Buat Super Admin
-  const hashedAdminPassword = await bcrypt.hash('superadmin123', 10)
+  // Kata sandi default hanya untuk dev/staging lokal — override via env di lingkungan lain.
+  const seedAdminPassword = process.env.SEED_SUPER_ADMIN_PASSWORD || 'superadmin123'
+  const hashedAdminPassword = await bcrypt.hash(seedAdminPassword, 10)
   const superAdmin = await prisma.superAdmin.create({
     data: {
       name: 'Super Admin',
-      email: 'admin@printpilot.id',
+      email: process.env.SEED_SUPER_ADMIN_EMAIL || 'admin@printpilot.id',
       password_hash: hashedAdminPassword,
       role: 'SUPER_ADMIN'
     }
@@ -128,7 +137,7 @@ async function main() {
     { name: 'Kartu Nama 2 Sisi', category: 'KERTAS' },
     { name: 'Brosur A4 Lipat 3', category: 'KERTAS' },
     { name: 'Spanduk Outdoor', category: 'OUTDOOR' },
-    { name: 'Stiker Viny A3', category: 'INDOOR' },
+    { name: 'Stiker Vinyl A3', category: 'INDOOR' },
     { name: 'Lanyard Custom', category: 'MERCHANDISE' },
   ]
 
@@ -164,6 +173,38 @@ async function main() {
       }
     })
   }
+
+  // 9. Buat Lokasi Rak Gudang (LT3 + Counter LT1) — layout standar 09-STORAGE.md
+  const storageLayout = [
+    { zone: 'A', floor: 3, racks: 3, slots: 4, capacityMax: 3 },       // banner/spanduk
+    { zone: 'B', floor: 3, racks: 2, slots: 4, capacityMax: 6 },       // stiker/kartu
+    { zone: 'C', floor: 3, racks: 1, slots: 4, capacityMax: 2 },       // packaging
+    { zone: 'D', floor: 3, racks: 1, slots: 2, capacityMax: 20 },      // holding
+    { zone: 'COUNTER', floor: 1, racks: 1, slots: 3, capacityMax: 10 },// counter LT1
+  ]
+  const storageRows: any[] = []
+  for (const g of storageLayout) {
+    for (let r = 1; r <= g.racks; r++) {
+      for (let s = 1; s <= g.slots; s++) {
+        const rack = g.zone === 'COUNTER' ? null : String(r).padStart(2, '0')
+        const slot = String(s).padStart(2, '0')
+        const code = ['LT' + g.floor, g.zone, rack, slot].filter(Boolean).join('-')
+        storageRows.push({
+          tenant_id: tenant1.id,
+          location_code: code,
+          name: `Lantai ${g.floor} Zona ${g.zone}${rack ? ' Rak ' + rack : ''} Slot ${slot}`,
+          floor: g.floor,
+          zone: g.zone,
+          rack,
+          slot,
+          capacity_max: g.capacityMax,
+          qr_code_value: 'LOC:' + code,
+        })
+      }
+    }
+  }
+  await prisma.storageLocation.createMany({ data: storageRows })
+  console.log(`✅ ${storageRows.length} lokasi rak dibuat`)
 
   console.log('✅ Seeding completed! Created tenant: majujayaprint.printpilot.id')
 }

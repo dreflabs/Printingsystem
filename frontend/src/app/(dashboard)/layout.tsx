@@ -3,47 +3,40 @@
 import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/shared/Sidebar";
 import { Header } from "@/components/shared/Header";
+import { ImpersonationBanner } from "@/components/shared/ImpersonationBanner";
+import { getSessionUser } from "@/actions/session";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [user, setUser] = useState({ name: "Loading...", role: "admin" as any });
-  const [mounted, setMounted] = useState(false);
+  const [user, setUser] = useState<{ id: string; name: string; role: string; roles: string[] } | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-    const role = localStorage.getItem("userRole");
-    const name = localStorage.getItem("userName");
-    
-    if (role && name) {
-      setUser({ name, role });
-    } else {
-      setUser({ name: "Rere Admin", role: "admin" });
-    }
+    getSessionUser().then((r) => {
+      if (r.ok) setUser(r.user);
+      setReady(true);
+    });
   }, []);
 
-  if (!mounted) return null;
+  if (!ready) return null;
+
+  const role = (user?.role ?? "admin") as never;
+  const roles = user?.roles ?? [user?.role ?? "admin"];
 
   return (
     <div className="flex h-screen overflow-hidden bg-base">
-      {/* Sidebar */}
-      <Sidebar
-        role={user.role}
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
+      <Sidebar role={role} roles={roles} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Main area */}
       <div className="flex flex-1 flex-col overflow-hidden">
+        <ImpersonationBanner />
         <Header
-          userName={user.name}
-          role={user.role}
+          userId={user?.id ?? null}
+          userName={user?.name ?? "Pengguna"}
+          role={user?.role ?? "admin"}
           onMenuClick={() => setSidebarOpen(true)}
         />
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {children}
-        </main>
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
       </div>
     </div>
   );

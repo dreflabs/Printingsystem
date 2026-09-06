@@ -1,113 +1,238 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
-import { TrendingUp, TrendingDown, DollarSign, PackageX, Activity } from "lucide-react";
+import { DollarSign, PackageX, Activity, Receipt, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getDailyRevenue, getOperatorPerformance, getOutstandingReceivables, getRevenueSeries } from "@/actions/reports";
+import { toCsv, downloadCsv, stampedName } from "@/lib/csv";
 
-// Mock Data
-const revenueData = [
-  { name: 'Sen', cetak: 4000000, retail: 2400000 },
-  { name: 'Sel', cetak: 3000000, retail: 1398000 },
-  { name: 'Rab', cetak: 2000000, retail: 9800000 },
-  { name: 'Kam', cetak: 2780000, retail: 3908000 },
-  { name: 'Jum', cetak: 1890000, retail: 4800000 },
-  { name: 'Sab', cetak: 2390000, retail: 3800000 },
-  { name: 'Min', cetak: 3490000, retail: 4300000 },
-];
+// Recharts butuh hex literal — pakai nilai token desain (globals.css).
+const C = { accent: "#0492B2", blue: "#2563EB", red: "#DC2626", grid: "#E2E8F0", axis: "#64748B", text: "#0F172A", card: "#FFFFFF" };
 
-const operatorData = [
-  { name: 'Andi (OUT)', waste: 4, jobs: 12 },
-  { name: 'Budi (IND)', waste: 1, jobs: 15 },
-  { name: 'Citra (A3)', waste: 7, jobs: 40 },
-  { name: 'Dodi (UV)', waste: 2, jobs: 8 },
-];
+type Daily = Extract<Awaited<ReturnType<typeof getDailyRevenue>>, { success: true }>["data"];
+type Perf = Extract<Awaited<ReturnType<typeof getOperatorPerformance>>, { success: true }>["data"];
+type Recv = Extract<Awaited<ReturnType<typeof getOutstandingReceivables>>, { success: true }>["data"];
+type Series = Extract<Awaited<ReturnType<typeof getRevenueSeries>>, { success: true }>["data"];
+
+const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—");
 
 export default function ReportsPage() {
-  const [period, setPeriod] = useState("minggu");
+  const [daily, setDaily] = useState<Daily | null>(null);
+  const [perf, setPerf] = useState<Perf>([]);
+  const [recv, setRecv] = useState<Recv>([]);
+  const [series, setSeries] = useState<Series>([]);
+  const [recvFilter, setRecvFilter] = useState<"all" | "overdue" | "ready_unpaid">("all");
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const [d, p, s] = await Promise.all([getDailyRevenue(), getOperatorPerformance(), getRevenueSeries(7)]);
+    if (d.success) setDaily(d.data); else setError(d.error);
+    if (p.success) setPerf(p.data);
+    if (s.success) setSeries(s.data);
+  }, []);
+
+  const loadRecv = useCallback(async () => {
+    const r = await getOutstandingReceivables(recvFilter);
+    if (r.success) setRecv(r.data);
+  }, [recvFilter]);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadRecv(); }, [loadRecv]);
+
+  const totalWaste = perf.reduce((a, b) => a + b.totalWaste, 0);
+  const totalReceivable = recv.reduce((a, b) => a + b.balance, 0);
+
+  const exportSummary = () => {
+    const rows: (string | number)[][] = [
+      ["Laporan Ringkasan", new Date().toLocaleString("id-ID")],
+      [],
+      ["Metrik", "Nilai"],
+      ["Pendapatan hari ini (gabungan)", daily?.combinedRevenue ?? 0],
+      ["Order printing baru hari ini", daily?.newPrintingOrders ?? 0],
+      ["Total waste 30 hari (pcs)", totalWaste],
+      ["Piutang outstanding", totalReceivable],
+      [],
+      ["Tren Pendapatan 7 Hari"],
+      ["Hari", "Cetak", "Eceran"],
+      ...series.map((s) => [s.name, s.cetak, s.retail]),
+    ];
+    downloadCsv(stampedName("laporan-ringkasan"), toCsv(rows));
+  };
+
+  const exportPerformance = () => {
+    const rows: (string | number)[][] = [
+      ["Operator", "Jumlah Job", "Output (pcs)", "Waste (pcs)", "Rasio Waste (%)"],
+      ...perf.map((p) => [p.operatorName, p.jobCount, p.totalOutput, p.totalWaste, (p.wasteRatio * 100).toFixed(1)]),
+    ];
+    downloadCsv(stampedName("kinerja-operator"), toCsv(rows));
+  };
+
+  const exportReceivables = () => {
+    const rows: (string | number)[][] = [
+      ["Kode Order", "Konsumen", "Total", "Dibayar", "Sisa", "Deadline", "Status", "Overdue"],
+      ...recv.map((o) => [
+        o.orderCode, o.customerName, o.total, o.paidAmount, o.balance,
+        o.deadline ? new Date(o.deadline).toLocaleDateString("id-ID") : "",
+        o.status, o.overdue ? "YA" : "",
+      ]),
+    ];
+    downloadCsv(stampedName(`piutang-${recvFilter}`), toCsv(rows));
+  };
+
+  const kpi = [
+    { label: "Pendapatan Hari Ini", value: daily ? rupiah(daily.combinedRevenue) : "—", icon: DollarSign, color: "text-status-green", bg: "bg-status-green/10" },
+    { label: "Order Printing Hari Ini", value: daily?.newPrintingOrders ?? "—", icon: Activity, color: "text-accent-teal", bg: "bg-accent-teal/10" },
+    { label: "Total Waste (30 hari)", value: totalWaste, icon: PackageX, color: "text-status-red", bg: "bg-status-red/10" },
+    { label: "Piutang Outstanding", value: rupiah(totalReceivable), icon: Receipt, color: "text-status-yellow-text", bg: "bg-status-yellow/10" },
+  ];
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary">Analytics & Laporan</h1>
-          <p className="text-sm text-muted mt-0.5">Ringkasan performa bisnis Anda</p>
+          <p className="text-sm text-muted mt-0.5">Pendapatan, kinerja operator, dan piutang</p>
         </div>
-        <select 
-          value={period} 
-          onChange={e => setPeriod(e.target.value)}
-          className="h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-4 outline-none focus:border-accent-teal"
+        <button
+          onClick={exportSummary}
+          className="flex items-center gap-2 h-10 px-4 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 transition-all shadow-sm"
         >
-          <option value="hari">Hari Ini</option>
-          <option value="minggu">7 Hari Terakhir</option>
-          <option value="bulan">Bulan Ini</option>
-        </select>
+          <Download className="h-4 w-4" /> Export Ringkasan (CSV)
+        </button>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        {[
-          { label: "Total Pendapatan", value: "Rp 32.5M", change: "+12.5%", isUp: true, icon: DollarSign, color: "text-status-green", bg: "bg-status-green/10" },
-          { label: "Pesanan Selesai", value: "482", change: "+5.2%", isUp: true, icon: Activity, color: "text-accent-teal", bg: "bg-accent-teal/10" },
-          { label: "Total Waste (Cacat)", value: "14", change: "-2.1%", isUp: false, icon: PackageX, color: "text-status-red", bg: "bg-status-red/10" },
-          { label: "Rata-rata Waktu", value: "2.4 Jam", change: "-10%", isUp: false, icon: TrendingDown, color: "text-status-blue", bg: "bg-status-blue/10" },
-        ].map((kpi, i) => (
-          <div key={i} className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-5 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
-            <div className="flex items-start justify-between mb-4">
-              <div className={cn("p-2 rounded-xl", kpi.bg)}>
-                <kpi.icon className={cn("h-5 w-5", kpi.color)} />
-              </div>
-              <div className={cn("flex items-center gap-1 text-xs font-bold", kpi.isUp ? "text-status-green" : "text-status-red")}>
-                {kpi.isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                {kpi.change}
-              </div>
-            </div>
-            <p className="text-3xl font-bold text-primary mb-1">{kpi.value}</p>
-            <p className="text-xs text-muted font-medium">{kpi.label}</p>
+      {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        {kpi.map((k) => (
+          <div key={k.label} className="bg-card border border-border rounded-2xl p-5 shadow-card">
+            <div className={cn("p-2 rounded-xl w-fit mb-3", k.bg)}><k.icon className={cn("h-5 w-5", k.color)} /></div>
+            <p className="text-2xl font-bold text-primary">{k.value}</p>
+            <p className="text-xs text-muted font-medium mt-1">{k.label}</p>
           </div>
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Revenue Chart */}
-        <div className="lg:col-span-2 bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-5 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
-          <h3 className="text-base font-bold text-primary mb-6">Trend Pendapatan</h3>
-          <div className="h-[300px] w-full">
+        <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-5 shadow-card">
+          <h3 className="text-base font-bold text-primary mb-6">Tren Pendapatan (7 Hari)</h3>
+          <div className="h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={revenueData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                <XAxis dataKey="name" stroke="#64748B" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#64748B" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value / 1000000}M`} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '12px', color: '#0F172A' }}
-                  itemStyle={{ color: '#0F172A' }}
-                />
+              <LineChart data={series} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
+                <XAxis dataKey="name" stroke={C.axis} fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke={C.axis} fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`} />
+                <Tooltip contentStyle={{ backgroundColor: C.card, borderColor: C.grid, borderRadius: 12, color: C.text }} formatter={(v) => rupiah(Number(v))} />
                 <Legend iconType="circle" />
-                <Line type="monotone" dataKey="cetak" name="Cetak (Printing)" stroke="#0891B2" strokeWidth={3} dot={{ r: 4, fill: '#0891B2', strokeWidth: 0 }} activeDot={{ r: 6 }} />
-                <Line type="monotone" dataKey="retail" name="Eceran (Retail)" stroke="#0284C7" strokeWidth={3} dot={{ r: 4, fill: '#0284C7', strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="cetak" name="Cetak (Printing)" stroke={C.accent} strokeWidth={3} dot={{ r: 3, fill: C.accent, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="retail" name="Eceran (Retail)" stroke={C.blue} strokeWidth={3} dot={{ r: 3, fill: C.blue, strokeWidth: 0 }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Operator Waste Chart */}
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-5 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
-          <h3 className="text-base font-bold text-primary mb-6">Performa Operator (Waste)</h3>
-          <div className="h-[300px] w-full">
+        <div className="bg-card border border-border rounded-2xl p-5 shadow-card">
+          <h3 className="text-base font-bold text-primary mb-6">Waste per Operator (30 hari)</h3>
+          <div className="h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={operatorData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" horizontal={false} />
-                <XAxis type="number" stroke="#64748B" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis dataKey="name" type="category" stroke="#64748B" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip
-                  cursor={{fill: '#E2E8F0', opacity: 0.5}}
-                  contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '12px' }}
-                />
-                <Legend iconType="circle" />
-                <Bar dataKey="waste" name="Jumlah Waste" fill="#E11D48" radius={[0, 4, 4, 0]} barSize={12} />
+              <BarChart data={perf.map((p) => ({ name: p.operatorName, waste: p.totalWaste }))} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
+                <XAxis type="number" stroke={C.axis} fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis dataKey="name" type="category" stroke={C.axis} fontSize={11} tickLine={false} axisLine={false} width={90} />
+                <Tooltip cursor={{ fill: C.grid, opacity: 0.5 }} contentStyle={{ backgroundColor: C.card, borderColor: C.grid, borderRadius: 12 }} />
+                <Bar dataKey="waste" name="Waste" fill={C.red} radius={[0, 4, 4, 0]} barSize={12} />
               </BarChart>
             </ResponsiveContainer>
+            {perf.length === 0 && <p className="text-center text-xs text-muted -mt-40">Belum ada data produksi.</p>}
           </div>
+        </div>
+      </div>
+
+      {/* Kinerja operator — tabel */}
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="p-5 border-b border-border flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-accent-teal" />
+            <h3 className="text-base font-bold text-primary">Kinerja Operator (30 hari)</h3>
+          </div>
+          <button
+            onClick={exportPerformance}
+            disabled={perf.length === 0}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-elevated border border-border text-xs font-bold text-muted hover:text-primary hover:border-accent-teal disabled:opacity-40 transition-all"
+          >
+            <Download className="h-3.5 w-3.5" /> CSV
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-elevated/50 border-b border-border text-muted text-xs font-semibold uppercase tracking-wide">
+              <tr><th className="px-4 py-3">Operator</th><th className="px-4 py-3">Job</th><th className="px-4 py-3">Output</th><th className="px-4 py-3">Waste</th><th className="px-4 py-3">Rasio Waste</th></tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {perf.map((p) => (
+                <tr key={p.operatorId} className="hover:bg-elevated/30">
+                  <td className="px-4 py-3 font-medium text-primary">{p.operatorName}</td>
+                  <td className="px-4 py-3 text-muted">{p.jobCount}</td>
+                  <td className="px-4 py-3 text-muted">{p.totalOutput} pcs</td>
+                  <td className="px-4 py-3 text-muted">{p.totalWaste} pcs</td>
+                  <td className={cn("px-4 py-3 font-bold", p.wasteRatio > 0.2 ? "text-status-red" : "text-status-green")}>
+                    {(p.wasteRatio * 100).toFixed(1)}%
+                  </td>
+                </tr>
+              ))}
+              {perf.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-muted">Belum ada data.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Piutang */}
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="p-5 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Receipt className="h-5 w-5 text-accent-teal" />
+            <h3 className="text-base font-bold text-primary">Piutang Outstanding</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <select value={recvFilter} onChange={(e) => setRecvFilter(e.target.value as typeof recvFilter)}
+              className="h-9 rounded-lg bg-elevated border border-border text-sm text-muted px-3 outline-none focus:border-accent-teal">
+              <option value="all">Semua</option>
+              <option value="overdue">Overdue</option>
+              <option value="ready_unpaid">Siap Ambil Belum Lunas</option>
+            </select>
+            <button
+              onClick={exportReceivables}
+              disabled={recv.length === 0}
+              className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-elevated border border-border text-xs font-bold text-muted hover:text-primary hover:border-accent-teal disabled:opacity-40 transition-all"
+            >
+              <Download className="h-3.5 w-3.5" /> CSV
+            </button>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-elevated/50 border-b border-border text-muted text-xs font-semibold uppercase tracking-wide">
+              <tr><th className="px-4 py-3">Kode</th><th className="px-4 py-3">Konsumen</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Dibayar</th><th className="px-4 py-3">Sisa</th><th className="px-4 py-3">Deadline</th><th className="px-4 py-3">Status</th></tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {recv.map((o) => (
+                <tr key={o.orderCode} className="hover:bg-elevated/30">
+                  <td className="px-4 py-3 font-mono text-accent-teal font-bold">{o.orderCode}</td>
+                  <td className="px-4 py-3">{o.customerName}</td>
+                  <td className="px-4 py-3 font-mono text-muted">{rupiah(o.total)}</td>
+                  <td className="px-4 py-3 font-mono text-muted">{rupiah(o.paidAmount)}</td>
+                  <td className="px-4 py-3 font-mono font-bold text-status-yellow-text">{rupiah(o.balance)}</td>
+                  <td className={cn("px-4 py-3 text-xs", o.overdue ? "text-status-red font-bold" : "text-muted")}>{fmtDate(o.deadline)}</td>
+                  <td className="px-4 py-3 text-xs text-muted">{o.status}</td>
+                </tr>
+              ))}
+              {recv.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-muted">Tidak ada piutang.</td></tr>}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

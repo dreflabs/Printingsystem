@@ -54,7 +54,7 @@ export default function MarketingPage() {
               </h1>
 
               <p className="text-lg text-muted max-w-xl mb-10 leading-relaxed">
-                Tinggalkan buku catatan dan Excel. Print Pilot membantu Anda mencegah order terselip, memantau produksi real-time, dan menghemat biaya operasional.
+                Tinggalkan buku catatan dan Excel. Print Pilot membantu Anda mencegah pesanan terselip, memantau produksi real-time, dan menghemat biaya operasional.
               </p>
 
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
@@ -66,13 +66,13 @@ export default function MarketingPage() {
                 </Link>
               </div>
 
-              <p className="mt-6 text-xs text-muted font-medium">Uji coba gratis 7 hari. Tanpa kartu kredit.</p>
+              <p className="mt-6 text-xs text-muted font-medium">Uji coba gratis 14 hari. Tanpa kartu kredit.</p>
 
               <div className="mt-12 grid grid-cols-3 gap-6 max-w-md pt-8 border-t border-border">
                 {[
                   { label: "Titik Scan QR Produksi", value: "10" },
                   { label: "Role Akses Terpisah", value: "5" },
-                  { label: "Hari Trial Gratis", value: "7" },
+                  { label: "Hari Trial Gratis", value: "14" },
                 ].map((s) => (
                   <div key={s.label}>
                     <p className="text-2xl font-extrabold text-primary font-mono">{s.value}</p>
@@ -107,7 +107,7 @@ export default function MarketingPage() {
                   <h3 className="text-xl font-bold text-primary">Cara Lama</h3>
                 </div>
                 <ul className="space-y-4 text-sm text-muted">
-                  <li className="flex gap-3"><X className="h-5 w-5 text-status-red shrink-0" /> <span className="pt-0.5">Order sering terselip karena dicatat manual di kertas.</span></li>
+                  <li className="flex gap-3"><X className="h-5 w-5 text-status-red shrink-0" /> <span className="pt-0.5">Pesanan sering terselip karena dicatat manual di kertas.</span></li>
                   <li className="flex gap-3"><X className="h-5 w-5 text-status-red shrink-0" /> <span className="pt-0.5">CS tidak tahu status pesanan karena harus tanya orang produksi dulu.</span></li>
                   <li className="flex gap-3"><X className="h-5 w-5 text-status-red shrink-0" /> <span className="pt-0.5">Kehabisan bahan baku di tengah proses cetak.</span></li>
                   <li className="flex gap-3"><X className="h-5 w-5 text-status-red shrink-0" /> <span className="pt-0.5">Pelanggan marah karena deadline pesanan molor.</span></li>
@@ -126,7 +126,7 @@ export default function MarketingPage() {
                   <li className="flex gap-3"><Check className="h-5 w-5 text-status-green shrink-0" /> <span className="pt-0.5">Semua pesanan tercatat digital secara aman di cloud.</span></li>
                   <li className="flex gap-3"><Check className="h-5 w-5 text-status-green shrink-0" /> <span className="pt-0.5">Status produksi real-time, CS bisa langsung jawab pertanyaan pelanggan.</span></li>
                   <li className="flex gap-3"><Check className="h-5 w-5 text-status-green shrink-0" /> <span className="pt-0.5">Stok terpotong otomatis dan ada peringatan jika menipis.</span></li>
-                  <li className="flex gap-3"><Check className="h-5 w-5 text-status-green shrink-0" /> <span className="pt-0.5">Peringatan otomatis untuk order yang mendekati deadline.</span></li>
+                  <li className="flex gap-3"><Check className="h-5 w-5 text-status-green shrink-0" /> <span className="pt-0.5">Peringatan otomatis untuk pesanan yang mendekati deadline.</span></li>
                 </ul>
               </div>
             </div>
@@ -137,8 +137,8 @@ export default function MarketingPage() {
         <section id="fitur" className="py-24 bg-card border-y border-border">
           <div className="max-w-7xl mx-auto px-6">
             <div className="text-center max-w-2xl mx-auto mb-16">
-              <h2 className="text-3xl font-bold text-primary mb-4">Semua yang Anda butuhkan dalam 1 Aplikasi</h2>
-              <p className="text-muted">Desain alur kerja Print Pilot secara spesifik dibuat untuk menjawab keruwetan operasional bisnis percetakan digital maupun offset.</p>
+              <h2 className="text-3xl font-bold text-primary mb-4">Semua yang Anda Butuhkan dalam Satu Aplikasi</h2>
+              <p className="text-muted">Desain alur kerja Print Pilot secara spesifik dibuat untuk menjawab kerumitan operasional bisnis percetakan digital maupun offset.</p>
             </div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -153,7 +153,7 @@ export default function MarketingPage() {
                 {
                   icon: Kanban,
                   title: "Kanban Produksi",
-                  desc: "Pantau antrean mesin dan job desainer secara visual. Tidak ada lagi order yang terlewat.",
+                  desc: "Pantau antrean mesin dan job desainer secara visual. Tidak ada lagi pesanan yang terlewat.",
                   color: "text-status-blue",
                   bg: "bg-status-blue/10"
                 },
@@ -161,7 +161,7 @@ export default function MarketingPage() {
                   icon: PackageSearch,
                   title: "Manajemen Finishing",
                   desc: "Stok bahan baku terpotong otomatis setiap kali mesin mencetak. Ada alert stok menipis.",
-                  color: "text-status-yellow",
+                  color: "text-status-yellow-text",
                   bg: "bg-status-yellow/10"
                 },
                 {
@@ -198,11 +198,11 @@ export default function MarketingPage() {
                 <h3 className="text-xl font-bold text-primary mb-2">Starter</h3>
                 <p className="text-sm text-muted mb-6">Cocok untuk percetakan baru</p>
                 <div className="mb-6">
-                  <span className="text-4xl font-extrabold text-primary">Rp 299k</span>
+                  <span className="text-4xl font-extrabold text-primary">Rp 299rb</span>
                   <span className="text-muted">/bln</span>
                 </div>
                 <ul className="space-y-4 mb-8 flex-1">
-                  {['Maksimal 5 Pengguna', '200 Order per bulan', '1 Lokasi Finishing', 'Support via Email'].map((feat, i) => (
+                  {['Maksimal 5 Pengguna', '200 Pesanan per bulan', '1 Lokasi Finishing', 'Dukungan via Email'].map((feat, i) => (
                     <li key={i} className="flex items-start gap-3 text-sm font-medium text-muted">
                       <CheckCircle2 className="h-5 w-5 text-accent-teal shrink-0" /> {feat}
                     </li>
@@ -221,11 +221,11 @@ export default function MarketingPage() {
                 <h3 className="text-xl font-bold text-primary mb-2">Pro</h3>
                 <p className="text-sm text-muted mb-6">Untuk percetakan berkembang</p>
                 <div className="mb-6">
-                  <span className="text-4xl font-extrabold text-primary">Rp 599k</span>
+                  <span className="text-4xl font-extrabold text-primary">Rp 599rb</span>
                   <span className="text-muted">/bln</span>
                 </div>
                 <ul className="space-y-4 mb-8 flex-1">
-                  {['Maksimal 15 Pengguna', 'Unlimited Order', 'Multi-lokasi Finishing', 'Notifikasi WhatsApp Otomatis', 'Support Prioritas (WA)'].map((feat, i) => (
+                  {['Maksimal 15 Pengguna', 'Pesanan tanpa batas', 'Multi-lokasi Finishing', 'Notifikasi WhatsApp Otomatis', 'Dukungan Prioritas (WA)'].map((feat, i) => (
                     <li key={i} className="flex items-start gap-3 text-sm font-medium text-primary">
                       <CheckCircle2 className="h-5 w-5 text-accent-teal shrink-0" /> {feat}
                     </li>
@@ -244,14 +244,14 @@ export default function MarketingPage() {
                   <span className="text-4xl font-extrabold text-primary">Custom</span>
                 </div>
                 <ul className="space-y-4 mb-8 flex-1">
-                  {['Unlimited Pengguna', 'Unlimited Order', 'Custom Domain (namatoko.id)', 'Integrasi API Khusus', 'On-Premise Option', 'SLA 99.9%'].map((feat, i) => (
+                  {['Pengguna tanpa batas', 'Pesanan tanpa batas', 'Custom Domain (namatoko.id)', 'Integrasi API Khusus', 'Opsi On-Premise', 'SLA 99.9%'].map((feat, i) => (
                     <li key={i} className="flex items-start gap-3 text-sm font-medium text-muted">
                       <CheckCircle2 className="h-5 w-5 text-accent-teal shrink-0" /> {feat}
                     </li>
                   ))}
                 </ul>
                 <Link href="/contact" className="w-full h-12 flex items-center justify-center rounded-xl bg-elevated border border-border text-primary font-bold hover:bg-border/50 transition-colors">
-                  Hubungi Sales
+                  Hubungi Tim Sales
                 </Link>
               </div>
             </div>
@@ -263,7 +263,7 @@ export default function MarketingPage() {
           <div className="max-w-7xl mx-auto px-6">
             <div className="text-center max-w-2xl mx-auto mb-16">
               <h2 className="text-3xl font-bold text-primary mb-4">Dipercaya oleh Percetakan Modern</h2>
-              <p className="text-muted">Dengarkan apa kata pengusaha percetakan yang telah sukses beralih dari pencatatan manual ke sistem otomasi Print Pilot.</p>
+              <p className="text-muted">Simak cerita pengusaha percetakan yang sudah beralih dari pencatatan manual ke sistem otomatis Print Pilot.</p>
             </div>
 
             <div className="grid md:grid-cols-3 gap-6">
@@ -281,12 +281,12 @@ export default function MarketingPage() {
                 {
                   name: "Andi",
                   role: "Manajer Produksi Percetakan Offset",
-                  quote: "Fitur notifikasi WhatsApp-nya luar biasa! Konsumen tidak perlu lagi tanya 'orderan saya sudah jadi belum?' karena mereka dapat WA otomatis saat barang masuk finishing."
+                  quote: "Fitur notifikasi WhatsApp-nya luar biasa! Konsumen tidak perlu lagi tanya 'pesanan saya sudah jadi belum?' karena mereka dapat WA otomatis saat barang masuk finishing."
                 }
               ].map((testi, i) => (
                 <div key={i} className="bg-card border border-border p-8 rounded-2xl flex flex-col justify-between">
                   <div>
-                    <div className="flex text-status-yellow mb-6">
+                    <div className="flex text-status-yellow-text mb-6">
                       {Array.from({length: 5}).map((_, idx) => (
                         <svg key={idx} className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
                       ))}
@@ -308,7 +308,7 @@ export default function MarketingPage() {
           <div className="max-w-3xl mx-auto px-6">
             <div className="text-center mb-16">
               <h2 className="text-3xl font-bold text-primary mb-4">Pertanyaan yang Sering Diajukan</h2>
-              <p className="text-muted">Masih ragu? Berikut adalah jawaban dari pertanyaan yang sering ditanyakan oleh calon pengguna Print Pilot.</p>
+              <p className="text-muted">Masih ragu? Berikut jawaban atas hal-hal yang paling sering ditanyakan calon pengguna Print Pilot.</p>
             </div>
 
             <div className="space-y-4">
@@ -327,7 +327,7 @@ export default function MarketingPage() {
                 },
                 {
                   q: "Bagaimana jika pesanan percetakan saya lebih dari limit paket Starter?",
-                  a: "Jika Anda mendekati limit 200 pesanan per bulan pada paket Starter, Anda bisa meng-upgrade kapan saja ke paket Pro (Unlimited) dengan mudah dan tanpa kehilangan data sebelumnya."
+                  a: "Jika Anda mendekati limit 200 pesanan per bulan pada paket Starter, Anda bisa pindah kapan saja ke paket Pro (tanpa batas) dengan mudah dan tanpa kehilangan data sebelumnya."
                 }
               ].map((faq, i) => (
                 <details key={i} className="group rounded-2xl border border-border bg-card p-6 [&_summary::-webkit-details-marker]:hidden cursor-pointer">
@@ -368,7 +368,7 @@ export default function MarketingPage() {
                 <span className="font-bold text-xl text-primary tracking-tight">Print Pilot<span className="text-muted">.id</span></span>
               </div>
               <p className="text-sm text-muted max-w-sm leading-relaxed">
-                Sistem ERP ERP Kasir & Produksi terbaik untuk industri percetakan digital dan offset di Indonesia.
+                Sistem ERP Kasir & Produksi terbaik untuk industri percetakan digital dan offset di Indonesia.
               </p>
               <div className="pt-4 space-y-2 text-sm text-muted">
                 <p className="font-semibold text-primary">Alamat Kantor:</p>

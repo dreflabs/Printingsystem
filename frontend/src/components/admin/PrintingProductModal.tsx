@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { X, Plus, Trash2 } from "lucide-react";
-import { ProductVariant, ProductFinishing, PrintingProduct } from "@/store/useWorkflowStore";
+import { ProductVariant, ProductFinishing, PrintingProduct } from "@/types/products";
 
 interface PrintingProductModalProps {
   open: boolean;

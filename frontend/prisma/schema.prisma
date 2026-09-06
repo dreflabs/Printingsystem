@@ -10,24 +10,25 @@ datasource db {
 // ─── SAAS & MULTI-TENANCY ─────────────────────────────────────────────────────
 
 model Tenant {
-  id                      String    @id @default(uuid())
-  slug                    String    @unique // subdomain (e.g. majujayaprint)
-  name                    String
-  plan                    String // STARTER/PRO/ENTERPRISE
-  status                  String // TRIAL/ACTIVE/SUSPENDED/CHURNED
-  trial_ends_at           DateTime?
-  subscription_started_at DateTime?
-  current_period_start    DateTime?
-  current_period_end      DateTime?
-  billing_email           String?
-  owner_name              String?
-  owner_phone             String?
-  custom_domain           String?
-  wa_provider             String?
-  wa_api_key              String? // [ENCRYPTED]
-  max_users               Int?
-  created_at              DateTime  @default(now())
-  updated_at              DateTime  @updatedAt
+  id                                String    @id @default(uuid())
+  slug                              String    @unique // subdomain (e.g. majujayaprint)
+  name                              String
+  plan                              String // STARTER/PRO/ENTERPRISE
+  status                            String // TRIAL/ACTIVE/SUSPENDED/CHURNED
+  trial_ends_at                     DateTime?
+  subscription_started_at           DateTime?
+  current_period_start              DateTime?
+  current_period_end                DateTime?
+  billing_email                     String?
+  owner_name                        String?
+  owner_phone                       String?
+  custom_domain                     String?
+  wa_provider                       String?
+  wa_api_key                        String? // [ENCRYPTED]
+  max_users                         Int?
+  payroll_late_deduction_per_minute Decimal   @default(0) @db.Decimal(15, 2) // Rp potongan gaji per menit keterlambatan
+  created_at                        DateTime  @default(now())
+  updated_at                        DateTime  @updatedAt
 
   // Relations
   users                  User[]
@@ -62,6 +63,8 @@ model Tenant {
   deadline_alerts        DeadlineAlert[]
   attendance_imports     AttendanceImport[]
   attendance_records     AttendanceRecord[]
+  payroll_periods        PayrollPeriod[]
+  payroll_records        PayrollRecord[]
 }
 
 model SubscriptionPlan {
@@ -111,14 +114,16 @@ model Invoice {
 }
 
 model SuperAdmin {
-  id            String    @id @default(uuid())
-  name          String
-  email         String    @unique
-  password_hash String
-  role          String // SUPER_ADMIN/SUPPORT/FINANCE
-  active        Boolean   @default(true)
-  last_login_at DateTime?
-  created_at    DateTime  @default(now())
+  id                 String    @id @default(uuid())
+  name               String
+  email              String    @unique
+  password_hash      String
+  role               String // SUPER_ADMIN/SUPPORT/FINANCE
+  active             Boolean   @default(true)
+  failed_login_count Int       @default(0)
+  locked_until       DateTime?
+  last_login_at      DateTime?
+  created_at         DateTime  @default(now())
 
   tenant_audit_logs TenantAuditLog[]
 }
@@ -146,9 +151,10 @@ model OnboardingStep {
 // ─── ROLES & USERS ────────────────────────────────────────────────────────────
 
 model Role {
-  id    String @id @default(uuid())
-  name  String @unique // owner, admin, designer_sales, operator, gudang
-  users User[]
+  id         String     @id @default(uuid())
+  name       String     @unique // owner, admin, designer_sales, operator, gudang
+  users      User[]
+  user_roles UserRole[]
 }
 
 model User {
@@ -168,10 +174,15 @@ model User {
   failed_login_count   Int       @default(0)
   locked_until         DateTime?
   must_change_password Boolean   @default(false)
+  password_changed_at  DateTime? // dinaikkan tiap ganti password → sesi lama (JWT) yang terbit sebelumnya ditolak
+  base_salary          Decimal?  @db.Decimal(15, 2) // gaji pokok bulanan; null = belum diset, tidak ikut payroll run
   deactivated_at       DateTime?
   deactivated_by       String? // self-reference if needed, omitted FK for simplicity
   created_at           DateTime  @default(now())
   updated_at           DateTime  @updatedAt
+
+  // Multi-role support: extra_roles stores additional roles beyond the primary role
+  extra_roles UserRole[]
 
   // Relations (inverse side)
   created_customers      Customer[]
@@ -205,30 +216,43 @@ model User {
   approved_corrections   Correction[]          @relation("CorrectionApprovedBy")
   imported_attendance    AttendanceImport[]
   attendance_records     AttendanceRecord[]
+  password_reset_tokens  PasswordResetToken[]
+  payroll_records        PayrollRecord[]
 
   @@unique([tenant_id, username])
   @@unique([tenant_id, email])
 }
 
+// Join table: User ↔ Role (many-to-many, for extra roles beyond primary role)
+model UserRole {
+  id      String @id @default(uuid())
+  user_id String
+  user    User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role_id String
+  role    Role   @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, role_id])
+}
+
 // ─── MASTER DATA ──────────────────────────────────────────────────────────────
 
 model Customer {
-  id            String   @id @default(uuid())
-  tenant_id     String
-  tenant        Tenant   @relation(fields: [tenant_id], references: [id])
-  customer_code String // CST-XXXXX
-  type          String   @default("Umum") // Umum, Makloon, B2B
-  name          String
-  phone         String?
-  email         String?
-  address       String?
-  company       String?
-  notes         String?
+  id               String   @id @default(uuid())
+  tenant_id        String
+  tenant           Tenant   @relation(fields: [tenant_id], references: [id])
+  customer_code    String // CST-XXXXX
+  type             String   @default("Umum") // Umum, Makloon, B2B
+  name             String
+  phone            String?
+  email            String?
+  address          String?
+  company          String?
+  notes            String?
   default_discount Decimal? @db.Decimal(15, 2)
-  created_by    String
-  creator       User     @relation(fields: [created_by], references: [id])
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  created_by       String
+  creator          User     @relation(fields: [created_by], references: [id])
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
 
   orders              Order[]
   notification_events NotificationEvent[]
@@ -674,6 +698,7 @@ model NotificationEvent {
   provider_message_id String?
   error_message       String?
   sent_at             DateTime?
+  last_attempt_at     DateTime? // waktu percobaan kirim terakhir — dipakai job dispatcher untuk jeda retry 5 menit
   is_resend           Boolean   @default(false)
   resent_by           String?
   resender            User?     @relation(fields: [resent_by], references: [id])
@@ -793,24 +818,83 @@ model AttendanceImport {
 }
 
 model AttendanceRecord {
-  id                 String           @id @default(uuid())
+  id                 String            @id @default(uuid())
   tenant_id          String
-  tenant             Tenant           @relation(fields: [tenant_id], references: [id])
-  import_id          String
-  import             AttendanceImport @relation(fields: [import_id], references: [id])
+  tenant             Tenant            @relation(fields: [tenant_id], references: [id])
+  import_id          String? // null = baris dibuat dari tombol istirahat Print Pilot, belum ada import fingerprint
+  import             AttendanceImport? @relation(fields: [import_id], references: [id])
   user_id            String?
-  user               User?            @relation(fields: [user_id], references: [id])
+  user               User?             @relation(fields: [user_id], references: [id])
   employee_name      String
   date               DateTime
   check_in           DateTime?
   check_out          DateTime?
-  check_in_status    String // ON_TIME/LATE
-  late_minutes       Int              @default(0)
+  check_in_status    String // ON_TIME/LATE/UNKNOWN
+  late_minutes       Int               @default(0)
   break_start        DateTime?
   break_end          DateTime?
-  break_duration_min Int              @default(0)
+  break_duration_min Int               @default(0)
   break_status       String? // NORMAL/EXCEEDED
   warning_sent_at    DateTime?
   owner_note         String?
-  created_at         DateTime         @default(now())
+  created_at         DateTime          @default(now())
+}
+
+// ─── PAYROLL (GAJI) ───────────────────────────────────────────────────────────
+
+model PayrollPeriod {
+  id           String    @id @default(uuid())
+  tenant_id    String
+  tenant       Tenant    @relation(fields: [tenant_id], references: [id])
+  year         Int
+  month        Int // 1-12
+  status       String    @default("DRAFT") // DRAFT/FINALIZED
+  generated_by String
+  generated_at DateTime  @default(now())
+  finalized_by String?
+  finalized_at DateTime?
+  created_at   DateTime  @default(now())
+
+  records PayrollRecord[]
+
+  @@unique([tenant_id, year, month])
+}
+
+model PayrollRecord {
+  id               String        @id @default(uuid())
+  tenant_id        String
+  tenant           Tenant        @relation(fields: [tenant_id], references: [id])
+  period_id        String
+  period           PayrollPeriod @relation(fields: [period_id], references: [id])
+  user_id          String
+  user             User          @relation(fields: [user_id], references: [id])
+  base_salary      Decimal       @db.Decimal(15, 2) // snapshot User.base_salary saat periode dibuat
+  working_days     Int
+  present_days     Int
+  absent_days      Int
+  late_minutes     Int
+  deduction_absent Decimal       @db.Decimal(15, 2)
+  deduction_late   Decimal       @db.Decimal(15, 2)
+  total_deduction  Decimal       @db.Decimal(15, 2)
+  net_salary       Decimal       @db.Decimal(15, 2)
+  status           String        @default("UNPAID") // UNPAID/PAID
+  paid_at          DateTime?
+  notes            String?
+  created_at       DateTime      @default(now())
+
+  @@unique([period_id, user_id])
+}
+
+// ─── PASSWORD RESET ───────────────────────────────────────────────────────────
+
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  user_id    String
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token_hash String    @unique // sha256 of the raw token; raw token only in the emailed link
+  expires_at DateTime
+  used_at    DateTime?
+  created_at DateTime  @default(now())
+
+  @@index([user_id])
 }

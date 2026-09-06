@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -44,6 +44,14 @@ const STEPS = [
 ];
 
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-base" />}>
+      <RegisterWizard />
+    </Suspense>
+  );
+}
+
+function RegisterWizard() {
   const searchParams = useSearchParams();
   const plan = searchParams.get("plan") === "pro" ? "pro" : "starter";
   const [step, setStep] = useState(1);

@@ -56,10 +56,16 @@ export default auth((req) => {
 
   const isLocal = hostname.includes("localhost");
   const rootDomain = isLocal ? "localhost:3000" : "printpilot.id";
-  const tenantSlug = hostname !== rootDomain ? hostname.replace(`.${rootDomain}`, "") : null;
+  // Hanya anggap subdomain tenant kalau host benar-benar "<slug>.<rootDomain>".
+  // Host lain (mis. preview *.sslip.io, IP mentah) → tanpa slug; konteks tenant
+  // lalu diambil dari sesi user yang login (lihat lib/tenant.ts).
+  const tenantSlug = hostname.endsWith(`.${rootDomain}`)
+    ? hostname.slice(0, -(rootDomain.length + 1)) || null
+    : null;
 
   const requestHeaders = new Headers(req.headers);
   if (tenantSlug) requestHeaders.set("x-tenant-slug", tenantSlug);
+  else requestHeaders.delete("x-tenant-slug"); // jangan percaya header dari klien
   const pass = () => NextResponse.next({ request: { headers: requestHeaders } });
 
   const isLoggedIn = !!req.auth;

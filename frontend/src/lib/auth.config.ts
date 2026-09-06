@@ -2,6 +2,16 @@ import type { NextAuthConfig } from "next-auth";
 
 export const authConfig = {
   providers: [],
+  // Aplikasi di-host sendiri di belakang reverse proxy (Traefik/Coolify), jadi
+  // host permintaan datang lewat X-Forwarded-Host. Tanpa ini Auth.js menolak
+  // permintaan di mode produksi dengan `UntrustedHost`, dan gejalanya
+  // menyesatkan: login gagal seolah kata sandinya salah.
+  //
+  // WAJIB di sini, bukan di auth.ts: middleware membuat instance NextAuth
+  // sendiri dari authConfig ini. Ditaruh di auth.ts saja, jalur credentials
+  // lolos tapi pembacaan sesi di middleware tetap ditolak — sesi seolah
+  // langsung hilang setelah login berhasil.
+  trustHost: true,
   pages: {
     signIn: "/login",
   },

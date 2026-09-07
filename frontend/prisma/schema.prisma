@@ -555,7 +555,10 @@ model DesignVersion {
   design_job_id    String
   design_job       DesignJob @relation(fields: [design_job_id], references: [id])
   version_no       Int
-  file_path        String?
+  file_path        String? // key objek R2 untuk upload baru; link/teks bebas untuk baris lama
+  file_name        String? // nama asli file saat diupload
+  file_size        Int? // ukuran byte
+  content_type     String? // MIME
   preview_path     String?
   uploaded_by      String
   uploader         User      @relation("UploadedBy", fields: [uploaded_by], references: [id])

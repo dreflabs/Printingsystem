@@ -139,6 +139,9 @@ export async function getDesignQueue() {
         status: d.status,
         currentVersion: d.current_version,
         latestVersionStatus: d.versions[0]?.approval_status ?? null,
+        latestVersionId: d.versions[0]?.id ?? null,
+        latestFileName: d.versions[0]?.file_name ?? null,
+        latestFileUrl: d.versions[0]?.file_path ? `/api/design/${d.versions[0]!.id}` : null,
         deadline: d.order.deadline,
       }))
     );
@@ -488,7 +491,15 @@ export async function getOrderDetail(orderId: string) {
         status: d.status,
         method: d.approval_method,
         currentVersion: d.current_version,
-        versions: d.versions.map((v) => ({ versionNo: v.version_no, approvalStatus: v.approval_status, filePath: v.file_path, notes: v.approval_notes, rejectionReason: v.rejection_reason })),
+        versions: d.versions.map((v) => ({
+          versionNo: v.version_no,
+          approvalStatus: v.approval_status,
+          fileUrl: v.file_path ? `/api/design/${v.id}` : null,
+          fileName: v.file_name,
+          fileSize: v.file_size,
+          notes: v.approval_notes,
+          rejectionReason: v.rejection_reason,
+        })),
       })),
       productionJobs: o.production_jobs.map((j) => ({
         jobCode: j.job_code,

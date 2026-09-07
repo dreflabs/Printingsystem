@@ -1,12 +1,40 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Palette, Clock, CheckCircle2, RefreshCw, Upload, Search, X } from "lucide-react";
+import { Palette, Clock, CheckCircle2, RefreshCw, Upload, Search, X, FileText, Paperclip } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { NewOrderModal } from "@/components/orders/NewOrderModal";
 import { cn } from "@/lib/utils";
 import { getDesignQueue } from "@/actions/queries";
-import { uploadDesignVersion, approveDesign, requestDesignRevision } from "@/actions/design";
+import {
+  createDesignUploadUrl,
+  uploadDesignVersion,
+  approveDesign,
+  requestDesignRevision,
+} from "@/actions/design";
+
+const ACCEPT = ".pdf,.ai,.cdr,.eps,.svg,.psd,.png,.jpg,.jpeg,.webp,.tif,.tiff,application/pdf,image/*";
+const ALLOWED_EXT = ["pdf", "ai", "cdr", "eps", "svg", "psd", "png", "jpg", "jpeg", "webp", "tif", "tiff"];
+const MAX_MB = 200;
+const fmtSize = (b: number) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
+
+/** PUT file ke presigned URL R2 dengan progress. */
+function putWithProgress(url: string, file: File, onPct: (p: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    if (file.type) xhr.setRequestHeader("Content-Type", file.type);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onPct(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`Upload gagal (HTTP ${xhr.status}). Cek konfigurasi CORS bucket R2.`));
+    xhr.onerror = () => reject(new Error("Upload gagal — jaringan atau CORS bucket R2."));
+    xhr.send(file);
+  });
+}
 
 type Row = {
   orderId: string;
@@ -18,6 +46,9 @@ type Row = {
   status: string;
   currentVersion: number;
   latestVersionStatus: string | null;
+  latestVersionId: string | null;
+  latestFileName: string | null;
+  latestFileUrl: string | null;
   deadline: string | Date | null;
 };
 
@@ -25,63 +56,116 @@ const fmtDeadline = (d: string | Date | null) =>
   d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—";
 
 function UploadModal({ row, onClose, onDone }: { row: Row; onClose: () => void; onDone: () => void }) {
-  const [filePath, setFilePath] = useState("");
-  const [previewPath, setPreviewPath] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [notes, setNotes] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<"idle" | "preparing" | "uploading" | "saving">("idle");
+  const [pct, setPct] = useState(0);
   const [err, setErr] = useState<string | null>(null);
-  const inp = "w-full h-10 rounded-xl bg-elevated border border-border text-xs text-primary px-3 outline-none focus:border-accent-teal";
+  const busy = phase !== "idle";
+
+  function pickFile(f: File | null) {
+    setErr(null);
+    if (!f) return setFile(null);
+    const ext = (f.name.split(".").pop() ?? "").toLowerCase();
+    if (!ALLOWED_EXT.includes(ext)) {
+      setFile(null);
+      return setErr(`Format .${ext || "?"} tidak didukung. Pakai: ${ALLOWED_EXT.join(", ")}.`);
+    }
+    if (f.size > MAX_MB * 1024 * 1024) {
+      setFile(null);
+      return setErr(`File ${fmtSize(f.size)} melebihi batas ${MAX_MB} MB.`);
+    }
+    setFile(f);
+  }
 
   async function submit() {
-    setBusy(true);
+    if (!file) return;
     setErr(null);
-    const res = await uploadDesignVersion(row.orderId, {
-      filePath: filePath.trim(),
-      previewPath: previewPath.trim() || undefined,
-      notes: notes.trim() || undefined,
-    });
-    setBusy(false);
-    if (!res.success) { setErr(res.error); return; }
-    onDone();
+    try {
+      setPhase("preparing");
+      const prep = await createDesignUploadUrl(row.orderId, {
+        fileName: file.name,
+        contentType: file.type || null,
+        size: file.size,
+      });
+      if (!prep.success) throw new Error(prep.error);
+
+      setPhase("uploading");
+      setPct(0);
+      await putWithProgress(prep.data.uploadUrl, file, setPct);
+
+      setPhase("saving");
+      const saved = await uploadDesignVersion(row.orderId, {
+        filePath: prep.data.objectKey,
+        fileName: file.name,
+        fileSize: file.size,
+        contentType: file.type || null,
+        notes: notes.trim() || undefined,
+      });
+      if (!saved.success) throw new Error(saved.error);
+      onDone();
+    } catch (e) {
+      setPhase("idle");
+      setErr(e instanceof Error ? e.message : "Gagal mengupload.");
+    }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
       <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-4">
         <div className="flex justify-between items-center border-b border-border pb-3">
           <div>
             <h3 className="text-base font-bold text-primary">Upload Versi Desain</h3>
             <p className="text-xs text-muted font-mono">{row.orderCode} · versi berikutnya: V{row.currentVersion + 1}</p>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated disabled:opacity-40"><X className="h-5 w-5" /></button>
         </div>
 
         {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
 
         <div>
-          <label className="text-xs text-muted font-medium mb-1 block">Path / Link File Desain *</label>
-          <input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="uploads/2026/ORD-.../v2.pdf atau link cloud" className={inp} />
+          <label className="text-xs text-muted font-medium mb-1 block">File Desain *</label>
+          <label className={cn(
+            "flex items-center gap-3 rounded-xl border border-dashed px-3 py-4 cursor-pointer transition-colors",
+            file ? "border-accent-teal/50 bg-accent-teal/5" : "border-border hover:border-accent-teal/50",
+            busy && "pointer-events-none opacity-60"
+          )}>
+            <input type="file" accept={ACCEPT} className="hidden"
+              onChange={(e) => pickFile(e.target.files?.[0] ?? null)} disabled={busy} />
+            <Paperclip className="h-4 w-4 text-muted shrink-0" />
+            {file ? (
+              <span className="text-xs text-primary truncate">{file.name} <span className="text-muted">· {fmtSize(file.size)}</span></span>
+            ) : (
+              <span className="text-xs text-muted">Pilih file — PDF, AI, CDR, EPS, SVG, PSD, PNG, JPG, TIFF (maks {MAX_MB} MB)</span>
+            )}
+          </label>
         </div>
-        <div>
-          <label className="text-xs text-muted font-medium mb-1 block">Path Preview (opsional)</label>
-          <input value={previewPath} onChange={(e) => setPreviewPath(e.target.value)} placeholder="uploads/.../v2-preview.jpg" className={inp} />
-        </div>
+
         <div>
           <label className="text-xs text-muted font-medium mb-1 block">Catatan Revisi / Perubahan</label>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Misal: penyesuaian warna logo & ukuran font..."
-            className="w-full min-h-[60px] rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none" />
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={busy} placeholder="Misal: penyesuaian warna logo & ukuran font..."
+            className="w-full min-h-[60px] rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none disabled:opacity-60" />
         </div>
 
         {row.method === "MAKLOON" && (
           <p className="text-[11px] text-accent-teal">File MAKLOON otomatis di-approve setelah diupload.</p>
         )}
 
+        {phase === "uploading" && (
+          <div className="space-y-1">
+            <div className="h-2 rounded-full bg-elevated overflow-hidden">
+              <div className="h-full bg-accent-teal transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <p className="text-[11px] text-muted text-right">{pct}%</p>
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
-          <button onClick={onClose} className="flex-1 h-10 rounded-xl bg-elevated border border-border text-xs text-muted hover:text-primary">Batal</button>
-          <button disabled={!filePath.trim() || busy} onClick={submit}
+          <button onClick={onClose} disabled={busy} className="flex-1 h-10 rounded-xl bg-elevated border border-border text-xs text-muted hover:text-primary disabled:opacity-40">Batal</button>
+          <button disabled={!file || busy} onClick={submit}
             className="flex-1 h-10 rounded-xl bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white text-xs font-bold hover:brightness-110 disabled:opacity-40 shadow-md shadow-accent-teal/20">
-            Submit Versi
+            {phase === "preparing" ? "Menyiapkan…" : phase === "uploading" ? "Mengupload…" : phase === "saving" ? "Menyimpan…" : "Submit Versi"}
           </button>
         </div>
       </div>
@@ -263,6 +347,18 @@ export default function DesignerDashboardPage() {
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-accent-teal/15 text-accent-teal border border-accent-teal/30">
                       V{r.currentVersion}{r.latestVersionStatus ? ` · ${r.latestVersionStatus}` : ""}
                     </span>
+                    {r.latestFileUrl && (
+                      <a
+                        href={r.latestFileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 flex items-center gap-1 text-[10px] text-muted hover:text-accent-teal"
+                        title={r.latestFileName ?? "Lihat file"}
+                      >
+                        <FileText className="h-3 w-3 shrink-0" />
+                        <span className="truncate max-w-[120px]">{r.latestFileName ?? "Lihat file"}</span>
+                      </a>
+                    )}
                   </td>
                   <td className="px-4 py-3"><StatusPill status={r.status} /></td>
                   <td className="px-4 py-3 font-mono text-muted">{fmtDeadline(r.deadline)}</td>

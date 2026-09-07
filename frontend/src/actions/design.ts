@@ -7,9 +7,18 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { retryOnUnique } from "@/lib/retry";
+import {
+  r2Configured,
+  presignPut,
+  fileExt,
+  DESIGN_ALLOWED_EXT,
+  DESIGN_MAX_UPLOAD_BYTES,
+} from "@/lib/r2";
+import { randomUUID } from "crypto";
 import { ok, fail, type ActionResult } from "@/types";
 
 const isAdmin = (role: string) => role === "admin" || role === "owner";
+const canDesign = (role: string) => isAdmin(role) || role === "designer_sales";
 
 async function nextJobCode(tx: Prisma.TransactionClient, tenantId: string): Promise<string> {
   const now = new Date();
@@ -41,9 +50,59 @@ export async function getDesignJob(orderId: string) {
 }
 
 export interface UploadDesignVersionInput {
+  /** Key objek R2 (dari createDesignUploadUrl) atau link/teks bebas (mis. MAKLOON manual). */
   filePath: string;
+  fileName?: string | null;
+  fileSize?: number | null;
+  contentType?: string | null;
   previewPath?: string | null;
   notes?: string | null;
+}
+
+/**
+ * Langkah 1 upload desain: validasi & keluarkan presigned PUT URL R2.
+ * Browser meng-upload file langsung ke URL itu, lalu memanggil
+ * uploadDesignVersion() dengan `filePath` = objectKey yang dikembalikan di sini.
+ */
+export async function createDesignUploadUrl(
+  orderId: string,
+  input: { fileName: string; contentType?: string | null; size: number }
+): Promise<ActionResult<{ uploadUrl: string; objectKey: string }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!canDesign(actor.role)) {
+      return fail("Hanya Designer Sales/Admin/Owner yang boleh upload desain.");
+    }
+    if (!r2Configured()) {
+      return fail("Penyimpanan file (R2) belum dikonfigurasi. Hubungi admin sistem.");
+    }
+
+    const name = (input.fileName ?? "").trim();
+    const ext = fileExt(name);
+    if (!ext || !DESIGN_ALLOWED_EXT.includes(ext)) {
+      return fail(`Format tidak didukung. Pakai: ${DESIGN_ALLOWED_EXT.join(", ")}.`);
+    }
+    if (!Number.isFinite(input.size) || input.size <= 0) return fail("Ukuran file tidak valid.");
+    if (input.size > DESIGN_MAX_UPLOAD_BYTES) {
+      return fail(`File terlalu besar. Maksimum ${Math.round(DESIGN_MAX_UPLOAD_BYTES / 1024 / 1024)} MB.`);
+    }
+
+    const job = await prisma.designJob.findFirst({
+      where: { order_id: orderId, tenant_id: tenant.id },
+      select: { id: true, current_version: true },
+    });
+    if (!job) return fail("Job desain tidak ditemukan untuk order ini.");
+
+    const nextVer = job.current_version + 1;
+    const objectKey = `tenants/${tenant.id}/design/${job.id}/v${nextVer}-${randomUUID().slice(0, 8)}.${ext}`;
+    const uploadUrl = await presignPut(objectKey);
+
+    return ok({ uploadUrl, objectKey });
+  } catch (e) {
+    console.error("createDesignUploadUrl:", e);
+    return fail(e instanceof Error ? e.message : "Gagal menyiapkan upload.");
+  }
 }
 
 /**
@@ -57,10 +116,10 @@ export async function uploadDesignVersion(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role) && actor.role !== "designer_sales") {
+    if (!canDesign(actor.role)) {
       return fail("Hanya Designer Sales/Admin/Owner yang boleh upload desain.");
     }
-    if (!input.filePath?.trim()) return fail("Path file desain wajib diisi.");
+    if (!input.filePath?.trim()) return fail("File desain wajib diisi.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await tx.designJob.findFirst({
@@ -83,6 +142,9 @@ export async function uploadDesignVersion(
           design_job_id: job.id,
           version_no: versionNo,
           file_path: input.filePath.trim(),
+          file_name: input.fileName?.trim() || null,
+          file_size: input.fileSize && input.fileSize > 0 ? Math.round(input.fileSize) : null,
+          content_type: input.contentType?.trim() || null,
           preview_path: input.previewPath || null,
           uploaded_by: actor.id,
           approval_status: approvalStatus,

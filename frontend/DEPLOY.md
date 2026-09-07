@@ -221,6 +221,46 @@ curl -X POST -H "Authorization: Bearer $JOBS_SECRET" \
 `200` = terkirim. `502` = ada yang gagal, dan balasannya memuat pesan error
 provider apa adanya. Tabel lengkap ada di [`JOBS.md`](./JOBS.md).
 
+### 6c. Cloudflare R2 — file desain
+
+Designer meng-upload file desain langsung dari dashboard; file disimpan di
+Cloudflare R2 dan tidak pernah melewati server aplikasi (presigned URL).
+
+**Setup:**
+
+1. Cloudflare dashboard → **R2** → **Create bucket** → nama `printpilot-designs`
+   (biarkan **private** — jangan aktifkan Public Access).
+2. **R2** → **Manage R2 API Tokens** → **Create API token**:
+   - Permission: **Object Read & Write**
+   - Scope: bucket `printpilot-designs` saja
+   - Catat **Access Key ID**, **Secret Access Key**, dan **Account ID**.
+3. Bucket → **Settings** → **CORS Policy** → tambahkan (ganti origin dengan domain aplikasi):
+   ```json
+   [
+     {
+       "AllowedOrigins": ["http://vrpxeb4navbfutprvjzslbhg.72.61.208.178.sslip.io"],
+       "AllowedMethods": ["PUT", "GET"],
+       "AllowedHeaders": ["*"],
+       "ExposeHeaders": ["ETag"],
+       "MaxAgeSeconds": 3600
+     }
+   ]
+   ```
+   Tanpa CORS yang benar, upload dari browser **gagal** (HTTP 0 / error jaringan).
+4. Coolify → **Environment Variables**:
+   ```
+   R2_ACCOUNT_ID=<account id>
+   R2_ACCESS_KEY_ID=<access key id>
+   R2_SECRET_ACCESS_KEY=<secret>
+   R2_BUCKET=printpilot-designs
+   DESIGN_MAX_UPLOAD_MB=200        # opsional
+   ```
+5. **Redeploy.**
+
+Format file yang diterima: PDF, AI, CDR, EPS, SVG, PSD, PNG, JPG, WEBP, TIFF.
+Tanpa R2 dikonfigurasi, tombol upload menolak dengan pesan jelas (fitur lain
+tidak terganggu). `purgeTenant` juga menghapus file R2 tenant yang di-purge.
+
 ---
 
 ## 7. Backup database

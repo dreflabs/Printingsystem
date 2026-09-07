@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ScanLine, Camera, Package, CreditCard, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -42,17 +42,12 @@ export default function ScanPage() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [materials, setMaterials] = useState<MaterialOpt[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (mode === "keyboard") inputRef.current?.focus();
-  }, [mode, state]);
 
   useEffect(() => {
     getOrderFormData().then((r) => { if (r.success) setMaterials(r.data.materials); });
   }, []);
 
-  async function runScan(code: string) {
+  const runScan = useCallback(async (code: string) => {
     if (!code.trim()) return;
     setState("scanning");
     setErrorMsg("");
@@ -66,7 +61,33 @@ export default function ScanPage() {
       setErrorMsg(res.error);
       setState("error");
     }
-  }
+  }, []);
+
+  // Mode Hardware Scanner: tangkap ketikan cepat + Enter dari alat pemindai
+  // (keyboard-wedge) di level window, jadi tetap jalan walau fokus tidak di
+  // kolom input. Ketikan lambat (manusia) diabaikan.
+  useEffect(() => {
+    if (mode !== "keyboard" || state === "found") return;
+    let buf = "";
+    let last = 0;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      // Biarkan kolom "ketik manual" ditangani handler-nya sendiri.
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      const now = Date.now();
+      if (now - last > 120) buf = ""; // jeda panjang = manusia, mulai ulang buffer
+      last = now;
+      if (e.key === "Enter") {
+        const code = buf.trim();
+        buf = "";
+        if (code.length >= 3) runScan(code);
+        return;
+      }
+      if (e.key.length === 1) buf += e.key;
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode, state, runScan]);
 
   async function refresh() {
     if (!ctx) return;
@@ -81,7 +102,6 @@ export default function ScanPage() {
     setErrorMsg("");
     setScanInput("");
     setCameraOpen(false);
-    setTimeout(() => inputRef.current?.focus(), 100);
   }
 
   async function dispatch(action: string, payload?: Record<string, unknown>) {
@@ -178,7 +198,12 @@ export default function ScanPage() {
                   state === "scanning" ? "border-accent-teal bg-accent-teal/10 animate-pulse" : "border-dashed border-border")}>
                   <ScanLine className={cn("h-10 w-10", state === "scanning" ? "text-accent-teal" : "text-muted")} />
                 </div>
-                {state === "idle" && <p className="text-sm text-muted">Arahkan scanner barcode ke QR Code job</p>}
+                {state === "idle" && (
+                  <p className="text-sm font-semibold text-status-green flex items-center justify-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-status-green animate-pulse" />
+                    Siap memindai — scan sekarang atau ketik manual
+                  </p>
+                )}
                 {state === "scanning" && <p className="text-sm text-accent-teal font-semibold">Memproses...</p>}
                 {state === "error" && (
                   <div className="flex items-center justify-center gap-2 text-status-red">
@@ -187,15 +212,6 @@ export default function ScanPage() {
                   </div>
                 )}
               </div>
-
-              <input
-                ref={inputRef}
-                value={scanInput}
-                onChange={(e) => setScanInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") runScan(scanInput); }}
-                className="sr-only"
-                aria-label="Input scanner hardware"
-              />
 
               <div className="border-t border-border pt-4">
                 <p className="text-xs text-muted mb-2 text-center">Atau ketik manual:</p>

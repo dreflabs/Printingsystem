@@ -451,7 +451,7 @@ export async function getOrderFormData() {
       prisma.product.findMany({
         where: { tenant_id: tenant.id, active: true },
         orderBy: { name: "asc" },
-        select: { id: true, name: true, category: true, default_material_id: true },
+        select: { id: true, name: true, category: true, unit: true, base_price: true, default_material_id: true },
       }),
       prisma.material.findMany({
         where: { tenant_id: tenant.id, active: true },
@@ -479,7 +479,14 @@ export async function getOrderFormData() {
         type: c.type,
         defaultDiscountRp: c.default_discount ? Number(c.default_discount) : 0,
       })),
-      products,
+      products: products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        unit: p.unit,
+        basePrice: p.base_price == null ? null : Number(p.base_price),
+        default_material_id: p.default_material_id,
+      })),
       materials,
       designers,
       finishings: Array.from(

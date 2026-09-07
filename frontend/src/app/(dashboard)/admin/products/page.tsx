@@ -1,21 +1,100 @@
 "use client";
 
 import { useState, useEffect, useCallback, useId } from "react";
-import { Plus, Search, MoreHorizontal, X } from "lucide-react";
-import { ProductFormModal, type RetailProductDraft } from "@/components/admin/ProductFormModal";
+import { Plus, Search, X, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  getRetailProducts, createRetailProduct,
+  getRetailProducts, createRetailProduct, updateRetailProduct, deleteRetailProduct,
   getPrintingProducts, createPrintingProduct, updatePrintingProduct,
+  getMachines, createMachine, updateMachine,
   getMaterials, getProductCategories,
 } from "@/actions/master-data";
+import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES } from "@/lib/catalog-constants";
 
-type Retail = { id: string; sku: string; name: string; category: string; price: number };
-type Printing = { id: string; name: string; category: string; default_material_id: string | null; active: boolean };
+type Tab = "retail" | "printing" | "machine";
+type Retail = {
+  id: string; sku: string; name: string; category: string;
+  price: number; makloon_price: number | null; stock_quantity: number; min_stock: number; active: boolean;
+};
+type Printing = {
+  id: string; name: string; category: string; unit: string;
+  base_price: number | null; default_material_id: string | null; active: boolean;
+};
+type Machine = { id: string; machine_code: string; name: string; category: string; status: string; notes: string | null };
 type MatOpt = { id: string; name: string };
 
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+const inp = "w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal";
 
+// ─── Retail modal (create + edit) ────────────────────────────────────────────
+function RetailModal({
+  editing, categories, onClose, onSaved,
+}: {
+  editing: Retail | null; categories: string[]; onClose: () => void; onSaved: () => void;
+}) {
+  const listId = useId();
+  const [f, setF] = useState({
+    sku: editing?.sku ?? "",
+    name: editing?.name ?? "",
+    category: editing?.category ?? "",
+    price: editing ? String(editing.price) : "",
+    makloon: editing?.makloon_price != null ? String(editing.makloon_price) : "",
+    stock: editing ? String(editing.stock_quantity) : "",
+    minStock: editing ? String(editing.min_stock) : "",
+  });
+  const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    if (!f.name.trim()) { setErr("Nama produk wajib diisi."); return; }
+    setBusy(true); setErr(null);
+    const common = {
+      name: f.name.trim(),
+      category: f.category.trim() || "GENERAL",
+      price: Number(f.price) || 0,
+      makloon_price: f.makloon ? Number(f.makloon) : null,
+      min_stock: Number(f.minStock) || 0,
+    };
+    const res = editing
+      ? await updateRetailProduct(editing.id, { ...common, sku: f.sku.trim() })
+      : await createRetailProduct({
+          ...common,
+          sku: f.sku.trim() || `RET-${Date.now().toString().slice(-5)}`,
+          stock_quantity: Number(f.stock) || 0,
+        });
+    setBusy(false);
+    if (!res.success) { setErr(res.error ?? "Gagal."); return; }
+    onSaved();
+  }
+
+  return (
+    <Shell title={editing ? "Edit Barang Retail" : "Tambah Barang Retail"} onClose={onClose} busy={busy}>
+      {err && <Err msg={err} />}
+      <Grid2>
+        <Field label="SKU *"><input className={inp} value={f.sku} onChange={(e) => set("sku", e.target.value)} placeholder="P-KRT-001" /></Field>
+        <Field label="Kategori">
+          <input list={listId} className={inp} value={f.category} onChange={(e) => set("category", e.target.value)} placeholder="Ketik / pilih — mis. Stiker" />
+          <datalist id={listId}>{categories.map((c) => <option key={c} value={c} />)}</datalist>
+        </Field>
+      </Grid2>
+      <Field label="Nama Produk *"><input className={inp} value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Nama lengkap produk" /></Field>
+      <Grid2>
+        <Field label="Harga Umum (Rp) *"><input className={inp} type="number" min={0} value={f.price} onChange={(e) => set("price", e.target.value)} placeholder="20000" /></Field>
+        <Field label="Harga Makloon (Rp)"><input className={inp} type="number" min={0} value={f.makloon} onChange={(e) => set("makloon", e.target.value)} placeholder="15000" /></Field>
+      </Grid2>
+      <Grid2>
+        <Field label={editing ? "Stok (ubah lewat menu Gudang)" : "Stok Awal"}>
+          <input className={inp} type="number" min={0} value={f.stock} onChange={(e) => set("stock", e.target.value)} placeholder="0" disabled={!!editing} />
+        </Field>
+        <Field label="Stok Minimum"><input className={inp} type="number" min={0} value={f.minStock} onChange={(e) => set("minStock", e.target.value)} placeholder="0" /></Field>
+      </Grid2>
+      <SaveBtn busy={busy} onClick={save} />
+    </Shell>
+  );
+}
+
+// ─── Printing service modal (create + edit) ──────────────────────────────────
 function PrintingModal({
   editing, materials, categories, onClose, onSaved,
 }: {
@@ -24,6 +103,8 @@ function PrintingModal({
   const catListId = useId();
   const [name, setName] = useState(editing?.name ?? "");
   const [category, setCategory] = useState(editing?.category ?? "");
+  const [unit, setUnit] = useState(editing?.unit ?? "M2");
+  const [basePrice, setBasePrice] = useState(editing?.base_price != null ? String(editing.base_price) : "");
   const [materialId, setMaterialId] = useState(editing?.default_material_id ?? "");
   const [active, setActive] = useState(editing?.active ?? true);
   const [busy, setBusy] = useState(false);
@@ -31,84 +112,153 @@ function PrintingModal({
 
   async function save() {
     if (!name.trim()) { setErr("Nama produk wajib diisi."); return; }
-    setBusy(true);
-    // Kategori produk cetak konvensinya HURUF BESAR — normalkan supaya
-    // "Stiker" dan "STIKER" tidak jadi dua kategori berbeda.
-    const payload = { name: name.trim(), category: (category.trim() || "LAINNYA").toUpperCase(), default_material_id: materialId || null };
+    setBusy(true); setErr(null);
+    const payload = {
+      name: name.trim(),
+      category: (category.trim() || "LAINNYA").toUpperCase(),
+      unit,
+      base_price: basePrice ? Number(basePrice) : null,
+      default_material_id: materialId || null,
+    };
     const res = editing
       ? await updatePrintingProduct(editing.id, { ...payload, active })
       : await createPrintingProduct(payload);
     setBusy(false);
-    if (!res.success) { setErr(res.error); return; }
+    if (!res.success) { setErr(res.error ?? "Gagal."); return; }
     onSaved();
   }
-  const inp = "w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm outline-none focus:border-accent-teal";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-overlay backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-base font-bold text-primary">{editing ? "Edit Produk Cetak" : "Tambah Produk Cetak"}</h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
-        </div>
-        {err && <div className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</div>}
-        <div>
-          <label className="text-xs font-medium text-muted block mb-1">Nama Produk *</label>
-          <input className={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Spanduk Outdoor" />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted block mb-1">Kategori</label>
-          <input
-            list={catListId}
-            className={inp}
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="Ketik / pilih — mis. STIKER"
-          />
-          <datalist id={catListId}>
-            {categories.map((c) => <option key={c} value={c} />)}
-          </datalist>
-          <p className="text-[10px] text-muted mt-1">Kategori baru langsung tersimpan begitu produk dibuat.</p>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted block mb-1">Material Default (opsional)</label>
-          <select className={inp} value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
-            <option value="">—</option>
-            {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+    <Shell title={editing ? "Edit Jasa Cetak" : "Tambah Jasa Cetak"} onClose={onClose} busy={busy}>
+      {err && <Err msg={err} />}
+      <Field label="Nama Produk *"><input className={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Spanduk Outdoor" /></Field>
+      <Field label="Kategori">
+        <input list={catListId} className={inp} value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Ketik / pilih — mis. STIKER" />
+        <datalist id={catListId}>{categories.map((c) => <option key={c} value={c} />)}</datalist>
+      </Field>
+      <Grid2>
+        <Field label="Satuan Harga">
+          <select className={inp} value={unit} onChange={(e) => setUnit(e.target.value)}>
+            {PRINTING_UNITS.map((u) => <option key={u} value={u}>{u === "M2" ? "per m²" : `per ${u.toLowerCase()}`}</option>)}
           </select>
+        </Field>
+        <Field label={`Harga Dasar / ${unit === "M2" ? "m²" : unit.toLowerCase()} (Rp)`}>
+          <input className={inp} type="number" min={0} value={basePrice} onChange={(e) => setBasePrice(e.target.value)} placeholder="kosong = harga manual" />
+        </Field>
+      </Grid2>
+      <p className="text-[10px] text-muted -mt-2">Harga dasar dipakai untuk mengisi otomatis &quot;Harga Total&quot; saat buat order (tetap bisa diubah). Kosongkan kalau harga selalu ditentukan manual.</p>
+      <Field label="Material Default (opsional)">
+        <select className={inp} value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
+          <option value="">—</option>
+          {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+      </Field>
+      {editing && (
+        <label className="flex items-center gap-2 text-xs text-primary">
+          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Aktif
+        </label>
+      )}
+      <SaveBtn busy={busy} onClick={save} />
+    </Shell>
+  );
+}
+
+// ─── Machine modal (create + edit) ──────────────────────────────────────────
+function MachineModal({
+  editing, onClose, onSaved,
+}: {
+  editing: Machine | null; onClose: () => void; onSaved: () => void;
+}) {
+  const [name, setName] = useState(editing?.name ?? "");
+  const [category, setCategory] = useState(editing?.category ?? "OUTDOOR");
+  const [status, setStatus] = useState(editing?.status ?? "ACTIVE");
+  const [notes, setNotes] = useState(editing?.notes ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    if (!name.trim()) { setErr("Nama mesin wajib diisi."); return; }
+    setBusy(true); setErr(null);
+    const payload = { name: name.trim(), category, status, notes: notes.trim() || null };
+    const res = editing ? await updateMachine(editing.id, payload) : await createMachine(payload);
+    setBusy(false);
+    if (!res.success) { setErr(res.error ?? "Gagal."); return; }
+    onSaved();
+  }
+
+  return (
+    <Shell title={editing ? `Edit Mesin ${editing.machine_code}` : "Tambah Mesin"} onClose={onClose} busy={busy}>
+      {err && <Err msg={err} />}
+      <Field label="Nama Mesin *"><input className={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Eco Solvent 3.2m" /></Field>
+      <Grid2>
+        <Field label="Kategori">
+          <select className={inp} value={category} onChange={(e) => setCategory(e.target.value)}>
+            {MACHINE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
+        <Field label="Status">
+          <select className={inp} value={status} onChange={(e) => setStatus(e.target.value)}>
+            {MACHINE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </Field>
+      </Grid2>
+      <Field label="Catatan (opsional)">
+        <textarea className={cn(inp, "h-16 py-2")} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="mis. print head no.2 lemah" />
+      </Field>
+      <p className="text-[10px] text-muted -mt-2">Hanya mesin <b>ACTIVE</b> yang muncul di form &quot;Assign ke Produksi&quot;.</p>
+      <SaveBtn busy={busy} onClick={save} />
+    </Shell>
+  );
+}
+
+// ─── Small shared bits ──────────────────────────────────────────────────────
+function Shell({ title, onClose, busy, children }: { title: string; onClose: () => void; busy: boolean; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-overlay backdrop-blur-sm" onClick={busy ? undefined : onClose} />
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal space-y-3.5 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center">
+          <h3 className="text-base font-bold text-primary">{title}</h3>
+          <button onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary disabled:opacity-40"><X className="h-5 w-5" /></button>
         </div>
-        {editing && (
-          <label className="flex items-center gap-2 text-xs text-primary">
-            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Aktif
-          </label>
-        )}
-        <p className="text-[10px] text-muted">Harga per produk cetak dihitung manual saat pembuatan order (belum ada model harga/varian di schema).</p>
-        <button disabled={busy} onClick={save} className="w-full h-11 bg-accent-teal text-white rounded-xl text-sm font-bold hover:brightness-110 disabled:opacity-50">
-          {busy ? "Menyimpan…" : "Simpan"}
-        </button>
+        {children}
       </div>
     </div>
   );
 }
+const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div><label className="text-xs font-medium text-muted block mb-1">{label}</label>{children}</div>
+);
+const Grid2 = ({ children }: { children: React.ReactNode }) => <div className="grid grid-cols-2 gap-3">{children}</div>;
+const Err = ({ msg }: { msg: string }) => <div className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{msg}</div>;
+const SaveBtn = ({ busy, onClick }: { busy: boolean; onClick: () => void }) => (
+  <button disabled={busy} onClick={onClick} className="w-full h-11 bg-accent-teal text-white rounded-xl text-sm font-bold hover:brightness-110 disabled:opacity-50">
+    {busy ? "Menyimpan…" : "Simpan"}
+  </button>
+);
 
+// ─── Page ───────────────────────────────────────────────────────────────────
 export default function AdminProductsPage() {
-  const [tab, setTab] = useState<"retail" | "printing">("retail");
+  const [tab, setTab] = useState<Tab>("retail");
   const [search, setSearch] = useState("");
   const [retail, setRetail] = useState<Retail[]>([]);
   const [printing, setPrinting] = useState<Printing[]>([]);
+  const [machines, setMachines] = useState<Machine[]>([]);
   const [materials, setMaterials] = useState<MatOpt[]>([]);
   const [cats, setCats] = useState<{ retail: string[]; printing: string[] }>({ retail: [], printing: [] });
-  const [retailModal, setRetailModal] = useState(false);
+  const [retailModal, setRetailModal] = useState<{ open: boolean; editing: Retail | null }>({ open: false, editing: null });
   const [printingModal, setPrintingModal] = useState<{ open: boolean; editing: Printing | null }>({ open: false, editing: null });
+  const [machineModal, setMachineModal] = useState<{ open: boolean; editing: Machine | null }>({ open: false, editing: null });
+  const [confirmDel, setConfirmDel] = useState<Retail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [r, p, m, c] = await Promise.all([
-      getRetailProducts(), getPrintingProducts(), getMaterials(), getProductCategories(),
+    const [r, p, mac, m, c] = await Promise.all([
+      getRetailProducts(), getPrintingProducts(), getMachines(), getMaterials(), getProductCategories(),
     ]);
     if (r.success) setRetail(r.data as Retail[]);
     if (p.success) setPrinting(p.data as Printing[]);
+    if (mac.success) setMachines(mac.data as Machine[]);
     if (m.success) setMaterials((m.data as { id: string; name: string }[]).map((x) => ({ id: x.id, name: x.name })));
     if (c.success) setCats(c.data);
     if (!p.success) setError(p.error ?? null);
@@ -117,45 +267,45 @@ export default function AdminProductsPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
+  const done = () => { setRetailModal({ open: false, editing: null }); setPrintingModal({ open: false, editing: null }); setMachineModal({ open: false, editing: null }); load(); };
   const matName = (id: string | null) => materials.find((m) => m.id === id)?.name ?? "—";
-  const fRetail = retail.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()));
-  const fPrinting = printing.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+  const q = search.toLowerCase();
+  const fRetail = retail.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
+  const fPrinting = printing.filter((p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
+  const fMachine = machines.filter((p) => p.name.toLowerCase().includes(q) || p.machine_code.toLowerCase().includes(q));
 
-  async function saveRetail(np: RetailProductDraft) {
-    const res = await createRetailProduct({
-      sku: np.sku.trim() || `RET-${Date.now().toString().slice(-5)}`,
-      name: np.name,
-      category: np.category || "GENERAL",
-      price: Number(np.price) || 0,
-      makloon_price: np.makloonPrice ? Number(np.makloonPrice) : null,
-      stock_quantity: Number(np.stock) || 0,
-      min_stock: Number(np.minStock) || 0,
-    });
-    if (res.success) { setRetailModal(false); load(); } else setError(res.error ?? null);
+  async function del(p: Retail) {
+    setConfirmDel(null);
+    const res = await deleteRetailProduct(p.id);
+    if (!res.success) { setError(res.error ?? null); return; }
+    load();
   }
+
+  const addLabel = tab === "retail" ? "Tambah Barang" : tab === "printing" ? "Tambah Jasa Cetak" : "Tambah Mesin";
+  const onAdd = () =>
+    tab === "retail" ? setRetailModal({ open: true, editing: null })
+      : tab === "printing" ? setPrintingModal({ open: true, editing: null })
+        : setMachineModal({ open: true, editing: null });
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Master Produk</h1>
-          <p className="text-sm text-muted mt-1">Produk retail (harga & stok) dan jasa cetak.</p>
+          <h1 className="text-2xl font-bold text-primary">Master Produk & Mesin</h1>
+          <p className="text-sm text-muted mt-1">Barang retail, jasa cetak, dan katalog mesin produksi.</p>
         </div>
-        <button
-          onClick={() => (tab === "retail" ? setRetailModal(true) : setPrintingModal({ open: true, editing: null }))}
-          className="flex items-center gap-2 bg-accent-teal text-white px-5 py-2.5 rounded-xl font-bold hover:brightness-110 shadow-lg shadow-accent-teal/20 transition-all"
-        >
-          <Plus className="h-5 w-5" /> Tambah Produk
+        <button onClick={onAdd} className="flex items-center gap-2 bg-accent-teal text-white px-5 py-2.5 rounded-xl font-bold hover:brightness-110 shadow-lg shadow-accent-teal/20 transition-all">
+          <Plus className="h-5 w-5" /> {addLabel}
         </button>
       </div>
 
       {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
 
       <div className="flex items-center gap-4 border-b border-border">
-        {(["retail", "printing"] as const).map((t) => (
+        {(["retail", "printing", "machine"] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={cn("pb-3 px-1 border-b-2 font-bold text-sm transition-colors", tab === t ? "border-accent-teal text-accent-teal" : "border-transparent text-muted hover:text-primary")}>
-            {t === "retail" ? "Barang Retail / Consumable" : "Jasa Cetak"}
+            {t === "retail" ? "Barang Retail" : t === "printing" ? "Jasa Cetak" : "Mesin"}
           </button>
         ))}
       </div>
@@ -163,7 +313,7 @@ export default function AdminProductsPage() {
       <div className="bg-card p-4 rounded-xl border border-border">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
-          <input placeholder="Cari SKU / Nama Produk..." value={search} onChange={(e) => setSearch(e.target.value)}
+          <input placeholder="Cari nama / kode…" value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-elevated border border-border rounded-lg outline-none focus:border-accent-teal text-sm" />
         </div>
       </div>
@@ -172,54 +322,106 @@ export default function AdminProductsPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-elevated border-b border-border text-muted uppercase text-xs font-semibold">
-              {tab === "retail" ? (
-                <tr><th className="px-6 py-4">SKU</th><th className="px-6 py-4">Produk & Kategori</th><th className="px-6 py-4">Harga Jual</th><th className="px-6 py-4 text-right">Aksi</th></tr>
-              ) : (
-                <tr><th className="px-6 py-4">ID</th><th className="px-6 py-4">Nama Produk Cetak</th><th className="px-6 py-4">Kategori</th><th className="px-6 py-4">Material Default</th><th className="px-6 py-4">Status</th><th className="px-6 py-4 text-right">Aksi</th></tr>
+              {tab === "retail" && (
+                <tr><th className="px-5 py-4">SKU</th><th className="px-5 py-4">Produk & Kategori</th><th className="px-5 py-4">Harga</th><th className="px-5 py-4">Makloon</th><th className="px-5 py-4">Stok</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
+              )}
+              {tab === "printing" && (
+                <tr><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Harga Dasar</th><th className="px-5 py-4">Material Default</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
+              )}
+              {tab === "machine" && (
+                <tr><th className="px-5 py-4">Kode</th><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
               )}
             </thead>
             <tbody className="divide-y divide-border">
               {tab === "retail" && fRetail.map((p) => (
-                <tr key={p.id} className="hover:bg-elevated/50 transition-colors">
-                  <td className="px-6 py-4 font-mono text-xs text-muted">{p.sku}</td>
-                  <td className="px-6 py-4"><div className="font-semibold text-primary">{p.name}</div><div className="text-xs text-muted mt-1">{p.category}</div></td>
-                  <td className="px-6 py-4 font-mono font-medium text-status-blue">{rupiah(Number(p.price))}</td>
-                  <td className="px-6 py-4 text-right"><button className="p-1.5 text-muted hover:text-primary rounded-md"><MoreHorizontal className="h-5 w-5" /></button></td>
+                <tr key={p.id} className={cn("hover:bg-elevated/50 transition-colors", !p.active && "opacity-60")}>
+                  <td className="px-5 py-4 font-mono text-xs text-muted">{p.sku}</td>
+                  <td className="px-5 py-4"><div className="font-semibold text-primary">{p.name}</div><div className="text-xs text-muted mt-0.5">{p.category}</div></td>
+                  <td className="px-5 py-4 font-mono text-status-blue">{rupiah(p.price)}</td>
+                  <td className="px-5 py-4 font-mono text-xs text-muted">{p.makloon_price != null ? rupiah(p.makloon_price) : "—"}</td>
+                  <td className="px-5 py-4 text-xs"><span className={cn(p.stock_quantity <= p.min_stock && "text-status-red font-bold")}>{p.stock_quantity}</span> <span className="text-muted">/ min {p.min_stock}</span></td>
+                  <td className="px-5 py-4"><Badge active={p.active} /></td>
+                  <td className="px-5 py-4 text-right">
+                    <RowActions
+                      onEdit={() => setRetailModal({ open: true, editing: p })}
+                      onDelete={() => setConfirmDel(p)}
+                    />
+                  </td>
                 </tr>
               ))}
               {tab === "printing" && fPrinting.map((p) => (
-                <tr key={p.id} className="hover:bg-elevated/50 transition-colors">
-                  <td className="px-6 py-4 font-mono text-xs text-muted">{p.id.slice(0, 8)}</td>
-                  <td className="px-6 py-4 font-semibold text-primary">{p.name}</td>
-                  <td className="px-6 py-4 text-muted text-xs">{p.category}</td>
-                  <td className="px-6 py-4 text-muted text-xs">{matName(p.default_material_id)}</td>
-                  <td className="px-6 py-4">
-                    <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border", p.active ? "bg-status-green/10 text-status-green border-status-green/30" : "bg-muted/10 text-muted border-muted/20")}>
-                      {p.active ? "Aktif" : "Nonaktif"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => setPrintingModal({ open: true, editing: p })} className="text-xs font-bold text-accent-teal hover:underline">Edit</button>
-                  </td>
+                <tr key={p.id} className={cn("hover:bg-elevated/50 transition-colors", !p.active && "opacity-60")}>
+                  <td className="px-5 py-4 font-semibold text-primary">{p.name}</td>
+                  <td className="px-5 py-4 text-muted text-xs">{p.category}</td>
+                  <td className="px-5 py-4 font-mono text-xs">{p.base_price != null ? `${rupiah(p.base_price)} / ${p.unit === "M2" ? "m²" : p.unit.toLowerCase()}` : <span className="text-muted">manual</span>}</td>
+                  <td className="px-5 py-4 text-muted text-xs">{matName(p.default_material_id)}</td>
+                  <td className="px-5 py-4"><Badge active={p.active} /></td>
+                  <td className="px-5 py-4 text-right"><RowActions onEdit={() => setPrintingModal({ open: true, editing: p })} /></td>
                 </tr>
               ))}
-              {((tab === "retail" && fRetail.length === 0) || (tab === "printing" && fPrinting.length === 0)) && (
-                <tr><td colSpan={6} className="px-6 py-8 text-center text-muted">Tidak ada produk yang sesuai.</td></tr>
+              {tab === "machine" && fMachine.map((p) => (
+                <tr key={p.id} className="hover:bg-elevated/50 transition-colors">
+                  <td className="px-5 py-4 font-mono text-xs text-muted">{p.machine_code}</td>
+                  <td className="px-5 py-4 font-semibold text-primary">{p.name}</td>
+                  <td className="px-5 py-4 text-muted text-xs">{p.category}</td>
+                  <td className="px-5 py-4">
+                    <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border",
+                      p.status === "ACTIVE" ? "bg-status-green/10 text-status-green border-status-green/30"
+                        : p.status === "MAINTENANCE" ? "bg-status-yellow/10 text-status-yellow-text border-status-yellow/30"
+                          : "bg-muted/10 text-muted border-muted/20")}>{p.status}</span>
+                  </td>
+                  <td className="px-5 py-4 text-right"><RowActions onEdit={() => setMachineModal({ open: true, editing: p })} /></td>
+                </tr>
+              ))}
+              {((tab === "retail" && fRetail.length === 0) || (tab === "printing" && fPrinting.length === 0) || (tab === "machine" && fMachine.length === 0)) && (
+                <tr><td colSpan={7} className="px-6 py-8 text-center text-muted">Belum ada data.</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      <ProductFormModal open={retailModal} onClose={() => setRetailModal(false)} onSave={saveRetail} categories={cats.retail} />
-      {printingModal.open && (
-        <PrintingModal
-          editing={printingModal.editing}
-          materials={materials}
-          categories={cats.printing}
-          onClose={() => setPrintingModal({ open: false, editing: null })}
-          onSaved={() => { setPrintingModal({ open: false, editing: null }); load(); }}
-        />
+      {retailModal.open && <RetailModal editing={retailModal.editing} categories={cats.retail} onClose={() => setRetailModal({ open: false, editing: null })} onSaved={done} />}
+      {printingModal.open && <PrintingModal editing={printingModal.editing} materials={materials} categories={cats.printing} onClose={() => setPrintingModal({ open: false, editing: null })} onSaved={done} />}
+      {machineModal.open && <MachineModal editing={machineModal.editing} onClose={() => setMachineModal({ open: false, editing: null })} onSaved={done} />}
+
+      {confirmDel && (
+        <Shell title="Hapus Barang Retail" onClose={() => setConfirmDel(null)} busy={false}>
+          <p className="text-sm text-primary"><b>{confirmDel.name}</b> akan dihapus.</p>
+          <p className="text-xs text-muted">
+            Kalau produk ini sudah pernah masuk penjualan atau mutasi stok, ia tidak dihapus permanen
+            (memutus riwayat) — hanya <b>dinonaktifkan</b> dan disembunyikan dari kasir. Kalau belum
+            pernah dipakai, barisnya dihapus.
+          </p>
+          <div className="flex gap-3 pt-1">
+            <button onClick={() => setConfirmDel(null)} className="flex-1 h-10 rounded-xl bg-elevated border border-border text-xs font-bold text-muted hover:text-primary">Batal</button>
+            <button onClick={() => del(confirmDel)} className="flex-1 h-10 rounded-xl bg-status-red text-white text-xs font-bold hover:brightness-110">Hapus</button>
+          </div>
+        </Shell>
+      )}
+    </div>
+  );
+}
+
+function Badge({ active }: { active: boolean }) {
+  return (
+    <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border",
+      active ? "bg-status-green/10 text-status-green border-status-green/30" : "bg-muted/10 text-muted border-muted/20")}>
+      {active ? "Aktif" : "Nonaktif"}
+    </span>
+  );
+}
+
+function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete?: () => void }) {
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <button onClick={onEdit} className="p-1.5 text-muted hover:text-accent-teal hover:bg-accent-teal/10 rounded-md transition-colors" title="Edit">
+        <Pencil className="h-4 w-4" />
+      </button>
+      {onDelete && (
+        <button onClick={onDelete} className="p-1.5 text-muted hover:text-status-red hover:bg-status-red/10 rounded-md transition-colors" title="Hapus">
+          <Trash2 className="h-4 w-4" />
+        </button>
       )}
     </div>
   );

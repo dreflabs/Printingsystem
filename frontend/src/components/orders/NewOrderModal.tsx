@@ -36,7 +36,7 @@ const INITIAL_FORM: OrderForm = {
 };
 
 type Opt = { value: string; label: string };
-type ProductOpt = Opt & { category: string };
+type ProductOpt = Opt & { category: string; unit: string; basePrice: number | null };
 type CustomerRow = { id: string; name: string; phone: string | null; type: string; defaultDiscountRp: number };
 
 const STEPS = [
@@ -383,7 +383,9 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
         if (!res.success) setError(res.error);
         return;
       }
-      setProducts(res.data.products.map((p) => ({ value: p.id, label: p.name, category: p.category || "Lainnya" })));
+      setProducts(res.data.products.map((p) => ({
+        value: p.id, label: p.name, category: p.category || "Lainnya", unit: p.unit, basePrice: p.basePrice ?? null,
+      })));
       setMaterials(res.data.materials.map((m) => ({ value: m.id, label: `${m.material_code} · ${m.name}` })));
       setCustomers(res.data.customers as CustomerRow[]);
       setFinishings(res.data.finishings ?? []);
@@ -391,9 +393,35 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
     return () => { cancelled = true; };
   }, [open]);
 
+  const [priceTouched, setPriceTouched] = useState(false);
+
   const handleFormChange = useCallback((key: keyof OrderForm, value: string | number) => {
+    if (key === "totalPrice") setPriceTouched(true);
+    if (key === "productId") setPriceTouched(false); // produk ganti → boleh auto-isi lagi
     setForm((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
   }, []);
+
+  // Auto-isi "Harga Total" dari harga dasar produk cetak (selama belum diubah manual).
+  useEffect(() => {
+    if (priceTouched) return;
+    const p = products.find((x) => x.value === form.productId);
+    if (!p?.basePrice) return;
+    const qty = Math.max(1, Number(form.qty) || 1);
+    let amount: number;
+    if (p.unit === "M2") {
+      const w = Number(form.width) || 0;
+      const h = Number(form.height) || 0;
+      const areaM2 = (w / 100) * (h / 100);
+      if (areaM2 <= 0) return;
+      amount = Math.round(p.basePrice * areaM2 * qty);
+    } else {
+      amount = Math.round(p.basePrice * qty);
+    }
+    if (amount > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setForm((prev) => (parseRp(prev.totalPrice) === amount ? prev : { ...prev, totalPrice: formatRp(String(amount)) }));
+    }
+  }, [priceTouched, products, form.productId, form.width, form.height, form.qty]);
 
   function canNext() {
     if (step === 0) return !!(form.customerName && form.orderType && form.productId);

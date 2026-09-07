@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { ok, fail } from "@/types";
+import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES } from "@/lib/catalog-constants";
 
 const isAdmin = (r: string) => r === "admin" || r === "owner";
 const isGudang = (r: string) => r === "gudang" || r === "owner";
@@ -16,12 +17,11 @@ export async function getRetailProducts() {
     const tenant = await requireTenant();
     await requireUser();
 
+    // Katalog admin: tampilkan yang nonaktif juga (dengan badge) supaya bisa
+    // diaktifkan lagi. POS memakai query terpisah yang tetap filter active.
     const products = await prisma.retailProduct.findMany({
-      where: {
-        tenant_id: tenant.id,
-        active: true
-      },
-      orderBy: { name: 'asc' }
+      where: { tenant_id: tenant.id },
+      orderBy: [{ active: "desc" }, { name: "asc" }],
     });
     const plainProducts = products.map((p) => ({
       ...p,
@@ -116,7 +116,86 @@ export async function createRetailProduct(data: {
   }
 }
 
+export async function updateRetailProduct(
+  id: string,
+  data: {
+    name?: string;
+    sku?: string;
+    category?: string;
+    price?: number;
+    makloon_price?: number | null;
+    min_stock?: number;
+    active?: boolean;
+  }
+) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengelola produk retail.");
+    const existing = await prisma.retailProduct.findFirst({ where: { id, tenant_id: tenant.id } });
+    if (!existing) return fail("Produk tidak ditemukan.");
+
+    const patch: Record<string, unknown> = {};
+    if (data.name != null) patch.name = data.name.trim();
+    if (data.sku != null) patch.sku = data.sku.trim();
+    if (data.category != null) patch.category = data.category.trim() || "GENERAL";
+    if (data.price != null) patch.price = data.price;
+    if (data.makloon_price !== undefined) patch.makloon_price = data.makloon_price != null && data.makloon_price > 0 ? data.makloon_price : null;
+    if (data.min_stock != null) patch.min_stock = Math.max(0, Math.round(data.min_stock));
+    if (data.active != null) patch.active = data.active;
+
+    const product = await prisma.retailProduct.update({ where: { id }, data: patch });
+    revalidatePath("/admin/products");
+    return ok({
+      ...product,
+      price: Number(product.price),
+      makloon_price: product.makloon_price == null ? null : Number(product.makloon_price),
+    });
+  } catch (e) {
+    console.error("updateRetailProduct:", e);
+    if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002") {
+      return fail("SKU sudah dipakai produk lain.");
+    }
+    return fail(e instanceof Error ? e.message : "Gagal memperbarui produk retail.");
+  }
+}
+
+/**
+ * Hapus produk retail. Kalau sudah pernah dipakai (ada mutasi stok / item order)
+ * FK memblokir hard-delete → produk dinonaktifkan saja (tetap terhubung ke
+ * riwayat penjualan). Kalau belum pernah dipakai → baris dihapus.
+ */
+export async function deleteRetailProduct(id: string) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh menghapus produk retail.");
+    const existing = await prisma.retailProduct.findFirst({
+      where: { id, tenant_id: tenant.id },
+      select: { id: true, _count: { select: { stock_movements: true, order_items: true } } },
+    });
+    if (!existing) return fail("Produk tidak ditemukan.");
+
+    const used = existing._count.stock_movements + existing._count.order_items;
+    if (used > 0) {
+      await prisma.retailProduct.update({ where: { id }, data: { active: false } });
+      revalidatePath("/admin/products");
+      return ok({ mode: "deactivated" as const });
+    }
+    await prisma.retailProduct.delete({ where: { id } });
+    revalidatePath("/admin/products");
+    return ok({ mode: "deleted" as const });
+  } catch (e) {
+    console.error("deleteRetailProduct:", e);
+    return fail(e instanceof Error ? e.message : "Gagal menghapus produk retail.");
+  }
+}
+
 // -- PRINTING PRODUCTS --
+
+function plainPrinting<T extends { base_price: unknown }>(p: T) {
+  return { ...p, base_price: p.base_price == null ? null : Number(p.base_price) };
+}
 
 export async function getPrintingProducts() {
   try {
@@ -124,14 +203,11 @@ export async function getPrintingProducts() {
     await requireUser();
 
     const products = await prisma.product.findMany({
-      where: {
-        tenant_id: tenant.id,
-        active: true
-      },
-      orderBy: { name: 'asc' }
+      where: { tenant_id: tenant.id, active: true },
+      orderBy: { name: "asc" },
     });
 
-    return { success: true, data: products };
+    return { success: true, data: products.map(plainPrinting) };
   } catch (error: unknown) {
     console.error("Error fetching printing products:", error);
     return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
@@ -141,22 +217,30 @@ export async function getPrintingProducts() {
 export async function createPrintingProduct(data: {
   name: string;
   category: string;
+  unit?: string;
+  base_price?: number | null;
   default_material_id?: string | null;
 }) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengelola produk cetak.");
+    if (!data.name?.trim()) return fail("Nama produk wajib diisi.");
+    const unit = PRINTING_UNITS.includes((data.unit ?? "").toUpperCase() as (typeof PRINTING_UNITS)[number])
+      ? (data.unit as string).toUpperCase()
+      : "PCS";
     const product = await prisma.product.create({
       data: {
         tenant_id: tenant.id,
-        name: data.name,
-        category: data.category,
+        name: data.name.trim(),
+        category: (data.category?.trim() || "LAINNYA").toUpperCase(),
+        unit,
+        base_price: data.base_price != null && data.base_price > 0 ? data.base_price : null,
         default_material_id: data.default_material_id || null,
       },
     });
     revalidatePath("/admin/products");
-    return ok(product);
+    return ok(plainPrinting(product));
   } catch (e) {
     console.error("createPrintingProduct:", e);
     return fail(e instanceof Error ? e.message : "Gagal membuat produk cetak.");
@@ -165,7 +249,14 @@ export async function createPrintingProduct(data: {
 
 export async function updatePrintingProduct(
   id: string,
-  data: { name?: string; category?: string; default_material_id?: string | null; active?: boolean }
+  data: {
+    name?: string;
+    category?: string;
+    unit?: string;
+    base_price?: number | null;
+    default_material_id?: string | null;
+    active?: boolean;
+  }
 ) {
   try {
     const tenant = await requireTenant();
@@ -173,9 +264,22 @@ export async function updatePrintingProduct(
     if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengelola produk cetak.");
     const existing = await prisma.product.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!existing) return fail("Produk tidak ditemukan.");
-    const product = await prisma.product.update({ where: { id }, data });
+
+    const patch: Record<string, unknown> = {};
+    if (data.name != null) patch.name = data.name.trim();
+    if (data.category != null) patch.category = (data.category.trim() || "LAINNYA").toUpperCase();
+    if (data.unit != null) {
+      patch.unit = PRINTING_UNITS.includes(data.unit.toUpperCase() as (typeof PRINTING_UNITS)[number])
+        ? data.unit.toUpperCase()
+        : "PCS";
+    }
+    if (data.base_price !== undefined) patch.base_price = data.base_price != null && data.base_price > 0 ? data.base_price : null;
+    if (data.default_material_id !== undefined) patch.default_material_id = data.default_material_id || null;
+    if (data.active != null) patch.active = data.active;
+
+    const product = await prisma.product.update({ where: { id }, data: patch });
     revalidatePath("/admin/products");
-    return ok(product);
+    return ok(plainPrinting(product));
   } catch (e) {
     console.error("updatePrintingProduct:", e);
     return fail(e instanceof Error ? e.message : "Gagal memperbarui produk cetak.");
@@ -468,12 +572,14 @@ export async function getMachines() {
   }
 }
 
-export async function createMachine(data: {
-  name: string;
-  category: string;
-  status?: "ACTIVE" | "MAINTENANCE" | "INACTIVE";
-  notes?: string;
-}) {
+const normCat = (v?: string) => {
+  const u = (v ?? "").trim().toUpperCase();
+  return (MACHINE_CATEGORIES as readonly string[]).includes(u) ? u : "LAINNYA";
+};
+const normStatus = (v?: string) =>
+  (MACHINE_STATUSES as readonly string[]).includes(v ?? "") ? (v as string) : "ACTIVE";
+
+export async function createMachine(data: { name: string; category: string; status?: string; notes?: string | null }) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
@@ -484,12 +590,13 @@ export async function createMachine(data: {
         tenant_id: tenant.id,
         machine_code: await nextCode("machine", tenant.id, "MCH", 3),
         name: data.name.trim(),
-        category: data.category,
-        status: data.status || "ACTIVE",
-        notes: data.notes || null,
+        category: normCat(data.category),
+        status: normStatus(data.status),
+        notes: data.notes?.trim() || null,
       },
     });
     revalidatePath("/admin");
+    revalidatePath("/admin/products");
     return ok(machine);
   } catch (e) {
     console.error("createMachine:", e);
@@ -499,12 +606,7 @@ export async function createMachine(data: {
 
 export async function updateMachine(
   id: string,
-  data: {
-    name?: string;
-    category?: string;
-    status?: "ACTIVE" | "MAINTENANCE" | "INACTIVE";
-    notes?: string | null;
-  }
+  data: { name?: string; category?: string; status?: string; notes?: string | null }
 ) {
   try {
     const tenant = await requireTenant();
@@ -512,8 +614,14 @@ export async function updateMachine(
     if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengelola data mesin.");
     const existing = await prisma.machine.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!existing) return fail("Mesin tidak ditemukan.");
-    const machine = await prisma.machine.update({ where: { id }, data });
+    const patch: Record<string, unknown> = {};
+    if (data.name != null) patch.name = data.name.trim();
+    if (data.category != null) patch.category = normCat(data.category);
+    if (data.status != null) patch.status = normStatus(data.status);
+    if (data.notes !== undefined) patch.notes = data.notes?.trim() || null;
+    const machine = await prisma.machine.update({ where: { id }, data: patch });
     revalidatePath("/admin");
+    revalidatePath("/admin/products");
     return ok(machine);
   } catch (e) {
     console.error("updateMachine:", e);

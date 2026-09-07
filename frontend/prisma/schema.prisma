@@ -320,6 +320,8 @@ model Product {
   tenant              Tenant      @relation(fields: [tenant_id], references: [id])
   name                String
   category            String
+  unit                String      @default("PCS") // PCS/M2/METER/LEMBAR/RIM — dasar hitung harga
+  base_price          Decimal?    @db.Decimal(15, 2) // harga per `unit`; null = harga selalu manual per order
   default_material_id String?
   default_material    Material?   @relation(fields: [default_material_id], references: [id])
   active              Boolean     @default(true)

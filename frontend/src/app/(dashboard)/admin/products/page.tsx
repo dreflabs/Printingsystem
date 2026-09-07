@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useId } from "react";
 import { Plus, Search, MoreHorizontal, X } from "lucide-react";
-import { ProductFormModal } from "@/components/admin/ProductFormModal";
+import { ProductFormModal, type RetailProductDraft } from "@/components/admin/ProductFormModal";
 import { cn } from "@/lib/utils";
 import {
   getRetailProducts, createRetailProduct,
   getPrintingProducts, createPrintingProduct, updatePrintingProduct,
-  getMaterials,
+  getMaterials, getProductCategories,
 } from "@/actions/master-data";
 
 type Retail = { id: string; sku: string; name: string; category: string; price: number };
@@ -17,10 +17,11 @@ type MatOpt = { id: string; name: string };
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 
 function PrintingModal({
-  editing, materials, onClose, onSaved,
+  editing, materials, categories, onClose, onSaved,
 }: {
-  editing: Printing | null; materials: MatOpt[]; onClose: () => void; onSaved: () => void;
+  editing: Printing | null; materials: MatOpt[]; categories: string[]; onClose: () => void; onSaved: () => void;
 }) {
+  const catListId = useId();
   const [name, setName] = useState(editing?.name ?? "");
   const [category, setCategory] = useState(editing?.category ?? "OUTDOOR");
   const [materialId, setMaterialId] = useState(editing?.default_material_id ?? "");
@@ -31,7 +32,9 @@ function PrintingModal({
   async function save() {
     if (!name.trim()) { setErr("Nama produk wajib diisi."); return; }
     setBusy(true);
-    const payload = { name: name.trim(), category, default_material_id: materialId || null };
+    // Kategori produk cetak konvensinya HURUF BESAR — normalkan supaya
+    // "Stiker" dan "STIKER" tidak jadi dua kategori berbeda.
+    const payload = { name: name.trim(), category: (category.trim() || "LAINNYA").toUpperCase(), default_material_id: materialId || null };
     const res = editing
       ? await updatePrintingProduct(editing.id, { ...payload, active })
       : await createPrintingProduct(payload);
@@ -56,9 +59,17 @@ function PrintingModal({
         </div>
         <div>
           <label className="text-xs font-medium text-muted block mb-1">Kategori</label>
-          <select className={inp} value={category} onChange={(e) => setCategory(e.target.value)}>
-            {["OUTDOOR", "INDOOR", "KERTAS", "MERCHANDISE", "PACKAGING", "LAINNYA"].map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <input
+            list={catListId}
+            className={inp}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            placeholder="Ketik / pilih — mis. STIKER"
+          />
+          <datalist id={catListId}>
+            {categories.map((c) => <option key={c} value={c} />)}
+          </datalist>
+          <p className="text-[10px] text-muted mt-1">Kategori baru langsung tersimpan begitu produk dibuat.</p>
         </div>
         <div>
           <label className="text-xs font-medium text-muted block mb-1">Material Default (opsional)</label>
@@ -87,15 +98,19 @@ export default function AdminProductsPage() {
   const [retail, setRetail] = useState<Retail[]>([]);
   const [printing, setPrinting] = useState<Printing[]>([]);
   const [materials, setMaterials] = useState<MatOpt[]>([]);
+  const [cats, setCats] = useState<{ retail: string[]; printing: string[] }>({ retail: [], printing: [] });
   const [retailModal, setRetailModal] = useState(false);
   const [printingModal, setPrintingModal] = useState<{ open: boolean; editing: Printing | null }>({ open: false, editing: null });
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [r, p, m] = await Promise.all([getRetailProducts(), getPrintingProducts(), getMaterials()]);
+    const [r, p, m, c] = await Promise.all([
+      getRetailProducts(), getPrintingProducts(), getMaterials(), getProductCategories(),
+    ]);
     if (r.success) setRetail(r.data as Retail[]);
     if (p.success) setPrinting(p.data as Printing[]);
     if (m.success) setMaterials((m.data as { id: string; name: string }[]).map((x) => ({ id: x.id, name: x.name })));
+    if (c.success) setCats(c.data);
     if (!p.success) setError(p.error ?? null);
   }, []);
 
@@ -106,11 +121,15 @@ export default function AdminProductsPage() {
   const fRetail = retail.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()));
   const fPrinting = printing.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
 
-  async function saveRetail(np: { sku?: string; name: string; category?: string; price?: number; stock?: number; minStock?: number }) {
+  async function saveRetail(np: RetailProductDraft) {
     const res = await createRetailProduct({
-      sku: np.sku || `RET-${Date.now().toString().slice(-5)}`,
-      name: np.name, category: np.category || "GENERAL",
-      price: Number(np.price) || 0, stock_quantity: Number(np.stock) || 0, min_stock: Number(np.minStock) || 0,
+      sku: np.sku.trim() || `RET-${Date.now().toString().slice(-5)}`,
+      name: np.name,
+      category: np.category || "GENERAL",
+      price: Number(np.price) || 0,
+      makloon_price: np.makloonPrice ? Number(np.makloonPrice) : null,
+      stock_quantity: Number(np.stock) || 0,
+      min_stock: Number(np.minStock) || 0,
     });
     if (res.success) { setRetailModal(false); load(); } else setError(res.error ?? null);
   }
@@ -192,11 +211,12 @@ export default function AdminProductsPage() {
         </div>
       </div>
 
-      <ProductFormModal open={retailModal} onClose={() => setRetailModal(false)} onSave={saveRetail} />
+      <ProductFormModal open={retailModal} onClose={() => setRetailModal(false)} onSave={saveRetail} categories={cats.retail} />
       {printingModal.open && (
         <PrintingModal
           editing={printingModal.editing}
           materials={materials}
+          categories={cats.printing}
           onClose={() => setPrintingModal({ open: false, editing: null })}
           onSaved={() => { setPrintingModal({ open: false, editing: null }); load(); }}
         />

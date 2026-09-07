@@ -26,12 +26,47 @@ export async function getRetailProducts() {
     const plainProducts = products.map((p) => ({
       ...p,
       price: Number(p.price),
+      makloon_price: p.makloon_price == null ? null : Number(p.makloon_price),
     }));
-    
+
     return { success: true, data: plainProducts };
   } catch (error: unknown) {
     console.error("Error fetching retail products:", error);
     return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
+  }
+}
+
+/** Kategori produk yang sudah pernah dipakai tenant ini — untuk saran autocomplete. */
+const DEFAULT_RETAIL_CATEGORIES = ["Kertas", "Tinta", "Alat Tulis", "Merchandise"];
+const DEFAULT_PRINTING_CATEGORIES = ["OUTDOOR", "INDOOR", "KERTAS", "MERCHANDISE", "PACKAGING", "LAINNYA"];
+
+export async function getProductCategories() {
+  try {
+    const tenant = await requireTenant();
+    await requireUser();
+    const [retailRows, printingRows] = await Promise.all([
+      prisma.retailProduct.findMany({
+        where: { tenant_id: tenant.id },
+        select: { category: true },
+        distinct: ["category"],
+      }),
+      prisma.product.findMany({
+        where: { tenant_id: tenant.id },
+        select: { category: true },
+        distinct: ["category"],
+      }),
+    ]);
+    const merge = (defaults: string[], rows: { category: string }[]) =>
+      Array.from(
+        new Set([...defaults, ...rows.map((r) => r.category?.trim()).filter(Boolean)])
+      ).sort((a, b) => a.localeCompare(b, "id"));
+    return ok({
+      retail: merge(DEFAULT_RETAIL_CATEGORIES, retailRows),
+      printing: merge(DEFAULT_PRINTING_CATEGORIES, printingRows),
+    });
+  } catch (e) {
+    console.error("getProductCategories:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat kategori.");
   }
 }
 
@@ -40,6 +75,7 @@ export async function createRetailProduct(data: {
   sku: string;
   category: string;
   price: number;
+  makloon_price?: number | null;
   stock_quantity: number;
   min_stock: number;
 }) {
@@ -48,20 +84,31 @@ export async function createRetailProduct(data: {
     const actor = await requireUser();
     if (!isAdmin(actor.role)) return { success: false, error: "Hanya Owner/Admin yang boleh mengelola produk retail." };
 
+    const category = data.category?.trim() || "GENERAL";
+    if (!data.name?.trim()) return { success: false, error: "Nama produk wajib diisi." };
+
     const product = await prisma.retailProduct.create({
       data: {
         tenant_id: tenant.id,
-        ...data
-      }
+        sku: data.sku,
+        name: data.name.trim(),
+        category,
+        price: data.price,
+        makloon_price:
+          data.makloon_price != null && data.makloon_price > 0 ? data.makloon_price : null,
+        stock_quantity: data.stock_quantity,
+        min_stock: data.min_stock,
+      },
     });
-    
+
     revalidatePath("/admin/products");
-    
+
     const plainProduct = {
       ...product,
       price: Number(product.price),
+      makloon_price: product.makloon_price == null ? null : Number(product.makloon_price),
     };
-    
+
     return { success: true, data: plainProduct };
   } catch (error: unknown) {
     console.error("Error creating retail product:", error);

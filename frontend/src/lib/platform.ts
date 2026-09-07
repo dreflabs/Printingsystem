@@ -11,7 +11,6 @@ export interface PlatformActor {
   id: string;
   name: string;
   subLevel: SuperAdminSubLevel;
-  mfaEnabled: boolean;
 }
 
 /**
@@ -46,7 +45,6 @@ export async function getPlatformActor(): Promise<PlatformActor | null> {
     id: record.id,
     name: record.name ?? "Super Admin",
     subLevel: record.role as SuperAdminSubLevel,
-    mfaEnabled: record.totp_enabled,
   };
 }
 

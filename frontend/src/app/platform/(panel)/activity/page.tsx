@@ -21,6 +21,7 @@ const dt = (d: Date | string) =>
 
 const ACTIONS = [
   "",
+  "LOGIN_OTP_SENT",
   "LOGIN_SUCCESS",
   "LOGIN_FAILED",
   "LOGIN_LOCKED",
@@ -37,12 +38,9 @@ const ACTIONS = [
   "SUPER_ADMIN_SUBLEVEL_CHANGED",
   "SUPER_ADMIN_PASSWORD_RESET",
   "SUPER_ADMIN_UNLOCKED",
-  "MFA_ENABLED",
-  "MFA_RESET",
-  "MFA_BACKUP_CODE_USED",
 ];
 
-const DANGER = new Set(["LOGIN_FAILED", "LOGIN_LOCKED", "TENANT_PURGED", "MFA_RESET", "SUPER_ADMIN_DEACTIVATED"]);
+const DANGER = new Set(["LOGIN_FAILED", "LOGIN_LOCKED", "TENANT_PURGED", "SUPER_ADMIN_DEACTIVATED"]);
 
 export default function PlatformActivityPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -76,7 +74,7 @@ export default function PlatformActivityPage() {
       <div>
         <h1 className="text-2xl font-bold text-primary">Jejak Aktivitas Platform</h1>
         <p className="text-sm text-muted mt-0.5">
-          Semua aksi Super Admin — login, impersonate, kelola tenant &amp; akun, MFA. Tahan-hapus:
+          Semua aksi Super Admin — login (termasuk kode email), impersonate, kelola tenant &amp; akun. Tahan-hapus:
           tetap terbaca setelah tenant di-purge.
         </p>
       </div>

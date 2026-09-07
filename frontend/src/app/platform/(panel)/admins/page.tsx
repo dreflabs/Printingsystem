@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Users, AlertTriangle, X, ShieldCheck, KeyRound, Lock, Smartphone, UserPlus } from "lucide-react";
+import { Users, AlertTriangle, X, ShieldCheck, KeyRound, Lock, UserPlus } from "lucide-react";
 import {
   listSuperAdmins,
   createSuperAdmin,
@@ -9,7 +9,6 @@ import {
   changeSuperAdminSubLevel,
   resetSuperAdminPassword,
   unlockSuperAdmin,
-  resetSuperAdminMfa,
 } from "@/actions/platform-admins";
 
 type SubLevel = "SUPER_ADMIN" | "SUPPORT" | "FINANCE";
@@ -19,7 +18,6 @@ type Admin = {
   email: string;
   subLevel: string;
   active: boolean;
-  mfaEnabled: boolean;
   locked: boolean;
   lastLoginAt: Date | string | null;
   createdAt: Date | string;
@@ -97,7 +95,6 @@ export default function PlatformAdminsPage() {
                 <th className="px-4 py-2.5">Nama / Email</th>
                 <th className="px-4 py-2.5">Sub-level</th>
                 <th className="px-4 py-2.5">Status</th>
-                <th className="px-4 py-2.5">MFA</th>
                 <th className="px-4 py-2.5">Login terakhir</th>
                 {canManage && <th className="px-4 py-2.5 text-right">Aksi</th>}
               </tr>
@@ -152,13 +149,6 @@ export default function PlatformAdminsPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs">
-                      {a.mfaEnabled ? (
-                        <span className="text-status-green font-semibold">aktif</span>
-                      ) : (
-                        <span className="text-muted">belum</span>
-                      )}
-                    </td>
                     <td className="px-4 py-3 text-xs text-muted whitespace-nowrap">{dt(a.lastLoginAt)}</td>
                     {canManage && (
                       <td className="px-4 py-3">
@@ -177,18 +167,6 @@ export default function PlatformAdminsPage() {
                               className="inline-flex items-center gap-1 text-status-green hover:underline disabled:opacity-40"
                             >
                               <Lock className="h-3.5 w-3.5" /> Buka kunci
-                            </button>
-                          )}
-                          {a.mfaEnabled && (
-                            <button
-                              disabled={busy === a.id}
-                              onClick={() => {
-                                if (confirm(`Reset MFA ${a.email}? Akun ini harus enroll ulang saat login berikutnya.`))
-                                  run(a.id, () => resetSuperAdminMfa(a.id));
-                              }}
-                              className="inline-flex items-center gap-1 text-muted hover:text-primary disabled:opacity-40"
-                            >
-                              <Smartphone className="h-3.5 w-3.5" /> Reset MFA
                             </button>
                           )}
                           {!self && (
@@ -279,7 +257,7 @@ function CreateModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
             </option>
           ))}
         </select>
-        <p className="text-[11px] text-muted">Akun baru wajib mengatur MFA saat login pertama.</p>
+        <p className="text-[11px] text-muted">Setiap login akun ini butuh kode 6 digit yang dikirim ke email di atas.</p>
         <button
           onClick={submit}
           disabled={busy}

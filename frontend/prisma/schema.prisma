@@ -117,29 +117,28 @@ model Invoice {
 }
 
 model SuperAdmin {
-  id                 String    @id @default(uuid())
-  name               String
-  email              String    @unique
-  password_hash      String
-  role               String // SUPER_ADMIN/SUPPORT/FINANCE
-  active             Boolean   @default(true)
-  failed_login_count Int       @default(0)
-  locked_until       DateTime?
-  last_login_at      DateTime?
-  // MFA (TOTP, RFC 6238) — wajib untuk semua akun Super Admin.
-  totp_secret        String? // base32; diisi saat mulai enrollment, dipakai walau totp_enabled masih false
-  totp_enabled       Boolean   @default(false) // true setelah kode pertama diverifikasi
-  totp_backup_codes  String? // JSON array berisi hash bcrypt kode cadangan sekali-pakai
-  mfa_enrolled_at    DateTime?
-  created_at         DateTime  @default(now())
+  id                   String    @id @default(uuid())
+  name                 String
+  email                String    @unique
+  password_hash        String
+  role                 String // SUPER_ADMIN/SUPPORT/FINANCE
+  active               Boolean   @default(true)
+  failed_login_count   Int       @default(0)
+  locked_until         DateTime?
+  last_login_at        DateTime?
+  // MFA wajib untuk semua akun Super Admin — kode 6 digit dikirim ke email tiap login.
+  login_otp_hash       String? // sha256 hex dari kode yang sedang berlaku
+  login_otp_expires_at DateTime?
+  login_otp_attempts   Int       @default(0) // percobaan salah pada kode aktif; >= batas → kode dibatalkan
+  created_at           DateTime  @default(now())
 
   tenant_audit_logs   TenantAuditLog[]
   platform_audit_logs PlatformAuditLog[]
 }
 
 /// Jejak audit tingkat-platform: aksi Super Admin yang TIDAK terikat satu tenant
-/// (login, kelola akun Super Admin lain, MFA) plus salinan aksi tenant-scoped
-/// supaya tetap terbaca setelah tenant-nya di-purge (TenantAuditLog ikut hilang).
+/// (login, kelola akun Super Admin lain) plus salinan aksi tenant-scoped supaya
+/// tetap terbaca setelah tenant-nya di-purge (TenantAuditLog ikut hilang).
 /// Ditulis best-effort oleh src/lib/platform-audit.ts — tidak pernah melempar.
 model PlatformAuditLog {
   id              String      @id @default(uuid())
@@ -147,7 +146,7 @@ model PlatformAuditLog {
   actor           SuperAdmin? @relation(fields: [actor_id], references: [id])
   actor_name      String // snapshot nama saat aksi (tetap terbaca kalau akun dihapus)
   actor_sub_level String? // SUPER_ADMIN/SUPPORT/FINANCE saat aksi
-  action          String // LOGIN_SUCCESS, LOGIN_FAILED, SUPER_ADMIN_CREATED, TENANT_PURGED, MFA_ENABLED, dst
+  action          String // LOGIN_OTP_SENT, LOGIN_SUCCESS, LOGIN_FAILED, SUPER_ADMIN_CREATED, TENANT_PURGED, dst
   target_type     String? // "Tenant" | "SuperAdmin" | null
   target_id       String?
   target_label    String? // slug tenant / email admin — tetap terbaca setelah target dihapus

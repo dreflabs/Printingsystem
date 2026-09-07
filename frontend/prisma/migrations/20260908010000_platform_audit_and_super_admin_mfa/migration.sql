@@ -1,15 +1,15 @@
 -- Hardening panel Super Admin:
---  1. MFA/TOTP wajib untuk semua akun (kolom totp_* + backup codes di SuperAdmin).
+--  1. MFA wajib untuk semua akun — kode 6 digit dikirim ke EMAIL tiap login
+--     (kolom login_otp_* di SuperAdmin). Tidak butuh aplikasi authenticator.
 --  2. PlatformAuditLog — jejak audit tingkat-platform yang tidak terikat tenant
---     (login, kelola akun Super Admin, MFA) + salinan aksi tenant-scoped supaya
---     tetap terbaca setelah tenant di-purge. FK ON DELETE SET NULL: baris log
---     bertahan walau akun Super Admin pelakunya dihapus (actor_name di-snapshot).
+--     (login, kelola akun Super Admin) + salinan tahan-hapus aksi tenant-scoped
+--     supaya tetap terbaca setelah tenant di-purge. FK ON DELETE SET NULL: baris
+--     log bertahan walau akun Super Admin pelakunya dihapus (actor_name di-snapshot).
 
 -- AlterTable
-ALTER TABLE "SuperAdmin" ADD COLUMN     "mfa_enrolled_at" TIMESTAMP(3),
-ADD COLUMN     "totp_backup_codes" TEXT,
-ADD COLUMN     "totp_enabled" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "totp_secret" TEXT;
+ALTER TABLE "SuperAdmin" ADD COLUMN     "login_otp_hash" TEXT,
+ADD COLUMN     "login_otp_expires_at" TIMESTAMP(3),
+ADD COLUMN     "login_otp_attempts" INTEGER NOT NULL DEFAULT 0;
 
 -- CreateTable
 CREATE TABLE "PlatformAuditLog" (
@@ -40,4 +40,3 @@ CREATE INDEX "PlatformAuditLog_action_idx" ON "PlatformAuditLog"("action");
 
 -- AddForeignKey
 ALTER TABLE "PlatformAuditLog" ADD CONSTRAINT "PlatformAuditLog_actor_id_fkey" FOREIGN KEY ("actor_id") REFERENCES "SuperAdmin"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-

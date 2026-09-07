@@ -25,15 +25,13 @@ export default async function PlatformLayout({ children }: { children: React.Rea
               <ShieldCheck className="h-5 w-5 text-accent-teal" />
               Print Pilot <span className="text-muted font-normal">/ Platform</span>
             </Link>
-            {actor.mfaEnabled && (
-              <nav className="hidden sm:flex items-center gap-4 text-sm">
-                {NAV.map((n) => (
-                  <Link key={n.href} href={n.href} className="text-muted hover:text-primary">
-                    {n.label}
-                  </Link>
-                ))}
-              </nav>
-            )}
+            <nav className="hidden sm:flex items-center gap-4 text-sm">
+              {NAV.map((n) => (
+                <Link key={n.href} href={n.href} className="text-muted hover:text-primary">
+                  {n.label}
+                </Link>
+              ))}
+            </nav>
           </div>
           <div className="flex items-center gap-3 text-sm">
             <span className="text-muted">{actor.name}</span>

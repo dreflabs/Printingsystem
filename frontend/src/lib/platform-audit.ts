@@ -16,6 +16,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
 export type PlatformAuditAction =
+  | "LOGIN_OTP_SENT"
   | "LOGIN_SUCCESS"
   | "LOGIN_FAILED"
   | "LOGIN_LOCKED"
@@ -32,11 +33,7 @@ export type PlatformAuditAction =
   | "SUPER_ADMIN_DEACTIVATED"
   | "SUPER_ADMIN_SUBLEVEL_CHANGED"
   | "SUPER_ADMIN_PASSWORD_RESET"
-  | "SUPER_ADMIN_UNLOCKED"
-  | "MFA_ENROLL_STARTED"
-  | "MFA_ENABLED"
-  | "MFA_RESET"
-  | "MFA_BACKUP_CODE_USED";
+  | "SUPER_ADMIN_UNLOCKED";
 
 export interface PlatformAuditInput {
   actorId?: string | null;

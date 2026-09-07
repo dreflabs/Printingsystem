@@ -11,18 +11,10 @@ import {
 } from "@/lib/platform";
 import { logPlatform, headerMeta, type PlatformAuditAction } from "@/lib/platform-audit";
 import { validateSuperAdminPassword } from "@/lib/super-admin-password";
-import {
-  generateTotpSecret,
-  verifyTotp,
-  totpUri,
-  generateBackupCodes,
-  normalizeBackupCode,
-} from "@/lib/totp";
 import { ok, fail } from "@/types";
 
 const BCRYPT_ROUNDS = 12;
 const SUB_LEVELS: SuperAdminSubLevel[] = ["SUPER_ADMIN", "SUPPORT", "FINANCE"];
-const BACKUP_CODE_COUNT = 10;
 
 async function log(
   actor: PlatformActor,
@@ -68,7 +60,6 @@ export async function listSuperAdmins() {
         email: a.email,
         subLevel: a.role,
         active: a.active,
-        mfaEnabled: a.totp_enabled,
         locked: !!(a.locked_until && a.locked_until > now),
         lastLoginAt: a.last_login_at,
         createdAt: a.created_at,
@@ -224,94 +215,7 @@ export async function unlockSuperAdmin(id: string) {
   }
 }
 
-/** Reset MFA akun lain (mis. HP hilang) — akun itu harus enroll ulang saat login berikutnya. */
-export async function resetSuperAdminMfa(id: string) {
-  try {
-    const actor = await requireSubLevel("SUPER_ADMIN");
-    const target = await prisma.superAdmin.findUnique({ where: { id } });
-    if (!target) return fail("Akun tidak ditemukan.");
-
-    await prisma.superAdmin.update({
-      where: { id },
-      data: { totp_secret: null, totp_enabled: false, totp_backup_codes: null, mfa_enrolled_at: null },
-    });
-    await log(actor, "MFA_RESET", { id, label: target.email });
-
-    revalidatePath("/platform/admins");
-    return ok(null);
-  } catch (e) {
-    console.error("resetSuperAdminMfa:", e);
-    return fail(e instanceof Error ? e.message : "Gagal reset MFA.");
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MFA self-service (aktor bertindak untuk dirinya sendiri)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Status MFA akun sendiri — untuk halaman /platform/mfa-setup. */
-export async function getMyMfaState() {
-  try {
-    const actor = await requireSuperAdmin();
-    const rec = await prisma.superAdmin.findUnique({
-      where: { id: actor.id },
-      select: { email: true, totp_enabled: true },
-    });
-    return ok({ email: rec?.email ?? "", enabled: !!rec?.totp_enabled });
-  } catch (e) {
-    console.error("getMyMfaState:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat status MFA.");
-  }
-}
-
-/** Mulai / ulangi enrollment: buat secret baru, simpan (belum aktif), balikan URI untuk QR. */
-export async function startMfaEnrollment() {
-  try {
-    const actor = await requireSuperAdmin();
-    const rec = await prisma.superAdmin.findUnique({ where: { id: actor.id } });
-    if (!rec) return fail("Akun tidak ditemukan.");
-    if (rec.totp_enabled) return fail("MFA sudah aktif. Untuk mengganti perangkat, minta SUPER_ADMIN lain me-reset MFA Anda.");
-
-    const secret = generateTotpSecret();
-    await prisma.superAdmin.update({ where: { id: actor.id }, data: { totp_secret: secret } });
-    await log(actor, "MFA_ENROLL_STARTED", { id: actor.id, label: rec.email });
-
-    return ok({ secret, uri: totpUri(secret, rec.email) });
-  } catch (e) {
-    console.error("startMfaEnrollment:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memulai enrollment MFA.");
-  }
-}
-
-/** Konfirmasi kode pertama → aktifkan MFA, balikan kode cadangan SEKALI SAJA. */
-export async function confirmMfaEnrollment(code: string) {
-  try {
-    const actor = await requireSuperAdmin();
-    const rec = await prisma.superAdmin.findUnique({ where: { id: actor.id } });
-    if (!rec) return fail("Akun tidak ditemukan.");
-    if (rec.totp_enabled) return fail("MFA sudah aktif.");
-    if (!rec.totp_secret) return fail("Belum ada sesi enrollment. Mulai dari awal.");
-    if (!verifyTotp(rec.totp_secret, code)) return fail("Kode salah atau kedaluwarsa. Coba kode terbaru dari aplikasi authenticator.");
-
-    const backupCodes = generateBackupCodes(BACKUP_CODE_COUNT);
-    // Simpan dalam bentuk ternormalisasi yang sama seperti saat verifikasi login.
-    const hashes = await Promise.all(
-      backupCodes.map((c) => bcrypt.hash(normalizeBackupCode(c), BCRYPT_ROUNDS))
-    );
-
-    await prisma.superAdmin.update({
-      where: { id: actor.id },
-      data: {
-        totp_enabled: true,
-        mfa_enrolled_at: new Date(),
-        totp_backup_codes: JSON.stringify(hashes),
-      },
-    });
-    await log(actor, "MFA_ENABLED", { id: actor.id, label: rec.email });
-
-    return ok({ backupCodes });
-  } catch (e) {
-    console.error("confirmMfaEnrollment:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengaktifkan MFA.");
-  }
-}
+// MFA panel Super Admin memakai kode OTP email (verifikasi di src/lib/auth.ts).
+// Tidak ada enrollment / perangkat / kode cadangan — jadi tidak ada aksi
+// "reset MFA" atau self-service di sini. Pemulihan akun = SUPER_ADMIN lain
+// reset password, atau `npm run bootstrap:superadmin` di server.

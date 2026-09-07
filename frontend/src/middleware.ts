@@ -102,17 +102,8 @@ export default auth((req) => {
       return NextResponse.redirect(url);
     }
     if (!isPlatform) return NextResponse.redirect(new URL("/login", nextUrl));
-
-    // MFA wajib: akun yang belum menyelesaikan enrollment TOTP hanya boleh
-    // membuka /platform/mfa-setup sampai selesai. Yang sudah, tidak perlu lagi.
-    const mfaEnabled = (req.auth?.user as { mfaEnabled?: boolean } | undefined)?.mfaEnabled === true;
-    const MFA_SETUP_PATH = "/platform/mfa-setup";
-    if (!mfaEnabled && path !== MFA_SETUP_PATH) {
-      return NextResponse.redirect(new URL(MFA_SETUP_PATH, nextUrl));
-    }
-    if (mfaEnabled && path === MFA_SETUP_PATH) {
-      return NextResponse.redirect(new URL("/platform", nextUrl));
-    }
+    // MFA (kode email) diverifikasi saat login di src/lib/auth.ts — tidak ada
+    // langkah enrollment terpisah yang perlu dijaga di sini.
     return pass();
   }
 

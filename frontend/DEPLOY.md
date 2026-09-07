@@ -107,20 +107,31 @@ Hapus `SUPER_ADMIN_PASSWORD` dari environment setelah selesai.
 > **Jangan jalankan `npx prisma db seed` di produksi.** Seed menghapus seluruh isi
 > database lebih dulu. Guard `ALLOW_PROD_SEED` ada justru untuk mencegah itu.
 
-### MFA wajib (TOTP)
+### MFA wajib (kode email — tanpa aplikasi authenticator)
 
-Setiap akun Super Admin wajib mengaktifkan MFA. Saat login pertama (atau setelah
-migrasi ini di akun lama), password saja sudah bisa masuk tapi seluruh panel
-mengarahkan ke `/platform/mfa-setup` sampai enrollment selesai: scan QR di
-authenticator app → masukkan 1 kode → simpan 10 kode cadangan (sekali tampil) →
-login ulang. Sesudah itu login butuh email + password + kode 6 digit.
+Setiap login Super Admin butuh 2 langkah:
+1. Isi email + password → sistem kirim kode 6 digit ke email akun itu.
+2. Masukkan kode (berlaku 10 menit) → masuk.
 
-Kehilangan perangkat: SUPER_ADMIN lain buka **Akun Admin → Reset MFA**, atau
-pakai satu kode cadangan saat login. Sesi panel dibatasi 12 jam.
+**Prasyarat: provider email harus aktif di produksi.** Set `MAIL_PROVIDER`,
+`MAIL_PROVIDER_TOKEN`, `MAIL_FROM` (lihat bagian 6b). Tanpa itu, kode tidak
+terkirim dan Super Admin tidak bisa login.
 
-Kelola akun Super Admin lain (buat, nonaktifkan, ubah sub-level, reset
-password/MFA) kini lewat **Akun Admin** di panel — `bootstrap:superadmin` hanya
-untuk akun pertama.
+**Break-glass** kalau email sedang bermasalah: set env `PLATFORM_OTP_DEBUG=1` →
+kode ikut ditulis ke log server (`docker logs` / Coolify → Logs). Matikan lagi
+setelah selesai.
+
+Salah kode 5×  → kode dibatalkan, minta kode baru ("Kirim ulang"). Salah
+password ikut menghitung ke lockout akun (5× → kunci sementara). Sesi panel
+dibatasi 12 jam (`PLATFORM_SESSION_MAX_AGE_MS`).
+
+Pemulihan akun (email hilang/terkunci): SUPER_ADMIN lain reset password lewat
+**Akun Admin**, atau `npm run bootstrap:superadmin` di server (menulis langsung
+ke DB, tidak lewat MFA).
+
+Kelola akun Super Admin lain (buat, nonaktifkan, ubah sub-level, reset password,
+buka kunci) lewat **Akun Admin** di panel — `bootstrap:superadmin` hanya untuk
+akun pertama.
 
 ---
 

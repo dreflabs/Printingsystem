@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { auth, signOut } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/actor";
 import { IMPERSONATE_COOKIE } from "@/lib/platform";
@@ -44,5 +45,8 @@ export async function getSessionUser(): Promise<
 
 export async function signOutAction() {
   (await cookies()).delete(IMPERSONATE_COOKIE);
-  await signOut({ redirectTo: "/login" });
+  // redirect: false + redirect() relatif — di belakang reverse proxy, redirectTo
+  // Auth.js kadang jadi URL absolut ke origin internal (localhost:3000).
+  await signOut({ redirect: false });
+  redirect("/login");
 }

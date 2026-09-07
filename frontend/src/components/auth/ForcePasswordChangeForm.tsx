@@ -35,7 +35,15 @@ export function ForcePasswordChangeForm() {
     setDone(true);
     // Sesi lama sudah tidak berlaku (password_changed_at di-bump) — keluar &
     // minta login ulang dengan kata sandi baru.
-    setTimeout(() => signOut({ callbackUrl: "/login?changed=1" }), 1800);
+    //
+    // Redirect-nya lewat window.location, BUKAN callbackUrl signOut: di belakang
+    // reverse proxy, Auth.js kadang menyusun URL absolut dari origin internal
+    // (localhost:3000) sehingga callback melempar ke host yang salah. Browser
+    // me-resolve path relatif ini terhadap origin yang benar.
+    setTimeout(async () => {
+      await signOut({ redirect: false });
+      window.location.href = "/login?changed=1";
+    }, 1800);
   }
 
   return (

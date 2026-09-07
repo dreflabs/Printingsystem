@@ -5,6 +5,14 @@ import { ShieldCheck, LogOut } from "lucide-react";
 import { getPlatformActor, IMPERSONATE_COOKIE } from "@/lib/platform";
 import { signOut } from "@/lib/auth";
 
+async function platformSignOut() {
+  "use server";
+  (await cookies()).delete(IMPERSONATE_COOKIE);
+  // redirect() relatif — hindari redirectTo Auth.js yang bisa absolut ke localhost:3000 di balik proxy.
+  await signOut({ redirect: false });
+  redirect("/platform/login");
+}
+
 const NAV = [
   { href: "/platform", label: "Dashboard" },
   { href: "/platform/admins", label: "Akun Admin" },
@@ -38,13 +46,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent-teal/10 text-accent-teal border border-accent-teal/30">
               {actor.subLevel}
             </span>
-            <form
-              action={async () => {
-                "use server";
-                (await cookies()).delete(IMPERSONATE_COOKIE);
-                await signOut({ redirectTo: "/platform/login" });
-              }}
-            >
+            <form action={platformSignOut}>
               <button className="flex items-center gap-1.5 text-muted hover:text-primary">
                 <LogOut className="h-4 w-4" /> Keluar
               </button>

@@ -25,9 +25,11 @@ Jalan
 
 **Setelah dibuat:**
 
-- Sistem generate password sementara: `printpilot123!`
-- Owner memberikan password sementara ke pegawai secara langsung
-- Pegawai wajib ganti password saat login pertama kali
+- Sistem meng-generate **password sementara acak per pegawai** (12 karakter, format `xxxx-xxxx-xxxx`, tanpa karakter ambigu). Bukan lagi konstanta bersama.
+- Password ditampilkan **sekali** ke Owner di dialog kredensial (workspace + username + password + tombol Salin); Owner mencentang "sudah menyalin" sebelum dialog bisa ditutup. Tidak bisa dilihat lagi — jika hilang, Owner me-reset password (menghasilkan password sementara baru).
+- Owner menyerahkan kredensial ke pegawai lewat jalur pribadi.
+- Pegawai login → langsung diarahkan ke `/ganti-sandi` dan terkunci di sana (`must_change_password`) sampai selesai; setelah ganti, sesi lama tidak berlaku dan pegawai login ulang.
+- **Reset password oleh Owner** juga menghasilkan password sementara acak baru + menghentikan sesi pegawai yang sedang berjalan seketika.
 
 ---
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { UserFormModal } from "@/components/owner/UserFormModal";
+import { UserFormModal, CredentialRevealDialog } from "@/components/owner/UserFormModal";
 import { ConfirmDialog } from "@/components/ui";
 import { getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword, unlockEmployeeAccount } from "@/actions/user-management";
 import { getMyWorkspace } from "@/actions/profile";
@@ -33,6 +33,9 @@ export default function OwnerUsersPage() {
   const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
   const [savingSalaryId, setSavingSalaryId] = useState<string | null>(null);
   const [workspaceSlug, setWorkspaceSlug] = useState<string | null>(null);
+  const [createdCred, setCreatedCred] = useState<
+    { name: string; username: string; tempPassword: string; reset?: boolean } | null
+  >(null);
 
   const runPendingConfirm = async () => {
     if (!pendingConfirm) return;
@@ -62,10 +65,16 @@ export default function OwnerUsersPage() {
     setIsSaving(true);
     setActionMessage(null);
     const result = await createEmployee(formData);
-    
+
     if (result.success) {
       setIsModalOpen(false);
-      setActionMessage({ type: "success", text: `Pegawai ${formData.name} berhasil ditambahkan.` });
+      setActionMessage(null);
+      // Tampilkan kredensial sekali — password sementara acak, tidak bisa dilihat lagi.
+      setCreatedCred({
+        name: formData.name,
+        username: formData.username,
+        tempPassword: result.tempPassword!,
+      });
       loadUsers();
     } else {
       setActionMessage({ type: "error", text: result.error || "Gagal menambah pegawai." });
@@ -109,21 +118,28 @@ export default function OwnerUsersPage() {
     }
   };
 
-  const handleResetPassword = (userId: string, roleName: string) => {
-    if (roleName === "owner") {
+  const handleResetPassword = (user: { id: string; name: string; username: string; role: { name: string } }) => {
+    if (user.role.name === "owner") {
       setActionMessage({ type: "error", text: "Reset password Owner dilakukan mandiri lewat menu Lupa Password." });
       return;
     }
     setActionMessage(null);
     setPendingConfirm({
       title: "Reset Password Pegawai",
-      message: "Password diganti ke bawaan (printpilot123!) dan pegawai wajib menggantinya saat login berikutnya. Lanjutkan?",
+      message:
+        "Password diganti ke password sementara acak yang baru. Sesi pegawai yang sedang berjalan langsung berhenti, dan ia wajib menggantinya saat login berikutnya. Lanjutkan?",
       confirmLabel: "Ya, Reset",
       variant: "danger",
       run: async () => {
-        const result = await resetEmployeePassword(userId);
+        const result = await resetEmployeePassword(user.id);
         if (result.success) {
-          setActionMessage({ type: "success", text: `Password direset ke: ${result.newPassword} — pegawai wajib menggantinya saat login.` });
+          setActionMessage(null);
+          setCreatedCred({
+            name: user.name,
+            username: user.username,
+            tempPassword: result.newPassword!,
+            reset: true,
+          });
           loadUsers();
         } else {
           setActionMessage({ type: "error", text: "Gagal mereset password: " + result.error });
@@ -326,7 +342,7 @@ export default function OwnerUsersPage() {
                             </button>
                           )}
                           <button
-                            onClick={() => handleResetPassword(user.id, user.role.name)}
+                            onClick={() => handleResetPassword(user)}
                             className="p-2 text-muted hover:text-status-yellow-text hover:bg-status-yellow/10 rounded-lg transition-colors group relative"
                             title="Reset Password"
                           >
@@ -362,6 +378,14 @@ export default function OwnerUsersPage() {
           workspaceSlug={workspaceSlug}
           onClose={() => setIsModalOpen(false)}
           onSave={handleSaveUser}
+        />
+      )}
+
+      {createdCred && (
+        <CredentialRevealDialog
+          cred={createdCred}
+          workspaceSlug={workspaceSlug}
+          onClose={() => setCreatedCred(null)}
         />
       )}
 

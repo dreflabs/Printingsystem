@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Info, ShieldCheck } from "lucide-react";
+import { X, Info, ShieldCheck, Copy, Check, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface UserFormModalProps {
@@ -198,22 +198,19 @@ export function UserFormModal({ onClose, onSave, isLoading, workspaceSlug }: Use
             </div>
           </div>
 
-          {/* Default password info */}
-          <div className="p-3 bg-status-yellow/10 border border-status-yellow/30 rounded-xl space-y-1">
-            <p className="text-xs text-status-yellow-text font-medium">
-              Password otomatis (Default):{" "}
-              <strong className="font-mono bg-status-yellow/20 px-1 py-0.5 rounded">printpilot123!</strong>
-              <br />
-              Pegawai wajib mengubah password pada saat login pertama kali.
+          {/* Password info */}
+          <div className="p-3 bg-status-blue/10 border border-status-blue/20 rounded-xl">
+            <p className="text-xs text-muted leading-relaxed">
+              <span className="font-bold text-status-blue">Password sementara acak</span> akan dibuat saat
+              disimpan dan ditampilkan sekali untuk Anda serahkan ke pegawai. Pegawai wajib menggantinya
+              saat login pertama.
+              {workspaceSlug && (
+                <>
+                  <br />
+                  Workspace: <strong className="font-mono">{workspaceSlug}</strong>
+                </>
+              )}
             </p>
-            {workspaceSlug && (
-              <p className="text-xs text-status-yellow-text font-medium border-t border-status-yellow/30 pt-1">
-                Alamat login &amp; kolom Workspace:{" "}
-                <strong className="font-mono bg-status-yellow/20 px-1 py-0.5 rounded">{workspaceSlug}</strong>
-                <br />
-                Link: <span className="font-mono break-all">/login?workspace={workspaceSlug}</span>
-              </p>
-            )}
           </div>
 
           {/* Actions */}
@@ -240,6 +237,102 @@ export function UserFormModal({ onClose, onSave, isLoading, workspaceSlug }: Use
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Tampil SEKALI setelah pegawai dibuat / password direset. Menampilkan kredensial
+ * lengkap (workspace + username + password sementara) untuk diserahkan Owner ke
+ * pegawai. Tidak bisa ditutup sebelum Owner menandai sudah menyalin.
+ */
+export function CredentialRevealDialog({
+  cred,
+  workspaceSlug,
+  onClose,
+}: {
+  cred: { name: string; username: string; tempPassword: string; reset?: boolean };
+  workspaceSlug?: string | null;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [ack, setAck] = useState(false);
+
+  const block =
+    (workspaceSlug ? `Workspace: ${workspaceSlug}\n` : "") +
+    `Username: ${cred.username}\n` +
+    `Password sementara: ${cred.tempPassword}`;
+
+  const copy = () => {
+    navigator.clipboard?.writeText(block).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => {},
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-base/80 backdrop-blur-sm">
+      <div className="bg-card w-full max-w-md rounded-2xl border border-border shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center gap-2 p-5 border-b border-border bg-elevated/50">
+          <KeyRound className="h-5 w-5 text-accent-teal" />
+          <h2 className="text-lg font-bold text-primary">
+            {cred.reset ? "Password direset" : "Pegawai dibuat"} — {cred.name}
+          </h2>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="rounded-xl border border-status-yellow/40 bg-status-yellow/10 px-3 py-2 text-xs text-status-yellow-text">
+            Salin sekarang &amp; serahkan ke pegawai lewat jalur pribadi. <b>Tidak ditampilkan lagi.</b>
+            {cred.reset && " Sesi lama pegawai langsung berhenti."}
+          </div>
+
+          <div className="rounded-xl bg-elevated border border-border p-3 font-mono text-sm text-primary space-y-1.5">
+            {workspaceSlug && (
+              <div>
+                <span className="text-muted">Workspace</span>: {workspaceSlug}
+              </div>
+            )}
+            <div>
+              <span className="text-muted">Username</span>: {cred.username}
+            </div>
+            <div>
+              <span className="text-muted">Password</span>:{" "}
+              <span className="bg-status-yellow/20 px-1 py-0.5 rounded">{cred.tempPassword}</span>
+            </div>
+          </div>
+
+          <button
+            onClick={copy}
+            className="w-full h-9 rounded-lg border border-border text-xs font-bold text-muted hover:text-primary inline-flex items-center justify-center gap-1.5"
+          >
+            {copied ? (
+              <>
+                <Check className="h-3.5 w-3.5" /> Tersalin
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5" /> Salin kredensial
+              </>
+            )}
+          </button>
+
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+            Saya sudah menyalin &amp; akan menyerahkan ke pegawai
+          </label>
+
+          <button
+            onClick={onClose}
+            disabled={!ack}
+            className="w-full h-10 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"
+          >
+            Selesai
+          </button>
+        </div>
       </div>
     </div>
   );

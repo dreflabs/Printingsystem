@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
+import { generateTempPassword } from "@/lib/temp-password";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 
@@ -74,9 +75,11 @@ export async function createEmployee(data: {
     });
     if (existing) throw new Error("Username atau Email sudah digunakan");
 
-    // Default password for new employees: printpilot123!
-    const defaultPassword = "printpilot123!";
-    const password_hash = await bcrypt.hash(defaultPassword, 12);
+    // Password sementara ACAK per pegawai (bukan konstanta bersama). Hanya
+    // dikembalikan sekali ke Owner untuk diserahkan ke pegawai; alur ganti-sandi
+    // paksa (must_change_password) menahan akun sampai pegawai menggantinya.
+    const tempPassword = generateTempPassword();
+    const password_hash = await bcrypt.hash(tempPassword, 12);
 
     const newUser = await prisma.user.create({
       data: {
@@ -108,6 +111,7 @@ export async function createEmployee(data: {
       }
     }
 
+    // Jangan pernah mencatat password sementara ke audit log.
     await logAction(actor.id, "EMPLOYEE_CREATED", "User", newUser.id, null, {
       name: data.name,
       username: data.username,
@@ -116,7 +120,7 @@ export async function createEmployee(data: {
     });
 
     revalidatePath("/owner/users");
-    return { success: true, user: newUser, tempPassword: defaultPassword };
+    return { success: true, user: newUser, tempPassword };
   } catch (error: unknown) {
     console.error("Error creating employee:", error);
     return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
@@ -259,7 +263,9 @@ export async function resetEmployeePassword(userId: string) {
     if (!user) throw new Error("User not found");
     if (user.role.name === "owner") throw new Error("Owner must use self-service reset");
 
-    const newPassword = "printpilot123!";
+    // Password sementara acak — bump password_changed_at agar sesi pegawai yang
+    // sedang berjalan langsung tidak berlaku (harus login ulang dengan yang baru).
+    const newPassword = generateTempPassword();
     const password_hash = await bcrypt.hash(newPassword, 12);
 
     await prisma.user.update({

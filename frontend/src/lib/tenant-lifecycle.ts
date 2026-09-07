@@ -84,6 +84,14 @@ export async function churnTenant(
     },
   });
 
+  // Batalkan langganan aktif — tanpa ini tenant CHURNED masih ikut terhitung di
+  // MRR sampai di-purge, dan indeks unik "satu ACTIVE per tenant" menyimpan baris
+  // yang menyesatkan.
+  await tx.tenantSubscription.updateMany({
+    where: { tenant_id: tenant.id, status: "ACTIVE" },
+    data: { status: "CANCELLED", ends_at: new Date() },
+  });
+
   await tx.tenantAuditLog.create({
     data: {
       tenant_id: tenant.id,

@@ -5,7 +5,7 @@ import { Building2, DollarSign, Users, PauseCircle, PlayCircle, LogIn, AlertTria
 import { getPlatformMetrics, listTenants, setTenantStatus, impersonateTenant } from "@/actions/platform";
 import { TenantDetailDrawer } from "@/components/platform/TenantDetailDrawer";
 
-type Metrics = { mrr: number; totalTenants: number; trial: number; active: number; suspended: number; churned: number };
+type Metrics = { mrr: number; trialMrr: number; totalTenants: number; trial: number; active: number; suspended: number; churned: number };
 type Tenant = {
   id: string; slug: string; name: string; status: string; plan: string;
   ownerName: string | null; userCount: number; orderCount: number;
@@ -63,8 +63,13 @@ export default function PlatformDashboard() {
     await load();
   }
 
-  const cards = [
-    { label: "MRR", value: metrics ? rupiah(metrics.mrr) : "—", icon: DollarSign },
+  const cards: { label: string; value: string | number; icon: typeof DollarSign; hint?: string }[] = [
+    {
+      label: "MRR (tenant aktif)",
+      value: metrics ? rupiah(metrics.mrr) : "—",
+      icon: DollarSign,
+      hint: metrics && metrics.trialMrr > 0 ? `+ ${rupiah(metrics.trialMrr)} potensi dari trial` : undefined,
+    },
     { label: "Total Tenant", value: metrics?.totalTenants ?? "—", icon: Building2 },
     { label: "Aktif / Trial", value: metrics ? `${metrics.active} / ${metrics.trial}` : "—", icon: Users },
     { label: "Suspended / Churned", value: metrics ? `${metrics.suspended} / ${metrics.churned}` : "—", icon: PauseCircle },
@@ -131,6 +136,7 @@ export default function PlatformDashboard() {
             </div>
             <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">{c.label}</p>
             <p className="text-2xl font-bold text-primary mt-1 font-mono">{c.value}</p>
+            {c.hint && <p className="text-[10px] text-muted mt-1">{c.hint}</p>}
           </div>
         ))}
       </div>

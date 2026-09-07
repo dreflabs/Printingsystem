@@ -30,20 +30,29 @@ export async function getPlatformMetrics() {
   try {
     await requireSuperAdmin();
 
-    const [tenants, activeSubs] = await Promise.all([
+    const [tenants, payingSubs, trialSubs] = await Promise.all([
       prisma.tenant.groupBy({ by: ["status"], _count: { _all: true } }),
+      // MRR = hanya langganan aktif milik tenant yang benar-benar berbayar
+      // (status ACTIVE). Tenant TRIAL/SUSPENDED/CHURNED juga punya baris
+      // TenantSubscription ACTIVE — tanpa filter ini MRR ikut menghitung mereka.
       prisma.tenantSubscription.findMany({
-        where: { status: "ACTIVE" },
+        where: { status: "ACTIVE", tenant: { status: "ACTIVE" } },
+        select: { plan: { select: { price_monthly: true } } },
+      }),
+      prisma.tenantSubscription.findMany({
+        where: { status: "ACTIVE", tenant: { status: "TRIAL" } },
         select: { plan: { select: { price_monthly: true } } },
       }),
     ]);
 
     const byStatus: Record<string, number> = {};
     for (const t of tenants) byStatus[t.status] = t._count._all;
-    const mrr = activeSubs.reduce((s, x) => s + num(x.plan.price_monthly), 0);
+    const mrr = payingSubs.reduce((s, x) => s + num(x.plan.price_monthly), 0);
+    const trialMrr = trialSubs.reduce((s, x) => s + num(x.plan.price_monthly), 0);
 
     return ok({
       mrr,
+      trialMrr, // potensi pendapatan bila semua trial berjalan konversi
       totalTenants: Object.values(byStatus).reduce((a, b) => a + b, 0),
       trial: byStatus.TRIAL ?? 0,
       active: byStatus.ACTIVE ?? 0,

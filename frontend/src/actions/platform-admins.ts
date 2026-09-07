@@ -16,6 +16,7 @@ import {
   verifyTotp,
   totpUri,
   generateBackupCodes,
+  normalizeBackupCode,
 } from "@/lib/totp";
 import { ok, fail } from "@/types";
 
@@ -293,7 +294,10 @@ export async function confirmMfaEnrollment(code: string) {
     if (!verifyTotp(rec.totp_secret, code)) return fail("Kode salah atau kedaluwarsa. Coba kode terbaru dari aplikasi authenticator.");
 
     const backupCodes = generateBackupCodes(BACKUP_CODE_COUNT);
-    const hashes = await Promise.all(backupCodes.map((c) => bcrypt.hash(c.replace("-", ""), BCRYPT_ROUNDS)));
+    // Simpan dalam bentuk ternormalisasi yang sama seperti saat verifikasi login.
+    const hashes = await Promise.all(
+      backupCodes.map((c) => bcrypt.hash(normalizeBackupCode(c), BCRYPT_ROUNDS))
+    );
 
     await prisma.superAdmin.update({
       where: { id: actor.id },

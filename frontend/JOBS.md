@@ -24,6 +24,7 @@ Middleware sudah dikonfigurasi untuk membiarkan `/api/jobs/*` lewat tanpa sesi.
 | `/api/jobs/dispatch-notifications` | Kirim antrian `NotificationEvent` (WhatsApp) lewat provider. Retry maks. 3× jeda ≥5 menit; gagal permanen → `FAILED` + email fallback ke Admin. | tiap 2–5 menit |
 | `/api/jobs/deadline-alerts` | Buat baris `deadline_alerts` H1_WARNING (deadline ≤24 jam) & OVERDUE (lewat). Tutup alert saat order `READY_FOR_PICKUP`+. | tiap 1 jam |
 | `/api/jobs/break-warnings` | Menit ke-45 istirahat → WA ke pegawai. Lewat 60 menit → status `EXCEEDED` + WA ke Owner. | tiap 2–5 menit |
+| `/api/jobs/tenant-lifecycle` | Housekeeping tenant: TRIAL lewat `trial_ends_at` >14 hari → `CHURNED` + slug dilepas; `SUSPENDED` tak tersentuh >60 hari → `CHURNED`; `CHURNED` >30 hari → **purge permanen** + nisan `RetiredTenant`. | 1× sehari |
 
 ## Menjalankan: pakai `scripts/run-job.sh`
 
@@ -31,6 +32,7 @@ Middleware sudah dikonfigurasi untuk membiarkan `/api/jobs/*` lewat tanpa sesi.
 ./scripts/run-job.sh dispatch-notifications
 ./scripts/run-job.sh deadline-alerts
 ./scripts/run-job.sh break-warnings
+./scripts/run-job.sh tenant-lifecycle
 ```
 
 Env yang dibaca: `JOBS_SECRET` (wajib), `JOBS_BASE_URL` (default
@@ -59,6 +61,7 @@ Environment Variables dan base URL default (`127.0.0.1:3000`) sudah benar.
 | `dispatch-notifications` | `./scripts/run-job.sh dispatch-notifications` | `*/3 * * * *` |
 | `break-warnings` | `./scripts/run-job.sh break-warnings` | `*/3 * * * *` |
 | `deadline-alerts` | `./scripts/run-job.sh deadline-alerts` | `0 * * * *` |
+| `tenant-lifecycle` | `./scripts/run-job.sh tenant-lifecycle` | `30 3 * * *` |
 
 Setelah tersimpan, jalankan sekali manual dari UI dan periksa lognya berisi `ok`.
 Task yang merah berarti benar-benar gagal — bukan sekadar tidak ada pekerjaan.
@@ -71,6 +74,7 @@ Kalau tidak memakai Scheduled Tasks, dari host VPS:
 */3 * * * * cd /path/ke/frontend && JOBS_SECRET=xxx JOBS_BASE_URL=https://app.contoh.id ./scripts/run-job.sh dispatch-notifications >> /var/log/printpilot-jobs.log 2>&1
 */3 * * * * cd /path/ke/frontend && JOBS_SECRET=xxx JOBS_BASE_URL=https://app.contoh.id ./scripts/run-job.sh break-warnings       >> /var/log/printpilot-jobs.log 2>&1
 0   * * * * cd /path/ke/frontend && JOBS_SECRET=xxx JOBS_BASE_URL=https://app.contoh.id ./scripts/run-job.sh deadline-alerts      >> /var/log/printpilot-jobs.log 2>&1
+30  3 * * * cd /path/ke/frontend && JOBS_SECRET=xxx JOBS_BASE_URL=https://app.contoh.id ./scripts/run-job.sh tenant-lifecycle    >> /var/log/printpilot-jobs.log 2>&1
 ```
 
 Catat ke file log (`>>`), jangan ke `/dev/null`.
@@ -131,3 +135,10 @@ HTTP `200` = semua terkirim, `502` = ada yang gagal.
   internal (istirahat, dsb.) dikirim langsung via `sendWhatsApp()`, tidak lewat
   tabel `NotificationEvent` (tabel itu wajib punya `order_id` + `customer_id`).
 - Template pesan pelanggan: `src/lib/notification-templates.ts`.
+- `tenant-lifecycle`: ambang di `src/lib/tenant-lifecycle.ts`
+  (`TRIAL_GRACE_DAYS` 14, `SUSPENDED_GRACE_DAYS` 60, `PURGE_GRACE_DAYS` 30).
+  Saat churn, slug aktif di-rename `<slug>-retired-<id8>` sehingga nama aslinya
+  bebas dipakai pendaftar baru; `retired_slug` menyimpan yang asli. Purge
+  menghapus seluruh baris tenant (urut FK di `purgeTenant()`) dan menulis satu
+  baris `RetiredTenant` sebagai nisan. Backlog data lama: sekali jalankan
+  `npm run backfill:churn-stale-trials` (DRY RUN; `APPLY=true` untuk eksekusi).

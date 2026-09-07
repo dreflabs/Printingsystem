@@ -148,9 +148,16 @@ Resource aplikasi → **Scheduled Tasks**, tambah tiga task:
 | `dispatch-notifications` | `./scripts/run-job.sh dispatch-notifications` | `*/3 * * * *` |
 | `break-warnings` | `./scripts/run-job.sh break-warnings` | `*/3 * * * *` |
 | `deadline-alerts` | `./scripts/run-job.sh deadline-alerts` | `0 * * * *` |
+| `tenant-lifecycle` | `./scripts/run-job.sh tenant-lifecycle` | `30 3 * * *` |
 
 Jalankan sekali manual dan pastikan lognya berisi `ok`. Detail dan alternatif
 crontab ada di [`JOBS.md`](./JOBS.md).
+
+`tenant-lifecycle` meng-arsipkan TRIAL basi / SUSPENDED lama jadi `CHURNED`
+(melepas nama subdomain-nya) lalu menghapus permanen tenant `CHURNED` yang
+lewat 30 hari. Untuk membersihkan data lama yang sudah menumpuk, sekali jalankan
+di dalam container: `npm run backfill:churn-stale-trials` (DRY RUN — tambah
+`APPLY=true` untuk eksekusi).
 
 ### 6b. Provider WhatsApp & email
 

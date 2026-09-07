@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSuperAdmin, requireSubLevel, IMPERSONATE_COOKIE } from "@/lib/platform";
+import { churnTenant, purgeTenant, PURGE_GRACE_DAYS } from "@/lib/tenant-lifecycle";
 import { ok, fail } from "@/types";
 
 const num = (v: unknown) => Number(v ?? 0);
@@ -205,6 +206,8 @@ export async function getTenantDetail(tenantId: string) {
     return ok({
       id: t.id,
       slug: t.slug,
+      retiredSlug: t.retired_slug,
+      churnedAt: t.churned_at,
       name: t.name,
       status: t.status,
       plan: t.plan,
@@ -339,5 +342,99 @@ export async function listSuperAdmins() {
   } catch (e) {
     console.error("listSuperAdmins:", e);
     return fail(e instanceof Error ? e.message : "Gagal memuat daftar Super Admin.");
+  }
+}
+
+/**
+ * Tandai tenant CHURNED + lepas (arsipkan) slug-nya supaya nama subdomain
+ * langsung bebas dipakai pendaftar baru. Tidak menghapus data — hanya rename +
+ * ganti status. Hanya sub-level SUPER_ADMIN.
+ */
+export async function markTenantChurned(tenantId: string, reason?: string) {
+  try {
+    const actor = await requireSubLevel("SUPER_ADMIN");
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, slug: true, status: true, retired_slug: true },
+    });
+    if (!tenant) return fail("Tenant tidak ditemukan.");
+    if (tenant.status === "CHURNED") return fail("Tenant sudah berstatus CHURNED.");
+
+    const { releasedSlug } = await prisma.$transaction((tx) =>
+      churnTenant(tx, tenant, "MANUAL", reason, actor.id)
+    );
+
+    revalidatePath("/platform");
+    return ok({ status: "CHURNED", releasedSlug });
+  } catch (e) {
+    console.error("markTenantChurned:", e);
+    return fail(e instanceof Error ? e.message : "Gagal menandai tenant churned.");
+  }
+}
+
+/**
+ * Hapus PERMANEN seluruh data tenant CHURNED + tinggalkan nisan RetiredTenant.
+ * Tanpa `force`, hanya boleh setelah lewat masa tenggang PURGE_GRACE_DAYS sejak
+ * `churned_at`. Hanya sub-level SUPER_ADMIN. Tidak bisa dibatalkan.
+ */
+export async function purgeTenantPermanently(tenantId: string, opts?: { force?: boolean }) {
+  try {
+    const actor = await requireSubLevel("SUPER_ADMIN");
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, status: true, churned_at: true, retired_slug: true, slug: true },
+    });
+    if (!tenant) return fail("Tenant tidak ditemukan.");
+    if (tenant.status !== "CHURNED")
+      return fail("Hanya tenant berstatus CHURNED yang bisa di-purge. Tandai churned dulu.");
+
+    if (!opts?.force) {
+      const eligibleAt = tenant.churned_at
+        ? new Date(tenant.churned_at.getTime() + PURGE_GRACE_DAYS * 24 * 60 * 60 * 1000)
+        : null;
+      if (!eligibleAt || eligibleAt > new Date()) {
+        return fail(
+          `Masa tenggang ${PURGE_GRACE_DAYS} hari belum lewat` +
+            (eligibleAt ? ` (bisa di-purge mulai ${eligibleAt.toLocaleDateString("id-ID")})` : "") +
+            ". Centang \"lewati masa tenggang\" untuk memaksa."
+        );
+      }
+    }
+
+    const result = await purgeTenant(tenantId);
+    // tenant_audit_logs tenant ini sudah ikut terhapus — jejak ada di nisan
+    // RetiredTenant + log server ini.
+    console.log(
+      `[PURGE] super_admin=${actor.name} slug=${result.originalSlug} deleted=${JSON.stringify(result.deleted)}`
+    );
+
+    revalidatePath("/platform");
+    return ok(result);
+  } catch (e) {
+    console.error("purgeTenantPermanently:", e);
+    return fail(e instanceof Error ? e.message : "Gagal purge tenant.");
+  }
+}
+
+/** Daftar nisan tenant yang sudah dihapus permanen. */
+export async function listRetiredTenants() {
+  try {
+    await requireSuperAdmin();
+    const rows = await prisma.retiredTenant.findMany({ orderBy: { purged_at: "desc" }, take: 100 });
+    return ok(
+      rows.map((r) => ({
+        id: r.id,
+        originalSlug: r.original_slug,
+        name: r.name,
+        plan: r.plan,
+        ownerName: r.owner_name,
+        churnedAt: r.churned_at,
+        purgedAt: r.purged_at,
+        counts: r.counts_json ? (JSON.parse(r.counts_json) as Record<string, number>) : null,
+      }))
+    );
+  } catch (e) {
+    console.error("listRetiredTenants:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat daftar nisan tenant.");
   }
 }

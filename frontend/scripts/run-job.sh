@@ -28,9 +28,9 @@ STAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 log() { echo "[$STAMP] run-job ${JOB:-?}: $*"; }
 
 case "$JOB" in
-  dispatch-notifications|deadline-alerts|break-warnings) ;;
+  dispatch-notifications|deadline-alerts|break-warnings|tenant-lifecycle) ;;
   "")
-    echo "pemakaian: $0 <dispatch-notifications|deadline-alerts|break-warnings>" >&2
+    echo "pemakaian: $0 <dispatch-notifications|deadline-alerts|break-warnings|tenant-lifecycle>" >&2
     exit 2
     ;;
   *)

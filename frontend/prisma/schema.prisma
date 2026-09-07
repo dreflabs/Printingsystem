@@ -27,6 +27,9 @@ model Tenant {
   wa_api_key                        String? // [ENCRYPTED]
   max_users                         Int?
   payroll_late_deduction_per_minute Decimal   @default(0) @db.Decimal(15, 2) // Rp potongan gaji per menit keterlambatan
+  // Siklus hidup churn → purge (lihat src/lib/tenant-lifecycle.ts)
+  churned_at                        DateTime? // saat status jadi CHURNED
+  retired_slug                      String? // slug asli sebelum diarsip; slug aktif di-rename saat churn agar namanya bebas dipakai pendaftar baru
   created_at                        DateTime  @default(now())
   updated_at                        DateTime  @updatedAt
 
@@ -146,6 +149,28 @@ model OnboardingStep {
   tenant       Tenant   @relation(fields: [tenant_id], references: [id])
   step         String // VERIFIED/WIZARD_DONE/FIRST_ORDER/FIRST_PRODUCTION
   completed_at DateTime @default(now())
+}
+
+/// Nisan tenant yang sudah di-purge permanen. Satu baris ringan yang disimpan
+/// SETELAH seluruh data tenant dihapus — untuk jejak audit & akuntansi.
+/// Dibuat oleh purgeTenant() di src/lib/tenant-lifecycle.ts.
+model RetiredTenant {
+  id            String   @id // = id Tenant asli (bukan @default — diisi eksplisit)
+  original_slug String // slug asli tenant (retired_slug bila ada, jika tidak slug saat itu)
+  name          String
+  plan          String
+  owner_name    String?
+  owner_email   String?
+  status_before String // status tenant tepat sebelum purge (biasanya CHURNED)
+  created_at    DateTime // created_at Tenant asli
+  churned_at    DateTime // saat tenant jadi CHURNED
+  purged_at     DateTime @default(now())
+  churn_reason  String?
+  counts_json   String? // { users, orders, customers } saat purge
+  files_json    String? // path file yang perlu dibersihkan dari blob store (kalau sudah ada)
+
+  @@index([original_slug])
+  @@index([purged_at])
 }
 
 // ─── ROLES & USERS ────────────────────────────────────────────────────────────

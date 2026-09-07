@@ -1,8 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { X, Users, Package, UserRound, Clock, ScrollText, CreditCard } from "lucide-react";
-import { getTenantDetail, updateTenantPlan, type PlanName } from "@/actions/platform";
+import { X, Users, Package, UserRound, Clock, ScrollText, CreditCard, AlertTriangle, Archive, Trash2 } from "lucide-react";
+import {
+  getTenantDetail,
+  updateTenantPlan,
+  markTenantChurned,
+  purgeTenantPermanently,
+  type PlanName,
+} from "@/actions/platform";
 
 type Detail = Extract<Awaited<ReturnType<typeof getTenantDetail>>, { success: true }>["data"];
 
@@ -19,6 +25,14 @@ export function TenantDetailDrawer({ tenantId, onClose, onChanged }: { tenantId:
   const [savingPlan, setSavingPlan] = useState(false);
   const [planMsg, setPlanMsg] = useState<string | null>(null);
 
+  // Zona Berbahaya (churn / purge)
+  const [dzMode, setDzMode] = useState<null | "churn" | "purge">(null);
+  const [dzReason, setDzReason] = useState("");
+  const [dzConfirm, setDzConfirm] = useState("");
+  const [dzForce, setDzForce] = useState(false);
+  const [dzBusy, setDzBusy] = useState(false);
+  const [dzMsg, setDzMsg] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     const r = await getTenantDetail(tenantId);
     if (r.success) {
@@ -29,6 +43,7 @@ export function TenantDetailDrawer({ tenantId, onClose, onChanged }: { tenantId:
     } else setError(r.error);
   }, [tenantId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
   async function savePlan() {
@@ -46,6 +61,30 @@ export function TenantDetailDrawer({ tenantId, onClose, onChanged }: { tenantId:
       await load();
       onChanged();
     } else setPlanMsg(r.error ?? "Gagal.");
+  }
+
+  async function doChurn() {
+    setDzBusy(true);
+    setDzMsg(null);
+    const r = await markTenantChurned(tenantId, dzReason.trim() || undefined);
+    setDzBusy(false);
+    if (r.success) {
+      setDzMode(null);
+      setDzReason("");
+      await load();
+      onChanged();
+    } else setDzMsg(r.error ?? "Gagal.");
+  }
+
+  async function doPurge() {
+    setDzBusy(true);
+    setDzMsg(null);
+    const r = await purgeTenantPermanently(tenantId, { force: dzForce });
+    setDzBusy(false);
+    if (r.success) {
+      onChanged();
+      onClose();
+    } else setDzMsg(r.error ?? "Gagal.");
   }
 
   return (
@@ -160,6 +199,115 @@ export function TenantDetailDrawer({ tenantId, onClose, onChanged }: { tenantId:
                   ))}
                 </ul>
               )}
+            </Section>
+
+            <Section title="Zona Berbahaya" icon={AlertTriangle}>
+              {detail.status !== "CHURNED" ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted">
+                    Tandai <b>CHURNED</b> dan lepas subdomain{" "}
+                    <span className="font-mono text-primary">{detail.slug}</span> — namanya langsung
+                    bisa dipakai pendaftar baru. Data tidak dihapus; penghapusan permanen otomatis 30
+                    hari kemudian (atau manual di sini).
+                  </p>
+                  {dzMode === "churn" ? (
+                    <div className="space-y-2">
+                      <input
+                        value={dzReason}
+                        onChange={(e) => setDzReason(e.target.value)}
+                        placeholder="Alasan (opsional, untuk audit)"
+                        className="w-full rounded-lg bg-elevated border border-border text-primary text-sm px-3 py-2 outline-none focus:border-accent-teal"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={doChurn}
+                          disabled={dzBusy}
+                          className="h-9 px-4 rounded-lg bg-status-red text-white text-xs font-bold hover:brightness-110 disabled:opacity-40"
+                        >
+                          Ya, tandai Churned
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDzMode(null);
+                            setDzMsg(null);
+                          }}
+                          className="h-9 px-4 rounded-lg bg-elevated border border-border text-xs font-bold text-muted"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDzMode("churn")}
+                      className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-status-red/40 text-status-red text-xs font-bold hover:bg-status-red/10"
+                    >
+                      <Archive className="h-3.5 w-3.5" /> Tandai Churned &amp; lepas subdomain
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Row k="Subdomain asli" v={detail.retiredSlug ?? "—"} />
+                  <Row k="Churned sejak" v={dt(detail.churnedAt)} />
+                  <p className="text-xs text-muted">
+                    Hapus <b>permanen</b> seluruh data tenant ini (user, order, produksi, dst).
+                    Menyisakan satu baris nisan untuk audit. Tidak bisa dibatalkan.
+                  </p>
+                  {dzMode === "purge" ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted">
+                        Ketik{" "}
+                        <span className="font-mono text-primary">
+                          {detail.retiredSlug ?? detail.slug}
+                        </span>{" "}
+                        untuk konfirmasi:
+                      </p>
+                      <input
+                        value={dzConfirm}
+                        onChange={(e) => setDzConfirm(e.target.value)}
+                        autoFocus
+                        className="w-full rounded-lg bg-elevated border border-border text-primary text-sm px-3 py-2 outline-none focus:border-status-red font-mono"
+                      />
+                      <label className="flex items-center gap-2 text-xs text-muted">
+                        <input
+                          type="checkbox"
+                          checked={dzForce}
+                          onChange={(e) => setDzForce(e.target.checked)}
+                        />
+                        Lewati masa tenggang 30 hari
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={doPurge}
+                          disabled={dzBusy || dzConfirm !== (detail.retiredSlug ?? detail.slug)}
+                          className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-status-red text-white text-xs font-bold hover:brightness-110 disabled:opacity-40"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Hapus permanen
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDzMode(null);
+                            setDzConfirm("");
+                            setDzMsg(null);
+                          }}
+                          className="h-9 px-4 rounded-lg bg-elevated border border-border text-xs font-bold text-muted"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDzMode("purge")}
+                      className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-status-red/40 text-status-red text-xs font-bold hover:bg-status-red/10"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Hapus permanen sekarang
+                    </button>
+                  )}
+                </div>
+              )}
+              {dzMsg && <p className="text-xs text-status-red mt-2">{dzMsg}</p>}
             </Section>
           </div>
         )}

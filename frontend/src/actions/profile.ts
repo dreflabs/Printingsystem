@@ -141,7 +141,7 @@ export async function changePassword(userId: string, oldPassword: string, newPas
  */
 export async function forcePasswordChange(newPassword: string) {
   try {
-    await requireTenant();
+    const tenant = await requireTenant();
     const actor = await requireUser();
 
     if (newPassword.length < 8) {
@@ -168,7 +168,11 @@ export async function forcePasswordChange(newPassword: string) {
       data: { password_hash: newHash, password_changed_at: new Date(), must_change_password: false },
     });
 
-    return { success: true };
+    // Kembalikan slug workspace supaya form login berikutnya bisa prefill —
+    // tanpa subdomain per-tenant, field Workspace di /login kosong dan pegawai
+    // sering tidak tahu harus mengisi apa → login "gagal" padahal password benar.
+    const ws = await prisma.tenant.findUnique({ where: { id: tenant.id }, select: { slug: true } });
+    return { success: true, workspace: ws?.slug ?? null };
   } catch (error: unknown) {
     console.error("Error forcing password change:", error);
     return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };

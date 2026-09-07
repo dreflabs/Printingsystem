@@ -40,9 +40,12 @@ export function ForcePasswordChangeForm() {
     // reverse proxy, Auth.js kadang menyusun URL absolut dari origin internal
     // (localhost:3000) sehingga callback melempar ke host yang salah. Browser
     // me-resolve path relatif ini terhadap origin yang benar.
+    const dest = res.workspace
+      ? `/login?changed=1&workspace=${encodeURIComponent(res.workspace)}`
+      : "/login?changed=1";
     setTimeout(async () => {
       await signOut({ redirect: false });
-      window.location.href = "/login?changed=1";
+      window.location.href = dest;
     }, 1800);
   }
 

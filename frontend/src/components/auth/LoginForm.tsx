@@ -44,7 +44,9 @@ export function LoginForm() {
       const ws = (params.get("workspace") ?? "").toLowerCase().trim();
       if (ws && /^[a-z0-9]{3,30}$/.test(ws)) setWorkspace((cur) => cur || ws);
       if (params.get("changed") === "1") {
-        setNotice("Kata sandi berhasil diubah. Silakan masuk dengan kata sandi baru Anda.");
+        setNotice(
+          "Kata sandi berhasil diubah. Masuk lagi dengan kata sandi baru Anda — pastikan kolom Workspace terisi benar."
+        );
       }
     } catch {
       /* keep default */

@@ -18,24 +18,35 @@ type Material = {
 };
 
 
+const UNIT_STOCK = ["ROLL", "METER", "LEMBAR", "LITER", "KG", "RIM", "BOTOL", "PCS"];
+const UNIT_USAGE = ["METER", "LEMBAR", "ML", "GRAM", "PCS"];
+const CUSTOM = "__CUSTOM__";
+
 function MaterialModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [name, setName] = useState("");
   const [type, setType] = useState("MEDIA");
   const [unitStock, setUnitStock] = useState("ROLL");
   const [unitUsage, setUnitUsage] = useState("METER");
+  const [unitCustom, setUnitCustom] = useState("");
   const [conv, setConv] = useState("1");
   const [minStock, setMinStock] = useState("10");
   const [cost, setCost] = useState("0");
 
+  const usingCustom = unitStock === CUSTOM || unitUsage === CUSTOM;
+  const resolvedStock = unitStock === CUSTOM ? unitCustom.trim().toUpperCase() : unitStock;
+  const resolvedUsage = unitUsage === CUSTOM ? unitCustom.trim().toUpperCase() : unitUsage;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (usingCustom && !unitCustom.trim()) { setError("Isi nama satuan custom."); return; }
     setBusy(true);
     setError(null);
     const res = await createMaterial({
-      name, type: type as "MEDIA" | "INK", unit_stock: unitStock, unit_usage: unitUsage,
+      name, type, unit_stock: resolvedStock, unit_usage: resolvedUsage,
+      unit_custom: usingCustom ? unitCustom.trim().toUpperCase() : null,
       conversion_factor: Number(conv), is_shared: false,
       min_stock: Number(minStock), current_stock: 0, standard_cost: Number(cost),
     });
@@ -82,32 +93,36 @@ function MaterialModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
             <div>
               <label className="text-xs font-medium text-muted mb-1 block">Satuan Beli / Gudang *</label>
               <select value={unitStock} onChange={(e) => setUnitStock(e.target.value)} className="w-full h-11 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal">
-                <option value="ROLL">Roll</option>
-                <option value="LITER">Liter</option>
-                <option value="RIM">Rim</option>
-                <option value="PCS">Pcs</option>
+                {UNIT_STOCK.map((u) => <option key={u} value={u}>{u}</option>)}
+                <option value={CUSTOM}>Custom…</option>
               </select>
             </div>
             <div>
               <label className="text-xs font-medium text-muted mb-1 block">Satuan Produksi *</label>
               <select value={unitUsage} onChange={(e) => setUnitUsage(e.target.value)} className="w-full h-11 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal">
-                <option value="METER">Meter</option>
-                <option value="ML">Mililiter (ml)</option>
-                <option value="LEMBAR">Lembar</option>
-                <option value="PCS">Pcs</option>
+                {UNIT_USAGE.map((u) => <option key={u} value={u}>{u}</option>)}
+                <option value={CUSTOM}>Custom…</option>
               </select>
             </div>
           </div>
 
+          {usingCustom && (
+            <div>
+              <label className="text-xs font-medium text-muted mb-1 block">Nama Satuan Custom *</label>
+              <input value={unitCustom} onChange={(e) => setUnitCustom(e.target.value)} placeholder="mis. YARD, PAK, SET" className="w-full h-11 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal" />
+              <p className="text-[10px] text-muted mt-1">Dipakai untuk satuan yang di-set &quot;Custom…&quot; di atas.</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-medium text-muted mb-1 block">Faktor Konversi *</label>
-              <p className="text-[10px] text-muted mb-1">1 {unitStock} = berapa {unitUsage}?</p>
+              <p className="text-[10px] text-muted mb-1">1 {resolvedStock || "?"} = berapa {resolvedUsage || "?"}?</p>
               <input type="number" step="0.01" required min="0.01" value={conv} onChange={(e) => setConv(e.target.value)} className="w-full h-11 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal" />
             </div>
             <div>
               <label className="text-xs font-medium text-muted mb-1 block">Batas Minimum Stok *</label>
-              <p className="text-[10px] text-muted mb-1">Peringatan jika sisa {'<'} (satuan {unitStock})</p>
+              <p className="text-[10px] text-muted mb-1">Peringatan jika sisa {'<'} (satuan {resolvedStock || "?"})</p>
               <input type="number" step="0.01" required min="0" value={minStock} onChange={(e) => setMinStock(e.target.value)} className="w-full h-11 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal" />
             </div>
           </div>

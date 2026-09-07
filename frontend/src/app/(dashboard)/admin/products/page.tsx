@@ -23,7 +23,7 @@ function PrintingModal({
 }) {
   const catListId = useId();
   const [name, setName] = useState(editing?.name ?? "");
-  const [category, setCategory] = useState(editing?.category ?? "OUTDOOR");
+  const [category, setCategory] = useState(editing?.category ?? "");
   const [materialId, setMaterialId] = useState(editing?.default_material_id ?? "");
   const [active, setActive] = useState(editing?.active ?? true);
   const [busy, setBusy] = useState(false);

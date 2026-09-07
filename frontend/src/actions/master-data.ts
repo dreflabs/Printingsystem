@@ -306,7 +306,7 @@ export async function getMaterials() {
 
 export async function createMaterial(data: {
   name: string;
-  type: "MEDIA" | "INK";
+  type: string; // MEDIA / INK / OTHER
   unit_stock: string;
   unit_usage: string;
   unit_custom?: string | null;

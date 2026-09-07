@@ -36,6 +36,7 @@ const INITIAL_FORM: OrderForm = {
 };
 
 type Opt = { value: string; label: string };
+type ProductOpt = Opt & { category: string };
 type CustomerRow = { id: string; name: string; phone: string | null; type: string; defaultDiscountRp: number };
 
 const STEPS = [
@@ -98,10 +99,18 @@ function Step1({
 }: {
   form: OrderForm;
   onChange: (k: keyof OrderForm, v: string | number) => void;
-  products: Opt[];
+  products: ProductOpt[];
   customers: CustomerRow[];
 }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const productGroups = Object.entries(
+    products.reduce<Record<string, Opt[]>>((acc, p) => {
+      (acc[p.category] ??= []).push({ value: p.value, label: p.label });
+      return acc;
+    }, {})
+  )
+    .sort(([a], [b]) => a.localeCompare(b, "id"))
+    .map(([label, options]) => ({ label, options }));
 
   const suggestions = customers.filter((c) => {
     if (!form.customerName || form.customerName.length < 1) return false;
@@ -183,7 +192,8 @@ function Step1({
         placeholder="Pilih jenis produk..."
         value={form.productId}
         onChange={(e) => onChange("productId", e.target.value)}
-        options={products}
+        groups={productGroups}
+        hint={products.length === 0 ? "Belum ada produk cetak — tambahkan dulu di Katalog Produk." : undefined}
       />
     </div>
   );
@@ -191,11 +201,12 @@ function Step1({
 
 // ─── Step 2 ──────────────────────────────────────────────────────────────────
 function Step2({
-  form, onChange, materials,
+  form, onChange, materials, finishings,
 }: {
   form: OrderForm;
   onChange: (k: keyof OrderForm, v: string | number) => void;
   materials: Opt[];
+  finishings: string[];
 }) {
   return (
     <div className="space-y-4">
@@ -212,7 +223,19 @@ function Step2({
           onChange={(e) => onChange("materialId", e.target.value)}
           options={materials}
         />
-        <Input label="Finishing" placeholder="mis. Laminasi doff + potong" value={form.finishing} onChange={(e) => onChange("finishing", e.target.value)} />
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-muted">Finishing</label>
+          <input
+            list="order-finishing-list"
+            placeholder="mis. Laminasi doff + potong"
+            value={form.finishing}
+            onChange={(e) => onChange("finishing", e.target.value)}
+            className="w-full h-12 rounded-xl bg-elevated border border-border text-primary text-sm px-4 outline-none focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/20 transition-all"
+          />
+          <datalist id="order-finishing-list">
+            {finishings.map((f) => <option key={f} value={f} />)}
+          </datalist>
+        </div>
       </div>
       <Input label="Deadline" type="date" value={form.deadline} onChange={(e) => onChange("deadline", e.target.value)} />
       <Textarea
@@ -340,9 +363,10 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
   const [role, setRole] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const [products, setProducts] = useState<Opt[]>([]);
+  const [products, setProducts] = useState<ProductOpt[]>([]);
   const [materials, setMaterials] = useState<Opt[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [finishings, setFinishings] = useState<string[]>([]);
 
   useEffect(() => {
     getSessionUser().then((r) => {
@@ -359,9 +383,10 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
         if (!res.success) setError(res.error);
         return;
       }
-      setProducts(res.data.products.map((p) => ({ value: p.id, label: p.name })));
-      setMaterials(res.data.materials.map((m) => ({ value: m.id, label: m.name })));
+      setProducts(res.data.products.map((p) => ({ value: p.id, label: p.name, category: p.category || "Lainnya" })));
+      setMaterials(res.data.materials.map((m) => ({ value: m.id, label: `${m.material_code} · ${m.name}` })));
       setCustomers(res.data.customers as CustomerRow[]);
+      setFinishings(res.data.finishings ?? []);
     });
     return () => { cancelled = true; };
   }, [open]);
@@ -464,7 +489,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
             </div>
           )}
           {step === 0 && <Step1 form={form} onChange={handleFormChange} products={products} customers={customers} />}
-          {step === 1 && <Step2 form={form} onChange={handleFormChange} materials={materials} />}
+          {step === 1 && <Step2 form={form} onChange={handleFormChange} materials={materials} finishings={finishings} />}
           {step === 2 && <Step3 form={form} onChange={handleFormChange} role={role} />}
         </div>
 

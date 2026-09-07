@@ -442,7 +442,7 @@ export async function requestDiscount(
 export async function getOrderFormData() {
   try {
     const tenant = await requireTenant();
-    const [customers, products, materials, designers] = await Promise.all([
+    const [customers, products, materials, designers, finishingRows] = await Promise.all([
       prisma.customer.findMany({
         where: { tenant_id: tenant.id },
         orderBy: { name: "asc" },
@@ -463,6 +463,12 @@ export async function getOrderFormData() {
         orderBy: { name: "asc" },
         select: { id: true, name: true },
       }),
+      prisma.orderItem.findMany({
+        where: { tenant_id: tenant.id, finishing: { not: null } },
+        select: { finishing: true },
+        distinct: ["finishing"],
+        take: 100,
+      }),
     ]);
 
     return ok({
@@ -476,6 +482,9 @@ export async function getOrderFormData() {
       products,
       materials,
       designers,
+      finishings: Array.from(
+        new Set(finishingRows.map((f) => f.finishing?.trim()).filter((s): s is string => !!s))
+      ).sort((a, b) => a.localeCompare(b, "id")),
     });
   } catch (e) {
     console.error("getOrderFormData:", e);

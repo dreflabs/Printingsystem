@@ -24,6 +24,8 @@ export const authConfig = {
         token.roles = user.roles ?? (user.role ? [user.role] : []);
         token.platform = user.platform ?? false;
         token.subLevel = user.subLevel ?? null;
+        token.mfaEnabled = user.mfaEnabled ?? false;
+        token.platformLoginAt = user.platformLoginAt ?? null;
         token.pwChangedAt = user.pwChangedAt ?? 0;
         token.mustChangePassword = user.mustChangePassword ?? false;
       }
@@ -37,6 +39,8 @@ export const authConfig = {
         session.user.roles = token.roles ?? (token.role ? [token.role] : []);
         session.user.platform = token.platform ?? false;
         session.user.subLevel = token.subLevel ?? null;
+        session.user.mfaEnabled = token.mfaEnabled ?? false;
+        session.user.platformLoginAt = token.platformLoginAt ?? null;
         session.user.pwChangedAt = token.pwChangedAt ?? 0;
         session.user.mustChangePassword = token.mustChangePassword ?? false;
       }

@@ -3,11 +3,33 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireSuperAdmin, requireSubLevel, IMPERSONATE_COOKIE } from "@/lib/platform";
+import { requireSuperAdmin, requireSubLevel, IMPERSONATE_COOKIE, type PlatformActor } from "@/lib/platform";
 import { churnTenant, purgeTenant, PURGE_GRACE_DAYS } from "@/lib/tenant-lifecycle";
+import { logPlatform, headerMeta, type PlatformAuditAction } from "@/lib/platform-audit";
 import { ok, fail } from "@/types";
 
 const num = (v: unknown) => Number(v ?? 0);
+
+/** Catat aksi Super Admin ke jejak audit tingkat-platform (best-effort). */
+async function logActor(
+  actor: PlatformActor,
+  action: PlatformAuditAction,
+  opts: { targetType?: "Tenant" | "SuperAdmin"; targetId?: string; targetLabel?: string | null; detail?: unknown } = {}
+) {
+  const meta = await headerMeta();
+  await logPlatform({
+    actorId: actor.id,
+    actorName: actor.name,
+    actorSubLevel: actor.subLevel,
+    action,
+    targetType: opts.targetType ?? null,
+    targetId: opts.targetId ?? null,
+    targetLabel: opts.targetLabel ?? null,
+    detail: opts.detail,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
+}
 
 async function logTenant(tenantId: string, actorId: string, action: string, detail?: unknown) {
   try {
@@ -115,10 +137,13 @@ export async function setTenantStatus(tenantId: string, action: "SUSPEND" | "ACT
     if (tenant.status === nextStatus) return fail(`Tenant sudah berstatus ${nextStatus}.`);
 
     await prisma.tenant.update({ where: { id: tenantId }, data: { status: nextStatus } });
-    await logTenant(tenantId, actor.id, action === "SUSPEND" ? "TENANT_SUSPENDED" : "TENANT_ACTIVATED", {
-      from: tenant.status,
-      to: nextStatus,
-      reason,
+    const act = action === "SUSPEND" ? "TENANT_SUSPENDED" : "TENANT_ACTIVATED";
+    await logTenant(tenantId, actor.id, act, { from: tenant.status, to: nextStatus, reason });
+    await logActor(actor, act, {
+      targetType: "Tenant",
+      targetId: tenantId,
+      targetLabel: tenant.slug,
+      detail: { from: tenant.status, to: nextStatus, reason: reason ?? null },
     });
 
     revalidatePath("/platform");
@@ -129,7 +154,10 @@ export async function setTenantStatus(tenantId: string, action: "SUSPEND" | "ACT
   }
 }
 
-/** Mulai impersonate — SUPER_ADMIN (mode aktif) atau SUPPORT (read-only, belum di-enforce). */
+/**
+ * Mulai impersonate. SUPER_ADMIN = mode aktif; SUPPORT = read-only (di-enforce
+ * di src/lib/actor.ts lewat `readOnly = subLevel !== "SUPER_ADMIN"`).
+ */
 export async function impersonateTenant(tenantId: string, reason: string) {
   try {
     const actor = await requireSubLevel("SUPER_ADMIN", "SUPPORT");
@@ -150,6 +178,12 @@ export async function impersonateTenant(tenantId: string, reason: string) {
       sub_level: actor.subLevel,
       reason: reason.trim(),
     });
+    await logActor(actor, "IMPERSONATE_START", {
+      targetType: "Tenant",
+      targetId: tenantId,
+      targetLabel: tenant.slug,
+      detail: { mode: actor.subLevel === "SUPER_ADMIN" ? "active" : "read_only", reason: reason.trim() },
+    });
 
     revalidatePath("/", "layout");
     return ok({ slug: tenant.slug });
@@ -167,6 +201,7 @@ export async function stopImpersonation() {
     if (slug) {
       const tenant = await prisma.tenant.findUnique({ where: { slug } });
       if (tenant) await logTenant(tenant.id, actor.id, "IMPERSONATE_END", { super_admin: actor.name });
+      await logActor(actor, "IMPERSONATE_END", { targetType: "Tenant", targetId: tenant?.id, targetLabel: slug });
     }
     revalidatePath("/", "layout");
     return ok(null);
@@ -315,10 +350,17 @@ export async function updateTenantPlan(
       }
     });
 
-    await logTenant(tenantId, actor.id, "PLAN_CHANGED", {
+    const change = {
       from: { plan: tenant.plan, max_users: tenant.max_users },
       to: { plan: input.plan, max_users: maxUsers },
-      reason: input.reason,
+      reason: input.reason ?? null,
+    };
+    await logTenant(tenantId, actor.id, "PLAN_CHANGED", change);
+    await logActor(actor, "TENANT_PLAN_CHANGED", {
+      targetType: "Tenant",
+      targetId: tenantId,
+      targetLabel: tenant.slug,
+      detail: change,
     });
 
     revalidatePath("/platform");
@@ -332,27 +374,7 @@ export async function updateTenantPlan(
   }
 }
 
-/** Daftar akun Super Admin (untuk halaman pengaturan platform). */
-export async function listSuperAdmins() {
-  try {
-    await requireSuperAdmin();
-    const admins = await prisma.superAdmin.findMany({ orderBy: { created_at: "asc" } });
-    return ok(
-      admins.map((a) => ({
-        id: a.id,
-        name: a.name,
-        email: a.email,
-        role: a.role,
-        active: a.active,
-        lastLoginAt: a.last_login_at,
-        createdAt: a.created_at,
-      }))
-    );
-  } catch (e) {
-    console.error("listSuperAdmins:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat daftar Super Admin.");
-  }
-}
+// Kelola akun Super Admin + MFA dipindah ke src/actions/platform-admins.ts.
 
 /**
  * Tandai tenant CHURNED + lepas (arsipkan) slug-nya supaya nama subdomain
@@ -372,6 +394,12 @@ export async function markTenantChurned(tenantId: string, reason?: string) {
     const { releasedSlug } = await prisma.$transaction((tx) =>
       churnTenant(tx, tenant, "MANUAL", reason, actor.id)
     );
+    await logActor(actor, "TENANT_CHURNED", {
+      targetType: "Tenant",
+      targetId: tenant.id,
+      targetLabel: releasedSlug,
+      detail: { source: "MANUAL", from_status: tenant.status, reason: reason ?? null },
+    });
 
     revalidatePath("/platform");
     return ok({ status: "CHURNED", releasedSlug });
@@ -411,8 +439,14 @@ export async function purgeTenantPermanently(tenantId: string, opts?: { force?: 
     }
 
     const result = await purgeTenant(tenantId);
-    // tenant_audit_logs tenant ini sudah ikut terhapus — jejak ada di nisan
-    // RetiredTenant + log server ini.
+    // tenant_audit_logs tenant ini sudah ikut terhapus — jejak permanen ada di
+    // nisan RetiredTenant + PlatformAuditLog (tahan-hapus, actor & slug di-snapshot).
+    await logActor(actor, "TENANT_PURGED", {
+      targetType: "Tenant",
+      targetId: tenantId,
+      targetLabel: result.originalSlug,
+      detail: { forced: !!opts?.force, deleted: result.deleted, files: result.files.length },
+    });
     console.log(
       `[PURGE] super_admin=${actor.name} slug=${result.originalSlug} deleted=${JSON.stringify(result.deleted)}`
     );
@@ -445,5 +479,38 @@ export async function listRetiredTenants() {
   } catch (e) {
     console.error("listRetiredTenants:", e);
     return fail(e instanceof Error ? e.message : "Gagal memuat daftar nisan tenant.");
+  }
+}
+
+/** Jejak audit tingkat-platform (login, kelola akun, aksi tenant). Semua sub-level boleh lihat. */
+export async function listPlatformAuditLog(params?: { cursor?: string; action?: string; limit?: number }) {
+  try {
+    await requireSuperAdmin();
+    const take = Math.min(Math.max(params?.limit ?? 50, 1), 200);
+    const rows = await prisma.platformAuditLog.findMany({
+      where: params?.action ? { action: params.action } : undefined,
+      orderBy: { created_at: "desc" },
+      take: take + 1,
+      ...(params?.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
+    });
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    return ok({
+      entries: page.map((r) => ({
+        id: r.id,
+        actorName: r.actor_name,
+        actorSubLevel: r.actor_sub_level,
+        action: r.action,
+        targetType: r.target_type,
+        targetLabel: r.target_label,
+        detail: r.detail_json,
+        ip: r.ip,
+        createdAt: r.created_at,
+      })),
+      nextCursor: hasMore ? page[page.length - 1]!.id : null,
+    });
+  } catch (e) {
+    console.error("listPlatformAuditLog:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat jejak audit platform.");
   }
 }

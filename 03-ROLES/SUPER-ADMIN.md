@@ -45,9 +45,9 @@ Tabel `super_admins` punya field `role` dengan 3 nilai (`SUPER_ADMIN` / `SUPPORT
 
 ## Yang Berlaku untuk Semua Sub-Level
 
-- **Semua aksi tercatat** di `tenant_audit_logs` dengan `actor_type = SUPER_ADMIN` dan sub-level pelakunya — tidak ada pengecualian, termasuk staf SUPPORT yang cuma impersonate read-only.
+- **Semua aksi tercatat.** Aksi tenant-scoped di `tenant_audit_logs` (`actor_type = SUPER_ADMIN` + sub-level). Aksi tingkat-platform (login sukses/gagal, kunci akun, kelola akun Super Admin, MFA, plus salinan aksi tenant) di `platform_audit_logs` — tahan-hapus: nama pelaku & label target di-snapshot supaya tetap terbaca setelah tenant di-purge / akun dihapus. Terlihat di panel **Aktivitas**. Tidak ada pengecualian, termasuk staf SUPPORT yang cuma impersonate read-only.
 - **Transparansi wajib ke tenant** — begitu sesi impersonate dimulai (SUPER_ADMIN atau SUPPORT), sistem kirim notifikasi ke Owner tenant (email + banner dashboard) berisi nama staf, waktu akses, dan alasan singkat. Ini berlaku sama untuk kedua sub-level yang boleh impersonate.
-- **MFA wajib** untuk login akun `super_admins` — mengingat akun ini punya jangkauan akses ke *seluruh* tenant sekaligus, jauh lebih sensitif dari akun Owner tenant manapun yang cuma bisa akses data tenant sendiri. Rekomendasi: TOTP (Google Authenticator/Authy), bukan cuma username+password.
+- **MFA wajib** untuk login akun `super_admins` — mengingat akun ini punya jangkauan akses ke *seluruh* tenant sekaligus, jauh lebih sensitif dari akun Owner tenant manapun yang cuma bisa akses data tenant sendiri. **Terpasang:** TOTP (RFC 6238) + 10 kode cadangan sekali-pakai; enrollment dipaksa saat login pertama (`/platform/mfa-setup`), middleware memblokir seluruh panel sampai selesai. Sesi panel dibatasi 12 jam (`PLATFORM_SESSION_MAX_AGE_MS`). Reset MFA akun lain lewat panel **Akun Admin** (dicatat sebagai `MFA_RESET`).
 - **Tidak bisa login ke subdomain tenant langsung** dengan kredensial `super_admins` — akses ke data tenant *hanya* lewat mekanisme impersonate yang tercatat, tidak ada jalur pintas.
 
 ## Yang TIDAK Boleh Dilakukan Super Admin (semua sub-level)

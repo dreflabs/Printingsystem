@@ -4,6 +4,8 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import * as bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 import { rateLimit, resetRateLimit } from "./rate-limit";
+import { verifyTotp, normalizeBackupCode } from "./totp";
+import { logPlatform, requestMeta } from "./platform-audit";
 
 // Global Prisma instance to avoid hot-reloading issues
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
@@ -45,11 +47,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         workspace: { label: "Workspace", type: "text", placeholder: "subdomain" },
         username: { label: "Username", type: "text", placeholder: "username" },
         password: { label: "Password", type: "password" },
+        totp: { label: "Kode MFA", type: "text" },
       },
       async authorize(credentials, req) {
         if (!credentials?.username || !credentials?.password) return null;
         const identifier = (credentials.username as string).trim();
         const pw = credentials.password as string;
+        const totpInput = String(credentials.totp ?? "").trim();
 
         // Rem brute-force: maks. 10 percobaan / 15 menit per identifier.
         const rlKey = `login:${identifier.toLowerCase()}`;
@@ -62,13 +66,58 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (identifier.includes("@")) {
           const sa = await prisma.superAdmin.findFirst({ where: { email: identifier } });
           if (sa) {
-            if (!sa.active) return null;
+            const meta = requestMeta(req);
+            const auditBase = {
+              actorId: sa.id,
+              actorName: sa.name,
+              actorSubLevel: sa.role,
+              targetType: "SuperAdmin" as const,
+              targetId: sa.id,
+              targetLabel: sa.email,
+              ip: meta.ip,
+              userAgent: meta.userAgent,
+            };
+            const failLogin = (reason: string) =>
+              logPlatform({ ...auditBase, action: "LOGIN_FAILED", detail: { reason } });
+
+            if (!sa.active) {
+              await failLogin("account_inactive");
+              return null;
+            }
 
             // Kunci akun sementara setelah percobaan gagal berturut-turut.
-            if (sa.locked_until && sa.locked_until > new Date()) return null;
+            if (sa.locked_until && sa.locked_until > new Date()) {
+              await logPlatform({ ...auditBase, action: "LOGIN_LOCKED", detail: { until: sa.locked_until } });
+              return null;
+            }
 
             const isPasswordValid = await bcrypt.compare(pw, sa.password_hash);
-            if (!isPasswordValid) {
+
+            // Verifikasi MFA hanya bila akun sudah menyelesaikan enrollment.
+            // Sebelum itu, password saja cukup untuk masuk — middleware langsung
+            // memaksa ke /platform/mfa-setup.
+            let mfaOk = !sa.totp_enabled;
+            let usedBackupHash: string | null = null;
+            if (isPasswordValid && sa.totp_enabled && sa.totp_secret) {
+              if (verifyTotp(sa.totp_secret, totpInput)) {
+                mfaOk = true;
+              } else {
+                // Coba cocokkan sebagai kode cadangan sekali-pakai.
+                const norm = normalizeBackupCode(totpInput);
+                if (norm.length >= 6) {
+                  const hashes: string[] = sa.totp_backup_codes ? JSON.parse(sa.totp_backup_codes) : [];
+                  for (const h of hashes) {
+                    if (await bcrypt.compare(norm, h)) {
+                      mfaOk = true;
+                      usedBackupHash = h;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+
+            if (!isPasswordValid || !mfaOk) {
               const nextCount = sa.failed_login_count + 1;
               const lockMinutes = nextCount >= LOCKOUT_THRESHOLD ? Math.min(60, (nextCount - LOCKOUT_THRESHOLD + 1) * 15) : 0;
               await prisma.superAdmin.update({
@@ -78,13 +127,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                   locked_until: lockMinutes > 0 ? new Date(Date.now() + lockMinutes * 60_000) : sa.locked_until,
                 },
               });
+              await failLogin(!isPasswordValid ? "bad_password" : "bad_mfa");
               return null;
             }
 
             resetRateLimit(rlKey);
-            await prisma.superAdmin.update({
-              where: { id: sa.id },
-              data: { failed_login_count: 0, locked_until: null, last_login_at: new Date() },
+            const updateData: Record<string, unknown> = {
+              failed_login_count: 0,
+              locked_until: null,
+              last_login_at: new Date(),
+            };
+            if (usedBackupHash) {
+              const remaining: string[] = (sa.totp_backup_codes ? JSON.parse(sa.totp_backup_codes) : []).filter(
+                (h: string) => h !== usedBackupHash,
+              );
+              updateData.totp_backup_codes = JSON.stringify(remaining);
+              await logPlatform({ ...auditBase, action: "MFA_BACKUP_CODE_USED", detail: { remaining: remaining.length } });
+            }
+            await prisma.superAdmin.update({ where: { id: sa.id }, data: updateData });
+            await logPlatform({
+              ...auditBase,
+              action: "LOGIN_SUCCESS",
+              detail: { mfa: sa.totp_enabled ? (usedBackupHash ? "backup_code" : "totp") : "not_enrolled" },
             });
             return {
               id: sa.id,
@@ -93,6 +157,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               roles: ["SUPER_ADMIN"],
               platform: true,
               subLevel: sa.role, // SUPER_ADMIN / SUPPORT / FINANCE
+              mfaEnabled: sa.totp_enabled,
+              platformLoginAt: Date.now(), // untuk batas umur sesi platform (lihat getPlatformActor)
             };
           }
         }

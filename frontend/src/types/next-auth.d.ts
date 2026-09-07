@@ -13,6 +13,10 @@ declare module "next-auth" {
       roles?: string[];
       platform?: boolean;
       subLevel?: string | null;
+      /** true = akun Super Admin sudah menyelesaikan enrollment MFA/TOTP */
+      mfaEnabled?: boolean;
+      /** epoch ms saat sesi platform ini dibuat (batas umur sesi Super Admin) */
+      platformLoginAt?: number | null;
       /** epoch ms saat password terakhir diganti (untuk revoke sesi lama) */
       pwChangedAt?: number;
       /** true = password masih bawaan sistem, wajib diganti sebelum memakai aplikasi */
@@ -25,6 +29,8 @@ declare module "next-auth" {
     roles?: string[];
     platform?: boolean;
     subLevel?: string | null;
+    mfaEnabled?: boolean;
+    platformLoginAt?: number | null;
     pwChangedAt?: number;
     mustChangePassword?: boolean;
   }
@@ -36,6 +42,8 @@ interface AppToken {
   roles?: string[];
   platform?: boolean;
   subLevel?: string | null;
+  mfaEnabled?: boolean;
+  platformLoginAt?: number | null;
   pwChangedAt?: number;
   mustChangePassword?: boolean;
 }

@@ -107,6 +107,21 @@ Hapus `SUPER_ADMIN_PASSWORD` dari environment setelah selesai.
 > **Jangan jalankan `npx prisma db seed` di produksi.** Seed menghapus seluruh isi
 > database lebih dulu. Guard `ALLOW_PROD_SEED` ada justru untuk mencegah itu.
 
+### MFA wajib (TOTP)
+
+Setiap akun Super Admin wajib mengaktifkan MFA. Saat login pertama (atau setelah
+migrasi ini di akun lama), password saja sudah bisa masuk tapi seluruh panel
+mengarahkan ke `/platform/mfa-setup` sampai enrollment selesai: scan QR di
+authenticator app → masukkan 1 kode → simpan 10 kode cadangan (sekali tampil) →
+login ulang. Sesudah itu login butuh email + password + kode 6 digit.
+
+Kehilangan perangkat: SUPER_ADMIN lain buka **Akun Admin → Reset MFA**, atau
+pakai satu kode cadangan saat login. Sesi panel dibatasi 12 jam.
+
+Kelola akun Super Admin lain (buat, nonaktifkan, ubah sub-level, reset
+password/MFA) kini lewat **Akun Admin** di panel — `bootstrap:superadmin` hanya
+untuk akun pertama.
+
 ---
 
 ## 5. Auto-deploy dari GitHub

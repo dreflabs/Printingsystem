@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { ShieldCheck, Lock, Mail, LogIn } from "lucide-react";
+import { ShieldCheck, Lock, Mail, LogIn, KeyRound } from "lucide-react";
 
 export default function PlatformLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [totp, setTotp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -14,9 +15,14 @@ export default function PlatformLoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await signIn("credentials", { redirect: false, username: email, password });
+    const res = await signIn("credentials", {
+      redirect: false,
+      username: email,
+      password,
+      totp: totp.trim(),
+    });
     if (res?.error || !res?.ok) {
-      setError("Email atau password salah.");
+      setError("Email, password, atau kode MFA salah.");
       setLoading(false);
       return;
     }
@@ -66,6 +72,21 @@ export default function PlatformLoginPage() {
               />
             </div>
           </div>
+          <div>
+            <label className="text-xs font-medium text-muted mb-1 block">Kode MFA</label>
+            <div className="relative">
+              <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={totp}
+                onChange={(e) => setTotp(e.target.value)}
+                placeholder="6 digit — kosongkan jika belum aktif"
+                className="w-full h-11 rounded-xl bg-elevated border border-border pl-10 pr-4 text-sm text-primary outline-none focus:border-accent-teal"
+              />
+            </div>
+          </div>
           <button
             type="submit"
             disabled={loading}
@@ -75,7 +96,7 @@ export default function PlatformLoginPage() {
           </button>
         </form>
         <p className="text-center text-[11px] text-muted">
-          Akun ini terpisah dari akun tenant. MFA belum diaktifkan (roadmap SaaS).
+          Akun ini terpisah dari akun tenant. MFA (TOTP) wajib — akun baru mengaturnya saat login pertama.
         </p>
       </div>
     </div>

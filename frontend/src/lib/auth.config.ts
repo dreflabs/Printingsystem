@@ -25,6 +25,7 @@ export const authConfig = {
         token.platform = user.platform ?? false;
         token.subLevel = user.subLevel ?? null;
         token.pwChangedAt = user.pwChangedAt ?? 0;
+        token.mustChangePassword = user.mustChangePassword ?? false;
       }
       return token;
     },
@@ -37,6 +38,7 @@ export const authConfig = {
         session.user.platform = token.platform ?? false;
         session.user.subLevel = token.subLevel ?? null;
         session.user.pwChangedAt = token.pwChangedAt ?? 0;
+        session.user.mustChangePassword = token.mustChangePassword ?? false;
       }
       return session;
     },

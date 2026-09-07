@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Menu, Bell, User, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getUserProfileById } from "@/actions/profile";
+import { getUserProfileById, getMyWorkspace } from "@/actions/profile";
 import { signOutAction } from "@/actions/session";
 import { ProfileModal } from "./ProfileModal";
 
@@ -29,12 +29,14 @@ export function Header({ userId, userName, role, onMenuClick, className }: Heade
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [dbUser, setDbUser] = useState<DbUser | null>(null);
+  const [workspace, setWorkspace] = useState<{ slug: string; name: string } | null>(null);
 
   useEffect(() => {
     if (!userId) return;
     getUserProfileById(userId).then((u) => {
       if (u) setDbUser({ ...u, email: u.email ?? "", username: u.username ?? "" });
     });
+    getMyWorkspace().then((w) => setWorkspace(w));
   }, [userId]);
 
   const roleLabel = ROLE_LABEL[role] ?? role;
@@ -121,6 +123,7 @@ export function Header({ userId, userName, role, onMenuClick, className }: Heade
           initialEmail={dbUser.email}
           initialPhone={dbUser.phone}
           initialAvatar={dbUser.avatar_url}
+          workspaceSlug={workspace?.slug ?? null}
           onClose={() => setShowProfileModal(false)}
           onSuccess={(updatedUser) => {
             setDbUser({ ...dbUser, ...updatedUser });

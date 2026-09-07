@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { UserFormModal } from "@/components/owner/UserFormModal";
 import { ConfirmDialog } from "@/components/ui";
 import { getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword, unlockEmployeeAccount } from "@/actions/user-management";
+import { getMyWorkspace } from "@/actions/profile";
 import { setEmployeeBaseSalary } from "@/actions/payroll";
 
 const formatRp = (n: number) => "Rp " + n.toLocaleString("id-ID");
@@ -31,6 +32,7 @@ export default function OwnerUsersPage() {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
   const [savingSalaryId, setSavingSalaryId] = useState<string | null>(null);
+  const [workspaceSlug, setWorkspaceSlug] = useState<string | null>(null);
 
   const runPendingConfirm = async () => {
     if (!pendingConfirm) return;
@@ -42,6 +44,7 @@ export default function OwnerUsersPage() {
 
   useEffect(() => {
     loadUsers();
+    getMyWorkspace().then((w) => setWorkspaceSlug(w?.slug ?? null));
   }, []);
 
   const loadUsers = async () => {
@@ -356,6 +359,7 @@ export default function OwnerUsersPage() {
       {isModalOpen && (
         <UserFormModal
           isLoading={isSaving}
+          workspaceSlug={workspaceSlug}
           onClose={() => setIsModalOpen(false)}
           onSave={handleSaveUser}
         />

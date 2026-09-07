@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Save, Image as ImageIcon, User, Shield, Lock } from "lucide-react";
+import { X, Save, Image as ImageIcon, User, Shield, Lock, Building2, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateProfile, changePassword } from "@/actions/profile";
 
@@ -13,6 +13,7 @@ interface ProfileModalProps {
   initialEmail: string;
   initialPhone: string | null;
   initialAvatar: string | null;
+  workspaceSlug?: string | null;
   onClose: () => void;
   onSuccess: (updatedUser: any) => void;
 }
@@ -23,13 +24,31 @@ export function ProfileModal({
   initialUsername,
   initialEmail,
   initialPhone,
-  initialAvatar, 
-  onClose, 
-  onSuccess 
+  initialAvatar,
+  workspaceSlug,
+  onClose,
+  onSuccess
 }: ProfileModalProps) {
-  
+
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"umum" | "keamanan">("umum");
+  const [copied, setCopied] = useState<"" | "slug" | "link">("");
+
+  const loginLink =
+    typeof window !== "undefined" && workspaceSlug
+      ? `${window.location.origin}/login?workspace=${workspaceSlug}`
+      : "";
+
+  const copy = (value: string, which: "slug" | "link") => {
+    if (!value) return;
+    navigator.clipboard?.writeText(value).then(
+      () => {
+        setCopied(which);
+        setTimeout(() => setCopied(""), 1500);
+      },
+      () => {},
+    );
+  };
 
   // General Info State
   const [name, setName] = useState(initialName);
@@ -162,6 +181,38 @@ export function ProfileModal({
 
           {activeTab === "umum" && (
             <form onSubmit={handleSaveUmum} className="space-y-4">
+              {/* Workspace / alamat login pegawai */}
+              {workspaceSlug && (
+                <div className="rounded-xl border border-border bg-elevated/50 p-3 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-primary">
+                    <Building2 className="h-4 w-4 text-accent-teal" /> Workspace
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <code className="text-sm font-mono text-primary truncate">{workspaceSlug}</code>
+                    <button
+                      type="button"
+                      onClick={() => copy(workspaceSlug, "slug")}
+                      className="shrink-0 flex items-center gap-1 text-[11px] font-semibold text-accent-teal hover:underline cursor-pointer"
+                    >
+                      {copied === "slug" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copied === "slug" ? "Tersalin" : "Salin slug"}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted leading-relaxed">
+                    Pegawai mengisi <span className="font-mono">{workspaceSlug}</span> di kolom Workspace saat login.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => copy(loginLink, "link")}
+                    disabled={!loginLink}
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border border-accent-teal/40 text-accent-teal text-[11px] font-semibold hover:bg-accent-teal/10 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {copied === "link" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copied === "link" ? "Link login tersalin" : "Salin link login pegawai"}
+                  </button>
+                </div>
+              )}
+
               {/* Avatar Preview */}
               <div className="flex items-center gap-4 mb-2">
                 <div className="h-16 w-16 shrink-0 rounded-full overflow-hidden border-2 border-accent-teal/50 bg-elevated flex items-center justify-center">

@@ -8,6 +8,7 @@ interface UserFormModalProps {
   onClose: () => void;
   onSave: (data: any) => Promise<void>;
   isLoading: boolean;
+  workspaceSlug?: string | null;
 }
 
 // Role definitions with labels and descriptions
@@ -37,7 +38,7 @@ const AVAILABLE_ROLES = [
 // Priority order for determining primary role
 const PRIORITY = ["admin", "designer_sales", "operator", "gudang"];
 
-export function UserFormModal({ onClose, onSave, isLoading }: UserFormModalProps) {
+export function UserFormModal({ onClose, onSave, isLoading, workspaceSlug }: UserFormModalProps) {
   const [formData, setFormData] = useState({
     name: "",
     username: "",
@@ -198,13 +199,21 @@ export function UserFormModal({ onClose, onSave, isLoading }: UserFormModalProps
           </div>
 
           {/* Default password info */}
-          <div className="p-3 bg-status-yellow/10 border border-status-yellow/30 rounded-xl">
+          <div className="p-3 bg-status-yellow/10 border border-status-yellow/30 rounded-xl space-y-1">
             <p className="text-xs text-status-yellow-text font-medium">
               Password otomatis (Default):{" "}
               <strong className="font-mono bg-status-yellow/20 px-1 py-0.5 rounded">printpilot123!</strong>
               <br />
               Pegawai wajib mengubah password pada saat login pertama kali.
             </p>
+            {workspaceSlug && (
+              <p className="text-xs text-status-yellow-text font-medium border-t border-status-yellow/30 pt-1">
+                Alamat login &amp; kolom Workspace:{" "}
+                <strong className="font-mono bg-status-yellow/20 px-1 py-0.5 rounded">{workspaceSlug}</strong>
+                <br />
+                Link: <span className="font-mono break-all">/login?workspace={workspaceSlug}</span>
+              </p>
+            )}
           </div>
 
           {/* Actions */}

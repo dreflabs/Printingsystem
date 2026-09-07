@@ -167,6 +167,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           role: primaryRole,   // primary role (backward compat)
           roles: allRoles,     // all roles (new multi-role support)
           pwChangedAt: user.password_changed_at ? user.password_changed_at.getTime() : 0,
+          mustChangePassword: user.must_change_password === true,
         };
       },
     }),

@@ -33,11 +33,19 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [callbackUrl, setCallbackUrl] = useState("/");
 
   useEffect(() => {
     try {
-      setCallbackUrl(safeCallback(new URLSearchParams(window.location.search).get("callbackUrl")));
+      const params = new URLSearchParams(window.location.search);
+      setCallbackUrl(safeCallback(params.get("callbackUrl")));
+      // Prefill workspace dari ?workspace= (link login pegawai) bila belum terisi dari subdomain.
+      const ws = (params.get("workspace") ?? "").toLowerCase().trim();
+      if (ws && /^[a-z0-9]{3,30}$/.test(ws)) setWorkspace((cur) => cur || ws);
+      if (params.get("changed") === "1") {
+        setNotice("Kata sandi berhasil diubah. Silakan masuk dengan kata sandi baru Anda.");
+      }
     } catch {
       /* keep default */
     }
@@ -91,6 +99,13 @@ export function LoginForm() {
       <div className="bg-card/70 backdrop-blur-2xl border border-border rounded-3xl p-6 shadow-2xl relative overflow-hidden">
         <div className="relative">
           <h2 className="text-lg font-bold text-primary mb-4">Masuk ke Akun Anda</h2>
+
+          {notice && (
+            <div className="mb-4 p-3 rounded-xl bg-status-green/10 border border-status-green/30 flex items-start gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-status-green mt-2 shrink-0" />
+              <p className="text-xs text-status-green font-medium">{notice}</p>
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-status-red/10 border border-status-red/30 flex items-start gap-2">

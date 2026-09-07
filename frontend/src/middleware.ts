@@ -26,6 +26,9 @@ const ROUTE_ACCESS: { prefix: string; roles: string[] }[] = [
 // Priority order: highest-access role wins for default redirect
 const ROLE_PRIORITY = ["owner", "admin", "designer_sales", "operator", "gudang"];
 
+// Halaman ganti-sandi paksa (password bawaan sistem belum diubah).
+const FORCE_PW_PATH = "/ganti-sandi";
+
 const HOME_BY_ROLE: Record<string, string> = {
   owner: "/owner",
   admin: "/admin",
@@ -102,12 +105,27 @@ export default auth((req) => {
     return pass();
   }
 
-  if (AUTH_BYPASS) return pass();
-
   // Support both old single-role and new multi-role tokens
   const primaryRole = (req.auth?.user as { role?: string } | undefined)?.role;
   const userRoles: string[] = (req.auth?.user as { roles?: string[] } | undefined)?.roles
     ?? (primaryRole ? [primaryRole] : []);
+
+  // ── Ganti sandi paksa ──
+  // Pegawai yang masih memakai password bawaan sistem tidak boleh mengakses
+  // apa pun selain halaman ganti sandi. Berlaku juga saat AUTH_BYPASS aktif —
+  // ini kontrol keamanan, bukan RBAC preview. Platform user tidak pernah kena.
+  if (isLoggedIn && !isPlatform) {
+    const mustChangePassword =
+      (req.auth?.user as { mustChangePassword?: boolean } | undefined)?.mustChangePassword === true;
+    if (mustChangePassword && path !== FORCE_PW_PATH) {
+      return NextResponse.redirect(new URL(FORCE_PW_PATH, nextUrl));
+    }
+    if (!mustChangePassword && path === FORCE_PW_PATH) {
+      return NextResponse.redirect(new URL(getHomeForRoles(userRoles), nextUrl));
+    }
+  }
+
+  if (AUTH_BYPASS) return pass();
 
   if (!isLoggedIn) {
     const url = new URL("/login", nextUrl);

@@ -15,6 +15,8 @@ declare module "next-auth" {
       subLevel?: string | null;
       /** epoch ms saat password terakhir diganti (untuk revoke sesi lama) */
       pwChangedAt?: number;
+      /** true = password masih bawaan sistem, wajib diganti sebelum memakai aplikasi */
+      mustChangePassword?: boolean;
     } & DefaultSession["user"];
   }
 
@@ -24,6 +26,7 @@ declare module "next-auth" {
     platform?: boolean;
     subLevel?: string | null;
     pwChangedAt?: number;
+    mustChangePassword?: boolean;
   }
 }
 
@@ -34,6 +37,7 @@ interface AppToken {
   platform?: boolean;
   subLevel?: string | null;
   pwChangedAt?: number;
+  mustChangePassword?: boolean;
 }
 
 declare module "next-auth/jwt" {

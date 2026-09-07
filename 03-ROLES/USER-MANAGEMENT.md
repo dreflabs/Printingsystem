@@ -71,7 +71,28 @@ Di sidebar, user multi-role akan melihat:
 - Semua data historis user tetap tersimpan (tidak dihapus)
 - Nama user tetap muncul di riwayat job yang sudah selesai
 
-**Aturan:** User tidak bisa dihapus permanen — hanya bisa dinonaktifkan.
+---
+
+## Hapus Pegawai
+
+**Siapa:** Hanya Owner. Tombol tempat sampah di `/owner/users`.
+
+Sebelum menghapus, sistem mengecek riwayat pegawai (order, pembayaran, produksi,
+QC, gudang, gaji, absensi, jejak audit, data master). Ada dua hasil:
+
+- **Belum punya riwayat apa pun** (mis. akun salah buat) → **hapus permanen**.
+  Baris `users` benar-benar dihapus. Tidak bisa dibatalkan.
+- **Sudah punya riwayat** → riwayat itu **milik percetakan** (order pelanggan,
+  catatan uang, slip gaji, rantai audit), tidak bisa ikut dihapus tanpa merusak
+  pembukuan. Yang dilakukan: **anonimkan** — nama → "Mantan Pegawai", username/
+  email/telepon/gaji pokok dikosongkan, akun dinonaktifkan, kata sandi diganti
+  acak (sesi berjalan langsung mati). Semua baris riwayat tetap ada atas nama
+  "Mantan Pegawai".
+
+Popup menampilkan rincian jumlah riwayat + centang "Saya mengerti" sebelum
+eksekusi. Aksi tercatat sebagai `EMPLOYEE_DELETED` / `EMPLOYEE_ANONYMIZED`.
+
+Akun Owner tidak bisa dihapus. Owner tidak bisa menghapus akunnya sendiri.
 
 ---
 

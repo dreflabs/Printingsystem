@@ -287,3 +287,141 @@ export async function resetEmployeePassword(userId: string) {
     return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }
+
+// ─── Hapus pegawai ───────────────────────────────────────────────────────────
+// User direferensikan puluhan tabel (order, pembayaran, produksi, QC, gudang,
+// gaji, absensi, audit log) dengan FK Restrict. Menghapus baris User hanya
+// mungkin bila pegawai belum pernah menyentuh apa pun. Kalau sudah, data itu
+// milik PERCETAKAN (order pelanggan, catatan uang, slip gaji, jejak audit) —
+// tidak boleh ikut terhapus. Untuk kasus itu kita anonimkan + nonaktifkan:
+// identitas & akses login pegawai hilang, riwayat tetap utuh atas nama
+// "Mantan Pegawai".
+
+const HISTORY_RELATIONS = {
+  created_customers: true, added_materials: true, material_movements: true,
+  created_orders: true, designed_orders: true, discount_approved: true,
+  dp_override_by_orders: true, cancelled_by_orders: true, cancellation_approved: true,
+  retail_stock_movements: true, design_jobs: true, uploaded_designs: true,
+  approved_designs: true, production_jobs: true, qc_inspections: true,
+  rework_decisions: true, finishing_jobs: true, stored_items: true, transit_items: true,
+  released_items: true, incident_reports: true, payments_received: true,
+  pickup_releases: true, resent_notifications: true, audits_performed: true,
+  audits_approved: true, audit_logs: true, created_corrections: true,
+  approved_corrections: true, imported_attendance: true, attendance_records: true,
+  payroll_records: true,
+} as const;
+
+type HistoryCount = Record<keyof typeof HISTORY_RELATIONS, number>;
+
+function bucketCounts(c: HistoryCount) {
+  const sum = (...ks: (keyof HistoryCount)[]) => ks.reduce((s, k) => s + (c[k] ?? 0), 0);
+  const buckets = {
+    order: sum("created_orders", "designed_orders", "discount_approved", "dp_override_by_orders", "cancelled_by_orders", "cancellation_approved"),
+    pembayaran: sum("payments_received"),
+    produksi: sum("production_jobs", "qc_inspections", "rework_decisions", "finishing_jobs"),
+    gudang: sum("stored_items", "transit_items", "released_items", "incident_reports", "pickup_releases"),
+    desain: sum("design_jobs", "uploaded_designs", "approved_designs"),
+    gaji: sum("payroll_records"),
+    absensi: sum("attendance_records", "imported_attendance"),
+    "jejak audit": sum("audit_logs", "audits_performed", "audits_approved", "created_corrections", "approved_corrections"),
+    "data master": sum("created_customers", "added_materials", "material_movements", "retail_stock_movements", "resent_notifications"),
+  };
+  const total = Object.values(buckets).reduce((a, b) => a + b, 0);
+  return { buckets, total };
+}
+
+/** Pratinjau dampak hapus: bisa hard-delete atau harus anonim. */
+export async function getEmployeeDeleteImpact(userId: string) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh menghapus pegawai.");
+
+    const user = await prisma.user.findFirst({
+      where: { id: userId, tenant_id: tenant.id },
+      select: { id: true, name: true, username: true, role: { select: { name: true } }, _count: { select: HISTORY_RELATIONS } },
+    });
+    if (!user) return { success: false as const, error: "Pegawai tidak ditemukan." };
+    if (user.role.name === "owner") return { success: false as const, error: "Akun Owner tidak bisa dihapus." };
+    if (user.id === actor.id) return { success: false as const, error: "Tidak bisa menghapus akun Anda sendiri." };
+
+    const { buckets, total } = bucketCounts(user._count as HistoryCount);
+    return {
+      success: true as const,
+      data: {
+        name: user.name,
+        username: user.username,
+        canHardDelete: total === 0,
+        total,
+        buckets: Object.entries(buckets).filter(([, n]) => n > 0).map(([label, n]) => ({ label, n })),
+      },
+    };
+  } catch (e) {
+    console.error("getEmployeeDeleteImpact:", e);
+    return { success: false as const, error: e instanceof Error ? e.message : "Terjadi kesalahan." };
+  }
+}
+
+/**
+ * Hapus pegawai. `total === 0` → hapus baris User permanen. Selain itu →
+ * anonimkan (nama/kontak/login dihapus) + nonaktifkan, riwayat dipertahankan.
+ */
+export async function deleteEmployee(userId: string) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh menghapus pegawai.");
+
+    const user = await prisma.user.findFirst({
+      where: { id: userId, tenant_id: tenant.id },
+      select: { id: true, name: true, username: true, role: { select: { name: true } }, _count: { select: HISTORY_RELATIONS } },
+    });
+    if (!user) return { success: false, error: "Pegawai tidak ditemukan." };
+    if (user.role.name === "owner") return { success: false, error: "Akun Owner tidak bisa dihapus." };
+    if (user.id === actor.id) return { success: false, error: "Tidak bisa menghapus akun Anda sendiri." };
+
+    const { total } = bucketCounts(user._count as HistoryCount);
+
+    if (total === 0) {
+      await prisma.$transaction(async (tx) => {
+        await tx.userRole.deleteMany({ where: { user_id: userId } });
+        await tx.passwordResetToken.deleteMany({ where: { user_id: userId } });
+        await tx.user.delete({ where: { id: userId } });
+      });
+      await logAction(actor.id, "EMPLOYEE_DELETED", "User", userId, { name: user.name, username: user.username }, { mode: "hard_delete" });
+      revalidatePath("/owner/users");
+      return { success: true, mode: "deleted" as const };
+    }
+
+    const tag = userId.slice(0, 8);
+    const deadHash = await bcrypt.hash(`deleted-${userId}-${Date.now()}`, 12);
+    await prisma.$transaction(async (tx) => {
+      await tx.userRole.deleteMany({ where: { user_id: userId } });
+      await tx.passwordResetToken.deleteMany({ where: { user_id: userId } });
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          name: "Mantan Pegawai",
+          username: `deleted_${tag}`,
+          email: `deleted_${tag}@deleted.invalid`,
+          phone: null,
+          avatar_url: null,
+          base_salary: null,
+          active: false,
+          deactivated_at: new Date(),
+          must_change_password: false,
+          failed_login_count: 0,
+          locked_until: null,
+          password_hash: deadHash,
+          password_changed_at: new Date(), // batalkan sesi yang sedang berjalan
+        },
+      });
+    });
+    await logAction(actor.id, "EMPLOYEE_ANONYMIZED", "User", userId, { name: user.name, username: user.username }, { mode: "anonymize", kept_history: true });
+    revalidatePath("/owner/users");
+    return { success: true, mode: "anonymized" as const };
+  } catch (e) {
+    console.error("deleteEmployee:", e);
+    return { success: false, error: e instanceof Error ? e.message : "Terjadi kesalahan." };
+  }
+}

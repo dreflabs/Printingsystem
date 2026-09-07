@@ -1,11 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Wallet } from "lucide-react";
+import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Wallet, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserFormModal, CredentialRevealDialog } from "@/components/owner/UserFormModal";
 import { ConfirmDialog } from "@/components/ui";
-import { getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword, unlockEmployeeAccount } from "@/actions/user-management";
+import {
+  getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword,
+  unlockEmployeeAccount, getEmployeeDeleteImpact, deleteEmployee,
+} from "@/actions/user-management";
 import { getMyWorkspace } from "@/actions/profile";
 import { setEmployeeBaseSalary } from "@/actions/payroll";
 
@@ -36,6 +39,7 @@ export default function OwnerUsersPage() {
   const [createdCred, setCreatedCred] = useState<
     { name: string; username: string; tempPassword: string; reset?: boolean } | null
   >(null);
+  const [deleteFor, setDeleteFor] = useState<{ id: string; name: string } | null>(null);
 
   const runPendingConfirm = async () => {
     if (!pendingConfirm) return;
@@ -353,13 +357,20 @@ export default function OwnerUsersPage() {
                             onClick={() => handleToggleStatus(user.id, user.active, user.role.name)}
                             className={cn(
                               "p-2 rounded-lg transition-colors group relative",
-                              user.active 
-                                ? "text-muted hover:text-status-red hover:bg-status-red/10" 
+                              user.active
+                                ? "text-muted hover:text-status-red hover:bg-status-red/10"
                                 : "text-status-red bg-status-red/10 hover:text-status-green hover:bg-status-green/10"
                             )}
                             title={user.active ? "Nonaktifkan Akun" : "Aktifkan Akun"}
                           >
                             {user.active ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                          </button>
+                          <button
+                            onClick={() => setDeleteFor({ id: user.id, name: user.name })}
+                            className="p-2 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors"
+                            title="Hapus Pegawai"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       )}
@@ -399,6 +410,122 @@ export default function OwnerUsersPage() {
         variant={pendingConfirm?.variant}
         isLoading={confirmBusy}
       />
+
+      {deleteFor && (
+        <DeleteEmployeeModal
+          userId={deleteFor.id}
+          name={deleteFor.name}
+          onClose={() => setDeleteFor(null)}
+          onDone={(msg) => {
+            setDeleteFor(null);
+            setActionMessage({ type: "success", text: msg });
+            loadUsers();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DeleteEmployeeModal({
+  userId, name, onClose, onDone,
+}: {
+  userId: string; name: string; onClose: () => void; onDone: (msg: string) => void;
+}) {
+  const [impact, setImpact] = useState<
+    | { canHardDelete: boolean; total: number; buckets: { label: string; n: number }[] }
+    | null
+  >(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [ack, setAck] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    getEmployeeDeleteImpact(userId).then((r) => {
+      if (r.success) setImpact({ canHardDelete: r.data.canHardDelete, total: r.data.total, buckets: r.data.buckets });
+      else setErr(r.error);
+    });
+  }, [userId]);
+
+  async function run() {
+    setBusy(true);
+    setErr(null);
+    const r = await deleteEmployee(userId);
+    setBusy(false);
+    if (!r.success) { setErr(r.error ?? "Gagal."); return; }
+    onDone(
+      r.mode === "deleted"
+        ? `Pegawai ${name} dihapus permanen.`
+        : `Identitas ${name} dihapus. Riwayat kerjanya tetap tersimpan sebagai "Mantan Pegawai".`
+    );
+  }
+
+  const hard = impact?.canHardDelete;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
+      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="flex justify-between items-center border-b border-border pb-3">
+          <h3 className="text-base font-bold text-status-red flex items-center gap-2">
+            <Trash2 className="h-4 w-4" /> Hapus Pegawai
+          </h3>
+          <button onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary disabled:opacity-40"><X className="h-5 w-5" /></button>
+        </div>
+
+        {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
+        {!impact && !err && <p className="text-xs text-muted">Mengecek riwayat…</p>}
+
+        {impact && hard && (
+          <>
+            <p className="text-sm text-primary">
+              <b>{name}</b> belum pernah menyentuh order, pembayaran, produksi, gaji, atau data apa pun.
+              Akun bisa dihapus <b>permanen</b>.
+            </p>
+            <p className="text-xs text-muted">Tindakan ini tidak bisa dibatalkan.</p>
+          </>
+        )}
+
+        {impact && !hard && (
+          <>
+            <p className="text-sm text-primary">
+              <b>{name}</b> punya riwayat kerja yang <b>tidak bisa ikut dihapus</b> — data itu milik
+              percetakan (order pelanggan, catatan pembayaran, slip gaji, jejak audit), bukan sekadar
+              milik pegawai. Menghapusnya akan merusak pembukuan &amp; laporan.
+            </p>
+            <ul className="text-xs text-muted bg-elevated/60 border border-border rounded-xl p-3 space-y-0.5">
+              {impact.buckets.map((b) => (
+                <li key={b.label} className="flex justify-between">
+                  <span className="capitalize">{b.label}</span>
+                  <span className="font-mono text-primary">{b.n}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm text-primary">
+              Yang dilakukan: <b>identitas pegawai dihapus</b> — nama, kontak, email, dan akun login —
+              lalu akun dinonaktifkan. Riwayat tetap ada, tercatat atas nama <b>&quot;Mantan Pegawai&quot;</b>.
+              Pegawai ini tidak akan bisa login lagi.
+            </p>
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+              Saya mengerti riwayat tidak terhapus dan identitas pegawai akan dihilangkan permanen
+            </label>
+          </>
+        )}
+
+        {impact && (
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose} disabled={busy} className="flex-1 h-10 rounded-xl bg-elevated border border-border text-xs font-bold text-muted hover:text-primary disabled:opacity-40">Batal</button>
+            <button
+              onClick={run}
+              disabled={busy || (!hard && !ack)}
+              className="flex-1 h-10 rounded-xl bg-status-red text-white text-xs font-bold hover:brightness-110 disabled:opacity-40"
+            >
+              {busy ? "Memproses…" : hard ? "Hapus Permanen" : "Hapus Identitas Pegawai"}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

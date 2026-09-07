@@ -313,6 +313,43 @@ export interface ProductionAssignment {
   notes?: string | null;
 }
 
+/** Mesin ACTIVE + operator aktif tenant ini — untuk form "Assign ke Produksi". */
+export async function getProductionAssignData(): Promise<
+  ActionResult<{ machines: { id: string; name: string; machineCode: string; category: string }[]; operators: { id: string; name: string }[] }>
+> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.role)) return fail("Hanya Admin/Owner yang boleh assign produksi.");
+    const [machines, operators] = await Promise.all([
+      prisma.machine.findMany({
+        where: { tenant_id: tenant.id, status: "ACTIVE" },
+        select: { id: true, name: true, machine_code: true, category: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.user.findMany({
+        where: {
+          tenant_id: tenant.id,
+          active: true,
+          OR: [
+            { role: { name: "operator" } },
+            { extra_roles: { some: { role: { name: "operator" } } } },
+          ],
+        },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+    return ok({
+      machines: machines.map((m) => ({ id: m.id, name: m.name, machineCode: m.machine_code, category: m.category })),
+      operators,
+    });
+  } catch (e) {
+    console.error("getProductionAssignData:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat data assign produksi.");
+  }
+}
+
 /**
  * Antrikan order ke produksi. Syarat: desain APPROVED + DP terpenuhi.
  * Membuat satu ProductionJob per assignment (status PRODUCTION_ASSIGNED).

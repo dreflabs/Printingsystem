@@ -10,11 +10,14 @@ import {
 import { cn } from "@/lib/utils";
 import { getOrders, getOrderDetail } from "@/actions/queries";
 import { addPayment } from "@/actions/orders";
+import { assignProductionJob, getProductionAssignData } from "@/actions/design";
 import { submitFinalAudit } from "@/actions/audit";
 import { getSessionUser } from "@/actions/session";
 import { freezeOrder, unfreezeOrder } from "@/actions/hold";
 
 const FREEZE_BLOCKED = ["CLOSED", "CANCELLED", "PICKED_UP", "ON_HOLD"];
+// Status di mana order sudah tidak perlu / tidak bisa di-assign ke produksi.
+const ASSIGN_BLOCKED = ["DRAFT", "CANCELLED", "CLOSED", "PICKED_UP", "ON_HOLD"];
 
 type OrderRow = {
   id: string; orderCode: string; type: string; customerName: string; status: string;
@@ -35,9 +38,24 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
   const [freezeMode, setFreezeMode] = useState(false);
   const [freezeReason, setFreezeReason] = useState("");
   const [holdBusy, setHoldBusy] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const reload = () => getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
   useEffect(() => {
     getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
   }, [orderId]);
+
+  const designApproved = !!d?.designJobs.some((j) => j.status === "APPROVED");
+  const dpMet = !!d && d.paidAmount + 1e-6 >= d.dpRequired;
+  const discountOk = !!d && (d.discount <= 0 || d.discountApproved);
+  const canAssign = !!d && d.productionJobs.length === 0 && !ASSIGN_BLOCKED.includes(d.status);
+  const assignBlockedReason = !designApproved
+    ? "Desain belum disetujui."
+    : !discountOk
+      ? "Diskon masih menunggu keputusan Owner."
+      : !dpMet
+        ? "DP belum terpenuhi."
+        : null;
+  const defaultQty = d ? d.items.reduce((s, it) => s + (it.quantity || 0), 0) : 0;
 
   async function doFreeze() {
     setHoldBusy(true); setErr(null);
@@ -144,6 +162,19 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
           {d && d.balance > 0 && (
             <button onClick={onBayar} className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-yellow text-black text-sm font-bold hover:brightness-105">Catat Pembayaran</button>
           )}
+          {canAssign && !freezeMode && (
+            <div className="flex-1 min-w-[160px]">
+              <button
+                onClick={() => setAssignOpen(true)}
+                disabled={!!assignBlockedReason}
+                title={assignBlockedReason ?? "Kirim order ini ke antrian produksi"}
+                className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"
+              >
+                Assign ke Produksi
+              </button>
+              {assignBlockedReason && <p className="text-[10px] text-muted mt-1 text-center">{assignBlockedReason}</p>}
+            </div>
+          )}
           {isOwner && d && d.status === "ON_HOLD" && (
             <button onClick={doUnfreeze} disabled={holdBusy}
               className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-green text-white text-sm font-bold hover:brightness-110 disabled:opacity-50">
@@ -163,6 +194,129 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
             </button>
           )}
         </div>
+      </div>
+
+      {assignOpen && d && (
+        <AssignProductionModal
+          orderId={orderId}
+          orderCode={d.orderCode}
+          defaultQty={defaultQty}
+          onClose={() => setAssignOpen(false)}
+          onDone={async () => { setAssignOpen(false); await reload(); onChanged(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Assign ke Produksi ───────────────────────────────────────────────────────
+function AssignProductionModal({
+  orderId, orderCode, defaultQty, onClose, onDone,
+}: {
+  orderId: string; orderCode: string; defaultQty: number; onClose: () => void; onDone: () => void;
+}) {
+  const [machines, setMachines] = useState<{ id: string; name: string; category: string }[]>([]);
+  const [operators, setOperators] = useState<{ id: string; name: string }[]>([]);
+  const [machineId, setMachineId] = useState("");
+  const [operatorId, setOperatorId] = useState("");
+  const [qty, setQty] = useState(String(defaultQty || ""));
+  const [priority, setPriority] = useState("1");
+  const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    getProductionAssignData().then((r) => {
+      setLoading(false);
+      if (!r.success) { setErr(r.error); return; }
+      setMachines(r.data.machines);
+      setOperators(r.data.operators);
+    });
+  }, []);
+
+  async function submit() {
+    setBusy(true); setErr(null);
+    const res = await assignProductionJob(orderId, {
+      assignments: [{
+        machineId,
+        operatorId,
+        plannedQty: Math.max(1, Number(qty) || 0),
+        priority: Number(priority) || 1,
+        notes: notes.trim() || undefined,
+      }],
+    });
+    setBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    onDone();
+  }
+
+  const inp = "w-full h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal";
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="flex justify-between items-center border-b border-border pb-3">
+          <div>
+            <h3 className="text-base font-bold text-primary">Assign ke Produksi</h3>
+            <p className="text-xs text-muted font-mono">{orderCode}</p>
+          </div>
+          <button onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary disabled:opacity-40"><X className="h-5 w-5" /></button>
+        </div>
+
+        {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
+
+        {loading ? (
+          <p className="text-xs text-muted">Memuat mesin & operator…</p>
+        ) : machines.length === 0 || operators.length === 0 ? (
+          <p className="text-xs text-status-red">
+            {machines.length === 0 ? "Belum ada mesin ACTIVE." : "Belum ada pegawai dengan role Operator."} Tambahkan dulu di Katalog / Akun Pegawai.
+          </p>
+        ) : (
+          <>
+            <div>
+              <label className="text-xs text-muted font-medium mb-1 block">Mesin *</label>
+              <select value={machineId} onChange={(e) => setMachineId(e.target.value)} className={inp}>
+                <option value="">— pilih mesin —</option>
+                {machines.map((m) => <option key={m.id} value={m.id}>{m.name} · {m.category}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted font-medium mb-1 block">Operator *</label>
+              <select value={operatorId} onChange={(e) => setOperatorId(e.target.value)} className={inp}>
+                <option value="">— pilih operator —</option>
+                {operators.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted font-medium mb-1 block">Qty rencana</label>
+                <input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs text-muted font-medium mb-1 block">Prioritas</label>
+                <select value={priority} onChange={(e) => setPriority(e.target.value)} className={inp}>
+                  <option value="1">Normal</option>
+                  <option value="2">Tinggi</option>
+                  <option value="3">Mendesak</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted font-medium mb-1 block">Catatan (opsional)</label>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+                className="w-full rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none" />
+            </div>
+            <button
+              onClick={submit}
+              disabled={busy || !machineId || !operatorId || Number(qty) < 1}
+              className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"
+            >
+              {busy ? "Memproses…" : "Kirim ke Produksi"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

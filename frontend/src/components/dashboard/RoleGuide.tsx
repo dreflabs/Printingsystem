@@ -9,7 +9,7 @@ export type GuideRole = "owner" | "admin" | "designer_sales" | "operator" | "gud
 
 type Step = { title: string; body: React.ReactNode };
 
-const ROLE_LABEL: Record<GuideRole, string> = {
+export const ROLE_LABEL: Record<GuideRole, string> = {
   owner: "Owner",
   admin: "Admin / Kasir",
   designer_sales: "Designer / Setting",
@@ -17,7 +17,7 @@ const ROLE_LABEL: Record<GuideRole, string> = {
   gudang: "Gudang & Finishing",
 };
 
-const STEPS: Record<GuideRole, Step[]> = {
+export const GUIDE_STEPS: Record<GuideRole, Step[]> = {
   owner: [
     { title: "Pantau Alert Kritis", body: "Kartu di atas mengumpulkan semua yang butuh keputusan Anda: diskon, rework, audit akhir, permintaan pembatalan, stok menipis." },
     { title: "Putuskan diskon", body: "Admin mengajukan diskon saat membuat order. Order tidak lanjut ke produksi sampai Anda menyetujui atau menolaknya." },
@@ -108,7 +108,7 @@ export function RoleGuide({ role, checklist }: { role: GuideRole; checklist?: Ch
     }
   }
 
-  const steps = STEPS[role];
+  const steps = GUIDE_STEPS[role];
   const showChecklist = role === "owner" && checklist && !checklist.allDone;
 
   return (
@@ -189,6 +189,12 @@ export function RoleGuide({ role, checklist }: { role: GuideRole; checklist?: Ch
                 </li>
               ))}
             </ol>
+            <Link
+              href="/bantuan"
+              className="inline-flex items-center gap-1 mt-3 text-xs font-bold text-accent-teal hover:underline"
+            >
+              Panduan lengkap — menu, scan QR, arti status, istilah <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
         </div>
       )}

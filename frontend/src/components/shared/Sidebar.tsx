@@ -20,6 +20,7 @@ import {
   Layers,
   Clock,
   Wallet,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/actions/session";
@@ -124,6 +125,12 @@ const NAV_ITEMS: NavItem[] = [
     href: "/scan",
     icon: <ScanLine className="h-5 w-5" />,
     roles: ["admin", "operator", "gudang", "owner"],
+  },
+  {
+    label: "Bantuan",
+    href: "/bantuan",
+    icon: <BookOpen className="h-5 w-5" />,
+    roles: ["admin", "designer_sales", "operator", "gudang", "owner"],
   },
 ];
 

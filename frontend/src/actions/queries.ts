@@ -237,9 +237,17 @@ export async function getOwnerDashboard() {
         _count: { _all: true },
       }),
       prisma.productionJob.findMany({ where: { ...T, status: { in: IN_PROGRESS } }, select: { status: true } }),
-      prisma.attendanceRecord.findMany({ where: { ...T, date: { gte: startOfDay } }, select: { check_in_status: true, user_id: true } }),
+      prisma.attendanceRecord.findMany({
+        where: { ...T, date: { gte: startOfDay } },
+        select: { check_in_status: true, user_id: true, employee_name: true, check_in: true, break_status: true, break_end: true },
+      }),
       prisma.user.count({ where: { ...T, active: true } }),
     ]);
+
+    const yesterdayStart = new Date(startOfDay.getTime() - 24 * 3600 * 1000);
+    const autoClosedYesterday = await prisma.attendanceRecord.count({
+      where: { ...T, date: { gte: yesterdayStart, lt: startOfDay }, check_out_status: "AUTO_CLOSED" },
+    });
 
     const [machines, operators] = await Promise.all([
       prisma.machine.findMany({ where: { ...T, status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
@@ -302,6 +310,18 @@ export async function getOwnerDashboard() {
         present: attendanceToday.length,
         late: attendanceToday.filter((a) => a.check_in_status === "LATE").length,
         notCheckedIn: Math.max(0, activeUsers - attendedIds.size),
+        lateList: attendanceToday
+          .filter((a) => a.check_in_status === "LATE")
+          .map((a) => ({
+            name: a.employee_name,
+            jam: a.check_in
+              ? a.check_in.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false })
+              : "—",
+          })),
+        breakExceeded: attendanceToday
+          .filter((a) => a.break_status === "EXCEEDED")
+          .map((a) => ({ name: a.employee_name, ongoing: !a.break_end })),
+        autoClosedYesterday,
       },
       reassignOptions: { machines, operators },
     });

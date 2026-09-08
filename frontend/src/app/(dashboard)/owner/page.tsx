@@ -389,7 +389,33 @@ export default function OwnerPage() {
             <div className="flex justify-between"><span className="text-muted flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-status-yellow" /> Terlambat</span><span className="font-bold">{d?.attendance.late ?? "—"}</span></div>
             <div className="flex justify-between"><span className="text-muted flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-status-red" /> Belum Absen</span><span className="font-bold">{d?.attendance.notCheckedIn ?? "—"}</span></div>
           </div>
-          <p className="text-[10px] text-muted mt-3">Detail di menu Laporan Pegawai.</p>
+
+          {d?.attendance.lateList && d.attendance.lateList.length > 0 && (
+            <div className="mt-3 rounded-xl border border-status-yellow/30 bg-status-yellow/10 px-3 py-2">
+              <p className="text-[11px] font-bold text-status-yellow-text mb-1">Terlambat hari ini</p>
+              <ul className="text-xs text-primary space-y-0.5">
+                {d.attendance.lateList.map((l, i) => (
+                  <li key={i} className="flex justify-between"><span>{l.name}</span><span className="text-muted">masuk {l.jam}</span></li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {d?.attendance.breakExceeded && d.attendance.breakExceeded.length > 0 && (
+            <div className="mt-2 rounded-xl border border-status-red/30 bg-status-red/10 px-3 py-2">
+              <p className="text-[11px] font-bold text-status-red mb-1">Istirahat berlebih</p>
+              <ul className="text-xs text-primary space-y-0.5">
+                {d.attendance.breakExceeded.map((b, i) => (
+                  <li key={i}>{b.name}{b.ongoing ? " — masih istirahat" : ""}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!!d?.attendance.autoClosedYesterday && (
+            <p className="mt-2 text-[11px] text-status-red">
+              {d.attendance.autoClosedYesterday} pegawai lupa absen pulang kemarin (ditutup otomatis).
+            </p>
+          )}
+          <p className="text-[10px] text-muted mt-3">Detail di menu Absensi Pegawai.</p>
         </div>
       </div>
 

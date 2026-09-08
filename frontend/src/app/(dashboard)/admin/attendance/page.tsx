@@ -1,9 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Upload, FileSpreadsheet, RefreshCw, AlertTriangle, Clock, Check, X, Pencil } from "lucide-react";
+import { Upload, FileSpreadsheet, RefreshCw, AlertTriangle, Clock, Check, X, Pencil, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui";
+
+const SOURCE_LABEL: Record<string, string> = {
+  IN_APP: "In-App",
+  KIOSK: "Kiosk",
+  FINGERPRINT_IMPORT: "Fingerprint",
+  MANUAL: "Manual",
+};
 import { getSessionUser } from "@/actions/session";
 import {
   previewAttendanceImport,
@@ -322,6 +329,7 @@ export default function AttendancePage() {
                 <thead className="bg-elevated/50 border-b border-border text-muted text-xs font-semibold uppercase tracking-wide">
                   <tr>
                     <th className="px-4 py-3">Tanggal</th><th className="px-4 py-3">Pegawai</th>
+                    <th className="px-4 py-3">Sumber</th>
                     <th className="px-4 py-3">Masuk</th><th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Pulang</th><th className="px-4 py-3">Istirahat</th>
                     <th className="px-4 py-3">Catatan Owner</th>
@@ -339,6 +347,30 @@ export default function AttendancePage() {
                           </span>
                         )}
                       </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 text-[10px] rounded border border-border bg-elevated text-muted font-bold uppercase">
+                            {SOURCE_LABEL[r.source] ?? r.source}
+                          </span>
+                          {(r.geoFlag || r.ipFlag) && (
+                            <span title={[r.geoFlag && "di luar area kantor", r.ipFlag && "di luar jaringan kantor"].filter(Boolean).join(" · ")} className="h-2 w-2 rounded-full bg-status-red" />
+                          )}
+                          {r.checkOutStatus === "AUTO_CLOSED" && (
+                            <span title="Lupa absen pulang — ditutup sistem" className="text-[10px] text-status-red font-bold">auto</span>
+                          )}
+                          {r.checkInLat != null && r.checkInLng != null && (
+                            <a href={`https://www.google.com/maps?q=${r.checkInLat},${r.checkInLng}`} target="_blank" rel="noopener noreferrer" title="Lihat lokasi absen masuk" className="text-accent-teal">
+                              <MapPin className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                          {r.selfies.map((s) => (
+                            <a key={s.id} href={`/api/attendance/selfie/${s.id}`} target="_blank" rel="noopener noreferrer" title={`Selfie ${s.kind === "CHECK_IN" ? "masuk" : "pulang"}`}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={`/api/attendance/selfie/${s.id}`} alt="selfie" className="h-6 w-6 rounded object-cover border border-border" />
+                            </a>
+                          ))}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 font-mono text-muted">{fmtTime(r.checkIn)}</td>
                       <td className="px-4 py-3">
                         <span className={cn(
@@ -349,6 +381,7 @@ export default function AttendancePage() {
                         )}>
                           {r.checkInStatus === "LATE" ? `Terlambat ${r.lateMinutes}m` : "Tepat Waktu"}
                         </span>
+                        {r.offDay && <span className="ml-1 text-[10px] text-muted">luar hari kerja</span>}
                       </td>
                       <td className="px-4 py-3 font-mono text-muted">{fmtTime(r.checkOut)}</td>
                       <td className="px-4 py-3 text-xs text-muted">
@@ -361,6 +394,7 @@ export default function AttendancePage() {
                             <input
                               autoFocus
                               value={editNote.value}
+                              placeholder="Tambah catatan…"
                               onChange={(e) => setEditNote({ id: r.recordId, value: e.target.value })}
                               className="h-8 w-40 rounded-md bg-elevated border border-border px-2 text-primary outline-none focus:border-accent-teal"
                             />
@@ -368,13 +402,13 @@ export default function AttendancePage() {
                             <button onClick={() => setEditNote(null)} className="p-1.5 rounded-md bg-elevated text-muted hover:text-primary"><X className="h-3.5 w-3.5" /></button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-muted">{r.ownerNote || "—"}</span>
+                          <div className="flex items-start gap-1.5">
+                            <span className="text-muted whitespace-pre-line max-w-xs">{r.ownerNote || "—"}</span>
                             {isOwner && (
                               <button
-                                onClick={() => setEditNote({ id: r.recordId, value: r.ownerNote ?? "" })}
-                                className="p-1 rounded text-muted hover:text-accent-teal"
-                                title="Tambah/ubah catatan"
+                                onClick={() => setEditNote({ id: r.recordId, value: "" })}
+                                className="p-1 rounded text-muted hover:text-accent-teal shrink-0"
+                                title="Tambah catatan"
                               >
                                 <Pencil className="h-3 w-3" />
                               </button>
@@ -385,7 +419,7 @@ export default function AttendancePage() {
                     </tr>
                   ))}
                   {report.records.length === 0 && (
-                    <tr><td colSpan={7} className="px-4 py-6 text-center text-muted">Tidak ada baris.</td></tr>
+                    <tr><td colSpan={8} className="px-4 py-6 text-center text-muted">Tidak ada baris.</td></tr>
                   )}
                 </tbody>
               </table>

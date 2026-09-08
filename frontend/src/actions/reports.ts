@@ -512,10 +512,36 @@ export async function getMonthlyReport(monthStr?: string) {
       };
     });
 
+    // ── Absensi per pegawai (02-WORKFLOW/18-ABSENSI-IN-APP.md §9) ──
+    const attRecords = await prisma.attendanceRecord.findMany({
+      where: { tenant_id: tenant.id, date: inPeriod },
+      select: {
+        user_id: true, employee_name: true, check_in_status: true, late_minutes: true,
+        break_status: true, check_out_status: true,
+      },
+    });
+    const attMap = new Map<
+      string,
+      { name: string; daysPresent: number; lateDays: number; lateMinutes: number; breakExceeded: number; autoClosed: number }
+    >();
+    for (const r of attRecords) {
+      const key = r.user_id ?? `name:${r.employee_name}`;
+      const e = attMap.get(key) ?? { name: r.employee_name, daysPresent: 0, lateDays: 0, lateMinutes: 0, breakExceeded: 0, autoClosed: 0 };
+      e.daysPresent++;
+      if (r.check_in_status === "LATE") { e.lateDays++; e.lateMinutes += r.late_minutes; }
+      if (r.break_status === "EXCEEDED") e.breakExceeded++;
+      if (r.check_out_status === "AUTO_CLOSED") e.autoClosed++;
+      attMap.set(key, e);
+    }
+    const attendance = [...attMap.values()].sort(
+      (a, b) => b.lateDays - a.lateDays || b.lateMinutes - a.lateMinutes || a.name.localeCompare(b.name)
+    );
+
     return ok({
       period: label,
       periodStart: start.toISOString().slice(0, 10),
       periodEnd: new Date(end.getTime() - 1).toISOString().slice(0, 10),
+      attendance,
       financial: {
         omsetBruto,
         omsetBrutoPrinting,

@@ -1,14 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Clock, MapPin, Camera, Shield, Save, Loader2, Crosshair } from "lucide-react";
+import { Clock, MapPin, Camera, Shield, Save, Loader2, Crosshair, Tablet, Trash2, Copy, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui";
 import {
   getAttendanceSettings,
   updateAttendanceSettings,
+  setEmployeePin,
   type AttendanceSettings,
 } from "@/actions/attendance-settings";
+import {
+  listKioskDevices,
+  createKioskDevice,
+  revokeKioskDevice,
+  listEmployeesForKiosk,
+  type KioskDeviceRow,
+  type KioskPinRow,
+} from "@/actions/kiosk";
 
 const DAYS = [
   { n: 1, l: "Sen" }, { n: 2, l: "Sel" }, { n: 3, l: "Rab" }, { n: 4, l: "Kam" },
@@ -202,7 +211,150 @@ export default function AttendanceSettingsPage() {
           Simpan Pengaturan
         </button>
       </div>
+
+      {s.kioskEnabled && <KioskPanel />}
     </div>
+  );
+}
+
+function KioskPanel() {
+  const { toast } = useToast();
+  const [devices, setDevices] = useState<KioskDeviceRow[]>([]);
+  const [emps, setEmps] = useState<KioskPinRow[]>([]);
+  const [label, setLabel] = useState("");
+  const [newToken, setNewToken] = useState<{ label: string; token: string } | null>(null);
+  const [pinDraft, setPinDraft] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const [d, e] = await Promise.all([listKioskDevices(), listEmployeesForKiosk()]);
+    if (d.success) setDevices(d.data);
+    if (e.success) setEmps(e.data);
+  }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void load(); }, [load]);
+
+  const addDevice = async () => {
+    setBusy(true);
+    const res = await createKioskDevice(label);
+    setBusy(false);
+    if (!res.success) {
+      toast({ type: "error", title: "Gagal", message: res.error });
+      return;
+    }
+    setNewToken({ label: res.data.label, token: res.data.token });
+    setLabel("");
+    await load();
+  };
+
+  const revoke = async (id: string) => {
+    const res = await revokeKioskDevice(id);
+    if (!res.success) {
+      toast({ type: "error", title: "Gagal", message: res.error });
+      return;
+    }
+    toast({ type: "success", title: "Perangkat dicabut" });
+    await load();
+  };
+
+  const savePin = async (userId: string) => {
+    const pin = (pinDraft[userId] ?? "").trim();
+    const res = await setEmployeePin(userId, pin);
+    if (!res.success) {
+      toast({ type: "error", title: "Gagal", message: res.error });
+      return;
+    }
+    toast({ type: "success", title: pin ? "PIN disimpan" : "PIN dihapus" });
+    setPinDraft((p) => ({ ...p, [userId]: "" }));
+    await load();
+  };
+
+  return (
+    <section className="rounded-2xl border border-border bg-card/70 p-4 space-y-4">
+      <h2 className="text-sm font-bold text-primary flex items-center gap-2"><Tablet className="h-4 w-4 text-accent-teal" /> Perangkat Kiosk</h2>
+
+      <div className="flex gap-2">
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="Nama perangkat, mis. Tablet Meja Depan"
+          className={field}
+        />
+        <button
+          onClick={addDevice}
+          disabled={busy || label.trim().length < 2}
+          className="shrink-0 px-4 h-10 rounded-xl bg-accent-teal text-white text-sm font-bold disabled:opacity-50"
+        >
+          Buat
+        </button>
+      </div>
+
+      {newToken && (
+        <div className="rounded-xl border border-status-yellow/40 bg-status-yellow/10 p-3 space-y-2">
+          <p className="text-xs text-status-yellow-text font-semibold">
+            Token untuk &quot;{newToken.label}&quot; — tampil sekali. Buka <b>/kiosk</b> di perangkat lalu tempel token ini.
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs font-mono bg-base border border-border rounded-lg px-2 py-1.5 break-all">{newToken.token}</code>
+            <button
+              onClick={() => { navigator.clipboard?.writeText(newToken.token); toast({ type: "success", title: "Token disalin" }); }}
+              className="shrink-0 h-9 px-3 rounded-lg border border-border text-xs font-bold text-muted inline-flex items-center gap-1"
+            >
+              <Copy className="h-3.5 w-3.5" /> Salin
+            </button>
+          </div>
+          <button onClick={() => setNewToken(null)} className="text-xs text-muted underline">Tutup</button>
+        </div>
+      )}
+
+      {devices.length > 0 && (
+        <ul className="divide-y divide-border rounded-xl border border-border">
+          {devices.map((d) => (
+            <li key={d.id} className="flex items-center justify-between px-3 py-2 text-sm">
+              <div>
+                <span className={cn("font-semibold", d.active ? "text-primary" : "text-muted line-through")}>{d.label}</span>
+                <span className="text-[11px] text-muted ml-2">
+                  {d.active ? (d.lastSeenAt ? `aktif · terakhir ${new Date(d.lastSeenAt).toLocaleString("id-ID")}` : "aktif · belum dipakai") : "dicabut"}
+                </span>
+              </div>
+              {d.active && (
+                <button onClick={() => revoke(d.id)} className="text-status-red inline-flex items-center gap-1 text-xs font-bold">
+                  <Trash2 className="h-3.5 w-3.5" /> Cabut
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="pt-2">
+        <h3 className="text-xs font-bold text-primary flex items-center gap-1.5 mb-2"><KeyRound className="h-3.5 w-3.5" /> PIN Kiosk Pegawai (4–6 digit)</h3>
+        <ul className="divide-y divide-border rounded-xl border border-border">
+          {emps.map((e) => (
+            <li key={e.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+              <div className="flex-1 min-w-0">
+                <span className="font-semibold text-primary">{e.name}</span>
+                <span className="text-[11px] text-muted ml-2">{e.roleLabel} · {e.hasPin ? "PIN aktif" : "belum ada PIN"}</span>
+              </div>
+              <input
+                value={pinDraft[e.id] ?? ""}
+                onChange={(ev) => setPinDraft((p) => ({ ...p, [e.id]: ev.target.value.replace(/\D/g, "").slice(0, 6) }))}
+                inputMode="numeric"
+                placeholder={e.hasPin ? "PIN baru" : "PIN"}
+                className="w-24 px-2 py-1.5 bg-base border border-border rounded-lg text-sm text-primary"
+              />
+              <button
+                onClick={() => savePin(e.id)}
+                className="shrink-0 h-8 px-3 rounded-lg border border-border text-xs font-bold text-primary"
+              >
+                {(pinDraft[e.id] ?? "").trim() === "" && e.hasPin ? "Hapus" : "Simpan"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   );
 }
 

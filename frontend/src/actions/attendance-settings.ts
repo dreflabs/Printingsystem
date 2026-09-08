@@ -101,11 +101,13 @@ export async function updateAttendanceSettings(
     if (patch.kioskEnabled !== undefined) data.kiosk_enabled = !!patch.kioskEnabled;
     if (patch.personalDeviceEnabled !== undefined) data.personal_device_enabled = !!patch.personalDeviceEnabled;
 
-    if ((data.geofence_mode ?? before.geofence_mode) !== "OFF") {
+    // Hanya mode ENFORCE yang wajib punya titik. FLAG tanpa titik = tidak menandai
+    // apa pun (aman) sampai Owner mengisi koordinatnya.
+    if ((data.geofence_mode ?? before.geofence_mode) === "ENFORCE") {
       const lat = data.geofence_lat ?? before.geofence_lat;
       const lng = data.geofence_lng ?? before.geofence_lng;
       if (lat == null || lng == null)
-        return fail("Titik geofence (lintang & bujur) wajib diisi kalau mode geofence bukan OFF.");
+        return fail("Titik geofence (lintang & bujur) wajib diisi untuk mode 'Tolak absen'.");
     }
     if (!(data.kiosk_enabled ?? before.kiosk_enabled) && !(data.personal_device_enabled ?? before.personal_device_enabled))
       return fail("Minimal satu jalur absen harus aktif (kiosk atau HP pribadi).");

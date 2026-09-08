@@ -91,6 +91,8 @@ export default auth((req) => {
     path.startsWith("/api/auth") ||
     path.startsWith("/api/jobs") ||
     path.startsWith("/api/health") ||
+    path.startsWith("/api/kiosk") ||
+    path.startsWith("/kiosk") ||
     path.startsWith("/print") ||
     PUBLIC_PATHS.includes(path)
   ) {

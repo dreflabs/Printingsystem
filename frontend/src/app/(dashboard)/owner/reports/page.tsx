@@ -92,6 +92,9 @@ export default function OwnerReportsPage() {
       [],
       ["EXCEPTION AUDIT", "Kode Order", "Hasil", "Kategori", "Tindak Lanjut", "Catatan"],
       ...report.auditExceptions.map((a) => ["", a.orderCode, a.result, a.categories, a.followUp, a.note]),
+      [],
+      ["ABSENSI PEGAWAI", "Hari Hadir", "Hari Telat", "Total Menit Telat", "Istirahat Berlebih", "Lupa Pulang"],
+      ...report.attendance.map((a) => [a.name, a.daysPresent, a.lateDays, a.lateMinutes, a.breakExceeded, a.autoClosed]),
     ];
     downloadCsv(`laporan-bulanan-${report.period}.csv`, toCsv(rows));
   };
@@ -227,6 +230,40 @@ export default function OwnerReportsPage() {
                   ))}
                   {report.completionByCategory.length === 0 && (
                     <tr><td colSpan={6} className="px-4 py-6 text-center text-muted">Belum ada order dalam periode ini.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Absensi pegawai */}
+          <div className="bg-card border border-border rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-border flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-accent-teal" />
+              <h3 className="text-base font-bold text-primary">Absensi Pegawai Bulanan</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-elevated/50 border-b border-border text-muted text-xs font-semibold uppercase tracking-wide">
+                  <tr>
+                    <th className="px-4 py-3">Pegawai</th><th className="px-4 py-3">Hari Hadir</th>
+                    <th className="px-4 py-3">Hari Telat</th><th className="px-4 py-3">Total Menit Telat</th>
+                    <th className="px-4 py-3">Istirahat Berlebih</th><th className="px-4 py-3">Lupa Pulang</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {report.attendance.map((a, i) => (
+                    <tr key={`${a.name}-${i}`} className="hover:bg-elevated/30">
+                      <td className="px-4 py-3 font-semibold text-primary">{a.name}</td>
+                      <td className="px-4 py-3">{a.daysPresent}</td>
+                      <td className={cn("px-4 py-3 font-bold", a.lateDays > 0 ? "text-status-yellow-text" : "text-muted")}>{a.lateDays}</td>
+                      <td className="px-4 py-3 text-muted">{a.lateMinutes}</td>
+                      <td className={cn("px-4 py-3", a.breakExceeded > 0 ? "text-status-red font-bold" : "text-muted")}>{a.breakExceeded}</td>
+                      <td className={cn("px-4 py-3", a.autoClosed > 0 ? "text-status-red font-bold" : "text-muted")}>{a.autoClosed}</td>
+                    </tr>
+                  ))}
+                  {report.attendance.length === 0 && (
+                    <tr><td colSpan={6} className="px-4 py-6 text-center text-muted">Belum ada data absensi dalam periode ini.</td></tr>
                   )}
                 </tbody>
               </table>

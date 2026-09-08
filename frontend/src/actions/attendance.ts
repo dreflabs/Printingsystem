@@ -485,7 +485,10 @@ export async function getAttendanceReport(params?: { from?: string; to?: string;
     const records = await prisma.attendanceRecord.findMany({
       where,
       orderBy: [{ date: "desc" }, { employee_name: "asc" }],
-      include: { user: { select: { id: true, name: true, role: { select: { name: true } } } } },
+      include: {
+        user: { select: { id: true, name: true, role: { select: { name: true } } } },
+        selfies: { select: { id: true, kind: true } },
+      },
     });
 
     // Statistik job per operator (untuk kolom kinerja di laporan pegawai)
@@ -559,6 +562,16 @@ export async function getAttendanceReport(params?: { from?: string; to?: string;
         breakDurationMin: r.break_duration_min,
         breakStatus: r.break_status,
         ownerNote: r.owner_note,
+        source: r.source,
+        checkInMethod: r.check_in_method,
+        checkOutMethod: r.check_out_method,
+        checkOutStatus: r.check_out_status,
+        geoFlag: r.geo_flag,
+        ipFlag: r.ip_flag,
+        offDay: r.off_day,
+        checkInLat: r.check_in_lat,
+        checkInLng: r.check_in_lng,
+        selfies: r.selfies.map((s) => ({ id: s.id, kind: s.kind })),
       })),
       summary,
     });
@@ -578,9 +591,18 @@ export async function addAttendanceOwnerNote(recordId: string, note: string) {
     const rec = await prisma.attendanceRecord.findFirst({ where: { id: recordId, tenant_id: tenant.id } });
     if (!rec) return fail("Data absensi tidak ditemukan.");
 
+    const text = note.trim();
+    if (!text) return fail("Catatan tidak boleh kosong.");
+
+    // Append-only: catatan lama dipertahankan sebagai lampiran, tidak ditimpa
+    // (02-WORKFLOW/18-ABSENSI-IN-APP.md §8).
+    const stamp = `[${new Date().toLocaleDateString("id-ID")} · ${actor.name}]`;
+    const entry = `${stamp} ${text}`;
+    const merged = rec.owner_note ? `${rec.owner_note}\n${entry}` : entry;
+
     const updated = await prisma.attendanceRecord.update({
       where: { id: recordId },
-      data: { owner_note: note.trim() || null },
+      data: { owner_note: merged },
     });
     await logAction(actor.id, "ATTENDANCE_OWNER_NOTE", "AttendanceRecord", recordId, { owner_note: rec.owner_note }, { owner_note: updated.owner_note });
     revalidatePath("/admin/attendance");

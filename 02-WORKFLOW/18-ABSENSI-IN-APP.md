@@ -324,17 +324,20 @@ bukan menimpa — sesuai kata "lampiran" di doc lama §63. (Perbaikan kecil pada
 7. ✅ `src/components/dashboard/AbsenCard.tsx` (kamera getUserMedia → canvas ≤320px WebP, `navigator.geolocation`, tombol istirahat digabung) di dashboard operator/finishing/designer; halaman `/owner/attendance-settings` + nav Sidebar "Pengaturan Absensi" (owner).
 - Verifikasi: migrasi apply bersih; `tsc` + `next build` hijau (45 route); cron 200 (auth) / 401 (tanpa); alur `clockIn→clockIn(gagal)→startBreak→clockOut(gagal saat istirahat)→endBreak→clockOut→clockOut(gagal)` + `getMyAttendanceToday` lewat sesi Owner nyata (route throwaway, sudah dihapus); halaman setting render tanpa error konsol. BELUM diuji lewat kamera/GPS asli di browser (pane headless) dan guard import belum diuji runtime (logika lurus, tsc bersih).
 
-**Fase B — Kiosk:**
-8. `KioskDevice` + `assertKioskDevice` + middleware exception `/kiosk`.
-9. `kioskClockIn`/`kioskClockOut` + PIN rate-limit + device CRUD.
-10. Halaman `/kiosk` + panel kiosk di settings + input PIN di form pegawai.
+**Fase B — Kiosk — SELESAI (2026-09-09, belum di-commit):**
+8. ✅ `KioskDevice` (schema Fase A) + `src/lib/kiosk.ts` (`resolveKioskDevice` via cookie `pp_kiosk`, `hashKioskToken` sha256, `newKioskToken`, `kioskCookieSecure` ikut `x-forwarded-proto`); middleware lolos `/kiosk` + `/api/kiosk`.
+9. ✅ `src/lib/attendance-punch.ts` — inti `performClockIn`/`performClockOut` (dipakai bersama session action + kiosk); `src/actions/clock.ts` clockIn/clockOut jadi wrapper tipis. `src/actions/kiosk.ts` — `createKioskDevice` (token sekali), `listKioskDevices`, `revokeKioskDevice`, `listEmployeesForKiosk`. Route: `POST /api/kiosk/activate` (set cookie, rate-limit 10/15m per IP), `GET /api/kiosk/roster`, `POST /api/kiosk/punch` (PIN bcrypt, rate-limit 5/15m per device+user, method KIOSK), `POST /api/kiosk/deactivate`.
+10. ✅ Halaman `/kiosk` (client, full-screen: aktivasi token → grid pegawai → PIN pad → kamera → sukses 2.5s → refresh); panel Kiosk di `/owner/attendance-settings` (buat/cabut perangkat + set PIN per pegawai) — tampil hanya bila `kioskEnabled`.
+- Verifikasi curl: activate 200, roster 200 (Budi ber-PIN), punch IN ON_TIME (source KIOSK), punch IN lagi ditolak, punch OUT EARLY, PIN salah ×5 → "PIN salah", ke-6 → 429 15 menit, roster tanpa cookie → 401.
 
-**Fase C — Laporan & rapihan:**
-11. Owner dashboard: panel telat + alert istirahat berlebih + lupa pulang.
-12. `getMonthlyReport` bagian absensi + CSV.
-13. Rekap `/admin/attendance`: kolom Sumber, peta, selfie, penanda flag.
-14. `owner_note` kumulatif.
-15. Pindahkan `11-FUTURE/ABSENSI-FINGERPRINT.md` → arsip; jadikan dokumen ini rujukan. Perbarui matriks RBAC + `09-TECHNICAL/` bila menyebut absensi.
+**Fase C — Laporan & rapihan — SELESAI (2026-09-09, belum di-commit):**
+11. ✅ `getOwnerDashboard`: `attendance.lateList` (nama+jam), `attendance.breakExceeded` (nama+ongoing), `attendance.autoClosedYesterday`. `owner/page.tsx` render 3 panel di kartu "Absensi Hari Ini".
+12. ✅ `getMonthlyReport` → `attendance[]` per pegawai {daysPresent, lateDays, lateMinutes, breakExceeded, autoClosed}; `owner/reports` tabel "Absensi Pegawai Bulanan" + baris CSV.
+13. ✅ `getAttendanceReport` records + `source`/`checkOutStatus`/`geoFlag`/`ipFlag`/`offDay`/`checkInLat|Lng`/`selfies[]`. `/admin/attendance` kolom "Sumber" (badge + titik merah flag + "auto" + link peta + thumbnail selfie). Route `GET /api/attendance/selfie/[id]` (Owner/Admin, tenant-scoped, no-store).
+14. ✅ `addAttendanceOwnerNote` kumulatif — append `[tgl · Nama] teks`, tidak menimpa.
+15. TODO ringan: pindahkan `11-FUTURE/ABSENSI-FINGERPRINT.md` → arsip; perbarui matriks RBAC bila perlu.
+
+**Perbaikan saat implementasi:** `updateAttendanceSettings` dulu menolak save pertama karena default `geofence_mode=FLAG` tapi titik null → kini titik wajib **hanya** untuk mode `ENFORCE`.
 
 ---
 

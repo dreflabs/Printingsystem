@@ -6,19 +6,14 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
-import { sendWhatsApp } from "@/lib/wa";
+import { clientIpFromHeaders, shortDeviceLabel } from "@/lib/attendance";
 import {
-  hhmmToMinutes,
-  minutesOfDay,
-  lateInfo,
-  checkOutInfo,
-  isWorkday,
-  evaluateGeofence,
-  ipAllowed,
-  clientIpFromHeaders,
-  shortDeviceLabel,
-  decodeSelfieDataUrl,
-} from "@/lib/attendance";
+  performClockIn,
+  performClockOut,
+  PunchError,
+  type ClockInResult,
+  type ClockOutResult,
+} from "@/lib/attendance-punch";
 import { ok, fail, type ActionResult } from "@/types";
 
 /**
@@ -241,195 +236,58 @@ export async function getMyAttendanceToday(): Promise<ActionResult<AttendanceTod
   }
 }
 
-export async function clockIn(
-  input: ClockPunchInput = {}
-): Promise<ActionResult<{ recordId: string; checkIn: Date; status: string; lateMinutes: number; geoFlag: boolean; ipFlag: boolean }>> {
+export async function clockIn(input: ClockPunchInput = {}): Promise<ActionResult<ClockInResult>> {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
     const set = await tenantSetting(tenant.id);
-
     if (!set.personal_device_enabled)
       return fail("Absen dari HP pribadi dinonaktifkan. Gunakan perangkat kiosk di kantor.");
 
-    const existing = await todayRecord(actor.id);
-    if (existing?.check_in) return fail("Anda sudah absen masuk hari ini.");
-
-    const now = new Date();
-
-    // Terlalu awal
-    const startMin = hhmmToMinutes(set.work_start);
-    if (startMin != null && minutesOfDay(now) < startMin - set.earliest_clock_in_min) {
-      return fail(`Belum bisa absen masuk. Paling awal ${set.earliest_clock_in_min} menit sebelum jam ${set.work_start}.`);
-    }
-
     const h = await headers();
-    const ip = clientIpFromHeaders(h);
-    const deviceLabel = shortDeviceLabel(h.get("user-agent"));
-
-    // IP kantor
-    let ipFlag = false;
-    if (set.ip_mode !== "OFF") {
-      const okIp = ipAllowed(ip, set.ip_allowlist);
-      if (!okIp && set.ip_mode === "ENFORCE")
-        return fail("Absen hanya bisa dari jaringan kantor.");
-      ipFlag = !okIp;
-    }
-
-    // Geofence
-    const geo = evaluateGeofence(set, input.lat, input.lng, input.accuracyM);
-    if (geo.outside && set.geofence_mode === "ENFORCE") {
-      return fail(
-        geo.distanceM != null
-          ? `Anda di luar area kantor (~${geo.distanceM} m). Absen ditolak.`
-          : "Lokasi tidak terbaca. Aktifkan izin lokasi untuk absen."
-      );
-    }
-    const geoFlag = geo.outside;
-
-    // Selfie
-    const selfie = input.selfie ? decodeSelfieDataUrl(input.selfie) : null;
-    if (set.selfie_required && !selfie)
-      return fail("Selfie wajib untuk absen. Izinkan kamera lalu coba lagi.");
-    if (input.selfie && !selfie)
-      return fail("Foto selfie tidak valid. Ulangi pengambilan foto.");
-
-    const { status, lateMinutes } = lateInfo(now, set.late_after);
-    const offDay = !isWorkday(now, set.workdays);
-
-    const rec = await prisma.$transaction(async (tx) => {
-      const base = {
-        check_in: now,
-        check_in_status: status,
-        late_minutes: lateMinutes,
-        source: "IN_APP",
-        check_in_method: "IN_APP",
-        check_in_lat: input.lat ?? null,
-        check_in_lng: input.lng ?? null,
-        check_in_accuracy_m: input.accuracyM ?? null,
-        check_in_ip: ip,
-        geo_flag: geoFlag,
-        ip_flag: ipFlag,
-        off_day: offDay,
-        device_label: deviceLabel,
-      };
-      const row = existing
-        ? await tx.attendanceRecord.update({ where: { id: existing.id }, data: base })
-        : await tx.attendanceRecord.create({
-            data: {
-              tenant_id: tenant.id,
-              user_id: actor.id,
-              employee_name: actor.name,
-              date: startOfToday(),
-              ...base,
-            },
-          });
-      if (selfie) {
-        await tx.attendanceSelfie.create({
-          data: { tenant_id: tenant.id, record_id: row.id, kind: "CHECK_IN", mime: selfie.mime, bytes: selfie.buffer },
-        });
-      }
-      return row;
-    });
-
-    await logAction(actor.id, "ATTENDANCE_CLOCK_IN", "AttendanceRecord", rec.id, null, {
-      status, lateMinutes, geoFlag, ipFlag, offDay, distanceM: geo.distanceM,
+    const res = await performClockIn({
+      tenantId: tenant.id,
+      user: { id: actor.id, name: actor.name },
+      setting: set,
+      method: "IN_APP",
+      ip: clientIpFromHeaders(h),
+      deviceLabel: shortDeviceLabel(h.get("user-agent")),
+      input,
     });
     revalidatePath("/operator");
     revalidatePath("/finishing");
     revalidatePath("/designer");
-
-    if (status === "LATE") {
-      void notifyOwnersLate(tenant.id, actor.name, now, lateMinutes);
-    }
-
-    return ok({ recordId: rec.id, checkIn: now, status, lateMinutes, geoFlag, ipFlag });
+    return ok(res);
   } catch (e) {
+    if (e instanceof PunchError) return fail(e.message);
     console.error("clockIn:", e);
     return fail(e instanceof Error ? e.message : "Gagal absen masuk.");
   }
 }
 
-export async function clockOut(
-  input: ClockPunchInput = {}
-): Promise<ActionResult<{ recordId: string; checkOut: Date; status: string }>> {
+export async function clockOut(input: ClockPunchInput = {}): Promise<ActionResult<ClockOutResult>> {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
     const set = await tenantSetting(tenant.id);
 
-    const rec = await todayRecord(actor.id);
-    if (!rec || !rec.check_in) return fail("Anda belum absen masuk hari ini.");
-    if (rec.check_out) return fail("Anda sudah absen pulang hari ini.");
-    if (rec.break_start && !rec.break_end)
-      return fail("Selesaikan istirahat dulu sebelum absen pulang.");
-
-    const now = new Date();
     const h = await headers();
-    const ip = clientIpFromHeaders(h);
-
-    const geo = evaluateGeofence(set, input.lat, input.lng, input.accuracyM);
-    if (geo.outside && set.geofence_mode === "ENFORCE") {
-      return fail(
-        geo.distanceM != null
-          ? `Anda di luar area kantor (~${geo.distanceM} m). Absen pulang ditolak.`
-          : "Lokasi tidak terbaca. Aktifkan izin lokasi untuk absen."
-      );
-    }
-
-    const selfie = input.selfie ? decodeSelfieDataUrl(input.selfie) : null;
-    if (set.selfie_required && !selfie)
-      return fail("Selfie wajib untuk absen pulang. Izinkan kamera lalu coba lagi.");
-    if (input.selfie && !selfie)
-      return fail("Foto selfie tidak valid. Ulangi pengambilan foto.");
-
-    const status = checkOutInfo(now, set.work_end);
-
-    await prisma.$transaction(async (tx) => {
-      await tx.attendanceRecord.update({
-        where: { id: rec.id },
-        data: {
-          check_out: now,
-          check_out_status: status,
-          check_out_method: "IN_APP",
-          check_out_lat: input.lat ?? null,
-          check_out_lng: input.lng ?? null,
-          check_out_accuracy_m: input.accuracyM ?? null,
-          check_out_ip: ip,
-          geo_flag: rec.geo_flag || geo.outside,
-        },
-      });
-      if (selfie) {
-        await tx.attendanceSelfie.create({
-          data: { tenant_id: tenant.id, record_id: rec.id, kind: "CHECK_OUT", mime: selfie.mime, bytes: selfie.buffer },
-        });
-      }
+    const res = await performClockOut({
+      tenantId: tenant.id,
+      user: { id: actor.id, name: actor.name },
+      setting: set,
+      method: "IN_APP",
+      ip: clientIpFromHeaders(h),
+      deviceLabel: shortDeviceLabel(h.get("user-agent")),
+      input,
     });
-
-    await logAction(actor.id, "ATTENDANCE_CLOCK_OUT", "AttendanceRecord", rec.id, null, { status });
     revalidatePath("/operator");
     revalidatePath("/finishing");
     revalidatePath("/designer");
-    return ok({ recordId: rec.id, checkOut: now, status });
+    return ok(res);
   } catch (e) {
+    if (e instanceof PunchError) return fail(e.message);
     console.error("clockOut:", e);
     return fail(e instanceof Error ? e.message : "Gagal absen pulang.");
-  }
-}
-
-async function notifyOwnersLate(tenantId: string, name: string, at: Date, lateMin: number) {
-  try {
-    const owners = await prisma.user.findMany({
-      where: { tenant_id: tenantId, active: true, role: { name: "owner" }, phone: { not: null } },
-      select: { phone: true },
-    });
-    if (owners.length === 0) return;
-    const jam = at.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const body = `${name} terlambat masuk. Jam masuk: ${jam} (telat ${lateMin} menit).`;
-    for (const o of owners) {
-      if (o.phone) await sendWhatsApp({ to: o.phone, body });
-    }
-  } catch (e) {
-    console.error("notifyOwnersLate:", e);
   }
 }

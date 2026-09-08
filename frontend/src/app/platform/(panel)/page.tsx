@@ -213,11 +213,12 @@ export default function PlatformDashboard() {
 
       <p className="text-xs text-muted">
         Belum ada di versi ini: billing / generate &amp; force-mark-paid invoice, broadcast notification, System Health.
-        MFA wajib (kode 6 digit ke email tiap login). Suspend tenant benar-benar memblokir login &amp; akses; impersonate SUPPORT
-        lihat-saja untuk aksi uang/pembatalan/koreksi. Siklus hidup tenant: <b>Detail → Zona Berbahaya</b> untuk
+        Login Super Admin = email + password; percobaan gagal berturut-turut mengunci akun sementara. Suspend tenant
+        benar-benar memblokir login &amp; akses; impersonate SUPPORT lihat-saja untuk aksi uang/pembatalan/koreksi.
+        Siklus hidup tenant: <b>Detail → Zona Berbahaya</b> untuk
         <i>Churned</i> (lepas subdomain, data tetap) lalu <i>Hapus permanen</i>; job <code>tenant-lifecycle</code>
         otomatis (TRIAL basi 14 hari → churned, churned 30 hari → purge). Aksi tenant tercatat di
-        <code>tenant_audit_logs</code>; aksi platform (login, kelola akun, MFA, purge) di <b>Aktivitas</b>.
+        <code>tenant_audit_logs</code>; aksi platform (login, kelola akun, purge) di <b>Aktivitas</b>.
       </p>
 
       {detailId && (

@@ -126,10 +126,7 @@ model SuperAdmin {
   failed_login_count   Int       @default(0)
   locked_until         DateTime?
   last_login_at        DateTime?
-  // MFA wajib untuk semua akun Super Admin — kode 6 digit dikirim ke email tiap login.
-  login_otp_hash       String? // sha256 hex dari kode yang sedang berlaku
-  login_otp_expires_at DateTime?
-  login_otp_attempts   Int       @default(0) // percobaan salah pada kode aktif; >= batas → kode dibatalkan
+  // Login Super Admin = email + password saja (MFA/OTP dihapus 2026-09-08).
   created_at           DateTime  @default(now())
 
   tenant_audit_logs   TenantAuditLog[]

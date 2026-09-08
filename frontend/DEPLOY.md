@@ -107,27 +107,19 @@ Hapus `SUPER_ADMIN_PASSWORD` dari environment setelah selesai.
 > **Jangan jalankan `npx prisma db seed` di produksi.** Seed menghapus seluruh isi
 > database lebih dulu. Guard `ALLOW_PROD_SEED` ada justru untuk mencegah itu.
 
-### MFA wajib (kode email — tanpa aplikasi authenticator)
+### Login Super Admin — email + password (tanpa MFA/OTP)
 
-Setiap login Super Admin butuh 2 langkah:
-1. Isi email + password → sistem kirim kode 6 digit ke email akun itu.
-2. Masukkan kode (berlaku 10 menit) → masuk.
+Satu langkah: isi email + password → masuk. MFA/OTP email dihapus 2026-09-08
+(keputusan pemilik). **Provider email TIDAK lagi wajib untuk login Super Admin**
+— `MAIL_*` hanya dipakai fitur lain (reset password tenant, fallback WA→email).
 
-**Prasyarat: provider email harus aktif di produksi.** Set `MAIL_PROVIDER`,
-`MAIL_PROVIDER_TOKEN`, `MAIL_FROM` (lihat bagian 6b). Tanpa itu, kode tidak
-terkirim dan Super Admin tidak bisa login.
+Proteksi login yang tersisa:
+- Salah password 5× → akun dikunci sementara (durasi bertahap, maks 60 menit).
+- Rate-limit 10 percobaan / 15 menit per identifier.
+- Sesi panel dibatasi 12 jam (`PLATFORM_SESSION_MAX_AGE_MS`).
 
-**Break-glass** kalau email sedang bermasalah: set env `PLATFORM_OTP_DEBUG=1` →
-kode ikut ditulis ke log server (`docker logs` / Coolify → Logs). Matikan lagi
-setelah selesai.
-
-Salah kode 5×  → kode dibatalkan, minta kode baru ("Kirim ulang"). Salah
-password ikut menghitung ke lockout akun (5× → kunci sementara). Sesi panel
-dibatasi 12 jam (`PLATFORM_SESSION_MAX_AGE_MS`).
-
-Pemulihan akun (email hilang/terkunci): SUPER_ADMIN lain reset password lewat
-**Akun Admin**, atau `npm run bootstrap:superadmin` di server (menulis langsung
-ke DB, tidak lewat MFA).
+Pemulihan akun (password hilang / terkunci): SUPER_ADMIN lain reset password lewat
+**Akun Admin**, atau `npm run bootstrap:superadmin` di server (menulis langsung ke DB).
 
 Kelola akun Super Admin lain (buat, nonaktifkan, ubah sub-level, reset password,
 buka kunci) lewat **Akun Admin** di panel — `bootstrap:superadmin` hanya untuk

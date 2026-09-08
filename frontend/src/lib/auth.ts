@@ -4,7 +4,6 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import * as bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 import { rateLimit, resetRateLimit } from "./rate-limit";
-import { verifyOtpHash, OTP_MAX_ATTEMPTS } from "./platform-otp";
 import { logPlatform, requestMeta } from "./platform-audit";
 
 // Global Prisma instance to avoid hot-reloading issues
@@ -47,13 +46,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         workspace: { label: "Workspace", type: "text", placeholder: "subdomain" },
         username: { label: "Username", type: "text", placeholder: "username" },
         password: { label: "Password", type: "password" },
-        otp: { label: "Kode Email", type: "text" },
       },
       async authorize(credentials, req) {
         if (!credentials?.username || !credentials?.password) return null;
         const identifier = (credentials.username as string).trim();
         const pw = credentials.password as string;
-        const otpInput = String(credentials.otp ?? "").replace(/\D/g, "");
 
         // Rem brute-force: maks. 10 percobaan / 15 menit per identifier.
         const rlKey = `login:${identifier.toLowerCase()}`;
@@ -93,42 +90,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
             const isPasswordValid = await bcrypt.compare(pw, sa.password_hash);
 
-            // MFA wajib: kode 6 digit yang tadi dikirim ke email (step 1 =
-            // requestPlatformLoginOtp). Tanpa kode → belum lewat step itu.
-            const otpExpired = !sa.login_otp_expires_at || sa.login_otp_expires_at < new Date();
-            const otpAttemptsLeft = (sa.login_otp_attempts ?? 0) < OTP_MAX_ATTEMPTS;
-            const otpOk =
-              isPasswordValid &&
-              !!otpInput &&
-              !otpExpired &&
-              otpAttemptsLeft &&
-              verifyOtpHash(otpInput, sa.login_otp_hash);
-
-            if (!isPasswordValid || !otpOk) {
-              // Password salah → hitung ke lockout akun. Password benar tapi kode
-              // salah → hanya naikkan percobaan kode (jangan kunci akun karena
-              // kode email bisa telat / salah ketik).
-              if (!isPasswordValid) {
-                const nextCount = sa.failed_login_count + 1;
-                const lockMinutes =
-                  nextCount >= LOCKOUT_THRESHOLD ? Math.min(60, (nextCount - LOCKOUT_THRESHOLD + 1) * 15) : 0;
-                await prisma.superAdmin.update({
-                  where: { id: sa.id },
-                  data: {
-                    failed_login_count: nextCount,
-                    locked_until: lockMinutes > 0 ? new Date(Date.now() + lockMinutes * 60_000) : sa.locked_until,
-                  },
-                });
-                await failLogin("bad_password");
-              } else if (otpInput) {
-                await prisma.superAdmin.update({
-                  where: { id: sa.id },
-                  data: { login_otp_attempts: { increment: 1 } },
-                });
-                await failLogin(otpExpired ? "otp_expired" : !otpAttemptsLeft ? "otp_attempts_exhausted" : "bad_otp");
-              } else {
-                await failLogin("otp_required");
-              }
+            if (!isPasswordValid) {
+              const nextCount = sa.failed_login_count + 1;
+              const lockMinutes =
+                nextCount >= LOCKOUT_THRESHOLD ? Math.min(60, (nextCount - LOCKOUT_THRESHOLD + 1) * 15) : 0;
+              await prisma.superAdmin.update({
+                where: { id: sa.id },
+                data: {
+                  failed_login_count: nextCount,
+                  locked_until: lockMinutes > 0 ? new Date(Date.now() + lockMinutes * 60_000) : sa.locked_until,
+                },
+              });
+              await failLogin("bad_password");
               return null;
             }
 
@@ -139,12 +112,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 failed_login_count: 0,
                 locked_until: null,
                 last_login_at: new Date(),
-                login_otp_hash: null,
-                login_otp_expires_at: null,
-                login_otp_attempts: 0,
               },
             });
-            await logPlatform({ ...auditBase, action: "LOGIN_SUCCESS", detail: { mfa: "email_otp" } });
+            await logPlatform({ ...auditBase, action: "LOGIN_SUCCESS", detail: { mfa: "none" } });
             return {
               id: sa.id,
               name: sa.name,

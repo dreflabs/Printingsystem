@@ -102,8 +102,7 @@ export default auth((req) => {
       return NextResponse.redirect(url);
     }
     if (!isPlatform) return NextResponse.redirect(new URL("/login", nextUrl));
-    // MFA (kode email) diverifikasi saat login di src/lib/auth.ts — tidak ada
-    // langkah enrollment terpisah yang perlu dijaga di sini.
+    // Login Super Admin = email + password saja (tanpa MFA/OTP).
     return pass();
   }
 

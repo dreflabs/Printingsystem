@@ -1,79 +1,37 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Building2, DollarSign, Users, PauseCircle, PlayCircle, LogIn, AlertTriangle, X, Eye, Trash2 } from "lucide-react";
-import { getPlatformMetrics, listTenants, setTenantStatus, impersonateTenant, deleteTenantNow } from "@/actions/platform";
-import { TenantDetailDrawer } from "@/components/platform/TenantDetailDrawer";
+import Link from "next/link";
+import {
+  Building2, DollarSign, Users, PauseCircle, AlertTriangle,
+  ScrollText, ArrowRight, Archive,
+} from "lucide-react";
+import { getPlatformMetrics, listPlatformAuditLog } from "@/actions/platform";
 
 type Metrics = { mrr: number; trialMrr: number; totalTenants: number; trial: number; active: number; suspended: number; churned: number };
-type Tenant = {
-  id: string; slug: string; name: string; status: string; plan: string;
-  ownerName: string | null; userCount: number; orderCount: number;
-  activePlanName: string | null; mrr: number;
+type Entry = {
+  id: string; actorName: string; actorSubLevel: string | null; action: string;
+  targetLabel: string | null; createdAt: Date | string;
 };
 
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
-
-const STATUS_STYLE: Record<string, string> = {
-  ACTIVE: "bg-status-green/10 text-status-green border-status-green/30",
-  TRIAL: "bg-status-blue/10 text-status-blue border-status-blue/30",
-  SUSPENDED: "bg-status-red/10 text-status-red border-status-red/30",
-  CHURNED: "bg-muted/10 text-muted border-muted/30",
-};
+const dt = (d: Date | string) => new Date(d).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+const DANGER = new Set(["LOGIN_FAILED", "LOGIN_LOCKED", "TENANT_PURGED", "SUPER_ADMIN_DEACTIVATED"]);
 
 export default function PlatformDashboard() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [recent, setRecent] = useState<Entry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState<
-    | { kind: "suspend" | "activate" | "impersonate"; tenant: Tenant; reason: string }
-    | null
-  >(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
-  const [del, setDel] = useState<{ tenant: Tenant; slug: string; reason: string } | null>(null);
 
   const load = useCallback(async () => {
-    const [m, t] = await Promise.all([getPlatformMetrics(), listTenants()]);
+    const [m, a] = await Promise.all([getPlatformMetrics(), listPlatformAuditLog({ limit: 8 })]);
     if (m.success) setMetrics(m.data);
-    if (t.success) setTenants(t.data);
-    if (!m.success) setError(m.error);
-    else if (!t.success) setError(t.error);
-    else setError(null);
+    else setError(m.error);
+    if (a.success) setRecent(a.data.entries);
   }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
-
-  function openPrompt(kind: "suspend" | "activate" | "impersonate", tenant: Tenant) {
-    setError(null);
-    setPrompt({ kind, tenant, reason: "" });
-  }
-
-  async function confirmPrompt() {
-    if (!prompt) return;
-    const { kind, tenant, reason } = prompt;
-    setBusy(tenant.id);
-    let res: { success: boolean; error?: string };
-    if (kind === "impersonate") res = await impersonateTenant(tenant.id, reason);
-    else res = await setTenantStatus(tenant.id, kind === "suspend" ? "SUSPEND" : "ACTIVATE", reason || undefined);
-    setBusy(null);
-    if (!res.success) { setError(res.error ?? "Aksi gagal."); return; }
-    setPrompt(null);
-    if (kind === "impersonate") { window.location.href = "/owner"; return; }
-    await load();
-  }
-
-  async function confirmDelete() {
-    if (!del) return;
-    setBusy(del.tenant.id);
-    setError(null);
-    const res = await deleteTenantNow(del.tenant.id, del.slug, del.reason || undefined);
-    setBusy(null);
-    if (!res.success) { setError(res.error ?? "Gagal menghapus tenant."); return; }
-    setDel(null);
-    await load();
-  }
 
   const cards: { label: string; value: string | number; icon: typeof DollarSign; hint?: string }[] = [
     {
@@ -87,51 +45,18 @@ export default function PlatformDashboard() {
     { label: "Suspended / Churned", value: metrics ? `${metrics.suspended} / ${metrics.churned}` : "—", icon: PauseCircle },
   ];
 
-  const promptCopy = {
-    suspend: { title: "Suspend Tenant", desc: "Semua user tenant ini tidak akan bisa akses sampai diaktifkan lagi.", cta: "Suspend", danger: true, reasonRequired: false },
-    activate: { title: "Aktifkan Tenant", desc: "Tenant kembali bisa diakses.", cta: "Aktifkan", danger: false, reasonRequired: false },
-    impersonate: { title: "Login sebagai Tenant", desc: "Anda masuk sebagai Owner tenant. Alasan dikirim ke Owner untuk transparansi & dicatat di audit log.", cta: "Masuk", danger: false, reasonRequired: true },
-  } as const;
+  const shortcuts = [
+    { href: "/platform/tenants", label: "Kelola Tenant", desc: "Cari, suspend, impersonate, hapus", icon: Building2 },
+    { href: "/platform/admins", label: "Akun Admin", desc: "Kelola akun pengelola platform", icon: Users },
+    { href: "/platform/activity", label: "Aktivitas", desc: "Jejak audit lengkap", icon: ScrollText },
+    { href: "/platform/retired", label: "Tenant Terhapus", desc: "Nisan tenant yang di-purge", icon: Archive },
+  ];
 
   return (
     <div className="space-y-6">
-      {prompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-overlay backdrop-blur-sm" onClick={() => setPrompt(null)} />
-          <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal space-y-4">
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="text-base font-bold text-primary">{promptCopy[prompt.kind].title}</h3>
-                <p className="text-xs text-muted mt-1">{prompt.tenant.name} · <span className="font-mono">{prompt.tenant.slug}</span></p>
-              </div>
-              <button onClick={() => setPrompt(null)} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
-            </div>
-            <p className="text-xs text-muted">{promptCopy[prompt.kind].desc}</p>
-            <textarea
-              autoFocus
-              value={prompt.reason}
-              onChange={(e) => setPrompt({ ...prompt, reason: e.target.value })}
-              rows={2}
-              placeholder={promptCopy[prompt.kind].reasonRequired ? "Alasan (wajib)…" : "Alasan (opsional, untuk audit)…"}
-              className="w-full rounded-xl bg-elevated border border-border text-sm text-primary p-3 outline-none focus:border-accent-teal resize-none"
-            />
-            <div className="flex gap-3">
-              <button onClick={() => setPrompt(null)} className="flex-1 h-10 rounded-xl bg-elevated border border-border text-xs font-bold text-muted hover:text-primary">Batal</button>
-              <button
-                disabled={busy === prompt.tenant.id || (promptCopy[prompt.kind].reasonRequired && !prompt.reason.trim())}
-                onClick={confirmPrompt}
-                className={`flex-1 h-10 rounded-xl text-xs font-bold text-white disabled:opacity-40 ${promptCopy[prompt.kind].danger ? "bg-status-red" : "bg-accent-teal"} hover:brightness-110`}
-              >
-                {promptCopy[prompt.kind].cta}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div>
         <h1 className="text-2xl font-bold text-primary">Dashboard Platform</h1>
-        <p className="text-sm text-muted mt-0.5">Metrics & manajemen tenant Print Pilot SaaS</p>
+        <p className="text-sm text-muted mt-0.5">Ringkasan metrik & aktivitas Print Pilot SaaS.</p>
       </div>
 
       {error && (
@@ -153,147 +78,67 @@ export default function PlatformDashboard() {
         ))}
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {shortcuts.map((s) => (
+          <Link
+            key={s.href}
+            href={s.href}
+            className="group bg-card border border-border rounded-2xl p-4 hover:border-accent-teal/40 transition-colors"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="inline-flex p-2 rounded-xl bg-elevated">
+                <s.icon className="h-4 w-4 text-accent-teal" />
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted group-hover:text-accent-teal transition-colors" />
+            </div>
+            <p className="text-sm font-bold text-primary">{s.label}</p>
+            <p className="text-[11px] text-muted mt-0.5">{s.desc}</p>
+          </Link>
+        ))}
+      </div>
+
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        <div className="p-5 border-b border-border flex items-center gap-2">
-          <Building2 className="h-5 w-5 text-accent-teal" />
-          <h2 className="text-base font-semibold text-primary">Tenant</h2>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent-teal/10 text-accent-teal border border-accent-teal/30">{tenants.length}</span>
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ScrollText className="h-4 w-4 text-accent-teal" />
+            <h2 className="text-sm font-semibold text-primary">Aktivitas terbaru</h2>
+          </div>
+          <Link href="/platform/activity" className="text-xs font-bold text-accent-teal hover:underline">
+            Lihat semua
+          </Link>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-elevated/50 border-b border-border text-muted text-xs font-semibold uppercase tracking-wide">
-              <tr>
-                <th className="px-4 py-3">Toko</th>
-                <th className="px-4 py-3">Subdomain</th>
-                <th className="px-4 py-3">Owner</th>
-                <th className="px-4 py-3">Paket</th>
-                <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">MRR</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {tenants.map((t) => (
-                <tr key={t.id} className="hover:bg-elevated/30">
-                  <td className="px-4 py-3 font-medium text-primary">{t.name}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-accent-teal">{t.slug}</td>
-                  <td className="px-4 py-3 text-muted text-xs">{t.ownerName ?? "-"}</td>
-                  <td className="px-4 py-3 text-xs">{t.activePlanName ?? t.plan}</td>
-                  <td className="px-4 py-3 text-muted text-xs">{t.userCount}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{rupiah(t.mrr)}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_STYLE[t.status] ?? STATUS_STYLE.CHURNED}`}>
-                      {t.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => setDetailId(t.id)}
-                        className="inline-flex items-center gap-1 text-xs text-muted hover:text-primary"
-                      >
-                        <Eye className="h-3.5 w-3.5" /> Detail
-                      </button>
-                      <span className="text-border">·</span>
-                      <button
-                        disabled={busy === t.id}
-                        onClick={() => openPrompt("impersonate", t)}
-                        className="inline-flex items-center gap-1 text-xs text-accent-teal hover:underline disabled:opacity-40"
-                      >
-                        <LogIn className="h-3.5 w-3.5" /> Login sebagai
-                      </button>
-                      <span className="text-border">·</span>
-                      <button
-                        disabled={busy === t.id}
-                        onClick={() => openPrompt(t.status === "SUSPENDED" ? "activate" : "suspend", t)}
-                        className={`inline-flex items-center gap-1 text-xs disabled:opacity-40 ${t.status === "SUSPENDED" ? "text-status-green hover:underline" : "text-status-red hover:underline"}`}
-                      >
-                        {t.status === "SUSPENDED" ? <><PlayCircle className="h-3.5 w-3.5" /> Aktifkan</> : <><PauseCircle className="h-3.5 w-3.5" /> Suspend</>}
-                      </button>
-                      <span className="text-border">·</span>
-                      <button
-                        disabled={busy === t.id}
-                        onClick={() => { setError(null); setDel({ tenant: t, slug: "", reason: "" }); }}
-                        className="inline-flex items-center gap-1 text-xs text-status-red hover:underline disabled:opacity-40"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" /> Hapus
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {tenants.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted text-sm">Belum ada tenant.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-border/60">
+          {recent.map((e) => (
+            <li key={e.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
+                  DANGER.has(e.action)
+                    ? "bg-status-red/10 text-status-red border-status-red/30"
+                    : "bg-elevated text-muted border-border"
+                }`}
+              >
+                {e.action}
+              </span>
+              <span className="text-xs text-primary truncate">{e.actorName}</span>
+              {e.targetLabel && <span className="text-xs text-muted font-mono truncate">→ {e.targetLabel}</span>}
+              <span className="ml-auto text-[11px] text-muted whitespace-nowrap shrink-0">{dt(e.createdAt)}</span>
+            </li>
+          ))}
+          {recent.length === 0 && (
+            <li className="px-4 py-8 text-center text-muted text-sm">Belum ada aktivitas.</li>
+          )}
+        </ul>
       </div>
 
       <p className="text-xs text-muted">
         Belum ada di versi ini: billing / generate &amp; force-mark-paid invoice, broadcast notification, System Health.
         Login Super Admin = email + password; percobaan gagal berturut-turut mengunci akun sementara. Suspend tenant
         benar-benar memblokir login &amp; akses; impersonate SUPPORT lihat-saja untuk aksi uang/pembatalan/koreksi.
-        Siklus hidup tenant: <b>Detail → Zona Berbahaya</b> untuk
-        <i>Churned</i> (lepas subdomain, data tetap) lalu <i>Hapus permanen</i>. Tombol <b>Hapus</b> di baris
-        tenant memotong alur itu — churn + purge sekaligus, butuh ketik ulang subdomain; job <code>tenant-lifecycle</code>
-        otomatis (TRIAL basi 14 hari → churned, churned 30 hari → purge). Aksi tenant tercatat di
-        <code>tenant_audit_logs</code>; aksi platform (login, kelola akun, purge) di <b>Aktivitas</b>.
+        Siklus hidup tenant: <b>Tenant → Detail → Zona Berbahaya</b> untuk <i>Churned</i> (lepas subdomain, data tetap)
+        lalu <i>Hapus permanen</i>. Tombol <b>Hapus</b> di baris tenant memotong alur itu — churn + purge sekaligus,
+        butuh ketik ulang subdomain; job <code>tenant-lifecycle</code> otomatis (TRIAL basi 14 hari → churned,
+        churned 30 hari → purge).
       </p>
-
-      {del && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-overlay backdrop-blur-sm" onClick={() => setDel(null)} />
-          <div className="relative w-full max-w-sm bg-card border border-status-red/40 rounded-2xl p-6 shadow-modal space-y-4">
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="text-base font-bold text-status-red">Hapus Tenant Permanen</h3>
-                <p className="text-xs text-muted mt-1">{del.tenant.name} · <span className="font-mono">{del.tenant.slug}</span></p>
-              </div>
-              <button onClick={() => setDel(null)} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
-            </div>
-            <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-3 py-2.5 text-xs text-status-red">
-              Seluruh data tenant ini — user, order, produksi, pembayaran, absensi, gaji, audit log — dihapus dari database dan <b>tidak bisa dikembalikan</b>. Hanya tersisa nisan <span className="font-mono">RetiredTenant</span> untuk arsip.
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted">Ketik <span className="font-mono text-primary">{del.tenant.slug}</span> untuk konfirmasi</label>
-              <input
-                autoFocus
-                value={del.slug}
-                onChange={(e) => setDel({ ...del, slug: e.target.value })}
-                placeholder={del.tenant.slug}
-                className="w-full h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-status-red font-mono"
-              />
-            </div>
-            <textarea
-              value={del.reason}
-              onChange={(e) => setDel({ ...del, reason: e.target.value })}
-              rows={2}
-              placeholder="Alasan (opsional, untuk audit)…"
-              className="w-full rounded-xl bg-elevated border border-border text-sm text-primary p-3 outline-none focus:border-accent-teal resize-none"
-            />
-            <div className="flex gap-3">
-              <button onClick={() => setDel(null)} className="flex-1 h-10 rounded-xl bg-elevated border border-border text-xs font-bold text-muted hover:text-primary">Batal</button>
-              <button
-                disabled={busy === del.tenant.id || del.slug.trim() !== del.tenant.slug}
-                onClick={confirmDelete}
-                className="flex-1 h-10 rounded-xl text-xs font-bold text-white bg-status-red hover:brightness-110 disabled:opacity-40"
-              >
-                {busy === del.tenant.id ? "Menghapus…" : "Hapus permanen"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {detailId && (
-        <TenantDetailDrawer
-          tenantId={detailId}
-          onClose={() => setDetailId(null)}
-          onChanged={load}
-        />
-      )}
     </div>
   );
 }

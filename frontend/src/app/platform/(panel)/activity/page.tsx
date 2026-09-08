@@ -21,7 +21,6 @@ const dt = (d: Date | string) =>
 
 const ACTIONS = [
   "",
-  "LOGIN_OTP_SENT",
   "LOGIN_SUCCESS",
   "LOGIN_FAILED",
   "LOGIN_LOCKED",
@@ -74,7 +73,7 @@ export default function PlatformActivityPage() {
       <div>
         <h1 className="text-2xl font-bold text-primary">Jejak Aktivitas Platform</h1>
         <p className="text-sm text-muted mt-0.5">
-          Semua aksi Super Admin — login (termasuk kode email), impersonate, kelola tenant &amp; akun. Tahan-hapus:
+          Semua aksi Super Admin — login, impersonate, kelola tenant &amp; akun. Tahan-hapus:
           tetap terbaca setelah tenant di-purge.
         </p>
       </div>

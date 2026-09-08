@@ -13,7 +13,7 @@ export async function getSetupChecklist() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh melihat checklist penyiapan.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh melihat checklist penyiapan.");
 
     const T = { tenant_id: tenant.id };
     const [machines, materials, printingProducts, retailProducts, staff, orders] = await Promise.all([

@@ -7,7 +7,7 @@ import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";
 
-const isAdmin = (r: string) => r === "admin" || r === "owner";
+const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
 
 export interface FinalAuditItemInput {
   category: string;
@@ -42,7 +42,7 @@ export async function submitFinalAudit(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!isAdmin(actor.role)) return fail("Hanya Admin/Owner yang boleh submit final audit.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Admin/Owner yang boleh submit final audit.");
 
     const result = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
@@ -121,7 +121,7 @@ export async function approveFinalAudit(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh menyetujui audit.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh menyetujui audit.");
 
     const result = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
@@ -180,8 +180,10 @@ export async function createCorrection(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh membuat koreksi.");
-    if (actor.role === "admin" && input.category === "FINANCIAL") {
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh membuat koreksi.");
+    // Koreksi FINANCIAL khusus Owner — batasan ini untuk yang bertindak sebagai
+    // Admin saja (Owner di Solo Mode juga punya peran Admin, tetap boleh).
+    if (!actor.roles.includes("owner") && input.category === "FINANCIAL") {
       return fail("Koreksi keuangan hanya boleh dibuat Owner.");
     }
     if (!input.reason || input.reason.trim().length < 20) {
@@ -192,7 +194,7 @@ export async function createCorrection(
     if (!order) return fail("Order tidak ditemukan.");
     if (order.status !== "CLOSED") return fail("Koreksi hanya untuk order berstatus CLOSED.");
 
-    const isOwner = actor.role === "owner";
+    const isOwner = actor.roles.includes("owner");
     const correction = await prisma.correction.create({
       data: {
         tenant_id: tenant.id,
@@ -231,7 +233,7 @@ export async function approveCorrection(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh menyetujui koreksi.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh menyetujui koreksi.");
 
     const correction = await prisma.correction.findFirst({
       where: { id: correctionId, tenant_id: tenant.id },

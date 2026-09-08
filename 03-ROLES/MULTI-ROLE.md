@@ -65,7 +65,15 @@ Pada halaman **Owner → Pegawai & Akses → Tambah Pegawai**:
 
 ## Skenario Rekomendasi Berdasarkan Skala Bisnis
 
-### Percetakan Kecil (1-3 orang)
+### Percetakan Solo / 1 orang
+Owner **otomatis mendapat semua peran operasional** (Admin, Designer, Operator,
+Gudang) saat mendaftar. Jadi satu orang bisa menjalankan seluruh alur — order,
+desain, produksi, QC, finishing, rak, serah — tanpa membuat akun kedua. Begitu
+mulai merekrut, Owner tinggal mencabut peran dari dirinya di **Pegawai & Akses**.
+Dashboard Owner menampilkan panel **"Langkah berikutnya"** yang menunjukkan aksi
+tahap berikut untuk tiap order aktif.
+
+### Percetakan Kecil (2-3 orang)
 | User | Role yang Dicentang |
 |------|---------------------|
 | Owner | Owner (bawaan, semua akses) |
@@ -92,4 +100,5 @@ Setiap orang punya **1 role spesifik** sesuai jobdesc masing-masing.
 - **Tidak ada breaking change**: User lama dengan 1 role tetap berjalan normal.
 - **JWT Token**: Menyimpan `role` (string, primary) dan `roles` (array semua role).
 - **Middleware RBAC**: Menggunakan `roles.some(r => allowedRoles.includes(r))` — user diizinkan jika SALAH SATU rolenya cocok.
+- **RBAC di Server Action**: `getCurrentUser()` (`src/lib/actor.ts`) memuat `extra_roles` dan mengembalikan `roles: string[]`. Semua pengecekan peran di action memakai `actorHasRole(actor, "gudang")` (bukan lagi `actor.role === "..."`), sehingga user multi-peran benar-benar bisa menjalankan tiap tahap — bukan hanya membuka menunya.
 - **Sidebar**: Menampilkan semua menu yang relevan dengan semua role yang dimiliki user.

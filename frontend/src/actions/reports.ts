@@ -5,7 +5,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { ok, fail } from "@/types";
 
-const isAdmin = (r: string) => r === "admin" || r === "owner";
+const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
 
 /** Status order yang dianggap "selesai" (sudah diambil konsumen atau lewat). */
 const DONE_STATUSES = ["PICKED_UP", "FINAL_AUDIT_PENDING", "FINAL_AUDIT_COMPLETE", "CLOSED"];
@@ -38,7 +38,7 @@ export async function getDailyRevenue(dateStr?: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh melihat laporan keuangan.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat laporan keuangan.");
     const { start, end } = dayRange(dateStr);
 
     const [newPrintingOrders, printingPayments, retailAgg, discountAgg, newReceivables] = await Promise.all([
@@ -118,7 +118,7 @@ export async function getOutstandingReceivables(filter: "all" | "overdue" | "rea
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh melihat laporan piutang.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat laporan piutang.");
 
     const orders = await prisma.order.findMany({
       where: {
@@ -156,7 +156,7 @@ export async function getOperatorPerformance(fromStr?: string, toStr?: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh melihat laporan produksi.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat laporan produksi.");
 
     const from = fromStr ? new Date(fromStr) : new Date(Date.now() - 30 * 864e5);
     const to = toStr ? new Date(toStr) : new Date();
@@ -201,7 +201,7 @@ export async function getRevenueSeries(days = 7) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh melihat laporan pendapatan.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat laporan pendapatan.");
 
     const n = Math.min(Math.max(days, 1), 90);
     const now = new Date();
@@ -255,7 +255,7 @@ export async function getMonthlyReport(monthStr?: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh melihat laporan bulanan.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh melihat laporan bulanan.");
 
     const { start, end, label } = monthRange(monthStr);
     const inPeriod = { gte: start, lt: end };

@@ -179,7 +179,7 @@ export async function getOwnerDashboard() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh melihat data ini.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh melihat data ini.");
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -316,7 +316,7 @@ export async function getProductionOverview() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner" && actor.role !== "admin") return fail("Hanya Owner/Admin yang boleh melihat data ini.");
+    if (!actor.roles.includes("owner") && !actor.roles.includes("admin")) return fail("Hanya Owner/Admin yang boleh melihat data ini.");
     const T = { tenant_id: tenant.id };
 
     const [jobs, machines, materials, operators] = await Promise.all([

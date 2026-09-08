@@ -7,11 +7,44 @@ import { IMPERSONATE_COOKIE, getPlatformActor } from "@/lib/platform";
 export interface Actor {
   id: string;
   name: string;
+  /** Peran utama (untuk redirect default & kompat lama). */
   role: string;
+  /** Semua peran yang dimiliki: utama + tambahan (`extra_roles`), unik. Dipakai RBAC action. */
+  roles: string[];
   /** true = sesi Super Admin yang sedang impersonate tenant ini */
   impersonated?: boolean;
   /** true = aktor hanya boleh baca (Super Admin sub-level SUPPORT saat impersonate) */
   readOnly?: boolean;
+}
+
+/** Prioritas peran — yang tertinggi jadi primary. */
+const ROLE_PRIORITY = ["owner", "admin", "designer_sales", "operator", "gudang"];
+
+function orderRoles(names: string[]): string[] {
+  const uniq = Array.from(new Set(names.filter(Boolean)));
+  return uniq.sort((a, b) => {
+    const ia = ROLE_PRIORITY.indexOf(a);
+    const ib = ROLE_PRIORITY.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+}
+
+/**
+ * true bila aktor punya SALAH SATU peran yang disebut — dari peran utama MAUPUN
+ * peran tambahan. Ini pengganti `actor.role === "x"` di RBAC action supaya user
+ * multi-peran (Solo Mode / UMKM) benar-benar bisa menjalankan tiap tahap.
+ */
+export function actorHasRole(actor: Actor, ...names: string[]): boolean {
+  return actor.roles.some((r) => names.includes(r));
+}
+
+const USER_WITH_ROLES = {
+  role: true,
+  extra_roles: { select: { role: { select: { name: true } } } },
+} as const;
+
+function rolesOf(u: { role: { name: string }; extra_roles: { role: { name: string } }[] }): string[] {
+  return orderRoles([u.role.name, ...u.extra_roles.map((er) => er.role.name)]);
 }
 
 /**
@@ -47,7 +80,7 @@ export async function getCurrentUser(): Promise<Actor | null> {
     if (!tenant) return null;
     const owner = await prisma.user.findFirst({
       where: { tenant_id: tenant.id, active: true, role: { name: "owner" } },
-      include: { role: true },
+      include: USER_WITH_ROLES,
       orderBy: { created_at: "asc" },
     });
     if (!owner) return null;
@@ -57,6 +90,7 @@ export async function getCurrentUser(): Promise<Actor | null> {
       id: owner.id,
       name: `${actor.name} (Super Admin)`,
       role: owner.role.name,
+      roles: rolesOf(owner),
       impersonated: true,
       readOnly,
     };
@@ -65,12 +99,12 @@ export async function getCurrentUser(): Promise<Actor | null> {
   // ── 2. Sesi tenant biasa ─────────────────────────────────────────────
   const sid = su?.id;
   if (sid) {
-    const u = await prisma.user.findUnique({ where: { id: sid }, include: { role: true } });
+    const u = await prisma.user.findUnique({ where: { id: sid }, include: USER_WITH_ROLES });
     if (u) {
       // Revoke sesi lama: token yang terbit sebelum password terakhir diganti ditolak.
       const tokenPw = session!.user.pwChangedAt ?? 0;
       if (u.password_changed_at && u.password_changed_at.getTime() > tokenPw) return null;
-      return { id: u.id, name: u.name, role: u.role.name };
+      return { id: u.id, name: u.name, role: u.role.name, roles: rolesOf(u) };
     }
   }
 
@@ -79,12 +113,12 @@ export async function getCurrentUser(): Promise<Actor | null> {
     const tenant = await requireTenant();
     const fallback = await prisma.user.findFirst({
       where: { tenant_id: tenant.id, active: true, role: { name: { in: ["owner", "admin"] } } },
-      include: { role: true },
+      include: USER_WITH_ROLES,
       orderBy: { created_at: "asc" },
     });
     if (fallback) {
       console.warn("⚠️ actor: DEVELOPMENT FALLBACK user:", fallback.username);
-      return { id: fallback.id, name: fallback.name, role: fallback.role.name };
+      return { id: fallback.id, name: fallback.name, role: fallback.role.name, roles: rolesOf(fallback) };
     }
   }
 

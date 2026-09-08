@@ -165,6 +165,18 @@ export async function registerTenant(
         },
       });
 
+      // Solo Mode / UMKM: percetakan yang baru daftar biasanya dijalankan
+      // sendiri. Owner diberi SEMUA peran operasional sebagai extra_roles supaya
+      // bisa menyelesaikan alur (kasir → desain → produksi → QC → finishing →
+      // rak → serah) tanpa membuat akun kedua. Owner tinggal mencabut peran dari
+      // dirinya di "Pegawai & Akses" begitu mulai merekrut.
+      await tx.userRole.createMany({
+        data: DEFAULT_ROLES.filter((r) => r !== "owner").map((name) => ({
+          user_id: owner.id,
+          role_id: roleIds[name],
+        })),
+      });
+
       // Data awal supaya alur kerja bisa diselesaikan sejak hari pertama.
       // Tanpa ini tenant baru buntu: ProductionJob mewajibkan machine_id,
       // finishProduction mewajibkan pemakaian bahan, dan SCAN7 butuh lokasi rak.

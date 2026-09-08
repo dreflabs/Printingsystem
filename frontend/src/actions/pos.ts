@@ -224,7 +224,7 @@ export async function voidRetailOrder(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "admin" && actor.role !== "owner") {
+    if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) {
       return fail("Hanya Admin atau Owner yang boleh membatalkan transaksi retail.");
     }
     if (!input.reason?.trim() || input.reason.trim().length < 5) {
@@ -242,7 +242,7 @@ export async function voidRetailOrder(
       if (order.status !== "CLOSED") throw new Error(`Status ${order.status} tidak bisa di-void.`);
 
       const sameDay = order.created_at.toDateString() === new Date().toDateString();
-      if (actor.role !== "owner" && !sameDay) {
+      if (!actor.roles.includes("owner") && !sameDay) {
         throw new Error("Transaksi lewat hari hanya bisa dibatalkan oleh Owner.");
       }
 

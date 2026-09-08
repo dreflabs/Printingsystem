@@ -19,7 +19,7 @@ export async function freezeOrder(orderId: string, reason: string): Promise<Acti
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh membekukan order.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh membekukan order.");
     if (!reason?.trim()) return fail("Alasan pembekuan wajib diisi.");
 
     const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
@@ -48,7 +48,7 @@ export async function unfreezeOrder(orderId: string, note?: string): Promise<Act
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh mencairkan order.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh mencairkan order.");
 
     const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
     if (!order) return fail("Order tidak ditemukan.");

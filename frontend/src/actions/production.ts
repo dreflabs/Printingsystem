@@ -8,7 +8,7 @@ import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";
 
-const isGudang = (r: string) => r === "gudang";
+const isGudang = (r: string[]) => r.includes("gudang");
 
 /** Cari ProductionJob (aktif) berdasarkan job_code atau order_code. */
 async function findJobByCode(tx: Prisma.TransactionClient, tenantId: string, code: string) {
@@ -86,7 +86,7 @@ export async function getScanContext(code: string) {
     const actions: ScanAction[] = [];
     const s = job.status;
 
-    if (actor.role === "operator") {
+    if (actor.roles.includes("operator")) {
       const mine = job.operator_id === actor.id;
       const claimable = s === "PRODUCTION_QUEUED" && job.operator_id == null;
       if (claimable || (mine && s === "PRODUCTION_ASSIGNED")) {
@@ -98,7 +98,7 @@ export async function getScanContext(code: string) {
       }
       if (mine && s === "PRODUCTION_PAUSED") actions.push({ action: "resume_production", label: "Lanjutkan Produksi" });
     }
-    if (isGudang(actor.role)) {
+    if (isGudang(actor.roles)) {
       if (s === "PRODUCTION_COMPLETE") actions.push({ action: "submit_qc", label: "Isi Form QC (SCAN 3)" });
       if (s === "QC_PASSED") actions.push({ action: "start_finishing", label: "Mulai Finishing (SCAN 4)" });
       if (s === "FINISHING_STARTED") actions.push({ action: "finish_finishing", label: "Selesai Finishing (SCAN 5)" });
@@ -108,10 +108,10 @@ export async function getScanContext(code: string) {
       }
       if (s !== "PICKED_UP") actions.push({ action: "report_incident", label: "Lapor Barang Tidak Ditemukan" });
     }
-    if (actor.role === "owner" && s === "FAILED_REWORK") {
+    if (actor.roles.includes("owner") && s === "FAILED_REWORK") {
       actions.push({ action: "decide_rework", label: "Putuskan Rework" });
     }
-    if ((actor.role === "admin" || actor.role === "owner") && ["IN_TRANSIT", "READY_FOR_PICKUP"].includes(order.status)) {
+    if ((actor.roles.includes("admin") || actor.roles.includes("owner")) && ["IN_TRANSIT", "READY_FOR_PICKUP"].includes(order.status)) {
       actions.push({ action: "release", label: "Serahkan ke Konsumen (SCAN 10)" });
     }
     actions.push({ action: "view", label: "Lihat Detail" });
@@ -254,7 +254,7 @@ export async function reassignProductionJob(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "admin" && actor.role !== "owner") return fail("Hanya Admin/Owner yang boleh reassign job.");
+    if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) return fail("Hanya Admin/Owner yang boleh reassign job.");
     if (!input.reason?.trim()) return fail("Alasan reassignment wajib diisi.");
 
     const job = await findJobByCode(prisma, tenant.id, jobCode);
@@ -268,7 +268,7 @@ export async function reassignProductionJob(
       where: { tenant_id: tenant.id, action: "PRODUCTION_JOB_REASSIGNED", entity_id: job.job_code, created_at: { gte: dayAgo } },
     });
     const limitReached = recentReassigns >= 2;
-    if (limitReached && actor.role !== "owner") {
+    if (limitReached && !actor.roles.includes("owner")) {
       return fail("Batas 2x reassignment / 24 jam tercapai. Butuh keputusan Owner.");
     }
 
@@ -471,7 +471,7 @@ export async function submitQC(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.role)) return fail("Hanya role Gudang yang boleh melakukan QC.");
+    if (!isGudang(actor.roles)) return fail("Hanya role Gudang yang boleh melakukan QC.");
     if (input.result === "FAIL") {
       if (!input.notes || input.notes.trim().length < 20) {
         return fail("QC FAIL wajib deskripsi masalah minimal 20 karakter.");
@@ -557,7 +557,7 @@ export async function decideRework(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh memutuskan rework.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh memutuskan rework.");
     if (!input.reason?.trim()) return fail("Alasan keputusan wajib diisi.");
 
     const result = await prisma.$transaction(async (tx) => {
@@ -644,7 +644,7 @@ export async function startFinishing(jobCode: string): Promise<ActionResult<{ jo
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.role)) return fail("Hanya role Gudang yang boleh mulai finishing.");
+    if (!isGudang(actor.roles)) return fail("Hanya role Gudang yang boleh mulai finishing.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -683,7 +683,7 @@ export async function finishFinishing(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.role)) return fail("Hanya role Gudang yang boleh menyelesaikan finishing.");
+    if (!isGudang(actor.roles)) return fail("Hanya role Gudang yang boleh menyelesaikan finishing.");
     if (!(input.actualQty > 0)) return fail("Jumlah aktual finishing tidak boleh 0.");
 
     const result = await prisma.$transaction(async (tx) => {

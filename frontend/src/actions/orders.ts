@@ -85,7 +85,7 @@ export async function createPrintingOrder(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!["owner", "admin", "designer_sales"].includes(actor.role)) {
+    if (!["owner", "admin", "designer_sales"].some((r) => actor.roles.includes(r))) {
       return fail("Hanya Owner/Admin/Designer Sales yang boleh membuat order.");
     }
 
@@ -100,13 +100,15 @@ export async function createPrintingOrder(
       //  - walk-in: override <50% HANYA Owner (Admin dilarang).
       //  - online/makloon: Admin boleh sampai min 30%, Owner bebas.
       const isWalkin = input.orderType === "walkin";
-      if (actor.role !== "admin" && actor.role !== "owner") {
+      if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) {
         return fail("Hanya Owner/Admin yang boleh override DP di bawah 50%.");
       }
-      if (isWalkin && actor.role !== "owner") {
+      if (isWalkin && !actor.roles.includes("owner")) {
         return fail("Override DP di bawah 50% untuk order walk-in hanya boleh oleh Owner.");
       }
-      if (actor.role === "admin" && input.dpOverridePct < 30) {
+      // Batasan 30% hanya untuk yang bertindak sebagai Admin — Owner (walau juga
+      // punya peran Admin di Solo Mode) tetap bebas.
+      if (!actor.roles.includes("owner") && input.dpOverridePct < 30) {
         return fail("Admin hanya boleh override DP sampai minimal 30% (order online/makloon).");
       }
       if (!input.dpOverrideReason) return fail("Override DP wajib menyertakan alasan.");
@@ -266,7 +268,7 @@ export async function addPayment(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "admin" && actor.role !== "owner") {
+    if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) {
       return fail("Hanya Admin/Owner yang boleh mengkonfirmasi pembayaran.");
     }
     if (!(input.amount > 0)) return fail("Nominal pembayaran harus lebih dari 0.");
@@ -354,7 +356,7 @@ export async function decideDiscount(
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
     // Aturan 14: keputusan diskon HANYA Owner (Admin cuma mengajukan).
-    if (actor.role !== "owner") {
+    if (!actor.roles.includes("owner")) {
       return fail("Hanya Owner yang boleh memutuskan diskon.");
     }
 
@@ -442,7 +444,7 @@ export async function requestDiscount(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner" && actor.role !== "admin") {
+    if (!actor.roles.includes("owner") && !actor.roles.includes("admin")) {
       return fail("Hanya Owner atau Admin yang boleh mengajukan diskon.");
     }
 

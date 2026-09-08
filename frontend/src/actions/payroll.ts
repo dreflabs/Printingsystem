@@ -7,7 +7,7 @@ import { logAction } from "@/lib/logger";
 import { ok, fail } from "@/types";
 import { revalidatePath } from "next/cache";
 
-const isAdmin = (r: string) => r === "admin" || r === "owner";
+const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
 const num = (v: unknown) => Number(v ?? 0);
 
 /** Hari kerja dalam sebulan = semua tanggal kalender kecuali Minggu (toko libur Minggu). */
@@ -35,7 +35,7 @@ export async function generatePayrollPeriod(year: number, month: number) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh membuat periode payroll.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh membuat periode payroll.");
     if (month < 1 || month > 12) return fail("Bulan tidak valid.");
 
     const existing = await prisma.payrollPeriod.findUnique({
@@ -135,7 +135,7 @@ export async function finalizePayrollPeriod(periodId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh finalisasi payroll.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh finalisasi payroll.");
 
     const period = await prisma.payrollPeriod.findFirst({ where: { id: periodId, tenant_id: tenant.id } });
     if (!period) return fail("Periode tidak ditemukan.");
@@ -162,7 +162,7 @@ export async function markPayrollRecordPaid(recordId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh menandai gaji sudah dibayar.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh menandai gaji sudah dibayar.");
 
     const record = await prisma.payrollRecord.findFirst({ where: { id: recordId, tenant_id: tenant.id } });
     if (!record) return fail("Data payroll tidak ditemukan.");
@@ -185,7 +185,7 @@ export async function setEmployeeBaseSalary(userId: string, amount: number) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh mengubah gaji pokok pegawai.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh mengubah gaji pokok pegawai.");
     if (!Number.isFinite(amount) || amount < 0) return fail("Nominal gaji tidak valid.");
 
     const user = await prisma.user.findFirst({ where: { id: userId, tenant_id: tenant.id } });
@@ -211,7 +211,7 @@ export async function updatePayrollLateDeductionRate(rupiahPerMinute: number) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh mengubah pengaturan payroll.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh mengubah pengaturan payroll.");
     if (!Number.isFinite(rupiahPerMinute) || rupiahPerMinute < 0) return fail("Nominal tidak valid.");
 
     await prisma.tenant.update({ where: { id: tenant.id }, data: { payroll_late_deduction_per_minute: rupiahPerMinute } });
@@ -235,7 +235,7 @@ export async function getPayrollPeriods() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh melihat payroll.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat payroll.");
 
     const periods = await prisma.payrollPeriod.findMany({
       where: { tenant_id: tenant.id },
@@ -245,7 +245,7 @@ export async function getPayrollPeriods() {
 
     // readOnly = Super Admin sub-level SUPPORT sedang impersonate — meski actor.role
     // di sini "owner" (role tenant target), SUPPORT tidak boleh lihat nominal gaji.
-    const canSeeAmount = actor.role === "owner" && !actor.readOnly;
+    const canSeeAmount = actor.roles.includes("owner") && !actor.readOnly;
     return ok(
       periods.map((p) => ({
         id: p.id,
@@ -268,7 +268,7 @@ export async function getPayrollPeriodDetail(periodId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh melihat payroll.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat payroll.");
 
     const period = await prisma.payrollPeriod.findFirst({
       where: { id: periodId, tenant_id: tenant.id },
@@ -283,7 +283,7 @@ export async function getPayrollPeriodDetail(periodId: string) {
 
     // readOnly = Super Admin sub-level SUPPORT sedang impersonate — tidak boleh
     // lihat nominal gaji meski actor.role di sini "owner" (role tenant target).
-    const canSeeAmount = actor.role === "owner" && !actor.readOnly;
+    const canSeeAmount = actor.roles.includes("owner") && !actor.readOnly;
     return ok({
       id: period.id,
       year: period.year,
@@ -325,7 +325,7 @@ export async function getPayslip(recordId: string) {
     const actor = await requireUser();
     // Slip gaji tidak punya varian tanpa nominal — SUPPORT (readOnly) yang
     // impersonate ditolak sepenuhnya di sini, bukan cuma disembunyikan angkanya.
-    if (actor.role !== "owner" || actor.readOnly) return fail("Hanya Owner yang boleh melihat slip gaji.");
+    if (!actor.roles.includes("owner") || actor.readOnly) return fail("Hanya Owner yang boleh melihat slip gaji.");
 
     const record = await prisma.payrollRecord.findFirst({
       where: { id: recordId, tenant_id: tenant.id },

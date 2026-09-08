@@ -9,8 +9,8 @@ import { logAction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";
 import { buildLocationCode, defaultLocationName, buildStorageLocations } from "@/lib/starter-data";
 
-const isGudang = (r: string) => r === "gudang";
-const isAdmin = (r: string) => r === "admin" || r === "owner";
+const isGudang = (r: string[]) => r.includes("gudang");
+const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
 
 /** Buang prefix "LOC:" dari hasil scan Location QR. */
 function cleanLocationCode(v: string): string {
@@ -72,7 +72,7 @@ export async function createStorageLocation(data: {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh menambah lokasi rak.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh menambah lokasi rak.");
     if (!data.zone?.trim()) return fail("Zona wajib diisi.");
     const floor = data.floor ?? 3;
     const code = buildLocationCode(data.zone, data.rack, data.slot, floor);
@@ -114,7 +114,7 @@ export async function updateStorageLocation(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengubah lokasi rak.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengubah lokasi rak.");
 
     const loc = await prisma.storageLocation.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!loc) return fail("Lokasi tidak ditemukan.");
@@ -148,7 +148,7 @@ export async function seedDefaultStorageLayout() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh membuat layout rak.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh membuat layout rak.");
 
     // Layout-nya dipakai bersama dengan pendaftaran tenant baru (lib/starter-data),
     // supaya rak bawaan dan rak hasil tombol ini selalu identik.
@@ -186,7 +186,7 @@ export async function assignStorageLocation(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.role)) return fail("Hanya role Gudang yang boleh menyimpan ke storage.");
+    if (!isGudang(actor.roles)) return fail("Hanya role Gudang yang boleh menyimpan ke storage.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -273,7 +273,7 @@ export async function reportStorageIncident(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.role) && !isAdmin(actor.role)) return fail("Hanya Gudang atau Owner/Admin yang boleh melaporkan insiden.");
+    if (!isGudang(actor.roles) && !isAdmin(actor.roles)) return fail("Hanya Gudang atau Owner/Admin yang boleh melaporkan insiden.");
     if (!input.notes?.trim()) return fail("Catatan insiden wajib diisi.");
 
     await prisma.$transaction(async (tx) => {
@@ -314,7 +314,7 @@ export async function confirmItemAtCounter(jobCode: string): Promise<ActionResul
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.role)) return fail("Hanya role Gudang yang boleh konfirmasi barang di counter.");
+    if (!isGudang(actor.roles)) return fail("Hanya role Gudang yang boleh konfirmasi barang di counter.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -377,7 +377,7 @@ export async function releaseOrder(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "admin" && actor.role !== "owner") {
+    if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) {
       return fail("Hanya Admin/Owner yang boleh melakukan release final.");
     }
     if (!input.receiverName?.trim()) return fail("Nama penerima wajib diisi.");
@@ -395,7 +395,7 @@ export async function releaseOrder(
 
       const lunas = Number(order.balance) <= 0;
       if (!lunas) {
-        if (actor.role !== "owner" || !input.ownerOverrideReason?.trim()) {
+        if (!actor.roles.includes("owner") || !input.ownerOverrideReason?.trim()) {
           throw new Error(
             `Masih ada sisa tagihan Rp ${Number(order.balance).toLocaleString("id-ID")}. Butuh pelunasan atau override Owner.`
           );

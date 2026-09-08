@@ -15,7 +15,7 @@ const LATE_M = 15;
 const LATE_MIN_OF_DAY = LATE_H * 60 + LATE_M;
 const BREAK_MAX_MIN = 60;
 
-const isAdmin = (r: string) => r === "admin" || r === "owner";
+const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
 
 export type AttendanceColumnMapping = {
   /** kolom nama pegawai (wajib) */
@@ -108,7 +108,7 @@ const DIR_OUT = ["out", "pulang", "keluar", "c/out", "checkout", "check-out", "c
 export async function previewAttendanceImport(csvText: string) {
   try {
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengimpor absensi.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengimpor absensi.");
     const { headers, rows } = parseCsv(csvText);
     if (headers.length === 0) return fail("File CSV kosong atau tidak terbaca.");
 
@@ -146,7 +146,7 @@ export async function commitAttendanceImport(input: {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh mengimpor absensi.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengimpor absensi.");
 
     const { mapping: map, format } = input;
     if (map.name == null || map.date == null) return fail("Kolom Nama dan Tanggal wajib dipetakan.");
@@ -346,7 +346,7 @@ export async function listAttendanceImports() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh melihat riwayat impor.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat riwayat impor.");
 
     const imports = await prisma.attendanceImport.findMany({
       where: { tenant_id: tenant.id },
@@ -376,7 +376,7 @@ export async function getAttendanceReport(params?: { from?: string; to?: string;
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Owner/Admin yang boleh melihat laporan absensi.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat laporan absensi.");
 
     const where: Record<string, unknown> = { tenant_id: tenant.id };
     if (params?.importId) where.import_id = params.importId;
@@ -482,7 +482,7 @@ export async function addAttendanceOwnerNote(recordId: string, note: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner") return fail("Hanya Owner yang boleh menambah catatan absensi.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh menambah catatan absensi.");
 
     const rec = await prisma.attendanceRecord.findFirst({ where: { id: recordId, tenant_id: tenant.id } });
     if (!rec) return fail("Data absensi tidak ditemukan.");

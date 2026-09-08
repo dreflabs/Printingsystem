@@ -18,8 +18,8 @@ import { randomUUID } from "crypto";
 import { autoReleaseToProduction } from "@/lib/auto-release";
 import { ok, fail, type ActionResult } from "@/types";
 
-const isAdmin = (role: string) => role === "admin" || role === "owner";
-const canDesign = (role: string) => isAdmin(role) || role === "designer_sales";
+const isAdmin = (role: string[]) => role.includes("admin") || role.includes("owner");
+const canDesign = (role: string[]) => isAdmin(role) || role.includes("designer_sales");
 
 async function nextJobCode(tx: Prisma.TransactionClient, tenantId: string): Promise<string> {
   const now = new Date();
@@ -72,7 +72,7 @@ export async function createDesignUploadUrl(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!canDesign(actor.role)) {
+    if (!canDesign(actor.roles)) {
       return fail("Hanya Designer Sales/Admin/Owner yang boleh upload desain.");
     }
     if (!r2Configured()) {
@@ -117,7 +117,7 @@ export async function uploadDesignVersion(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!canDesign(actor.role)) {
+    if (!canDesign(actor.roles)) {
       return fail("Hanya Designer Sales/Admin/Owner yang boleh upload desain.");
     }
     if (!input.filePath?.trim()) return fail("File desain wajib diisi.");
@@ -212,10 +212,10 @@ export async function approveDesign(
       if (version.approval_status === "APPROVED") throw new Error("Versi ini sudah disetujui.");
 
       const method = input.approvalMethodOverride || job.approval_method;
-      if (method === "ONLINE" && !isAdmin(actor.role)) {
+      if (method === "ONLINE" && !isAdmin(actor.roles)) {
         throw new Error("Persetujuan desain ONLINE harus dilakukan oleh Admin.");
       }
-      if (method !== "ONLINE" && actor.role === "designer_sales" && version.uploaded_by !== actor.id && !isAdmin(actor.role)) {
+      if (method !== "ONLINE" && actor.roles.includes("designer_sales") && version.uploaded_by !== actor.id && !isAdmin(actor.roles)) {
         throw new Error("Hanya designer pembuat atau Admin yang boleh menyetujui.");
       }
 
@@ -276,7 +276,7 @@ export async function requestDesignRevision(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role) && actor.role !== "designer_sales") {
+    if (!isAdmin(actor.roles) && !actor.roles.includes("designer_sales")) {
       return fail("Hanya Designer Sales/Admin/Owner yang boleh meminta revisi desain.");
     }
     if (!input.reason?.trim()) return fail("Alasan revisi wajib diisi.");
@@ -330,7 +330,7 @@ export async function getProductionAssignData(): Promise<
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Admin/Owner yang boleh assign produksi.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Admin/Owner yang boleh assign produksi.");
     const [machines, operators] = await Promise.all([
       prisma.machine.findMany({
         where: { tenant_id: tenant.id, status: "ACTIVE" },
@@ -371,7 +371,7 @@ export async function assignProductionJob(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.role)) return fail("Hanya Admin/Owner yang boleh assign produksi.");
+    if (!isAdmin(actor.roles)) return fail("Hanya Admin/Owner yang boleh assign produksi.");
     const assignments = (input.assignments ?? []).filter((a) => a.plannedQty > 0);
     if (assignments.length === 0) return fail("Minimal 1 assignment produksi.");
 

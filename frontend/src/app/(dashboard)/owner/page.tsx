@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { getOwnerDashboard } from "@/actions/queries";
 import { getSetupChecklist } from "@/actions/onboarding";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
+import { SoloNextSteps } from "@/components/dashboard/SoloNextSteps";
 import { decideDiscount } from "@/actions/orders";
 import { approveFinalAudit } from "@/actions/audit";
 import { decideRework, reassignProductionJob } from "@/actions/production";
@@ -269,6 +270,7 @@ export default function OwnerPage() {
       </div>
 
       <RoleGuide role="owner" checklist={checklist} />
+      <SoloNextSteps />
 
       {error && <div className="rounded-xl border border-status-red/20 bg-status-red/10 px-4 py-3 text-xs font-bold text-status-red">{error}</div>}
 

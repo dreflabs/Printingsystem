@@ -28,7 +28,7 @@ export async function getTenantUsers() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh melihat daftar pegawai.");
+    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh melihat daftar pegawai.");
 
     const users = await prisma.user.findMany({
       where: { tenant_id: tenant.id },
@@ -53,7 +53,7 @@ export async function createEmployee(data: {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh menambah pegawai.");
+    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh menambah pegawai.");
     if (data.role_name === "owner" || data.extra_role_names?.includes("owner")) {
       throw new Error("Role Owner tidak bisa dibuat lewat form ini.");
     }
@@ -136,7 +136,7 @@ export async function updateUserRoles(userId: string, roleNames: string[]) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh mengubah role pegawai.");
+    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh mengubah role pegawai.");
     if (roleNames.length === 0) throw new Error("Minimal 1 role harus dipilih");
 
     const user = await prisma.user.findFirst({
@@ -194,7 +194,7 @@ export async function toggleEmployeeStatus(userId: string, active: boolean) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh mengaktifkan/menonaktifkan pegawai.");
+    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh mengaktifkan/menonaktifkan pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
@@ -228,7 +228,7 @@ export async function unlockEmployeeAccount(userId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh membuka kunci akun pegawai.");
+    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh membuka kunci akun pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
@@ -254,7 +254,7 @@ export async function resetEmployeePassword(userId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh me-reset password pegawai.");
+    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh me-reset password pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
@@ -335,7 +335,7 @@ export async function getEmployeeDeleteImpact(userId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh menghapus pegawai.");
+    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh menghapus pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
@@ -370,7 +370,7 @@ export async function deleteEmployee(userId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (actor.role !== "owner") throw new Error("Hanya Owner yang boleh menghapus pegawai.");
+    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh menghapus pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },

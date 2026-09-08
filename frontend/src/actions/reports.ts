@@ -163,12 +163,13 @@ export async function getOperatorPerformance(fromStr?: string, toStr?: string) {
 
     const grouped = await prisma.productionJob.groupBy({
       by: ["operator_id"],
-      where: { tenant_id: tenant.id, created_at: { gte: from, lte: to } },
+      where: { tenant_id: tenant.id, created_at: { gte: from, lte: to }, operator_id: { not: null } },
       _count: { _all: true },
       _sum: { actual_qty: true, waste_qty: true },
     });
+    const operatorIds = grouped.map((g) => g.operator_id).filter((id): id is string => id != null);
     const operators = await prisma.user.findMany({
-      where: { id: { in: grouped.map((g) => g.operator_id) } },
+      where: { id: { in: operatorIds } },
       select: { id: true, name: true },
     });
     const nameById = new Map(operators.map((u) => [u.id, u.name]));
@@ -180,7 +181,7 @@ export async function getOperatorPerformance(fromStr?: string, toStr?: string) {
           const waste = g._sum.waste_qty ?? 0;
           return {
             operatorId: g.operator_id,
-            operatorName: nameById.get(g.operator_id) ?? "-",
+            operatorName: (g.operator_id && nameById.get(g.operator_id)) ?? "-",
             jobCount: g._count._all,
             totalOutput: output,
             totalWaste: waste,

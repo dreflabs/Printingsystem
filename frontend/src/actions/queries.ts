@@ -28,38 +28,55 @@ const num = (v: unknown) => Number(v ?? 0);
 // OPERATOR
 // ─────────────────────────────────────────────────────────────
 
-/** Job produksi untuk operator yang login: aktif + antrian assigned. */
+/**
+ * Job produksi untuk operator yang login:
+ *  - `mine`  : job yang sudah jadi tanggung jawabnya (aktif / di-pin Admin)
+ *  - `queue` : job PRODUCTION_QUEUED tanpa operator — siapa pun operator boleh klaim
+ */
 export async function getOperatorJobs() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
 
-    const jobs = await prisma.productionJob.findMany({
-      where: {
-        tenant_id: tenant.id,
-        operator_id: actor.id,
-        status: { in: ["PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"] },
-      },
-      orderBy: [{ priority: "desc" }, { created_at: "asc" }],
-      include: {
-        machine: { select: { name: true, machine_code: true } },
-        order: { select: { order_code: true, deadline: true, customer: { select: { name: true } } } },
-      },
+    const include = {
+      machine: { select: { name: true, machine_code: true } },
+      order: { select: { order_code: true, deadline: true, customer: { select: { name: true } } } },
+    } as const;
+
+    const [mineRows, queueRows] = await Promise.all([
+      prisma.productionJob.findMany({
+        where: {
+          tenant_id: tenant.id,
+          operator_id: actor.id,
+          status: { in: ["PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"] },
+        },
+        orderBy: [{ priority: "desc" }, { created_at: "asc" }],
+        include,
+      }),
+      prisma.productionJob.findMany({
+        where: {
+          tenant_id: tenant.id,
+          operator_id: null,
+          status: "PRODUCTION_QUEUED",
+        },
+        orderBy: [{ priority: "desc" }, { order: { deadline: "asc" } }, { created_at: "asc" }],
+        include,
+      }),
+    ]);
+
+    const shape = (j: (typeof mineRows)[number]) => ({
+      jobCode: j.job_code,
+      orderCode: j.order.order_code,
+      customerName: j.order.customer?.name ?? "-",
+      machine: j.machine.name,
+      status: j.status,
+      plannedQty: j.planned_qty,
+      actualQty: j.actual_qty,
+      deadline: j.order.deadline,
+      startedAt: j.actual_start,
     });
 
-    return ok(
-      jobs.map((j) => ({
-        jobCode: j.job_code,
-        orderCode: j.order.order_code,
-        customerName: j.order.customer?.name ?? "-",
-        machine: j.machine.name,
-        status: j.status,
-        plannedQty: j.planned_qty,
-        actualQty: j.actual_qty,
-        deadline: j.order.deadline,
-        startedAt: j.actual_start,
-      }))
-    );
+    return ok({ mine: mineRows.map(shape), queue: queueRows.map(shape) });
   } catch (e) {
     console.error("getOperatorJobs:", e);
     return fail(e instanceof Error ? e.message : "Gagal memuat job operator.");
@@ -152,7 +169,7 @@ export async function getDesignQueue() {
 }
 
 const IN_PROGRESS = [
-  "PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_COMPLETE",
+  "PRODUCTION_QUEUED", "PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_COMPLETE",
   "QC_PENDING", "QC_PASSED", "QC_REWORK_PENDING",
   "FINISHING_STARTED", "FINISHING_COMPLETE", "STORAGE_PENDING", "STORED",
 ];
@@ -230,7 +247,7 @@ export async function getOwnerDashboard() {
     ]);
 
     const bucket = (s: string) =>
-      ["PRODUCTION_ASSIGNED", "PRODUCTION_STARTED"].includes(s) ? "produksi"
+      ["PRODUCTION_QUEUED", "PRODUCTION_ASSIGNED", "PRODUCTION_STARTED"].includes(s) ? "produksi"
         : ["PRODUCTION_COMPLETE", "QC_PENDING"].includes(s) ? "qc"
         : ["QC_PASSED", "FINISHING_STARTED"].includes(s) ? "finishing"
         : ["FINISHING_COMPLETE", "STORAGE_PENDING"].includes(s) ? "storage"
@@ -332,8 +349,8 @@ export async function getProductionOverview() {
       status: j.status,
       machineId: j.machine.id,
       machineName: j.machine.name,
-      operatorId: j.operator.id,
-      operatorName: j.operator.name,
+      operatorId: j.operator?.id ?? null,
+      operatorName: j.operator?.name ?? "—",
       plannedQty: j.planned_qty,
       actualQty: j.actual_qty,
       wasteQty: j.waste_qty,
@@ -344,6 +361,7 @@ export async function getProductionOverview() {
 
     return ok({
       kpi: {
+        queued: shaped.filter((j) => j.status === "PRODUCTION_QUEUED").length,
         assigned: shaped.filter((j) => j.status === "PRODUCTION_ASSIGNED").length,
         running: shaped.filter((j) => j.status === "PRODUCTION_STARTED").length,
         paused: shaped.filter((j) => j.status === "PRODUCTION_PAUSED").length,
@@ -505,7 +523,7 @@ export async function getOrderDetail(orderId: string) {
         jobCode: j.job_code,
         status: j.status,
         machine: j.machine.name,
-        operator: j.operator.name,
+        operator: j.operator?.name ?? "—",
         plannedQty: j.planned_qty,
         actualQty: j.actual_qty,
         wasteQty: j.waste_qty,

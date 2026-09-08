@@ -30,11 +30,17 @@ WAITING_PAYMENT
 CONFIRMED
   └─ DP sudah masuk, order dikonfirmasi Admin
 
+PRODUCTION_QUEUED
+  └─ Order lolos Completeness Gate → sistem OTOMATIS buat Production Job
+     (1 per item, mesin dari `product.default_machine_id`, belum ada operator).
+     Tidak ada approval Admin manual. Lihat `02-WORKFLOW/17-AUTO-RELEASE-PRODUKSI.md`.
+
 PRODUCTION_ASSIGNED
-  └─ Admin assign job ke operator & mesin
+  └─ Job di-pin Admin ke operator+mesin tertentu (jalur manual / fallback:
+     item tanpa mesin default, mesin default MAINTENANCE, atau override prioritas)
 
 PRODUCTION_STARTED
-  └─ Operator scan QR → mulai produksi (SCAN 1)
+  └─ Operator scan QR → klaim job dari antrian + mulai produksi (SCAN 1)
   └─ Sub-status di level `production_jobs` (bukan status order): Operator bisa "Jeda Produksi" → job jadi PRODUCTION_PAUSED sementara, order tetap PRODUCTION_STARTED. Lihat `02-WORKFLOW/05-PRODUCTION.md` bagian "Jeda Produksi".
 
 PRODUCTION_COMPLETE
@@ -119,7 +125,8 @@ CANCELLED
 DRAFT → DESIGNING → WAITING_APPROVAL* → APPROVED
                   ↘ (walk-in/makloon langsung) ↗
 APPROVED → WAITING_PAYMENT → CONFIRMED
-CONFIRMED → PRODUCTION_ASSIGNED → PRODUCTION_STARTED → PRODUCTION_COMPLETE
+CONFIRMED → PRODUCTION_QUEUED → PRODUCTION_STARTED → PRODUCTION_COMPLETE
+          ↘ (jalur manual) PRODUCTION_ASSIGNED → PRODUCTION_STARTED ↗
 PRODUCTION_COMPLETE → QC_PENDING → QC_PASSED → FINISHING_STARTED → FINISHING_COMPLETE
                                ↘ QC_FAILED (Auto-generate Child Job -R1) → QC_REWORK_PENDING → REWORK_APPROVED → PRODUCTION_STARTED (untuk Child Job)
 FINISHING_COMPLETE → STORAGE_PENDING → STORED → READY_FOR_PICKUP
@@ -170,8 +177,10 @@ NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED
 | WAITING_APPROVAL → APPROVED | Admin |
 | Walk-in/Makloon → APPROVED | Designer Sales |
 | APPROVED → WAITING_PAYMENT | Sistem otomatis |
-| WAITING_PAYMENT → CONFIRMED | Admin |
-| CONFIRMED → PRODUCTION_ASSIGNED | Admin |
+| WAITING_PAYMENT → CONFIRMED | Admin (konfirmasi pembayaran) / Sistem otomatis |
+| CONFIRMED → PRODUCTION_QUEUED | Sistem otomatis (Completeness Gate lolos — tanpa approval Admin) |
+| CONFIRMED → PRODUCTION_ASSIGNED | Admin (assign manual / fallback) |
+| PRODUCTION_QUEUED → PRODUCTION_STARTED | Operator (klaim + scan SCAN 1) |
 | PRODUCTION_ASSIGNED → PRODUCTION_STARTED | Operator (via scan) |
 | PRODUCTION_STARTED → PRODUCTION_COMPLETE | Operator (via scan) |
 | PRODUCTION_COMPLETE → QC_PENDING | Sistem otomatis |

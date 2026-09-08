@@ -7,6 +7,8 @@ type OrderStatus =
   | "APPROVED"
   | "WAITING_PAYMENT"
   | "CONFIRMED"
+  | "PRODUCTION_QUEUED"
+  | "PRODUCTION_ASSIGNED"
   | "PRODUCTION_STARTED"
   | "QC_PENDING"
   | "QC_PASSED"
@@ -35,6 +37,8 @@ const STATUS_MAP: Record<OrderStatus, StatusConfig> = {
   APPROVED: { label: "Disetujui", color: "bg-status-green/15 text-status-green border-status-green/30", dotColor: "bg-status-green" },
   WAITING_PAYMENT: { label: "Menunggu DP", color: "bg-status-yellow/15 text-status-yellow-text border-status-yellow/30", dotColor: "bg-status-yellow", pulse: true },
   CONFIRMED: { label: "Konfirmasi", color: "bg-status-green/15 text-status-green border-status-green/30", dotColor: "bg-status-green" },
+  PRODUCTION_QUEUED: { label: "Antri Produksi", color: "bg-status-yellow/15 text-status-yellow-text border-status-yellow/30", dotColor: "bg-status-yellow" },
+  PRODUCTION_ASSIGNED: { label: "Ditugaskan", color: "bg-status-blue/15 text-status-blue border-status-blue/30", dotColor: "bg-status-blue" },
   PRODUCTION_STARTED: { label: "Produksi", color: "bg-status-blue/15 text-status-blue border-status-blue/30", dotColor: "bg-status-blue", pulse: true },
   QC_PENDING: { label: "QC", color: "bg-status-yellow/15 text-status-yellow-text border-status-yellow/30", dotColor: "bg-status-yellow" },
   QC_PASSED: { label: "QC Lulus", color: "bg-status-green/15 text-status-green border-status-green/30", dotColor: "bg-status-green" },

@@ -15,6 +15,7 @@ import {
   DESIGN_MAX_UPLOAD_BYTES,
 } from "@/lib/r2";
 import { randomUUID } from "crypto";
+import { autoReleaseToProduction } from "@/lib/auto-release";
 import { ok, fail, type ActionResult } from "@/types";
 
 const isAdmin = (role: string) => role === "admin" || role === "owner";
@@ -233,6 +234,7 @@ export async function approveDesign(
       // Desain ACC → WAITING_PAYMENT. Tapi kalau DP sudah lunas (mis. dibayar saat
       // order dibuat), langsung CONFIRMED supaya order tidak nyangkut.
       const ord = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
+      let release: Awaited<ReturnType<typeof autoReleaseToProduction>> = { released: false, jobCodes: [], missing: [] };
       if (ord && ["DRAFT", "DESIGNING", "WAITING_APPROVAL"].includes(ord.status)) {
         const dpReq = Number(ord.dp_required ?? Math.round(Number(ord.total) * 0.5));
         const dpMet = Number(ord.paid_amount) + 1e-6 >= dpReq;
@@ -240,18 +242,26 @@ export async function approveDesign(
           where: { id: ord.id },
           data: { status: dpMet ? "CONFIRMED" : "WAITING_PAYMENT" },
         });
+        if (dpMet) release = await autoReleaseToProduction(tx, tenant.id, ord.id);
       }
 
-      return { versionNo: version.version_no };
+      return { versionNo: version.version_no, release };
     });
 
     await logAction(actor.id, "DESIGN_APPROVED", "Order", orderId, null, {
       version_no: result.versionNo,
       notes: input.notes,
     });
+    if (result.release.released) {
+      await logAction(actor.id, "ORDER_AUTO_RELEASED", "Order", orderId, null, {
+        job_codes: result.release.jobCodes,
+        trigger: "DESIGN_APPROVED",
+      });
+      revalidatePath("/operator");
+    }
     revalidatePath("/designer");
     revalidatePath("/admin");
-    return ok(result);
+    return ok({ versionNo: result.versionNo });
   } catch (e) {
     console.error("approveDesign:", e);
     return fail(e instanceof Error ? e.message : "Gagal menyetujui desain.");

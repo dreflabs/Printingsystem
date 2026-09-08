@@ -3,11 +3,17 @@
 ## Alur Normal
 
 ```
-Desain APPROVED + syarat pembayaran terpenuhi
-  → Admin assign job ke mesin & operator (PRODUCTION_ASSIGNED)
-  → Operator scan mulai produksi (PRODUCTION_STARTED)
+Desain APPROVED + syarat pembayaran terpenuhi + Completeness Gate lolos
+  → Sistem OTOMATIS buat Production Job per item (PRODUCTION_QUEUED)
+     — mesin dari product.default_machine_id, belum ada operator, tanpa approval Admin
+  → Operator ambil job dari antrian mesinnya → scan mulai (PRODUCTION_STARTED)
   → Operator scan selesai produksi, input actual qty & waste (PRODUCTION_COMPLETE)
 ```
+
+Jalur manual (fallback): kalau ada item tanpa mesin default, mesin default sedang
+MAINTENANCE, atau Admin perlu meng-override prioritas/mesin/operator, Admin memakai
+form **"Assign ke Produksi"** → job dibuat `PRODUCTION_ASSIGNED` (di-pin ke operator).
+Lihat `02-WORKFLOW/17-AUTO-RELEASE-PRODUKSI.md`.
 
 Dicatat per job:
 - Job ID, mesin, operator

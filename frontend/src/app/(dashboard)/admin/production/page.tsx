@@ -77,7 +77,8 @@ export default function ProductionPage() {
   const jobs = (d?.jobs ?? []).filter((j) => !statusFilter || j.status === statusFilter);
 
   const kpis = d ? [
-    { label: "Belum Dimulai", value: d.kpi.assigned, color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Clock },
+    { label: "Antri (belum diambil)", value: d.kpi.queued, color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Clock },
+    { label: "Ditugaskan (pin)", value: d.kpi.assigned, color: "text-status-blue", bg: "bg-status-blue/10", icon: Clock },
     { label: "Sedang Berjalan", value: d.kpi.running, color: "text-status-blue", bg: "bg-status-blue/10", icon: Play },
     { label: "Dijeda", value: d.kpi.paused, color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Wrench },
     { label: "Antrian QC", value: d.kpi.qcQueue, color: "text-accent-teal", bg: "bg-accent-teal/10", icon: Package },
@@ -148,7 +149,8 @@ export default function ProductionPage() {
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
                 className="h-8 rounded-lg bg-elevated border border-border text-xs text-muted px-2 outline-none focus:border-accent-teal cursor-pointer">
                 <option value="">Semua Status</option>
-                <option value="PRODUCTION_ASSIGNED">Belum Dimulai</option>
+                <option value="PRODUCTION_QUEUED">Antri (belum diambil)</option>
+                <option value="PRODUCTION_ASSIGNED">Ditugaskan (pin)</option>
                 <option value="PRODUCTION_STARTED">Berjalan</option>
                 <option value="PRODUCTION_PAUSED">Dijeda</option>
                 <option value="PRODUCTION_COMPLETE">Menunggu QC</option>

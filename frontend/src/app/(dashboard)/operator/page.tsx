@@ -110,7 +110,8 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
 }
 
 export default function OperatorPage() {
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [mine, setMine] = useState<Job[]>([]);
+  const [claimable, setClaimable] = useState<Job[]>([]);
   const [materials, setMaterials] = useState<MaterialOpt[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -122,7 +123,8 @@ export default function OperatorPage() {
     const res = await getOperatorJobs();
     if (!res.success) { setError(res.error); return; }
     setError(null);
-    setJobs(res.data);
+    setMine(res.data.mine);
+    setClaimable(res.data.queue);
   }, []);
 
   useEffect(() => {
@@ -131,8 +133,10 @@ export default function OperatorPage() {
     getOrderFormData().then((r) => { if (r.success) setMaterials(r.data.materials); });
   }, [load]);
 
-  const queue = jobs.filter((j) => j.status === "PRODUCTION_ASSIGNED");
-  const active = jobs.find((j) => j.status === "PRODUCTION_STARTED" || j.status === "PRODUCTION_PAUSED") ?? null;
+  const pinned = mine.filter((j) => j.status === "PRODUCTION_ASSIGNED");
+  const active = mine.find((j) => j.status === "PRODUCTION_STARTED" || j.status === "PRODUCTION_PAUSED") ?? null;
+  const queue = [...pinned, ...claimable];
+  const jobs = mine;
 
   async function act(fn: () => Promise<{ success: boolean; error?: string }>) {
     setBusy(true);
@@ -154,7 +158,7 @@ export default function OperatorPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary">Mesin Produksi</h1>
-        <p className="text-sm text-muted mt-0.5">Antrian job cetak yang di-assign ke Anda</p>
+        <p className="text-sm text-muted mt-0.5">Ambil job dari antrian lalu mulai — maksimal 1 job aktif</p>
       </div>
 
       {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
@@ -198,7 +202,11 @@ export default function OperatorPage() {
                   onClick={() => act(() => startProduction(j.jobCode))}
                   className="mt-3 w-full h-10 rounded-xl bg-accent-teal text-white text-xs font-black hover:brightness-110 disabled:opacity-40 transition-all"
                 >
-                  {active ? "Selesaikan job aktif dulu" : "MULAI PRODUKSI (SCAN 1)"}
+                  {active
+                    ? "Selesaikan job aktif dulu"
+                    : j.status === "PRODUCTION_QUEUED"
+                      ? "AMBIL & MULAI (SCAN 1)"
+                      : "MULAI PRODUKSI (SCAN 1)"}
                 </button>
               </div>
             ))}
@@ -274,9 +282,9 @@ export default function OperatorPage() {
             <ScanLine className="h-5 w-5" /> Scan QR Job
           </a>
 
-          {jobs.length === 0 && !error && (
+          {jobs.length === 0 && claimable.length === 0 && !error && (
             <p className="text-center text-xs text-muted flex items-center justify-center gap-1">
-              <AlertCircle className="h-3.5 w-3.5" /> Belum ada job yang di-assign ke akun Anda.
+              <AlertCircle className="h-3.5 w-3.5" /> Belum ada job di antrian produksi.
             </p>
           )}
         </div>

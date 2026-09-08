@@ -86,13 +86,17 @@ export async function getScanContext(code: string) {
     const actions: ScanAction[] = [];
     const s = job.status;
 
-    if (actor.role === "operator" && job.operator_id === actor.id) {
-      if (s === "PRODUCTION_ASSIGNED") actions.push({ action: "start_production", label: "Mulai Produksi (SCAN 1)" });
-      if (s === "PRODUCTION_STARTED") {
+    if (actor.role === "operator") {
+      const mine = job.operator_id === actor.id;
+      const claimable = s === "PRODUCTION_QUEUED" && job.operator_id == null;
+      if (claimable || (mine && s === "PRODUCTION_ASSIGNED")) {
+        actions.push({ action: "start_production", label: claimable ? "Ambil & Mulai (SCAN 1)" : "Mulai Produksi (SCAN 1)" });
+      }
+      if (mine && s === "PRODUCTION_STARTED") {
         actions.push({ action: "finish_production", label: "Selesai Produksi (SCAN 2)" });
         actions.push({ action: "pause_production", label: "Jeda Produksi" });
       }
-      if (s === "PRODUCTION_PAUSED") actions.push({ action: "resume_production", label: "Lanjutkan Produksi" });
+      if (mine && s === "PRODUCTION_PAUSED") actions.push({ action: "resume_production", label: "Lanjutkan Produksi" });
     }
     if (isGudang(actor.role)) {
       if (s === "PRODUCTION_COMPLETE") actions.push({ action: "submit_qc", label: "Isi Form QC (SCAN 3)" });
@@ -143,18 +147,33 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
       if (!job) throw new Error("Job tidak ditemukan.");
-      if (job.operator_id !== actor.id) throw new Error("Anda bukan operator yang di-assign ke job ini.");
-      if (job.status !== "PRODUCTION_ASSIGNED") throw new Error(`Job tidak bisa dimulai dari status ${job.status}.`);
 
-      // 1 job aktif per operator
+      // Dua jalur mulai produksi:
+      //  - PRODUCTION_QUEUED tanpa operator → operator mengklaim job ini (SCAN 1).
+      //  - PRODUCTION_ASSIGNED → job sudah di-pin ke operator tertentu oleh Admin.
+      const isClaim = job.status === "PRODUCTION_QUEUED" && job.operator_id == null;
+      if (!isClaim) {
+        if (job.status !== "PRODUCTION_ASSIGNED") {
+          throw new Error(`Job tidak bisa dimulai dari status ${job.status}.`);
+        }
+        if (job.operator_id !== actor.id) {
+          throw new Error("Anda bukan operator yang di-assign ke job ini.");
+        }
+      }
+
+      // 1 job aktif per operator (klaim job baru diblokir selama masih ada yang jalan/jeda)
       const active = await tx.productionJob.findFirst({
-        where: { tenant_id: tenant.id, operator_id: actor.id, status: "PRODUCTION_STARTED" },
+        where: {
+          tenant_id: tenant.id,
+          operator_id: actor.id,
+          status: { in: ["PRODUCTION_STARTED", "PRODUCTION_PAUSED"] },
+        },
       });
       if (active) throw new Error(`Selesaikan dulu job aktif Anda (${active.job_code}).`);
 
       await tx.productionJob.update({
         where: { id: job.id },
-        data: { status: "PRODUCTION_STARTED", actual_start: new Date() },
+        data: { status: "PRODUCTION_STARTED", operator_id: actor.id, actual_start: new Date() },
       });
       await tx.order.updateMany({
         where: { id: job.order_id, status: { in: ["PRODUCTION_ASSIGNED", "CONFIRMED"] } },

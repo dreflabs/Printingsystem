@@ -7,6 +7,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { retryOnUnique } from "@/lib/retry";
+import { autoReleaseToProduction } from "@/lib/auto-release";
 import { ok, fail, type ActionResult } from "@/types";
 
 type OrderTypeInput = "walkin" | "online" | "makloon";
@@ -250,6 +251,8 @@ export interface AddPaymentResult {
   status: string;
   dpMet: boolean;
   fullyPaid: boolean;
+  /** job produksi yang otomatis dibuat saat pembayaran ini memicu CONFIRMED */
+  autoReleasedJobs?: string[];
 }
 
 /**
@@ -305,7 +308,12 @@ export async function addPayment(
         data: { paid_amount: paidAmount, balance, status },
       });
 
-      return { paidAmount, balance, status, dpMet, fullyPaid: balance <= 0 };
+      const release =
+        status === "CONFIRMED"
+          ? await autoReleaseToProduction(tx, tenant.id, order.id)
+          : { released: false, jobCodes: [], missing: [] };
+
+      return { paidAmount, balance, status, dpMet, fullyPaid: balance <= 0, release };
     });
 
     await logAction(actor.id, "PAYMENT_ADDED", "Order", orderId, null, {
@@ -314,9 +322,23 @@ export async function addPayment(
       paid_amount: result.paidAmount,
       balance: result.balance,
     });
+    if (result.release.released) {
+      await logAction(actor.id, "ORDER_AUTO_RELEASED", "Order", orderId, null, {
+        job_codes: result.release.jobCodes,
+        trigger: "PAYMENT_ADDED",
+      });
+    }
 
     revalidatePath("/admin");
-    return ok(result);
+    revalidatePath("/operator");
+    return ok({
+      paidAmount: result.paidAmount,
+      balance: result.balance,
+      status: result.status,
+      dpMet: result.dpMet,
+      fullyPaid: result.fullyPaid,
+      autoReleasedJobs: result.release.jobCodes,
+    });
   } catch (e) {
     console.error("addPayment:", e);
     return fail(e instanceof Error ? e.message : "Gagal mencatat pembayaran.");
@@ -369,8 +391,21 @@ export async function decideDiscount(
         },
       });
 
-      return { discount, total, dpRequired, approved: decision.approve };
+      const release =
+        status === "CONFIRMED"
+          ? await autoReleaseToProduction(tx, tenant.id, order.id)
+          : { released: false, jobCodes: [], missing: [] };
+
+      return { discount, total, dpRequired, approved: decision.approve, release };
     });
+
+    if (result.release.released) {
+      await logAction(actor.id, "ORDER_AUTO_RELEASED", "Order", orderId, null, {
+        job_codes: result.release.jobCodes,
+        trigger: "DISCOUNT_APPROVED",
+      });
+      revalidatePath("/operator");
+    }
 
     await logAction(
       actor.id,
@@ -383,7 +418,12 @@ export async function decideDiscount(
 
     revalidatePath("/admin");
     revalidatePath("/owner");
-    return ok(result);
+    return ok({
+      discount: result.discount,
+      total: result.total,
+      dpRequired: result.dpRequired,
+      approved: result.approved,
+    });
   } catch (e) {
     console.error("decideDiscount:", e);
     return fail(e instanceof Error ? e.message : "Gagal memproses keputusan diskon.");

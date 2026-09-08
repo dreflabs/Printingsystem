@@ -324,6 +324,8 @@ model Product {
   base_price          Decimal?    @db.Decimal(15, 2) // harga per `unit`; null = harga selalu manual per order
   default_material_id String?
   default_material    Material?   @relation(fields: [default_material_id], references: [id])
+  default_machine_id  String?
+  default_machine     Machine?    @relation("ProductDefaultMachine", fields: [default_machine_id], references: [id])
   active              Boolean     @default(true)
   order_items         OrderItem[]
 }
@@ -342,9 +344,10 @@ model Machine {
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 
-  materials          MachineMaterial[]
-  material_movements MaterialMovement[]
-  production_jobs    ProductionJob[]
+  materials            MachineMaterial[]
+  material_movements    MaterialMovement[]
+  production_jobs       ProductionJob[]
+  default_for_products  Product[]         @relation("ProductDefaultMachine")
 
   @@unique([tenant_id, machine_code])
 }
@@ -585,8 +588,8 @@ model ProductionJob {
   job_code      String // JOB-YYYYMMDD-XXXX
   machine_id    String
   machine       Machine         @relation(fields: [machine_id], references: [id])
-  operator_id   String
-  operator      User            @relation(fields: [operator_id], references: [id])
+  operator_id   String?
+  operator      User?           @relation(fields: [operator_id], references: [id])
   status        String
   priority      Int             @default(1)
   planned_start DateTime?

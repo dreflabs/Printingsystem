@@ -1,9 +1,13 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser } from "@/lib/actor";
+import { requireUser, requireMutableActor } from "@/lib/actor";
+import { logAction } from "@/lib/logger";
 import { ok, fail } from "@/types";
+
+const OPERATIONAL_ROLES = ["admin", "designer_sales", "operator", "gudang"] as const;
 
 /**
  * "Langkah berikutnya" untuk percetakan yang dijalankan sendiri (Solo Mode).
@@ -16,7 +20,7 @@ type Step = { label: string; hint: string; href: string };
 // Status order terminal / tidak butuh tindakan manual di daftar ini.
 const DONE = new Set(["CLOSED", "CANCELLED", "PICKED_UP"]);
 
-function stepFor(status: string, balance: number): Step | null {
+function stepFor(status: string, balance: number, jobCount: number): Step | null {
   switch (status) {
     case "DRAFT":
       return { label: "Lengkapi order & catat DP", hint: "Buka detail order di Dashboard", href: "/admin" };
@@ -27,6 +31,11 @@ function stepFor(status: string, balance: number): Step | null {
     case "WAITING_PAYMENT":
       return { label: "Catat DP / pelunasan", hint: "Buka detail order di Dashboard", href: "/admin" };
     case "CONFIRMED":
+      // Order lengkap tapi belum ada job → auto-release tidak jalan (produk
+      // belum punya Mesin Default). Harus dirilis manual dari detail order.
+      return jobCount === 0
+        ? { label: "Rilis ke produksi — pilih mesin di detail order", hint: "Dashboard → detail order → Assign ke Produksi", href: "/admin" }
+        : { label: "Mulai produksi (SCAN 1)", hint: "Scan QR job atau menu Mesin Produksi", href: "/scan" };
     case "PRODUCTION_ASSIGNED":
     case "PRODUCTION_QUEUED":
       return { label: "Mulai produksi (SCAN 1)", hint: "Scan QR job atau menu Mesin Produksi", href: "/scan" };
@@ -69,6 +78,9 @@ export async function getNextSteps() {
     const actor = await requireUser();
     // Panel ini memang untuk yang jalan sendiri — butuh > 1 peran.
     const solo = actor.roles.length > 1;
+    // Owner dengan 1 peran → tawarkan "Aktifkan Mode Solo".
+    const canEnableSolo =
+      actor.roles.includes("owner") && !OPERATIONAL_ROLES.every((r) => actor.roles.includes(r));
 
     const orders = await prisma.order.findMany({
       where: { tenant_id: tenant.id, status: { notIn: [...DONE] } },
@@ -81,12 +93,13 @@ export async function getNextSteps() {
         deadline: true,
         balance: true,
         customer: { select: { name: true } },
+        _count: { select: { production_jobs: true } },
       },
     });
 
     const items = orders
       .map((o) => {
-        const step = stepFor(o.status, Number(o.balance));
+        const step = stepFor(o.status, Number(o.balance), o._count.production_jobs);
         if (!step) return null;
         return {
           orderId: o.id,
@@ -99,9 +112,43 @@ export async function getNextSteps() {
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
 
-    return ok({ solo, items });
+    return ok({ solo, canEnableSolo, items });
   } catch (e) {
     console.error("getNextSteps:", e);
     return fail(e instanceof Error ? e.message : "Gagal memuat langkah berikutnya.");
+  }
+}
+
+/**
+ * Beri akun Owner yang sedang login semua peran operasional (Solo Mode).
+ * Untuk tenant lama yang daftar sebelum peran otomatis diberikan.
+ */
+export async function enableSoloMode() {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang bisa mengaktifkan Mode Solo.");
+
+    const roles = await prisma.role.findMany({ where: { name: { in: [...OPERATIONAL_ROLES] } } });
+    await prisma.$transaction(
+      roles.map((r) =>
+        prisma.userRole.upsert({
+          where: { user_id_role_id: { user_id: actor.id, role_id: r.id } },
+          update: {},
+          create: { user_id: actor.id, role_id: r.id },
+        }),
+      ),
+    );
+    await logAction(actor.id, "USER_ROLES_UPDATED", "User", actor.id, ["owner"], [
+      "owner",
+      ...OPERATIONAL_ROLES,
+    ]);
+    revalidatePath("/owner");
+    revalidatePath("/owner/users");
+    void tenant;
+    return ok(null);
+  } catch (e) {
+    console.error("enableSoloMode:", e);
+    return fail(e instanceof Error ? e.message : "Gagal mengaktifkan Mode Solo.");
   }
 }

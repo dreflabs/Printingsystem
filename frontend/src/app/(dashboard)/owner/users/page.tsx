@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Wallet, Trash2, X } from "lucide-react";
+import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Wallet, Trash2, X, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserFormModal, CredentialRevealDialog } from "@/components/owner/UserFormModal";
 import { ConfirmDialog } from "@/components/ui";
 import {
   getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword,
-  unlockEmployeeAccount, getEmployeeDeleteImpact, deleteEmployee,
+  unlockEmployeeAccount, getEmployeeDeleteImpact, deleteEmployee, updateUserRoles,
 } from "@/actions/user-management";
 import { getMyWorkspace } from "@/actions/profile";
 import { setEmployeeBaseSalary } from "@/actions/payroll";
@@ -40,6 +40,7 @@ export default function OwnerUsersPage() {
     { name: string; username: string; tempPassword: string; reset?: boolean } | null
   >(null);
   const [deleteFor, setDeleteFor] = useState<{ id: string; name: string } | null>(null);
+  const [roleEditFor, setRoleEditFor] = useState<{ id: string; name: string; primary: string; roles: string[] } | null>(null);
 
   const runPendingConfirm = async () => {
     if (!pendingConfirm) return;
@@ -277,7 +278,7 @@ export default function OwnerUsersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap items-center gap-1">
                         {getUserRoles(user).map((roleName) => {
                           const badge = ROLE_BADGE[roleName] ?? { label: roleName, cls: "bg-base text-muted border-border" };
                           return (
@@ -286,6 +287,20 @@ export default function OwnerUsersPage() {
                             </span>
                           );
                         })}
+                        <button
+                          onClick={() =>
+                            setRoleEditFor({
+                              id: user.id,
+                              name: user.name,
+                              primary: user.role.name,
+                              roles: getUserRoles(user),
+                            })
+                          }
+                          className="ml-1 inline-flex items-center gap-1 text-[10px] font-bold text-muted hover:text-accent-teal"
+                          title="Ubah peran"
+                        >
+                          <Pencil className="h-3 w-3" /> Ubah
+                        </button>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -423,6 +438,115 @@ export default function OwnerUsersPage() {
           }}
         />
       )}
+
+      {roleEditFor && (
+        <RoleEditModal
+          target={roleEditFor}
+          onClose={() => setRoleEditFor(null)}
+          onDone={(msg) => {
+            setRoleEditFor(null);
+            setActionMessage({ type: "success", text: msg });
+            loadUsers();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+const ALL_ROLE_OPTIONS: { name: string; label: string }[] = [
+  { name: "owner", label: "Owner" },
+  { name: "admin", label: "Admin / Kasir" },
+  { name: "designer_sales", label: "Designer / Setting" },
+  { name: "operator", label: "Operator Cetak" },
+  { name: "gudang", label: "Finishing & Gudang" },
+];
+
+function RoleEditModal({
+  target, onClose, onDone,
+}: {
+  target: { id: string; name: string; primary: string; roles: string[] };
+  onClose: () => void;
+  onDone: (msg: string) => void;
+}) {
+  const isOwner = target.primary === "owner";
+  const [selected, setSelected] = useState<Set<string>>(new Set(target.roles));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function toggle(name: string) {
+    if (name === "owner") return; // peran Owner terkunci
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    const names = ALL_ROLE_OPTIONS.map((r) => r.name).filter((n) => selected.has(n));
+    const r = await updateUserRoles(target.id, names);
+    setBusy(false);
+    if (!r.success) { setErr(r.error ?? "Gagal menyimpan peran."); return; }
+    onDone(`Peran ${target.name} diperbarui.`);
+  }
+
+  // Owner: opsi "owner" selalu tercentang & dikunci.
+  const options = isOwner ? ALL_ROLE_OPTIONS : ALL_ROLE_OPTIONS.filter((r) => r.name !== "owner");
+  const count = [...selected].length;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-base font-bold text-primary">Ubah Peran — {target.name}</h3>
+          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
+        </div>
+        <p className="text-xs text-muted">
+          {isOwner
+            ? "Owner selalu punya akses penuh. Centang peran operasional yang Anda pegang sendiri; cabut saat sudah ada pegawainya."
+            : "Centang semua peran yang boleh dijalankan pegawai ini. Aksi di aplikasi menyesuaikan gabungan peran."}
+        </p>
+        {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
+
+        <div className="space-y-1.5">
+          {options.map((o) => {
+            const locked = o.name === "owner";
+            const checked = selected.has(o.name) || locked;
+            return (
+              <label
+                key={o.name}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-lg border px-3 py-2 text-sm",
+                  checked ? "border-accent-teal/40 bg-accent-teal/5 text-primary" : "border-border text-muted",
+                  locked ? "opacity-70 cursor-default" : "cursor-pointer hover:border-accent-teal/40",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={locked || busy}
+                  onChange={() => toggle(o.name)}
+                />
+                {o.label}
+                {locked && <span className="ml-auto text-[10px] text-muted">terkunci</span>}
+              </label>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={save}
+          disabled={busy || count === 0}
+          className="w-full h-10 rounded-lg bg-accent-teal text-white text-xs font-bold hover:brightness-110 disabled:opacity-40"
+        >
+          {busy ? "Menyimpan…" : "Simpan peran"}
+        </button>
+      </div>
     </div>
   );
 }

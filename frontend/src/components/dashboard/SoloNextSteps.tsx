@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ListChecks, ArrowRight, ChevronDown } from "lucide-react";
+import { ListChecks, ArrowRight, ChevronDown, UserCog } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getNextSteps } from "@/actions/solo";
+import { getNextSteps, enableSoloMode } from "@/actions/solo";
 
 type Item = {
   orderId: string;
@@ -19,18 +19,24 @@ const fmtDate = (d: string | Date | null) =>
   d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—";
 
 const STORAGE_KEY = "pp_solo_nextsteps";
+const SOLO_DISMISS_KEY = "pp_solo_prompt_dismissed";
 
 export function SoloNextSteps() {
   const [items, setItems] = useState<Item[]>([]);
   const [solo, setSolo] = useState(false);
+  const [canEnableSolo, setCanEnableSolo] = useState(false);
   const [ready, setReady] = useState(false);
   const [open, setOpen] = useState<boolean | null>(null);
+  const [promptDismissed, setPromptDismissed] = useState(false);
+  const [enabling, setEnabling] = useState(false);
+  const [enableErr, setEnableErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const r = await getNextSteps();
     if (r.success) {
       setItems(r.data.items);
       setSolo(r.data.solo);
+      setCanEnableSolo(r.data.canEnableSolo);
     }
     setReady(true);
   }, []);
@@ -39,17 +45,75 @@ export function SoloNextSteps() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    let stored: string | null = null;
+    let collapsed = false;
+    let dismissed = false;
     try {
-      stored = localStorage.getItem(STORAGE_KEY);
+      collapsed = localStorage.getItem(STORAGE_KEY) === "0";
+      dismissed = localStorage.getItem(SOLO_DISMISS_KEY) === "1";
     } catch {
       /* ignore */
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOpen(stored !== "0");
+    setOpen(!collapsed);
+    setPromptDismissed(dismissed);
   }, []);
 
-  if (!ready || !solo || items.length === 0) return null;
+  async function doEnable() {
+    setEnabling(true);
+    setEnableErr(null);
+    const r = await enableSoloMode();
+    setEnabling(false);
+    if (!r.success) { setEnableErr(r.error ?? "Gagal."); return; }
+    // Peran baru diambil dari DB pada request berikutnya — muat ulang halaman.
+    window.location.reload();
+  }
+
+  function dismissPrompt() {
+    setPromptDismissed(true);
+    try {
+      localStorage.setItem(SOLO_DISMISS_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (!ready) return null;
+
+  // ── Tawaran "Aktifkan Mode Solo" (Owner 1 peran) ──────────────────────────
+  if (canEnableSolo && !promptDismissed) {
+    return (
+      <div className="bg-card border border-accent-teal/30 rounded-2xl p-4">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex p-1.5 rounded-lg bg-accent-teal/10 shrink-0">
+            <UserCog className="h-4 w-4 text-accent-teal" />
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-primary">Menjalankan percetakan sendiri?</p>
+            <p className="text-xs text-muted mt-0.5">
+              Aktifkan Mode Solo — akun Anda diberi semua peran operasional (Admin, Designer, Operator,
+              Gudang) sehingga bisa mengerjakan seluruh alur sendiri. Bisa dicabut lagi di Pegawai &amp; Akses.
+            </p>
+            {enableErr && <p className="text-xs text-status-red mt-1">{enableErr}</p>}
+            <div className="flex gap-2 mt-2.5">
+              <button
+                onClick={doEnable}
+                disabled={enabling}
+                className="h-8 px-3 rounded-lg bg-accent-teal text-white text-xs font-bold hover:brightness-110 disabled:opacity-40"
+              >
+                {enabling ? "Mengaktifkan…" : "Aktifkan Mode Solo"}
+              </button>
+              <button onClick={dismissPrompt} className="h-8 px-3 rounded-lg text-xs font-bold text-muted hover:text-primary">
+                Nanti saja
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Daftar "Langkah berikutnya" (Owner multi-peran) ───────────────────────
+  if (!solo || items.length === 0) return null;
 
   const isOpen = open ?? true;
   function toggle() {

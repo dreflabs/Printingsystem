@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Building2, DollarSign, Users, PauseCircle, AlertTriangle,
-  ScrollText, ArrowRight, Archive,
+  ScrollText, ArrowRight, Receipt, TrendingUp,
 } from "lucide-react";
 import { getPlatformMetrics, listPlatformAuditLog } from "@/actions/platform";
 
@@ -47,9 +47,9 @@ export default function PlatformDashboard() {
 
   const shortcuts = [
     { href: "/platform/tenants", label: "Kelola Tenant", desc: "Cari, suspend, impersonate, hapus", icon: Building2 },
-    { href: "/platform/admins", label: "Akun Admin", desc: "Kelola akun pengelola platform", icon: Users },
+    { href: "/platform/billing", label: "Billing & Invoice", desc: "Terbitkan tagihan, catat pembayaran", icon: Receipt },
+    { href: "/platform/analytics", label: "Analitik", desc: "MRR, churn, pertumbuhan tenant", icon: TrendingUp },
     { href: "/platform/activity", label: "Aktivitas", desc: "Jejak audit lengkap", icon: ScrollText },
-    { href: "/platform/retired", label: "Tenant Terhapus", desc: "Nisan tenant yang di-purge", icon: Archive },
   ];
 
   return (
@@ -131,13 +131,11 @@ export default function PlatformDashboard() {
       </div>
 
       <p className="text-xs text-muted">
-        Belum ada di versi ini: billing / generate &amp; force-mark-paid invoice, broadcast notification, System Health.
-        Login Super Admin = email + password; percobaan gagal berturut-turut mengunci akun sementara. Suspend tenant
-        benar-benar memblokir login &amp; akses; impersonate SUPPORT lihat-saja untuk aksi uang/pembatalan/koreksi.
-        Siklus hidup tenant: <b>Tenant → Detail → Zona Berbahaya</b> untuk <i>Churned</i> (lepas subdomain, data tetap)
-        lalu <i>Hapus permanen</i>. Tombol <b>Hapus</b> di baris tenant memotong alur itu — churn + purge sekaligus,
-        butuh ketik ulang subdomain; job <code>tenant-lifecycle</code> otomatis (TRIAL basi 14 hari → churned,
-        churned 30 hari → purge).
+        Belum ada di versi ini: broadcast notification, System Health. Login Super Admin = email + password; percobaan
+        gagal berturut-turut mengunci akun sementara. Suspend tenant benar-benar memblokir login &amp; akses;
+        impersonate SUPPORT lihat-saja untuk aksi uang/pembatalan/koreksi. Siklus hidup tenant:
+        <b>Tenant → Detail → Zona Berbahaya</b> untuk <i>Churned</i> lalu <i>Hapus permanen</i>; job
+        <code>tenant-lifecycle</code> &amp; <code>billing</code> berjalan otomatis (invoice bulanan idempoten).
       </p>
     </div>
   );

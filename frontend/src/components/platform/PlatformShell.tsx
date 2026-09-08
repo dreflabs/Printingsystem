@@ -14,6 +14,9 @@ import {
   Menu,
   X,
   ChevronRight,
+  Receipt,
+  CreditCard,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SuperAdminSubLevel } from "@/lib/platform";
@@ -41,6 +44,14 @@ const NAV: NavGroup[] = [
     items: [
       { label: "Dashboard", href: "/platform", icon: <LayoutDashboard className="h-[18px] w-[18px]" />, exact: true },
       { label: "Tenant", href: "/platform/tenants", icon: <Building2 className="h-[18px] w-[18px]" /> },
+      { label: "Analitik", href: "/platform/analytics", icon: <TrendingUp className="h-[18px] w-[18px]" />, subLevels: ["SUPER_ADMIN", "FINANCE"] },
+    ],
+  },
+  {
+    label: "Keuangan",
+    items: [
+      { label: "Billing & Invoice", href: "/platform/billing", icon: <Receipt className="h-[18px] w-[18px]" />, subLevels: ["SUPER_ADMIN", "FINANCE"] },
+      { label: "Paket Langganan", href: "/platform/plans", icon: <CreditCard className="h-[18px] w-[18px]" />, subLevels: ["SUPER_ADMIN", "FINANCE"] },
     ],
   },
   {

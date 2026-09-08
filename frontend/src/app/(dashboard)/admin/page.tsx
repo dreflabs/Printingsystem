@@ -160,6 +160,14 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
         )}
         <div className="flex flex-wrap gap-3 p-5 border-t border-border shrink-0">
           <button onClick={onClose} className="flex-1 min-w-[120px] h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary">Tutup</button>
+          {d && (
+            <button
+              onClick={() => window.open(`/print/nota/${orderId}`, "_blank", "noopener")}
+              className="flex-1 min-w-[130px] h-11 rounded-xl bg-elevated border border-border text-sm font-bold text-primary hover:bg-elevated/70"
+            >
+              Cetak Nota
+            </button>
+          )}
           {d && d.balance > 0 && (
             <button onClick={onBayar} className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-yellow text-black text-sm font-bold hover:brightness-105">Catat Pembayaran</button>
           )}

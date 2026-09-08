@@ -37,7 +37,18 @@ function ReceiptModal({ open, transactionData, onClose }: { open: boolean, trans
 
         <div className="flex gap-3 w-full">
           <button onClick={onClose} className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary cursor-pointer transition-colors">Tutup Kasir</button>
-          <button onClick={() => { toast({ type: "info", title: "Mencetak 2 struk", message: "Struk bukti bayar konsumen + struk kerja (QR untuk QC & Finishing). Serahkan struk kerja ke operator mesin." }); onClose(); }} className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold flex justify-center items-center gap-2 cursor-pointer hover:brightness-110"><Printer className="h-4 w-4" /> Cetak 2 Struk</button>
+          <button
+            onClick={() => {
+              if (transactionData.orderCode) {
+                window.open(`/print/nota/${encodeURIComponent(transactionData.orderCode)}`, "_blank", "noopener");
+              } else {
+                toast({ type: "error", title: "Nota tidak tersedia", message: "Kode order tidak ditemukan." });
+              }
+            }}
+            className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold flex justify-center items-center gap-2 cursor-pointer hover:brightness-110"
+          >
+            <Printer className="h-4 w-4" /> Cetak Nota
+          </button>
         </div>
       </div>
     </div>

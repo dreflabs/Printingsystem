@@ -608,3 +608,80 @@ export async function getJobLabel(codeOrId: string) {
     return fail(e instanceof Error ? e.message : "Gagal memuat data label.");
   }
 }
+
+/**
+ * Data untuk cetak Nota / bukti transaksi — berlaku untuk order PRINTING maupun
+ * RETAIL (POS). Bisa dicetak ulang kapan saja. Menerima kode order atau id.
+ */
+export async function getOrderReceipt(codeOrId: string) {
+  try {
+    const tenant = await requireTenant();
+    await requireUser();
+    const c = codeOrId.trim().replace(/^ORD:/i, "").trim();
+
+    const [t, order] = await Promise.all([
+      prisma.tenant.findUnique({
+        where: { id: tenant.id },
+        select: { name: true, owner_phone: true, address: true, slug: true },
+      }),
+      prisma.order.findFirst({
+        where: { tenant_id: tenant.id, OR: [{ order_code: c }, { id: c }] },
+        include: {
+          customer: { select: { name: true, phone: true } },
+          creator: { select: { name: true } },
+          items: true,
+          payments: {
+            where: { status: "CONFIRMED" },
+            orderBy: { paid_at: "asc" },
+            select: { amount: true, method: true, paid_at: true, reference: true },
+          },
+        },
+      }),
+    ]);
+    if (!order) return fail("Order tidak ditemukan.");
+
+    const n = (d: unknown) => Number(d ?? 0);
+    return ok({
+      shop: {
+        name: t?.name ?? "Percetakan",
+        phone: t?.owner_phone ?? null,
+        address: t?.address ?? null,
+        slug: t?.slug ?? null,
+      },
+      order: {
+        code: order.order_code,
+        type: order.order_type as "PRINTING" | "RETAIL",
+        status: order.status,
+        createdAt: order.created_at,
+        deadline: order.deadline,
+        notes: order.notes ?? null,
+      },
+      customer: order.customer ? { name: order.customer.name, phone: order.customer.phone ?? null } : null,
+      cashier: order.creator?.name ?? "-",
+      items: order.items.map((i) => ({
+        description: i.description ?? "Item",
+        size: i.size ?? null,
+        finishing: i.finishing ?? null,
+        qty: i.quantity,
+        unitPrice: n(i.unit_price),
+        totalPrice: n(i.total_price),
+      })),
+      subtotal: n(order.subtotal),
+      discount: n(order.discount),
+      discountApproved: !!order.discount_approved_by,
+      total: n(order.total),
+      paid: n(order.paid_amount),
+      balance: n(order.balance),
+      payments: order.payments.map((p) => ({
+        amount: n(p.amount),
+        method: p.method,
+        reference: p.reference ?? null,
+        paidAt: p.paid_at,
+      })),
+      printedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("getOrderReceipt:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat data nota.");
+  }
+}

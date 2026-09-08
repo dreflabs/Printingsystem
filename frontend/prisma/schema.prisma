@@ -22,6 +22,7 @@ model Tenant {
   billing_email                     String?
   owner_name                        String?
   owner_phone                       String?
+  address                           String? // alamat toko untuk nota/invoice
   custom_domain                     String?
   wa_provider                       String?
   wa_api_key                        String? // [ENCRYPTED]

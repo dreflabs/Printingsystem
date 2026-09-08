@@ -55,6 +55,12 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["owner"],
   },
   {
+    label: "Identitas Toko",
+    href: "/owner/toko",
+    icon: <Tag className="h-5 w-5" />,
+    roles: ["owner"],
+  },
+  {
     label: "Laporan Bulanan",
     href: "/owner/reports",
     icon: <BarChart2 className="h-5 w-5" />,

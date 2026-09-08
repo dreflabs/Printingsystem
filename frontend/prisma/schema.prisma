@@ -66,6 +66,9 @@ model Tenant {
   deadline_alerts        DeadlineAlert[]
   attendance_imports     AttendanceImport[]
   attendance_records     AttendanceRecord[]
+  attendance_selfies     AttendanceSelfie[]
+  attendance_setting     TenantAttendanceSetting?
+  kiosk_devices          KioskDevice[]
   payroll_periods        PayrollPeriod[]
   payroll_records        PayrollRecord[]
 }
@@ -227,6 +230,7 @@ model User {
   must_change_password Boolean   @default(false)
   password_changed_at  DateTime? // dinaikkan tiap ganti password → sesi lama (JWT) yang terbit sebelumnya ditolak
   base_salary          Decimal?  @db.Decimal(15, 2) // gaji pokok bulanan; null = belum diset, tidak ikut payroll run
+  kiosk_pin_hash       String? // bcrypt PIN 4–6 digit untuk absen via perangkat kiosk (opsional)
   deactivated_at       DateTime?
   deactivated_by       String? // self-reference if needed, omitted FK for simplicity
   created_at           DateTime  @default(now())
@@ -896,7 +900,87 @@ model AttendanceRecord {
   break_status       String? // NORMAL/EXCEEDED
   warning_sent_at    DateTime?
   owner_note         String?
+  // Absen in-app (lihat 02-WORKFLOW/18-ABSENSI-IN-APP.md)
+  source              String   @default("MANUAL") // IN_APP | KIOSK | FINGERPRINT_IMPORT | MANUAL
+  check_in_method     String? // IN_APP | KIOSK | FINGERPRINT_IMPORT | MANUAL (per-punch)
+  check_out_method    String?
+  check_out_status    String? // ON_TIME | EARLY | AUTO_CLOSED
+  check_in_lat        Float?
+  check_in_lng        Float?
+  check_in_accuracy_m Float?
+  check_out_lat       Float?
+  check_out_lng       Float?
+  check_out_accuracy_m Float?
+  check_in_ip         String?
+  check_out_ip        String?
+  geo_flag            Boolean  @default(false) // ada punch di luar geofence
+  ip_flag             Boolean  @default(false) // ada punch di luar IP kantor
+  off_day             Boolean  @default(false) // absen di luar hari kerja
+  device_label        String? // ringkas User-Agent / nama kiosk
   created_at         DateTime          @default(now())
+
+  selfies AttendanceSelfie[]
+
+  @@index([tenant_id, date])
+  @@index([user_id, date])
+}
+
+/// Selfie absen — thumbnail kecil (≤320px WebP) disimpan langsung di DB.
+/// Object storage nyata belum ada; dihapus cron setelah selfie_retention_days.
+model AttendanceSelfie {
+  id         String           @id @default(uuid())
+  tenant_id  String
+  tenant     Tenant           @relation(fields: [tenant_id], references: [id])
+  record_id  String
+  record     AttendanceRecord @relation(fields: [record_id], references: [id], onDelete: Cascade)
+  kind       String // CHECK_IN | CHECK_OUT
+  mime       String           @default("image/webp")
+  bytes      Bytes
+  created_at DateTime         @default(now())
+
+  @@index([tenant_id, created_at])
+  @@index([record_id])
+}
+
+/// Pengaturan absensi per tenant — diatur Owner di /owner/attendance-settings.
+model TenantAttendanceSetting {
+  id                      String   @id @default(uuid())
+  tenant_id               String   @unique
+  tenant                  Tenant   @relation(fields: [tenant_id], references: [id])
+  work_start              String   @default("09:00") // HH:mm
+  late_after              String   @default("09:15") // lewat ini = TERLAMBAT
+  work_end                String   @default("17:00")
+  workdays                String   @default("1,2,3,4,5,6") // 1=Sen … 7=Min
+  break_max_min           Int      @default(60)
+  earliest_clock_in_min   Int      @default(120)
+  geofence_lat            Float?
+  geofence_lng            Float?
+  geofence_radius_m       Int      @default(150)
+  geofence_mode           String   @default("FLAG") // OFF | FLAG | ENFORCE
+  ip_allowlist            String   @default("") // IP/CIDR dipisah koma
+  ip_mode                 String   @default("OFF") // OFF | FLAG | ENFORCE
+  selfie_required         Boolean  @default(true)
+  selfie_retention_days   Int      @default(120)
+  kiosk_enabled           Boolean  @default(false)
+  personal_device_enabled Boolean  @default(true)
+  auto_close_at           String   @default("23:59")
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+}
+
+/// Perangkat kiosk (tablet meja depan) untuk absen tanpa login user. Fase B.
+model KioskDevice {
+  id           String    @id @default(uuid())
+  tenant_id    String
+  tenant       Tenant    @relation(fields: [tenant_id], references: [id])
+  label        String
+  token_hash   String    @unique // token panjang di cookie perangkat, revocable
+  created_by   String
+  last_seen_at DateTime?
+  active       Boolean   @default(true)
+  created_at   DateTime  @default(now())
+
+  @@index([tenant_id])
 }
 
 // ─── PAYROLL (GAJI) ───────────────────────────────────────────────────────────

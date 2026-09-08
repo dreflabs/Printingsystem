@@ -5,6 +5,7 @@ import { Settings2, ScanLine, CheckCircle2, AlertCircle, Timer, Layers, Pause, P
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
+import { AbsenCard } from "@/components/dashboard/AbsenCard";
 import { getOperatorJobs } from "@/actions/queries";
 import { getOrderFormData } from "@/actions/orders";
 import { startProduction, pauseProduction, resumeProduction, finishProduction } from "@/actions/production";
@@ -163,6 +164,8 @@ export default function OperatorPage() {
       </div>
 
       <RoleGuide role="operator" />
+
+      <AbsenCard />
 
       {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
 

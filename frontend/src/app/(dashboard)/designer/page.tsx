@@ -6,6 +6,7 @@ import { StatusPill } from "@/components/ui";
 import { NewOrderModal } from "@/components/orders/NewOrderModal";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
+import { AbsenCard } from "@/components/dashboard/AbsenCard";
 import { getDesignQueue } from "@/actions/queries";
 import {
   createDesignUploadUrl,
@@ -282,6 +283,8 @@ export default function DesignerDashboardPage() {
       </div>
 
       <RoleGuide role="designer_sales" />
+
+      <AbsenCard />
 
       {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
 

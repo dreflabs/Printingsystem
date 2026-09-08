@@ -181,6 +181,10 @@ export async function registerTenant(
       // Finishing → Kelola Lokasi). Checklist penyiapan menuntun keduanya.
       await tx.material.createMany({ data: buildStarterMaterials(tenant.id, owner.id) });
 
+      // Pengaturan absensi default (jam kerja 09:00, batas telat 09:15, dst.).
+      // Owner menyesuaikan di /owner/attendance-settings.
+      await tx.tenantAttendanceSetting.create({ data: { tenant_id: tenant.id } });
+
       // Catatan: email belum diverifikasi (belum ada provider email) — jangan
       // tandai VERIFIED. Tambahkan langkah itu saat verifikasi email diaktifkan.
       await tx.onboardingStep.create({

@@ -61,6 +61,12 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["owner"],
   },
   {
+    label: "Pengaturan Absensi",
+    href: "/owner/attendance-settings",
+    icon: <Settings2 className="h-5 w-5" />,
+    roles: ["owner"],
+  },
+  {
     label: "Absensi Pegawai",
     href: "/admin/attendance",
     icon: <Clock className="h-5 w-5" />,

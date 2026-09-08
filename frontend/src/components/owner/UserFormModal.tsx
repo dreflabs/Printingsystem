@@ -4,9 +4,18 @@ import { useState } from "react";
 import { X, Info, ShieldCheck, Copy, Check, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+export interface NewEmployeeInput {
+  name: string;
+  username: string;
+  email: string;
+  phone?: string;
+  role_name: string;
+  extra_role_names: string[];
+}
+
 interface UserFormModalProps {
   onClose: () => void;
-  onSave: (data: any) => Promise<void>;
+  onSave: (data: NewEmployeeInput) => Promise<void>;
   isLoading: boolean;
   workspaceSlug?: string | null;
 }
@@ -43,6 +52,7 @@ export function UserFormModal({ onClose, onSave, isLoading, workspaceSlug }: Use
     name: "",
     username: "",
     email: "",
+    phone: "",
     selectedRoles: ["operator"] as string[],
   });
 
@@ -73,6 +83,7 @@ export function UserFormModal({ onClose, onSave, isLoading, workspaceSlug }: Use
       name: formData.name,
       username: formData.username,
       email: formData.email,
+      phone: formData.phone.trim() || undefined,
       role_name: primaryRole,
       extra_role_names: extraRoles,
     });
@@ -129,6 +140,21 @@ export function UserFormModal({ onClose, onSave, isLoading, workspaceSlug }: Use
               className="w-full px-3 py-2 bg-base border border-border rounded-xl focus:outline-none focus:border-accent-teal focus:ring-1 focus:ring-accent-teal text-primary text-sm transition-all"
               placeholder="budi@example.com"
             />
+          </div>
+
+          {/* Nomor HP */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-primary">
+              Nomor HP <span className="font-normal text-muted">(opsional)</span>
+            </label>
+            <input
+              type="tel"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              className="w-full px-3 py-2 bg-base border border-border rounded-xl focus:outline-none focus:border-accent-teal focus:ring-1 focus:ring-accent-teal text-primary text-sm transition-all"
+              placeholder="08xxxxxxxxxx"
+            />
+            <p className="text-[11px] text-muted">Untuk notifikasi WhatsApp absensi (peringatan istirahat, dll).</p>
           </div>
 
           {/* Multi-role selector */}

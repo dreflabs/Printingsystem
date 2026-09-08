@@ -47,6 +47,7 @@ export async function createEmployee(data: {
   name: string;
   username: string;
   email: string;
+  phone?: string; // nomor HP untuk notifikasi WA absensi (opsional)
   role_name: string;
   extra_role_names?: string[]; // Additional roles beyond primary
 }) {
@@ -87,6 +88,7 @@ export async function createEmployee(data: {
         name: data.name,
         username: data.username,
         email: data.email,
+        phone: data.phone?.trim() || null,
         password_hash,
         role_id: role.id,
         must_change_password: true,

@@ -101,6 +101,10 @@ function normName(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.,]/g, "");
 }
 
+function fmtClock(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 const DIR_IN = ["in", "masuk", "c/in", "checkin", "check-in", "clock in", "i", "0"];
 const DIR_OUT = ["out", "pulang", "keluar", "c/out", "checkout", "check-out", "clock out", "o", "1"];
 
@@ -258,6 +262,21 @@ export async function commitAttendanceImport(input: {
       };
     });
 
+    // Guard konflik dengan absen in-app (02-WORKFLOW/18-ABSENSI-IN-APP.md §5).
+    // Prioritas kepercayaan: IN_APP/KIOSK > MANUAL > FINGERPRINT_IMPORT.
+    const CONFLICT_MS = 15 * 60 * 1000;
+    const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const recKey = (userId: string | null, name: string, d: Date) =>
+      `${userId ?? "name:" + normName(name)}|${dayKey(d)}`;
+
+    const rangeStart = new Date(periodStart); rangeStart.setHours(0, 0, 0, 0);
+    const rangeEnd = new Date(periodEnd); rangeEnd.setHours(23, 59, 59, 999);
+
+    const created = { count: 0 };
+    const filled: string[] = [];
+    const conflicts: string[] = [];
+    let importOverwritten = 0;
+
     const result = await prisma.$transaction(async (tx) => {
       const imp = await tx.attendanceImport.create({
         data: {
@@ -270,9 +289,73 @@ export async function commitAttendanceImport(input: {
           late_count: lateCount,
         },
       });
-      await tx.attendanceRecord.createMany({
-        data: recordData.map((r) => ({ ...r, import_id: imp.id })),
+
+      const existing = await tx.attendanceRecord.findMany({
+        where: { tenant_id: tenant.id, date: { gte: rangeStart, lte: rangeEnd } },
       });
+      const byKey = new Map<string, (typeof existing)[number]>();
+      for (const e of existing) byKey.set(recKey(e.user_id, e.employee_name, e.date), e);
+
+      for (const r of recordData) {
+        const prior = byKey.get(recKey(r.user_id, r.employee_name, r.date));
+
+        if (!prior) {
+          await tx.attendanceRecord.create({
+            data: { ...r, source: "FINGERPRINT_IMPORT", check_in_method: "FINGERPRINT_IMPORT", import_id: imp.id },
+          });
+          created.count++;
+          continue;
+        }
+
+        if (prior.source === "FINGERPRINT_IMPORT") {
+          // Re-import / koreksi → data fingerprint terbaru menang.
+          await tx.attendanceRecord.update({
+            where: { id: prior.id },
+            data: {
+              check_in: r.check_in ?? prior.check_in,
+              check_out: r.check_out ?? prior.check_out,
+              check_in_status: r.check_in ? r.check_in_status : prior.check_in_status,
+              late_minutes: r.check_in ? r.late_minutes : prior.late_minutes,
+              import_id: imp.id,
+            },
+          });
+          importOverwritten++;
+          continue;
+        }
+
+        // prior.source = IN_APP | KIOSK | MANUAL → JANGAN timpa; isi celah saja.
+        const patch: Record<string, unknown> = {};
+        if (!prior.check_in && r.check_in) {
+          patch.check_in = r.check_in;
+          patch.check_in_status = r.check_in_status;
+          patch.late_minutes = r.late_minutes;
+          patch.check_in_method = "FINGERPRINT_IMPORT";
+        }
+        if (!prior.check_out && r.check_out) {
+          patch.check_out = r.check_out;
+          patch.check_out_method = "FINGERPRINT_IMPORT";
+        }
+
+        const clashIn =
+          prior.check_in && r.check_in &&
+          Math.abs(prior.check_in.getTime() - r.check_in.getTime()) > CONFLICT_MS;
+        const clashOut =
+          prior.check_out && r.check_out &&
+          Math.abs(prior.check_out.getTime() - r.check_out.getTime()) > CONFLICT_MS;
+        if (clashIn || clashOut) {
+          const note = `⚠ Konflik import ${new Date().toLocaleDateString("id-ID")}: fingerprint ${
+            clashIn ? `masuk ${fmtClock(r.check_in!)}` : `pulang ${fmtClock(r.check_out!)}`
+          } beda dari catatan in-app — nilai in-app dipertahankan.`;
+          patch.owner_note = prior.owner_note ? `${prior.owner_note}\n${note}` : note;
+          conflicts.push(r.employee_name);
+        }
+
+        if (Object.keys(patch).length > 0) {
+          await tx.attendanceRecord.update({ where: { id: prior.id }, data: patch });
+          if (patch.check_in || patch.check_out) filled.push(r.employee_name);
+        }
+      }
+
       return imp;
     });
 
@@ -280,6 +363,10 @@ export async function commitAttendanceImport(input: {
       rows: recordData.length,
       late: lateCount,
       unmatched: unmatched.size,
+      created: created.count,
+      filledGaps: filled.length,
+      importOverwritten,
+      conflicts: conflicts.length,
       period: `${periodStart.toISOString().slice(0, 10)}..${periodEnd.toISOString().slice(0, 10)}`,
     });
     revalidatePath("/admin/attendance");
@@ -302,6 +389,10 @@ export async function commitAttendanceImport(input: {
       unmatched: unmatched.size,
       unmatchedNames: [...unmatched].slice(0, 20),
       skipped,
+      created: created.count,
+      filledGaps: filled.length,
+      importOverwritten,
+      conflicts: [...new Set(conflicts)].slice(0, 20),
     });
   } catch (e) {
     console.error("commitAttendanceImport:", e);

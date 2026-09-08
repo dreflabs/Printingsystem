@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ClipboardList, Wrench, Package, Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
+import { AbsenCard } from "@/components/dashboard/AbsenCard";
 import { QCTab } from "./QCTab";
 import { FinishingTab } from "./FinishingTab";
 import { StorageTab } from "./StorageTab";
@@ -29,6 +30,8 @@ export default function FinishingPage() {
       </div>
 
       <RoleGuide role="gudang" />
+
+      <AbsenCard />
 
       {/* Tab Navigation */}
       <div className="flex gap-2 bg-elevated p-1 rounded-xl border border-border w-fit overflow-x-auto">

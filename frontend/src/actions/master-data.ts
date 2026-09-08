@@ -220,6 +220,7 @@ export async function createPrintingProduct(data: {
   unit?: string;
   base_price?: number | null;
   default_material_id?: string | null;
+  default_machine_id?: string | null;
 }) {
   try {
     const tenant = await requireTenant();
@@ -237,6 +238,7 @@ export async function createPrintingProduct(data: {
         unit,
         base_price: data.base_price != null && data.base_price > 0 ? data.base_price : null,
         default_material_id: data.default_material_id || null,
+        default_machine_id: data.default_machine_id || null,
       },
     });
     revalidatePath("/admin/products");
@@ -255,6 +257,7 @@ export async function updatePrintingProduct(
     unit?: string;
     base_price?: number | null;
     default_material_id?: string | null;
+    default_machine_id?: string | null;
     active?: boolean;
   }
 ) {
@@ -275,6 +278,7 @@ export async function updatePrintingProduct(
     }
     if (data.base_price !== undefined) patch.base_price = data.base_price != null && data.base_price > 0 ? data.base_price : null;
     if (data.default_material_id !== undefined) patch.default_material_id = data.default_material_id || null;
+    if (data.default_machine_id !== undefined) patch.default_machine_id = data.default_machine_id || null;
     if (data.active != null) patch.active = data.active;
 
     const product = await prisma.product.update({ where: { id }, data: patch });

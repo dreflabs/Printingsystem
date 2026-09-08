@@ -18,7 +18,7 @@ type Retail = {
 };
 type Printing = {
   id: string; name: string; category: string; unit: string;
-  base_price: number | null; default_material_id: string | null; active: boolean;
+  base_price: number | null; default_material_id: string | null; default_machine_id: string | null; active: boolean;
 };
 type Machine = { id: string; machine_code: string; name: string; category: string; status: string; notes: string | null };
 type MatOpt = { id: string; name: string };
@@ -96,9 +96,9 @@ function RetailModal({
 
 // ─── Printing service modal (create + edit) ──────────────────────────────────
 function PrintingModal({
-  editing, materials, categories, onClose, onSaved,
+  editing, materials, machines, categories, onClose, onSaved,
 }: {
-  editing: Printing | null; materials: MatOpt[]; categories: string[]; onClose: () => void; onSaved: () => void;
+  editing: Printing | null; materials: MatOpt[]; machines: Machine[]; categories: string[]; onClose: () => void; onSaved: () => void;
 }) {
   const catListId = useId();
   const [name, setName] = useState(editing?.name ?? "");
@@ -106,6 +106,7 @@ function PrintingModal({
   const [unit, setUnit] = useState(editing?.unit ?? "M2");
   const [basePrice, setBasePrice] = useState(editing?.base_price != null ? String(editing.base_price) : "");
   const [materialId, setMaterialId] = useState(editing?.default_material_id ?? "");
+  const [machineId, setMachineId] = useState(editing?.default_machine_id ?? "");
   const [active, setActive] = useState(editing?.active ?? true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -119,6 +120,7 @@ function PrintingModal({
       unit,
       base_price: basePrice ? Number(basePrice) : null,
       default_material_id: materialId || null,
+      default_machine_id: machineId || null,
     };
     const res = editing
       ? await updatePrintingProduct(editing.id, { ...payload, active })
@@ -153,6 +155,17 @@ function PrintingModal({
           {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
       </Field>
+      <Field label="Mesin Default">
+        <select className={inp} value={machineId} onChange={(e) => setMachineId(e.target.value)}>
+          <option value="">— belum diset (order butuh assign manual)</option>
+          {machines.map((m) => (
+            <option key={m.id} value={m.id} disabled={m.status !== "ACTIVE"}>
+              {m.name} ({m.machine_code}){m.status !== "ACTIVE" ? ` — ${m.status}` : ""}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <p className="text-[10px] text-muted -mt-2">Order yang semua itemnya punya mesin default + lolos syarat kelayakan akan turun ke antrian produksi otomatis, tanpa &quot;Assign ke Produksi&quot; manual.</p>
       {editing && (
         <label className="flex items-center gap-2 text-xs text-primary">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Aktif
@@ -269,6 +282,7 @@ export default function AdminProductsPage() {
 
   const done = () => { setRetailModal({ open: false, editing: null }); setPrintingModal({ open: false, editing: null }); setMachineModal({ open: false, editing: null }); load(); };
   const matName = (id: string | null) => materials.find((m) => m.id === id)?.name ?? "—";
+  const machName = (id: string | null) => machines.find((m) => m.id === id)?.name ?? "—";
   const q = search.toLowerCase();
   const fRetail = retail.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
   const fPrinting = printing.filter((p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
@@ -326,7 +340,7 @@ export default function AdminProductsPage() {
                 <tr><th className="px-5 py-4">SKU</th><th className="px-5 py-4">Produk & Kategori</th><th className="px-5 py-4">Harga</th><th className="px-5 py-4">Makloon</th><th className="px-5 py-4">Stok</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
               )}
               {tab === "printing" && (
-                <tr><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Harga Dasar</th><th className="px-5 py-4">Material Default</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
+                <tr><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Harga Dasar</th><th className="px-5 py-4">Material Default</th><th className="px-5 py-4">Mesin Default</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
               )}
               {tab === "machine" && (
                 <tr><th className="px-5 py-4">Kode</th><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
@@ -355,6 +369,7 @@ export default function AdminProductsPage() {
                   <td className="px-5 py-4 text-muted text-xs">{p.category}</td>
                   <td className="px-5 py-4 font-mono text-xs">{p.base_price != null ? `${rupiah(p.base_price)} / ${p.unit === "M2" ? "m²" : p.unit.toLowerCase()}` : <span className="text-muted">manual</span>}</td>
                   <td className="px-5 py-4 text-muted text-xs">{matName(p.default_material_id)}</td>
+                  <td className="px-5 py-4 text-muted text-xs">{p.default_machine_id ? machName(p.default_machine_id) : <span className="text-status-yellow-text">belum diset</span>}</td>
                   <td className="px-5 py-4"><Badge active={p.active} /></td>
                   <td className="px-5 py-4 text-right"><RowActions onEdit={() => setPrintingModal({ open: true, editing: p })} /></td>
                 </tr>
@@ -382,7 +397,7 @@ export default function AdminProductsPage() {
       </div>
 
       {retailModal.open && <RetailModal editing={retailModal.editing} categories={cats.retail} onClose={() => setRetailModal({ open: false, editing: null })} onSaved={done} />}
-      {printingModal.open && <PrintingModal editing={printingModal.editing} materials={materials} categories={cats.printing} onClose={() => setPrintingModal({ open: false, editing: null })} onSaved={done} />}
+      {printingModal.open && <PrintingModal editing={printingModal.editing} materials={materials} machines={machines} categories={cats.printing} onClose={() => setPrintingModal({ open: false, editing: null })} onSaved={done} />}
       {machineModal.open && <MachineModal editing={machineModal.editing} onClose={() => setMachineModal({ open: false, editing: null })} onSaved={done} />}
 
       {confirmDel && (

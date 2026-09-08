@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ClipboardList, Wrench, Package, Box } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { QCTab } from "./QCTab";
 import { FinishingTab } from "./FinishingTab";
 import { StorageTab } from "./StorageTab";
@@ -26,6 +27,8 @@ export default function FinishingPage() {
         <h1 className="text-2xl font-bold text-primary">Dashboard Gudang & Finishing</h1>
         <p className="text-sm text-muted mt-0.5">Inspeksi QC, penyelesaian produk, dan pengaturan barang di rak & stok bahan baku</p>
       </div>
+
+      <RoleGuide role="gudang" />
 
       {/* Tab Navigation */}
       <div className="flex gap-2 bg-elevated p-1 rounded-xl border border-border w-fit overflow-x-auto">

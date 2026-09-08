@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Settings2, ScanLine, CheckCircle2, AlertCircle, Timer, Layers, Pause, Play } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { getOperatorJobs } from "@/actions/queries";
 import { getOrderFormData } from "@/actions/orders";
 import { startProduction, pauseProduction, resumeProduction, finishProduction } from "@/actions/production";
@@ -160,6 +161,8 @@ export default function OperatorPage() {
         <h1 className="text-2xl font-bold text-primary">Mesin Produksi</h1>
         <p className="text-sm text-muted mt-0.5">Ambil job dari antrian lalu mulai — maksimal 1 job aktif</p>
       </div>
+
+      <RoleGuide role="operator" />
 
       {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
 

@@ -10,6 +10,8 @@ import {
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { getOwnerDashboard } from "@/actions/queries";
+import { getSetupChecklist } from "@/actions/onboarding";
+import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { decideDiscount } from "@/actions/orders";
 import { approveFinalAudit } from "@/actions/audit";
 import { decideRework, reassignProductionJob } from "@/actions/production";
@@ -108,12 +110,16 @@ export default function OwnerPage() {
   const [modal, setModal] = useState<Modal>(null);
   const [busy, setBusy] = useState(false);
   const [reassign, setReassign] = useState({ machineId: "", operatorId: "", reason: "" });
+  const [checklist, setChecklist] = useState<
+    Extract<Awaited<ReturnType<typeof getSetupChecklist>>, { success: true }>["data"] | null
+  >(null);
 
   const load = useCallback(async () => {
     const res = await getOwnerDashboard();
     if (!res.success) { setError(res.error); return; }
     setError(null);
     setD(res.data);
+    getSetupChecklist().then((r) => { if (r.success) setChecklist(r.data); });
     try {
       const r = await fetch("/api/audit-logs?limit=10");
       const j = await r.json();
@@ -261,6 +267,8 @@ export default function OwnerPage() {
         </div>
         <span className="px-3 py-1 rounded-full text-xs font-bold bg-accent-teal/10 text-accent-teal border border-border">Akses Penuh</span>
       </div>
+
+      <RoleGuide role="owner" checklist={checklist} />
 
       {error && <div className="rounded-xl border border-status-red/20 bg-status-red/10 px-4 py-3 text-xs font-bold text-status-red">{error}</div>}
 

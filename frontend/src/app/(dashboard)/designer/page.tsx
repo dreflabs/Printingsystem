@@ -5,6 +5,7 @@ import { Palette, Clock, CheckCircle2, RefreshCw, Upload, Search, X, FileText, P
 import { StatusPill } from "@/components/ui";
 import { NewOrderModal } from "@/components/orders/NewOrderModal";
 import { cn } from "@/lib/utils";
+import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { getDesignQueue } from "@/actions/queries";
 import {
   createDesignUploadUrl,
@@ -279,6 +280,8 @@ export default function DesignerDashboardPage() {
           <Palette className="h-4 w-4" /> Buat Order Baru
         </button>
       </div>
+
+      <RoleGuide role="designer_sales" />
 
       {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
 

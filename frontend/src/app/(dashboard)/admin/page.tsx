@@ -8,6 +8,7 @@ import {
   CheckCircle2, ClipboardCheck, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { getOrders, getOrderDetail } from "@/actions/queries";
 import { addPayment } from "@/actions/orders";
 import { assignProductionJob, getProductionAssignData } from "@/actions/design";
@@ -499,6 +500,8 @@ export default function AdminDashboardPage() {
           <button onClick={() => setShowOrderModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent-teal text-white text-sm font-semibold hover:brightness-110"><Plus className="h-4 w-4" /> Order Baru</button>
         </div>
       </div>
+
+      <RoleGuide role="admin" />
 
       {error && <div className="rounded-2xl border border-status-red/30 bg-status-red/10 px-4 py-3 text-sm text-status-red">{error}</div>}
 

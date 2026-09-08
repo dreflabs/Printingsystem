@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Building2, PauseCircle, PlayCircle, LogIn, AlertTriangle, X, Eye, Trash2, Search } from "lucide-react";
-import { listTenants, setTenantStatus, impersonateTenant, deleteTenantNow } from "@/actions/platform";
+import { listTenants, setTenantStatus, impersonateTenant, deleteTenantNow, getImpersonationState } from "@/actions/platform";
 import { TenantDetailDrawer } from "@/components/platform/TenantDetailDrawer";
 
 type Tenant = {
@@ -82,10 +82,26 @@ export default function PlatformTenantsPage() {
     let res: { success: boolean; error?: string };
     if (kind === "impersonate") res = await impersonateTenant(tenant.id, reason);
     else res = await setTenantStatus(tenant.id, kind === "suspend" ? "SUSPEND" : "ACTIVATE", reason || undefined);
+    if (!res.success) { setBusy(null); setError(res.error ?? "Aksi gagal."); return; }
+    if (kind === "impersonate") {
+      // Pastikan cookie impersonate benar-benar tersimpan sebelum pindah —
+      // kalau tidak (mis. panel diakses lewat http:// sehingga cookie `Secure`
+      // dibuang browser), middleware akan langsung memantulkan /owner balik ke
+      // sini tanpa pesan apa pun.
+      const state = await getImpersonationState();
+      setBusy(null);
+      if (!state.success || !state.data.impersonating) {
+        setError(
+          "Sesi impersonate gagal tersimpan di browser. Biasanya karena panel diakses lewat http:// — buka lewat https:// lalu coba lagi.",
+        );
+        return;
+      }
+      setPrompt(null);
+      window.location.href = "/owner";
+      return;
+    }
     setBusy(null);
-    if (!res.success) { setError(res.error ?? "Aksi gagal."); return; }
     setPrompt(null);
-    if (kind === "impersonate") { window.location.href = "/owner"; return; }
     await load();
   }
 

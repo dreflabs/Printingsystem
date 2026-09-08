@@ -1,6 +1,6 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSuperAdmin, requireSubLevel, IMPERSONATE_COOKIE, type PlatformActor } from "@/lib/platform";
@@ -166,9 +166,18 @@ export async function impersonateTenant(tenantId: string, reason: string) {
     const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) return fail("Tenant tidak ditemukan.");
 
+    // `secure` mengikuti protokol permintaan yang sebenarnya, bukan NODE_ENV.
+    // Di balik reverse-proxy (Coolify/Traefik) `next start` selalu production;
+    // kalau panel diakses lewat http:// tanpa TLS, cookie `Secure` DIBUANG diam-
+    // diam oleh browser → setelah "Login sebalik" tidak ada cookie impersonate →
+    // middleware memantulkan balik ke /platform. `x-forwarded-proto` yang jadi
+    // acuan; kalau header itu tak ada, jatuh ke NODE_ENV (perilaku lama).
+    const proto = (await headers()).get("x-forwarded-proto");
+    const secure = proto ? proto.split(",")[0]!.trim() === "https" : process.env.NODE_ENV === "production";
+
     (await cookies()).set(IMPERSONATE_COOKIE, tenant.slug, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure,
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60, // 1 jam

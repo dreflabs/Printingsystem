@@ -5,7 +5,10 @@ import { NextResponse } from "next/server";
 const { auth } = NextAuth(authConfig);
 
 // Rute publik (tak butuh login)
-const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password", "/reset-password", "/platform/login"];
+const PUBLIC_PATHS = [
+  "/", "/login", "/register", "/forgot-password", "/reset-password", "/platform/login",
+  "/kontak", "/kebijakan-privasi", "/syarat-ketentuan",
+];
 
 // Halaman auth: user yang sudah login tidak perlu melihatnya lagi.
 // "/" disertakan agar user yang baru login (callbackUrl default) tidak nyangkut di homepage.
@@ -152,5 +155,9 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)"],
+  // Kecualikan aset & file SEO publik (robots.txt, sitemap.xml, icon, OG image) —
+  // tak butuh sesi dan tidak boleh dialihkan ke /login.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|icon.svg|opengraph-image|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)",
+  ],
 };

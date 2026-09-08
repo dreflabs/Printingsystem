@@ -16,11 +16,12 @@ export async function getSetupChecklist() {
     if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh melihat checklist penyiapan.");
 
     const T = { tenant_id: tenant.id };
-    const [machines, materials, printingProducts, retailProducts, staff, orders] = await Promise.all([
+    const [machines, materials, printingProducts, retailProducts, storage, staff, orders] = await Promise.all([
       prisma.machine.count({ where: T }),
       prisma.material.count({ where: T }),
       prisma.product.count({ where: T }),
       prisma.retailProduct.count({ where: T }),
+      prisma.storageLocation.count({ where: T }),
       // Pegawai selain Owner sendiri.
       prisma.user.count({ where: { ...T, role: { name: { not: "owner" } } } }),
       prisma.order.count({ where: T }),
@@ -30,6 +31,7 @@ export async function getSetupChecklist() {
       { key: "machine", done: machines > 0, count: machines },
       { key: "material", done: materials > 0, count: materials },
       { key: "product", done: printingProducts + retailProducts > 0, count: printingProducts + retailProducts },
+      { key: "storage", done: storage > 0, count: storage },
       { key: "staff", done: staff > 0, count: staff },
       { key: "order", done: orders > 0, count: orders },
     ];

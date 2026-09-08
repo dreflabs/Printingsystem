@@ -70,6 +70,7 @@ const CHECKLIST_META: Record<string, { label: string; href: string; hint: string
   machine: { label: "Tambah mesin cetak", href: "/admin/products", hint: "Katalog & Harga → tab Mesin" },
   material: { label: "Tambah bahan baku", href: "/finishing", hint: "Gudang & Finishing → tab Material" },
   product: { label: "Buat katalog produk + harga", href: "/admin/products", hint: "jasa cetak & barang eceran" },
+  storage: { label: "Siapkan lokasi penyimpanan", href: "/finishing", hint: "Gudang & Finishing → tab Storage → Kelola Lokasi" },
   staff: { label: "Tambah pegawai & atur peran", href: "/owner/users", hint: "Pegawai & Akses" },
   order: { label: "Buat order pertama", href: "/admin", hint: "tombol + Order Baru" },
 };

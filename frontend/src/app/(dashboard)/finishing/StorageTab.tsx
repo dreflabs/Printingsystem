@@ -41,7 +41,15 @@ export function StorageTab() {
   const [managing, setManaging] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const [form, setForm] = useState({ zone: "A", rack: "", slot: "", capacityMax: "3" });
+  const [advanced, setAdvanced] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    isCounter: false,
+    zone: "A",
+    rack: "",
+    slot: "",
+    capacityMax: "20",
+  });
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<StorageItemSearch>([]);
@@ -66,6 +74,7 @@ export function StorageTab() {
 
   useEffect(() => {
     if (searchQuery.trim().length < 3) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchResults([]);
       return;
     }
@@ -89,18 +98,28 @@ export function StorageTab() {
   };
 
   const addLocation = async () => {
+    if (!advanced && !form.name.trim()) {
+      toast({ type: "error", title: "Nama lokasi wajib diisi" });
+      return;
+    }
     setBusy(true);
-    const res = await createStorageLocation({
-      zone: form.zone,
-      rack: form.rack || undefined,
-      slot: form.slot || undefined,
-      floor: form.zone === "COUNTER" ? 1 : 3,
-      capacityMax: Number(form.capacityMax) || 1,
-    });
+    const res = advanced
+      ? await createStorageLocation({
+          zone: form.zone,
+          rack: form.rack || undefined,
+          slot: form.slot || undefined,
+          floor: form.zone === "COUNTER" ? 1 : 3,
+          capacityMax: Number(form.capacityMax) || 1,
+        })
+      : await createStorageLocation({
+          name: form.name.trim(),
+          isCounter: form.isCounter,
+          capacityMax: Number(form.capacityMax) || 1,
+        });
     setBusy(false);
     if (res.success) {
-      toast({ type: "success", title: "Lokasi ditambahkan", message: res.data.location_code });
-      setForm((f) => ({ ...f, rack: "", slot: "" }));
+      toast({ type: "success", title: "Lokasi ditambahkan", message: res.data.name });
+      setForm((f) => ({ ...f, name: "", rack: "", slot: "", isCounter: false }));
       loadLocs();
     } else toast({ type: "error", title: "Gagal", message: res.error });
   };
@@ -146,68 +165,123 @@ export function StorageTab() {
           </h2>
 
           {locs.length === 0 && (
-            <div className="rounded-xl border border-border bg-elevated/40 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-bold text-primary">Belum ada lokasi rak</p>
-                <p className="text-xs text-muted mt-0.5">Buat layout standar: LT3 Zona A–D + Counter LT1.</p>
-              </div>
-              <button
-                onClick={runSeed}
-                disabled={busy}
-                className="flex items-center gap-2 h-10 px-4 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40 transition-all shrink-0"
-              >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Buat Layout Standar
-              </button>
+            <div className="rounded-xl border border-border bg-elevated/40 p-4">
+              <p className="text-sm font-bold text-primary">Belum ada lokasi penyimpanan</p>
+              <p className="text-xs text-muted mt-0.5">
+                Tambahkan minimal satu lokasi (mis. &ldquo;Rak Penyimpanan&rdquo; dan &ldquo;Meja Counter&rdquo;) di form
+                bawah. SCAN 7 &ldquo;Simpan ke Rak&rdquo; butuh minimal satu lokasi aktif.
+              </p>
             </div>
           )}
 
-          {/* Form tambah lokasi tunggal */}
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] text-muted font-medium">Zona</span>
-              <select
-                value={form.zone}
-                onChange={(e) => setForm((f) => ({ ...f, zone: e.target.value }))}
-                className="h-9 rounded-lg bg-elevated border border-border text-sm text-primary px-2 outline-none focus:border-accent-teal"
+          {/* Form tambah lokasi */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-muted uppercase tracking-wide">Tambah lokasi</span>
+              <button
+                onClick={() => setAdvanced((a) => !a)}
+                className="text-[11px] font-bold text-accent-teal hover:underline"
               >
-                {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] text-muted font-medium">Rak</span>
-              <input
-                value={form.rack}
-                onChange={(e) => setForm((f) => ({ ...f, rack: e.target.value }))}
-                placeholder="01"
-                className="h-9 w-20 rounded-lg bg-elevated border border-border text-sm text-primary px-2 outline-none focus:border-accent-teal"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] text-muted font-medium">Slot</span>
-              <input
-                value={form.slot}
-                onChange={(e) => setForm((f) => ({ ...f, slot: e.target.value }))}
-                placeholder="01"
-                className="h-9 w-20 rounded-lg bg-elevated border border-border text-sm text-primary px-2 outline-none focus:border-accent-teal"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] text-muted font-medium">Kapasitas</span>
-              <input
-                type="number"
-                min={1}
-                value={form.capacityMax}
-                onChange={(e) => setForm((f) => ({ ...f, capacityMax: e.target.value }))}
-                className="h-9 w-24 rounded-lg bg-elevated border border-border text-sm text-primary px-2 outline-none focus:border-accent-teal"
-              />
-            </label>
-            <button
-              onClick={addLocation}
-              disabled={busy}
-              className="flex items-center gap-1.5 h-9 px-4 rounded-lg bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40 transition-all"
-            >
-              <Plus className="h-4 w-4" /> Tambah
-            </button>
+                {advanced ? "← Mode sederhana" : "Mode lanjutan (gudang bertingkat)"}
+              </button>
+            </div>
+
+            {!advanced ? (
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1 flex-1 min-w-[180px]">
+                  <span className="text-[11px] text-muted font-medium">Nama lokasi</span>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="mis. Rak Depan, Gudang Belakang, Meja Counter"
+                    className="h-9 rounded-lg bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-muted font-medium">Kapasitas</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.capacityMax}
+                    onChange={(e) => setForm((f) => ({ ...f, capacityMax: e.target.value }))}
+                    className="h-9 w-24 rounded-lg bg-elevated border border-border text-sm text-primary px-2 outline-none focus:border-accent-teal"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 h-9 text-xs text-muted">
+                  <input
+                    type="checkbox"
+                    checked={form.isCounter}
+                    onChange={(e) => setForm((f) => ({ ...f, isCounter: e.target.checked }))}
+                  />
+                  Ini meja serah terima (counter)
+                </label>
+                <button
+                  onClick={addLocation}
+                  disabled={busy}
+                  className="flex items-center gap-1.5 h-9 px-4 rounded-lg bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40 transition-all"
+                >
+                  <Plus className="h-4 w-4" /> Tambah
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-muted font-medium">Zona</span>
+                    <select
+                      value={form.zone}
+                      onChange={(e) => setForm((f) => ({ ...f, zone: e.target.value }))}
+                      className="h-9 rounded-lg bg-elevated border border-border text-sm text-primary px-2 outline-none focus:border-accent-teal"
+                    >
+                      {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-muted font-medium">Rak</span>
+                    <input
+                      value={form.rack}
+                      onChange={(e) => setForm((f) => ({ ...f, rack: e.target.value }))}
+                      placeholder="01"
+                      className="h-9 w-20 rounded-lg bg-elevated border border-border text-sm text-primary px-2 outline-none focus:border-accent-teal"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-muted font-medium">Slot</span>
+                    <input
+                      value={form.slot}
+                      onChange={(e) => setForm((f) => ({ ...f, slot: e.target.value }))}
+                      placeholder="01"
+                      className="h-9 w-20 rounded-lg bg-elevated border border-border text-sm text-primary px-2 outline-none focus:border-accent-teal"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-muted font-medium">Kapasitas</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={form.capacityMax}
+                      onChange={(e) => setForm((f) => ({ ...f, capacityMax: e.target.value }))}
+                      className="h-9 w-24 rounded-lg bg-elevated border border-border text-sm text-primary px-2 outline-none focus:border-accent-teal"
+                    />
+                  </label>
+                  <button
+                    onClick={addLocation}
+                    disabled={busy}
+                    className="flex items-center gap-1.5 h-9 px-4 rounded-lg bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40 transition-all"
+                  >
+                    <Plus className="h-4 w-4" /> Tambah
+                  </button>
+                </div>
+                <button
+                  onClick={runSeed}
+                  disabled={busy}
+                  className="inline-flex items-center gap-2 text-xs font-bold text-muted hover:text-primary disabled:opacity-40"
+                >
+                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  Buat layout gudang bertingkat sekaligus (LT3 Zona A–D + Counter, ~29 lokasi)
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Daftar lokasi */}

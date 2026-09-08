@@ -61,21 +61,44 @@ export async function getStorageLocations() {
   }
 }
 
+/** Kode `LOC-001`, `LOC-002`, … untuk lokasi mode-sederhana (tanpa zona/rak/slot). */
+async function nextSimpleLocationCode(tenantId: string): Promise<string> {
+  const rows = await prisma.storageLocation.findMany({
+    where: { tenant_id: tenantId, location_code: { startsWith: "LOC-" } },
+    select: { location_code: true },
+  });
+  const max = rows.reduce((m, r) => {
+    const n = parseInt(r.location_code.slice(4), 10);
+    return Number.isFinite(n) && n > m ? n : m;
+  }, 0);
+  return `LOC-${String(max + 1).padStart(3, "0")}`;
+}
+
 export async function createStorageLocation(data: {
-  zone: string;
+  /** Mode sederhana: cukup nama bebas ("Rak Depan", "Meja Counter"). */
+  name?: string;
+  /** Mode terstruktur (gudang bertingkat): zona + rak + slot + lantai. */
+  zone?: string;
   rack?: string;
   slot?: string;
   floor?: number;
-  name?: string;
   capacityMax?: number;
+  /** true → lokasi diperlakukan sebagai counter serah terima (dipakai SCAN 9). */
+  isCounter?: boolean;
 }) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh menambah lokasi rak.");
-    if (!data.zone?.trim()) return fail("Zona wajib diisi.");
-    const floor = data.floor ?? 3;
-    const code = buildLocationCode(data.zone, data.rack, data.slot, floor);
+
+    const simple = !data.zone?.trim();
+    if (simple && !data.name?.trim()) return fail("Nama lokasi wajib diisi.");
+
+    const floor = simple ? 1 : data.floor ?? 3;
+    const code = simple
+      ? await nextSimpleLocationCode(tenant.id)
+      : buildLocationCode(data.zone!, data.rack, data.slot, floor);
+    const zone = simple ? (data.isCounter ? "COUNTER" : "UMUM") : data.zone!.trim().toUpperCase();
 
     const existing = await prisma.storageLocation.findFirst({
       where: { tenant_id: tenant.id, location_code: code },
@@ -86,11 +109,11 @@ export async function createStorageLocation(data: {
       data: {
         tenant_id: tenant.id,
         location_code: code,
-        name: data.name?.trim() || defaultLocationName(data.zone, data.rack, data.slot, floor),
+        name: data.name?.trim() || defaultLocationName(data.zone!, data.rack, data.slot, floor),
         floor,
-        zone: data.zone.trim().toUpperCase(),
-        rack: data.rack?.trim() || null,
-        slot: data.slot?.trim() || null,
+        zone,
+        rack: simple ? null : data.rack?.trim() || null,
+        slot: simple ? null : data.slot?.trim() || null,
         capacity_max: Math.max(1, data.capacityMax ?? 1),
         qr_code_value: `LOC:${code}`,
       },

@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 import { ok, fail, type ActionResult } from "@/types/actions";
 import {
   buildStarterMaterials,
-  buildStorageLocations,
 } from "@/lib/starter-data";
 
 const DEFAULT_ROLES = ["owner", "admin", "designer_sales", "operator", "gudang"] as const;
@@ -176,13 +175,11 @@ export async function registerTenant(
         })),
       });
 
-      // Data awal minimal supaya alur kerja tidak buntu di hari pertama:
-      //  - Bahan: daftar bahan umum percetakan, stok 0 (Owner isi angkanya).
-      //  - Lokasi rak: SCAN 7 butuh minimal satu lokasi.
-      // Mesin TIDAK diisi — tiap percetakan beda; Owner menambah sendiri di
-      // Katalog & Harga → tab Mesin (nama & jenis bebas).
+      // Hanya bahan yang di-seed (daftar bahan umum percetakan, stok 0 — Owner
+      // isi angkanya). Mesin & lokasi penyimpanan TIDAK diisi: tiap percetakan
+      // beda. Owner menambahnya sendiri (Katalog & Harga → Mesin; Gudang &
+      // Finishing → Kelola Lokasi). Checklist penyiapan menuntun keduanya.
       await tx.material.createMany({ data: buildStarterMaterials(tenant.id, owner.id) });
-      await tx.storageLocation.createMany({ data: buildStorageLocations(tenant.id) });
 
       // Catatan: email belum diverifikasi (belum ada provider email) — jangan
       // tandai VERIFIED. Tambahkan langkah itu saat verifikasi email diaktifkan.

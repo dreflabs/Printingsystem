@@ -1,214 +1,116 @@
 # STATUS MACHINE — Alur Status Order
 
-## Apa Itu Status Machine?
+> Dokumen ini menggambarkan **implementasi sebenarnya** di server actions
+> (`src/actions/*`). Sumber tunggal daftar status: `frontend/src/lib/order-status.ts`.
 
-Status machine adalah **peta urutan status** yang menunjukkan:
-- Status apa saja yang bisa dimiliki sebuah order/job
-- Status apa yang bisa berpindah ke status apa (tidak boleh loncat sembarangan)
-- Siapa yang berhak mengubah ke status tertentu
+## Prinsip: status order itu "kasar"
+
+`Order.status` hanya menandai **fase besar** pesanan. Detail sub-langkah TIDAK
+disimpan di `Order.status`, tapi di record anak:
+
+| Sub-proses | Di mana state-nya |
+|---|---|
+| Pengerjaan & approval desain | `DesignJob.status` + `DesignVersion.approval_status` (PENDING/DESIGNING/WAITING_APPROVAL/APPROVED/REJECTED) |
+| Produksi per item, jeda, rework | `ProductionJob.status` (PRODUCTION_QUEUED/ASSIGNED/STARTED/PAUSED/COMPLETE/FAILED_REWORK/PICKED_UP) |
+| Hasil QC | `QcRecord` (PASS/FAIL + kategori + rework_decision) |
+| Finishing per job | `FinishingJob.status` |
+| Penyimpanan & insiden rak | `StorageItem.status` (STORED/INCIDENT/IN_TRANSIT/RELEASED) |
+| Serah terima | `PickupRecord` (dibuat saat SCAN 10) |
+
+Konsekuensinya, `Order.status` **melewati** beberapa nama yang mungkin diharapkan
+dari alur naratif (mis. tidak ada `APPROVED` atau `PICKED_UP` di level order —
+itu ada di record anak).
 
 ---
 
-## Status Utama Order
+## Status Order (yang benar-benar dipakai)
+
+### PRINTING (`order_type = "PRINTING"`)
+
+| Status | Kapan di-set | Oleh |
+|---|---|---|
+| `DRAFT` | `createPrintingOrder` — order + item + DesignJob kosong (PENDING) | Admin / Designer |
+| `DESIGNING` | Upload versi desain pertama (non-makloon) | Designer (`uploadDesignVersion`) |
+| `WAITING_PAYMENT` | `approveDesign` saat `paid_amount < dp_required`; makloon: langsung dari upload | Designer / Admin / sistem |
+| `CONFIRMED` | `approveDesign` saat DP sudah terpenuhi · `addPayment` saat DP tercapai · `decideDiscount` (approve) saat DP baru tercapai | Admin / sistem |
+| `PRODUCTION_ASSIGNED` | **Auto-release** (`autoReleaseToProduction`, Completeness Gate lolos) **atau** `assignProductionJob` manual (item tanpa mesin default / mesin MAINTENANCE / override). Job dibuat 1 per item — `PRODUCTION_QUEUED` (auto, belum ada operator) atau `PRODUCTION_ASSIGNED` (manual, operator di-pin). | sistem / Admin |
+| `PRODUCTION_STARTED` | SCAN 1 — operator klaim/mulai job pertama | Operator (`startProduction`) |
+| `QC_PENDING` | SCAN 2 — **semua** job order sudah `PRODUCTION_COMPLETE` (`advanceOrderWhenAllJobs`) | sistem |
+| `QC_PASSED` | SCAN 3 PASS — semua job `QC_PASSED` | Gudang (`submitQC`) |
+| `QC_REWORK_PENDING` | SCAN 3 FAIL — job jadi `FAILED_REWORK` | Gudang |
+| `PRODUCTION_ASSIGNED` (lagi) | `decideRework` APPROVED/REJECTED → child/reprint job dibuat, order balik ke pipeline | Owner |
+| `ON_HOLD` | `decideRework` HOLD | Owner |
+| `FINISHING_STARTED` | SCAN 4 — semua job `FINISHING_STARTED` | Gudang |
+| `FINISHING_COMPLETE` | SCAN 5 — semua job `FINISHING_COMPLETE` (label dicetak) | Gudang |
+| `STORED` | SCAN 6+7 — job disimpan ke rak (`StorageItem` STORED) | Gudang (`assignStorageLocation`) |
+| `READY_FOR_PICKUP` | langsung setelah `STORED` (aksi yang sama) → antre notifikasi WA | sistem |
+| `IN_TRANSIT` | SCAN 9 — barang dikonfirmasi di counter, slot rak dibebaskan | Gudang (`confirmItemAtCounter`) |
+| `FINAL_AUDIT_PENDING` | SCAN 10 — `releaseOrder`: gate **lunas** (atau Owner + alasan override) → `PickupRecord` dibuat, job → `PICKED_UP` | Admin / Owner |
+| `CLOSED` | `submitFinalAudit` hasil **GREEN** | Admin (`submitFinalAudit`) |
+| `FINAL_AUDIT_COMPLETE` | `submitFinalAudit` hasil **YELLOW** (perlu approve Owner) | Admin |
+| `CLOSED` / `ON_HOLD` | `approveFinalAudit` atas audit YELLOW (approve → CLOSED, tolak → ON_HOLD) | Owner |
+| `ON_HOLD` | `submitFinalAudit` hasil **RED** (blokir CLOSED) | sistem |
+
+### RETAIL (`order_type = "RETAIL"`)
+
+| Status | Kapan | Oleh |
+|---|---|---|
+| `CLOSED` | `processRetailOrder` — order **lahir langsung** `CLOSED`: item + potong stok (`RetailStockMovement`) + `Payment` lunas, semua dalam satu transaksi. Tidak ada Design/Produksi/QC/Finishing/Storage/Audit. | Kasir/Admin |
+| `CANCELLED` | `voidRetailOrder` — restok + `RetailStockMovement` IN kompensasi + `Payment` refund negatif. Admin (hari yang sama) / Owner (kapan saja). **Ini satu-satunya transisi keluar dari `CLOSED` di seluruh sistem.** | Admin / Owner |
+
+---
+
+## Kondisi khusus (bisa dari banyak titik)
+
+| Status | Kapan | Siapa |
+|---|---|---|
+| `ON_HOLD` | `freezeOrder` kapan saja · audit RED · rework HOLD. `unfreezeOrder` mengembalikan ke status sebelum-hold (dari audit log), kecuali hold berasal dari audit-RED / rework-HOLD. | Owner |
+| `CANCELLED` | Pra-produksi (`DRAFT`..`CONFIRMED`): Admin/Owner, DP refundable. In-produksi ke atas: **Owner saja**, DP hangus, hanya pelunasan di atas `dp_required` yang refundable. Job → CANCELLED, slot rak dibebaskan. | Admin / Owner (`cancelOrder`) |
+| `INCIDENT` | `reportStorageIncident` — barang tak ditemukan di lokasi tercatat. `StorageItem` → INCIDENT. | Gudang |
+
+---
+
+## Diagram alur (implementasi)
 
 ```
-DRAFT
-  └─ Designer buat order baru
+DRAFT ──upload desain──▶ DESIGNING ──approveDesign──▶ WAITING_PAYMENT ──DP cukup──▶ CONFIRMED
+  │  (makloon: DRAFT ─upload─▶ WAITING_PAYMENT)          (approveDesign +           │
+  │                                                       DP sudah cukup) ──────────┤
+  ▼                                                                                 ▼
+CONFIRMED ──auto-release / assign manual──▶ PRODUCTION_ASSIGNED
+   PRODUCTION_ASSIGNED ─SCAN1─▶ PRODUCTION_STARTED ─SCAN2(semua job)─▶ QC_PENDING
+   QC_PENDING ─SCAN3 PASS─▶ QC_PASSED
+             └─SCAN3 FAIL─▶ QC_REWORK_PENDING ─decideRework APPROVE/REJECT─▶ PRODUCTION_ASSIGNED
+                                              └─HOLD─▶ ON_HOLD
+   QC_PASSED ─SCAN4─▶ FINISHING_STARTED ─SCAN5─▶ FINISHING_COMPLETE
+   FINISHING_COMPLETE ─SCAN6+7─▶ STORED ─(langsung)─▶ READY_FOR_PICKUP
+   READY_FOR_PICKUP ─SCAN9─▶ IN_TRANSIT ─SCAN10 (lunas / Owner override)─▶ FINAL_AUDIT_PENDING
+   FINAL_AUDIT_PENDING ─submitFinalAudit─▶ GREEN: CLOSED
+                                          YELLOW: FINAL_AUDIT_COMPLETE ─approveFinalAudit─▶ CLOSED / ON_HOLD
+                                          RED: ON_HOLD
 
-DESIGNING
-  └─ Designer sedang buat/upload desain
-
-WAITING_APPROVAL
-  └─ Desain sudah ada, menunggu persetujuan konsumen (untuk tipe WA)
-
-APPROVED
-  └─ Desain sudah disetujui konsumen
-
-WAITING_PAYMENT
-  └─ Menunggu DP 50% dari konsumen
-
-CONFIRMED
-  └─ DP sudah masuk, order dikonfirmasi Admin
-
-PRODUCTION_QUEUED
-  └─ Order lolos Completeness Gate → sistem OTOMATIS buat Production Job
-     (1 per item, mesin dari `product.default_machine_id`, belum ada operator).
-     Tidak ada approval Admin manual. Lihat `02-WORKFLOW/17-AUTO-RELEASE-PRODUKSI.md`.
-
-PRODUCTION_ASSIGNED
-  └─ Job di-pin Admin ke operator+mesin tertentu (jalur manual / fallback:
-     item tanpa mesin default, mesin default MAINTENANCE, atau override prioritas)
-
-PRODUCTION_STARTED
-  └─ Operator scan QR → klaim job dari antrian + mulai produksi (SCAN 1)
-  └─ Sub-status di level `production_jobs` (bukan status order): Operator bisa "Jeda Produksi" → job jadi PRODUCTION_PAUSED sementara, order tetap PRODUCTION_STARTED. Lihat `02-WORKFLOW/05-PRODUCTION.md` bagian "Jeda Produksi".
-
-PRODUCTION_COMPLETE
-  └─ Operator scan QR → selesai produksi, input qty & waste (SCAN 2)
-
-QC_PENDING
-  └─ Menunggu inspeksi QC
-
-QC_PASSED
-  └─ QC lulus → bisa lanjut ke finishing
-
-QC_FAILED
-  └─ QC gagal → sistem generate **Child Job** baru (sufiks -R1) untuk mencegah tumpang tindih waktu. Masuk rework workflow.
-
-QC_REWORK_PENDING
-  └─ Menunggu penjelasan operator + approval Owner untuk Child Job tersebut
-
-REWORK_APPROVED
-  └─ Owner setujui rework → Child Job diubah statusnya ke PRODUCTION_STARTED
-
-FINISHING_STARTED
-  └─ Gudang scan QR → mulai finishing (SCAN 4)
-
-FINISHING_COMPLETE
-  └─ Finishing selesai, label dicetak (SCAN 5)
-
-STORAGE_PENDING
-  └─ Menunggu proses simpan ke gudang
-
-STORED
-  └─ Barang tersimpan di gudang LT3 (SCAN 6 + SCAN 7)
-
-READY_FOR_PICKUP
-  └─ Barang siap diambil konsumen → WA notifikasi dikirim
-
-IN_TRANSIT
-  └─ Barang sedang dipindah dari LT3 ke Counter LT1
-
-PICKED_UP
-  └─ Barang sudah diserahkan ke konsumen (SCAN 10)
-
-FINAL_AUDIT_PENDING
-  └─ Menunggu proses final audit oleh Admin
-
-FINAL_AUDIT_COMPLETE
-  └─ Audit selesai dengan hasil GREEN, YELLOW (butuh approval Owner), atau RED
-     (RED = order TIDAK bisa lanjut ke CLOSED — order dikembalikan ke ON_HOLD untuk
-     investigasi Owner, lihat cabang RED di diagram alur)
-
-CLOSED
-  └─ Order sepenuhnya selesai. Tidak bisa diedit langsung.
-
-ON_HOLD
-  └─ Order dibekukan oleh Owner (untuk investigasi atau sengketa)
-
-CANCELLED
-  └─ Order dibatalkan (dengan kebijakan DP hangus jika produksi sudah berjalan)
-
-INCIDENT
-  └─ Barang tidak ditemukan di lokasi storage yang tercatat
-
-// ── STATUS KHUSUS RETAIL (order_type = RETAIL) ──
-
-NEW_RETAIL_ORDER
-  └─ Kasir/Admin membuat pesanan Direct Sales (barang jadi)
-
-RETAIL_PAYMENT_COMPLETED
-  └─ Pembayaran dikonfirmasi lunas, stok barang dipotong otomatis
-
-CLOSED
-  └─ (sama dengan PRINTING) Transaksi selesai. Tidak bisa diedit langsung.
-
-CANCELLED
-  └─ (sama dengan PRINTING) Hanya berlaku sebelum RETAIL_PAYMENT_COMPLETED
+RETAIL:  (buat) ─▶ CLOSED  ─voidRetailOrder─▶ CANCELLED
 ```
 
 ---
 
-## Diagram Alur Utama
+## Aturan
 
-```
-DRAFT → DESIGNING → WAITING_APPROVAL* → APPROVED
-                  ↘ (walk-in/makloon langsung) ↗
-APPROVED → WAITING_PAYMENT → CONFIRMED
-CONFIRMED → PRODUCTION_QUEUED → PRODUCTION_STARTED → PRODUCTION_COMPLETE
-          ↘ (jalur manual) PRODUCTION_ASSIGNED → PRODUCTION_STARTED ↗
-PRODUCTION_COMPLETE → QC_PENDING → QC_PASSED → FINISHING_STARTED → FINISHING_COMPLETE
-                               ↘ QC_FAILED (Auto-generate Child Job -R1) → QC_REWORK_PENDING → REWORK_APPROVED → PRODUCTION_STARTED (untuk Child Job)
-FINISHING_COMPLETE → STORAGE_PENDING → STORED → READY_FOR_PICKUP
-READY_FOR_PICKUP → IN_TRANSIT → PICKED_UP
-PICKED_UP → FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE → CLOSED
-                                 ↘ (hasil RED) → ON_HOLD (investigasi Owner)
-
-*WAITING_APPROVAL hanya untuk tipe konsumen Online
-```
-
-### Alur RETAIL (order_type = RETAIL)
-
-```
-NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED
-
-*Tidak ada Design, Production, QC, Finishing, Storage, atau Final Audit
-*customer_id opsional (boleh null untuk pelanggan guest/walk-in)
-*Pengurangan stok retail_products terjadi otomatis saat RETAIL_PAYMENT_COMPLETED
-```
+- **Tiap transisi di-guard**: aksi memakai `updateMany({ where: { id, status: { in: [status_asal_yang_sah] } } })`. Status tidak sah → tidak ada perubahan (tidak error diam-diam ganda).
+- **Order multi-item**: `advanceOrderWhenAllJobs` — order hanya maju kalau **semua** `ProductionJob` non-child order itu sudah mencapai tahap tsb. Pengecualian: `startProduction` memajukan order begitu **job pertama** mulai (order dianggap "sedang produksi" walau sebagian item masih antre).
+- **Deadline dianggap terpenuhi** sejak `READY_FOR_PICKUP` (lihat `DEADLINE_SETTLED` di `src/lib/order-status.ts` + `RESOLVED_STATUSES` di cron `deadline-alerts`). Order pada status itu ke atas tidak lagi dihitung "overdue".
+- **Setelah `CLOSED`**: tidak ada transisi maju. Perbaikan data lewat `corrections` (record baru, tidak mengedit asli). Pengecualian tunggal: `voidRetailOrder` (`CLOSED → CANCELLED`) untuk pembatalan transaksi retail.
+- Setiap perpindahan dicatat di `audit_logs`.
 
 ---
 
-## Status Khusus (Bisa Terjadi di Berbagai Titik)
+## Status yang TIDAK ada di implementasi
 
-| Status | Kapan | Siapa yang Bisa Set |
-|--------|-------|---------------------|
-| ON_HOLD | Kapan saja, untuk investigasi | Owner saja |
-| CANCELLED | Sebelum produksi dimulai (DP dikembalikan) atau setelah produksi (DP hangus) | Owner / Admin |
-| INCIDENT | Saat barang tidak ditemukan di storage | Gudang (report) |
+Nama-nama ini pernah ada di rancangan lama tapi **tidak pernah di-set** sebagai
+`Order.status` — sub-state-nya ada di record anak:
 
----
-
-## Aturan Perpindahan Status
-
-- Status **tidak bisa loncat** (contoh: tidak bisa dari CONFIRMED langsung ke PICKED_UP)
-- Setiap perpindahan status dicatat di `audit_logs` secara real-time
-- Perpindahan status yang tidak valid di-blokir oleh sistem di server
-- Setelah CLOSED: tidak ada perpindahan status — hanya correction/adjustment yang tercatat sebagai record baru
-
----
-
-## Siapa yang Bisa Ubah Status
-
-| Transisi | Role yang Berhak |
-|----------|-----------------|
-| DRAFT → DESIGNING | Designer Sales |
-| DESIGNING → WAITING_APPROVAL | Designer Sales |
-| WAITING_APPROVAL → APPROVED | Admin |
-| Walk-in/Makloon → APPROVED | Designer Sales |
-| APPROVED → WAITING_PAYMENT | Sistem otomatis |
-| WAITING_PAYMENT → CONFIRMED | Admin (konfirmasi pembayaran) / Sistem otomatis |
-| CONFIRMED → PRODUCTION_QUEUED | Sistem otomatis (Completeness Gate lolos — tanpa approval Admin) |
-| CONFIRMED → PRODUCTION_ASSIGNED | Admin (assign manual / fallback) |
-| PRODUCTION_QUEUED → PRODUCTION_STARTED | Operator (klaim + scan SCAN 1) |
-| PRODUCTION_ASSIGNED → PRODUCTION_STARTED | Operator (via scan) |
-| PRODUCTION_STARTED → PRODUCTION_COMPLETE | Operator (via scan) |
-| PRODUCTION_COMPLETE → QC_PENDING | Sistem otomatis |
-| QC_PENDING → QC_PASSED / QC_FAILED | Gudang |
-| QC_FAILED → QC_REWORK_PENDING | Sistem otomatis |
-| QC_REWORK_PENDING → REWORK_APPROVED | Owner saja |
-| QC_PASSED → FINISHING_STARTED | Gudang (via scan) |
-| FINISHING_STARTED → FINISHING_COMPLETE | Gudang (via scan) |
-| FINISHING_COMPLETE → STORAGE_PENDING | Gudang (via scan) / Sistem otomatis |
-| STORAGE_PENDING → STORED | Gudang (via scan Job QR + Location QR) |
-| STORED → READY_FOR_PICKUP | Sistem otomatis |
-| READY_FOR_PICKUP → IN_TRANSIT | Gudang (via scan) |
-| IN_TRANSIT → PICKED_UP | Admin (via scan) |
-| PICKED_UP → FINAL_AUDIT_PENDING | Sistem otomatis |
-| FINAL_AUDIT_PENDING → FINAL_AUDIT_COMPLETE | Admin (submit hasil GREEN/YELLOW/RED) |
-| FINAL_AUDIT_COMPLETE → CLOSED | Sistem otomatis jika GREEN; Owner approve jika YELLOW (Admin submit hasil audit, jadi tidak bisa juga approve) |
-| FINAL_AUDIT_COMPLETE → ON_HOLD | Sistem otomatis jika hasil RED (blokir CLOSED, wajib investigasi Owner) |
-| Kapan saja → ON_HOLD | Owner |
-| Sebelum produksi → CANCELLED | Admin / Owner |
-| Setelah produksi → CANCELLED | Owner saja |
-
----
-
-## Siapa yang Bisa Ubah Status (RETAIL)
-
-| Transisi | Role yang Berhak |
-|----------|-----------------|
-| Buat → NEW_RETAIL_ORDER | Admin, Owner |
-| NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED | Admin (konfirmasi pembayaran) |
-| RETAIL_PAYMENT_COMPLETED → CLOSED | Sistem otomatis (setelah barang diserahkan) |
-| NEW_RETAIL_ORDER → CANCELLED | Admin, Owner (hanya sebelum pembayaran) |
+`WAITING_APPROVAL`, `APPROVED` (→ `DesignVersion.approval_status`) ·
+`QC_FAILED`, `REWORK_APPROVED` (→ `ProductionJob` / `QcRecord`) ·
+`STORAGE_PENDING` (order langsung `STORED`) ·
+`PRODUCTION_QUEUED`, `PRODUCTION_COMPLETE`, `PRODUCTION_PAUSED`, `PICKED_UP` (→ `ProductionJob.status`) ·
+`NEW_RETAIL_ORDER`, `RETAIL_PAYMENT_COMPLETED` (order retail lahir langsung `CLOSED`).

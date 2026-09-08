@@ -70,22 +70,12 @@ export type {
 /** `Order.order_type` */
 export type OrderType = "PRINTING" | "RETAIL";
 
-/** `Order.status` — alur utama pesanan PRINTING (lihat 02-WORKFLOW). */
-export type OrderStatus =
-  | "WAITING_APPROVAL"
-  | "WAITING_PAYMENT"
-  | "PRODUCTION_ASSIGNED"
-  | "PRODUCTION_STARTED"
-  | "PRODUCTION_PAUSED"
-  | "PRODUCTION_COMPLETE"
-  | "QC_PASSED"
-  | "FINISHING_STARTED"
-  | "FINISHING_COMPLETE"
-  | "READY_FOR_PICKUP"
-  | "IN_TRANSIT"
-  | "PICKED_UP"
-  | "CLOSED"
-  | "CANCELLED";
+/**
+ * `Order.status` — daftar kanonis di `@/lib/order-status`
+ * (lihat `09-TECHNICAL/STATUS-MACHINE.md`). Status order sengaja "kasar";
+ * sub-state detail hidup di record anak.
+ */
+export type { OrderStatus } from "@/lib/order-status";
 
 /** `Payment.status` — lihat komentar di schema.prisma. */
 export type PaymentStatus = "PENDING" | "PAID" | "FAILED" | "WAIVED";

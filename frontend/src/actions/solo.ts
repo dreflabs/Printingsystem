@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
+import { TERMINAL_STATUSES } from "@/lib/order-status";
 import { ok, fail } from "@/types";
 
 const OPERATIONAL_ROLES = ["admin", "designer_sales", "operator", "gudang"] as const;
@@ -18,16 +19,14 @@ const OPERATIONAL_ROLES = ["admin", "designer_sales", "operator", "gudang"] as c
 type Step = { label: string; hint: string; href: string };
 
 // Status order terminal / tidak butuh tindakan manual di daftar ini.
-const DONE = new Set(["CLOSED", "CANCELLED", "PICKED_UP"]);
+const DONE = new Set(TERMINAL_STATUSES);
 
 function stepFor(status: string, balance: number, jobCount: number): Step | null {
   switch (status) {
     case "DRAFT":
-      return { label: "Lengkapi order & catat DP", hint: "Buka detail order di Dashboard", href: "/admin" };
+      return { label: "Lengkapi order, upload & ACC desain", hint: "Menu Dashboard (Designer)", href: "/designer" };
     case "DESIGNING":
-    case "WAITING_APPROVAL":
       return { label: "Kerjakan / ACC desain", hint: "Menu Dashboard (Designer)", href: "/designer" };
-    case "APPROVED":
     case "WAITING_PAYMENT":
       return { label: "Catat DP / pelunasan", hint: "Buka detail order di Dashboard", href: "/admin" };
     case "CONFIRMED":
@@ -67,6 +66,8 @@ function stepFor(status: string, balance: number, jobCount: number): Step | null
       return { label: "Audit akhir sebelum order ditutup", hint: "Buka detail order di Dashboard", href: "/admin" };
     case "ON_HOLD":
       return { label: "Order dibekukan — tinjau lalu cairkan", hint: "Detail order di Dashboard", href: "/admin" };
+    case "INCIDENT":
+      return { label: "Barang hilang di rak — tindak lanjuti", hint: "Alert di Dashboard Owner", href: "/owner" };
     default:
       return null;
   }

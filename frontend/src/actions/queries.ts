@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { DEADLINE_SETTLED } from "@/lib/order-status";
 import { ok, fail } from "@/types";
 
 /**
@@ -215,7 +216,7 @@ export async function getOwnerDashboard() {
         select: { id: true, order_code: true, status: true, cancellation_reason: true, paid_amount: true, customer: { select: { name: true } } },
       }),
       prisma.order.findMany({
-        where: { ...T, deadline: { lt: now }, status: { notIn: ["CLOSED", "CANCELLED", "PICKED_UP"] } },
+        where: { ...T, deadline: { lt: now }, status: { notIn: DEADLINE_SETTLED } },
         orderBy: { deadline: "asc" },
         select: { id: true, order_code: true, deadline: true, status: true, customer: { select: { name: true } } },
       }),
@@ -429,7 +430,6 @@ export async function getOrders(params?: {
     await requireUser();
     const limit = Math.min(Math.max(params?.limit ?? 50, 1), 200);
 
-    const NOT_DONE = ["CLOSED", "CANCELLED", "PICKED_UP"];
     const deadlineRange =
       params?.deadlineFrom || params?.deadlineTo
         ? {
@@ -444,7 +444,7 @@ export async function getOrders(params?: {
         ...(params?.status ? { status: params.status } : {}),
         ...(params?.type ? { order_type: params.type } : {}),
         ...(params?.overdueOnly
-          ? { deadline: { lt: new Date() }, status: { notIn: NOT_DONE } }
+          ? { deadline: { lt: new Date() }, status: { notIn: DEADLINE_SETTLED } }
           : {}),
         ...(deadlineRange ? { deadline: deadlineRange } : {}),
         ...(params?.search
@@ -469,7 +469,7 @@ export async function getOrders(params?: {
         deadline: o.deadline,
         itemCount: o._count.items,
         createdAt: o.created_at,
-        overdue: o.deadline ? o.deadline.getTime() < Date.now() && !["CLOSED", "CANCELLED", "PICKED_UP"].includes(o.status) : false,
+        overdue: o.deadline ? o.deadline.getTime() < Date.now() && !DEADLINE_SETTLED.includes(o.status) : false,
       }))
     );
   } catch (e) {

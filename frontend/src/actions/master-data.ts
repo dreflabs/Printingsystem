@@ -576,9 +576,15 @@ export async function getMachines() {
   }
 }
 
+// Jenis/kategori mesin bebas diisi tenant — bukan enum. Nilai yang cocok dengan
+// daftar saran dinormalkan ke huruf besar (biar konsisten dengan data lama);
+// selain itu diterima apa adanya, hanya dirapikan & dibatasi panjangnya.
 const normCat = (v?: string) => {
-  const u = (v ?? "").trim().toUpperCase();
-  return (MACHINE_CATEGORIES as readonly string[]).includes(u) ? u : "LAINNYA";
+  const t = (v ?? "").trim();
+  if (!t) return "LAINNYA";
+  const up = t.toUpperCase();
+  if ((MACHINE_CATEGORIES as readonly string[]).includes(up)) return up;
+  return t.slice(0, 40);
 };
 const normStatus = (v?: string) =>
   (MACHINE_STATUSES as readonly string[]).includes(v ?? "") ? (v as string) : "ACTIVE";

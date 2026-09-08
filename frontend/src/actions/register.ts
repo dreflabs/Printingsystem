@@ -4,7 +4,6 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { ok, fail, type ActionResult } from "@/types/actions";
 import {
-  buildStarterMachines,
   buildStarterMaterials,
   buildStorageLocations,
 } from "@/lib/starter-data";
@@ -177,11 +176,11 @@ export async function registerTenant(
         })),
       });
 
-      // Data awal supaya alur kerja bisa diselesaikan sejak hari pertama.
-      // Tanpa ini tenant baru buntu: ProductionJob mewajibkan machine_id,
-      // finishProduction mewajibkan pemakaian bahan, dan SCAN7 butuh lokasi rak.
-      // Semua stok sengaja 0 — ini kerangka, bukan tebakan soal bisnis Owner.
-      await tx.machine.createMany({ data: buildStarterMachines(tenant.id) });
+      // Data awal minimal supaya alur kerja tidak buntu di hari pertama:
+      //  - Bahan: daftar bahan umum percetakan, stok 0 (Owner isi angkanya).
+      //  - Lokasi rak: SCAN 7 butuh minimal satu lokasi.
+      // Mesin TIDAK diisi — tiap percetakan beda; Owner menambah sendiri di
+      // Katalog & Harga → tab Mesin (nama & jenis bebas).
       await tx.material.createMany({ data: buildStarterMaterials(tenant.id, owner.id) });
       await tx.storageLocation.createMany({ data: buildStorageLocations(tenant.id) });
 

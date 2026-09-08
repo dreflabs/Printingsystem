@@ -76,22 +76,10 @@ export function buildStorageLocations(tenantId: string, skipCodes: Set<string> =
 }
 
 /**
- * Satu mesin kerangka. Sengaja hanya satu dan diberi nama jelas — Owner harus
- * menggantinya dengan mesin sungguhan, tapi produksi sudah bisa ditugaskan
- * sejak hari pertama.
+ * Mesin TIDAK diisi otomatis. Tiap percetakan punya mesin yang berbeda-beda,
+ * jadi Owner menambah sendiri lewat Katalog & Harga → tab Mesin (nama + jenis
+ * bebas). Checklist penyiapan + empty-state tab Mesin sudah menuntun langkah ini.
  */
-export function buildStarterMachines(tenantId: string) {
-  return [
-    {
-      tenant_id: tenantId,
-      machine_code: "MCH-001",
-      name: "Mesin Utama (ganti namanya)",
-      category: "INDOOR",
-      status: "ACTIVE",
-      notes: "Dibuat otomatis saat pendaftaran. Ganti nama dan kategorinya sesuai mesin Anda.",
-    },
-  ];
-}
 
 /**
  * Bahan paling umum di percetakan. Semua stok 0 — Owner mengisi angka

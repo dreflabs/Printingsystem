@@ -178,12 +178,12 @@ function PrintingModal({
 
 // ─── Machine modal (create + edit) ──────────────────────────────────────────
 function MachineModal({
-  editing, onClose, onSaved,
+  editing, suggestions, onClose, onSaved,
 }: {
-  editing: Machine | null; onClose: () => void; onSaved: () => void;
+  editing: Machine | null; suggestions: string[]; onClose: () => void; onSaved: () => void;
 }) {
   const [name, setName] = useState(editing?.name ?? "");
-  const [category, setCategory] = useState(editing?.category ?? "OUTDOOR");
+  const [category, setCategory] = useState(editing?.category ?? "");
   const [status, setStatus] = useState(editing?.status ?? "ACTIVE");
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [busy, setBusy] = useState(false);
@@ -192,7 +192,7 @@ function MachineModal({
   async function save() {
     if (!name.trim()) { setErr("Nama mesin wajib diisi."); return; }
     setBusy(true); setErr(null);
-    const payload = { name: name.trim(), category, status, notes: notes.trim() || null };
+    const payload = { name: name.trim(), category: category.trim(), status, notes: notes.trim() || null };
     const res = editing ? await updateMachine(editing.id, payload) : await createMachine(payload);
     setBusy(false);
     if (!res.success) { setErr(res.error ?? "Gagal."); return; }
@@ -202,12 +202,19 @@ function MachineModal({
   return (
     <Shell title={editing ? `Edit Mesin ${editing.machine_code}` : "Tambah Mesin"} onClose={onClose} busy={busy}>
       {err && <Err msg={err} />}
-      <Field label="Nama Mesin *"><input className={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Eco Solvent 3.2m" /></Field>
+      <Field label="Nama Mesin *"><input className={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Epson SureColor S60, Roland VersaUV" /></Field>
       <Grid2>
-        <Field label="Kategori">
-          <select className={inp} value={category} onChange={(e) => setCategory(e.target.value)}>
-            {MACHINE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+        <Field label="Jenis / Kategori (opsional)">
+          <input
+            className={inp}
+            list="machine-cat-suggest"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            placeholder="ketik bebas — mis. Eco Solvent, UV Flatbed, DTF"
+          />
+          <datalist id="machine-cat-suggest">
+            {suggestions.map((c) => <option key={c} value={c} />)}
+          </datalist>
         </Field>
         <Field label="Status">
           <select className={inp} value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -215,6 +222,7 @@ function MachineModal({
           </select>
         </Field>
       </Grid2>
+      <p className="text-[10px] text-muted -mt-2">Jenis hanya untuk pengelompokan Anda sendiri — isi apa pun, atau biarkan kosong.</p>
       <Field label="Catatan (opsional)">
         <textarea className={cn(inp, "h-16 py-2")} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="mis. print head no.2 lemah" />
       </Field>
@@ -287,6 +295,9 @@ export default function AdminProductsPage() {
   const fRetail = retail.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
   const fPrinting = printing.filter((p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
   const fMachine = machines.filter((p) => p.name.toLowerCase().includes(q) || p.machine_code.toLowerCase().includes(q));
+  const machineCatSuggestions = Array.from(
+    new Set<string>([...MACHINE_CATEGORIES, ...machines.map((m) => m.category).filter(Boolean)]),
+  ).sort((a, b) => a.localeCompare(b, "id"));
 
   async function del(p: Retail) {
     setConfirmDel(null);
@@ -420,7 +431,7 @@ export default function AdminProductsPage() {
 
       {retailModal.open && <RetailModal editing={retailModal.editing} categories={cats.retail} onClose={() => setRetailModal({ open: false, editing: null })} onSaved={done} />}
       {printingModal.open && <PrintingModal editing={printingModal.editing} materials={materials} machines={machines} categories={cats.printing} onClose={() => setPrintingModal({ open: false, editing: null })} onSaved={done} />}
-      {machineModal.open && <MachineModal editing={machineModal.editing} onClose={() => setMachineModal({ open: false, editing: null })} onSaved={done} />}
+      {machineModal.open && <MachineModal editing={machineModal.editing} suggestions={machineCatSuggestions} onClose={() => setMachineModal({ open: false, editing: null })} onSaved={done} />}
 
       {confirmDel && (
         <Shell title="Hapus Barang Retail" onClose={() => setConfirmDel(null)} busy={false}>

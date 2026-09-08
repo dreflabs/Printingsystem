@@ -201,11 +201,18 @@ export function AbsenCard() {
   }
   if (!data) return null;
 
-  if (!data.settings.personalDeviceEnabled && !data.checkedIn) {
+  // Toko kiosk-only: kartu ini jadi baca-saja (semua aksi lewat perangkat kiosk).
+  if (!data.settings.personalDeviceEnabled) {
     return (
-      <div className="rounded-2xl border border-border bg-card/70 p-4 text-sm text-muted">
-        <p className="font-semibold text-primary flex items-center gap-2"><Clock className="h-4 w-4" /> Absensi</p>
-        <p className="mt-1">Absen dari HP pribadi dinonaktifkan. Silakan absen di perangkat kiosk kantor.</p>
+      <div className="rounded-2xl border border-border bg-card/70 p-4 text-sm">
+        <p className="font-bold text-primary flex items-center gap-2"><Clock className="h-4 w-4 text-accent-teal" /> Absensi Hari Ini</p>
+        <div className="mt-2 space-y-1 text-muted">
+          <p>Masuk: <span className="font-semibold text-primary">{hhmm(data.checkIn)}</span>
+            {data.checkedIn && (data.checkInStatus === "LATE" ? <span className="text-status-yellow-text"> · telat {data.lateMinutes}m</span> : <span className="text-status-green"> · tepat waktu</span>)}
+          </p>
+          {data.checkedOut && <p>Pulang: <span className="font-semibold text-primary">{hhmm(data.checkOut)}</span></p>}
+        </div>
+        <p className="mt-2 text-[11px] text-muted">Absen dari HP pribadi dinonaktifkan — gunakan perangkat kiosk di kantor.</p>
       </div>
     );
   }

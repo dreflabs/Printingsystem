@@ -20,7 +20,8 @@ const MENUS: Record<GuideRole, MenuItem[]> = {
     { label: "Produksi & Laporan", href: "/admin/production", icon: BarChart2, desc: "Papan mesin: job yang sedang jalan per mesin, alihkan job (reassign) ke mesin/operator lain, pantau rework." },
     { label: "Pegawai & Akses", href: "/owner/users", icon: Users, desc: "Tambah pegawai, atur peran (bisa lebih dari satu), reset kata sandi, buka akun terkunci, nonaktifkan pegawai keluar." },
     { label: "Laporan Bulanan", href: "/owner/reports", icon: BarChart2, desc: "Rekap per bulan: omzet bruto/neto, piutang, diskon, DP hangus, produk terlaris, mesin tersibuk, waste, kinerja. Bisa diekspor CSV." },
-    { label: "Absensi Pegawai", href: "/admin/attendance", icon: Clock, desc: "Impor absensi dari file CSV mesin fingerprint, lihat rekap kehadiran & keterlambatan, beri catatan (tanpa mengubah data)." },
+    { label: "Pengaturan Absensi", href: "/owner/attendance-settings", icon: Clock, desc: "Jam kerja & batas telat, hari kerja, geofence lokasi kantor, wajib selfie, jalur absen (HP pribadi / kiosk), dan pengelolaan perangkat kiosk + PIN pegawai." },
+    { label: "Absensi Pegawai", href: "/admin/attendance", icon: Clock, desc: "Rekap kehadiran: absen in-app (HP/kiosk) + impor CSV fingerprint sebagai cadangan. Lihat sumber, lokasi, selfie, keterlambatan; beri catatan (tanpa mengubah data)." },
     { label: "Gaji Pegawai", href: "/admin/payroll", icon: Wallet, desc: "Hitung gaji per periode berbasis kehadiran + potongan keterlambatan." },
     { label: "Scan QR", href: "/scan", icon: ScanLine, desc: "Pindai kode job / lokasi rak untuk melihat detail dan menjalankan aksi sesuai tahap." },
   ],
@@ -35,16 +36,16 @@ const MENUS: Record<GuideRole, MenuItem[]> = {
     { label: "Scan QR", href: "/scan", icon: ScanLine, desc: "Pindai job untuk lihat status, atau lakukan serah terima barang." },
   ],
   designer_sales: [
-    { label: "Dashboard", href: "/designer", icon: Palette, desc: "Antrian job desain: PENDING (belum ada versi), sedang dikerjakan, sudah disetujui. Buka job untuk mulai." },
+    { label: "Dashboard", href: "/designer", icon: Palette, desc: "Kartu Absensi (absen masuk/pulang + istirahat), lalu antrian job desain: PENDING (belum ada versi), sedang dikerjakan, sudah disetujui." },
     { label: "Buat Order Baru", href: "/designer", icon: ShoppingCart, desc: "Designer juga boleh membuat order (sama seperti Admin) — lewat tombol di dashboard." },
     { label: "Scan QR", href: "/scan", icon: ScanLine, desc: "Pindai kode job untuk membuka detailnya." },
   ],
   operator: [
-    { label: "Dashboard", href: "/operator", icon: Settings2, desc: "Job Anda yang aktif + antrian job yang bisa diklaim. Maksimal 1 job aktif per operator." },
+    { label: "Dashboard", href: "/operator", icon: Settings2, desc: "Kartu Absensi (absen masuk/pulang + istirahat), job Anda yang aktif, dan antrian job yang bisa diklaim. Maksimal 1 job aktif per operator." },
     { label: "Scan QR", href: "/scan", icon: ScanLine, desc: "Pindai kode job di lembar kerja: Mulai (SCAN 1), lalu Selesai + catat hasil (SCAN 2)." },
   ],
   gudang: [
-    { label: "Dashboard Gudang & Finishing", href: "/finishing", icon: Package, desc: "Empat tab: QC (inspeksi), Finishing (penyelesaian + cetak label), Storage (simpan ke rak & serah counter), Material (stok bahan baku)." },
+    { label: "Dashboard Gudang & Finishing", href: "/finishing", icon: Package, desc: "Kartu Absensi di atas, lalu empat tab: QC (inspeksi), Finishing (penyelesaian + cetak label), Storage (simpan ke rak & serah counter), Material (stok bahan baku)." },
     { label: "Scan QR", href: "/scan", icon: ScanLine, desc: "Pindai job untuk QC / finishing / simpan rak, atau pindai lokasi rak." },
   ],
 };
@@ -84,12 +85,17 @@ const GLOSSARY: { term: string; def: string }[] = [
   { term: "Audit akhir", def: "Pemeriksaan sebelum order ditutup. Hijau → langsung CLOSED, kuning → perlu persetujuan Owner, merah → order ditahan." },
   { term: "Koreksi", def: "Perbaikan data setelah order CLOSED. Tidak mengubah data asli — dibuat sebagai catatan baru, kategori finansial perlu Owner." },
   { term: "Freeze / bekukan", def: "Owner memarkir order di ON_HOLD sementara (mis. menunggu konfirmasi pelanggan), lalu mencairkannya kembali." },
+  { term: "Kiosk absensi", def: "Satu tablet/PC bersama di kantor untuk absen tanpa login. Owner membuatnya di Pengaturan Absensi, membuka /kiosk di perangkat itu, lalu menempel token. Pegawai memilih namanya + PIN 4–6 digit." },
+  { term: "Geofence", def: "Area kantor (titik + radius) untuk absen. Mode: OFF, Catat & tandai (di luar area ditandai untuk Owner), atau Tolak absen (di luar area ditolak)." },
 ];
 
 // ── FAQ ───────────────────────────────────────────────────────────────────
 const FAQ: { q: string; a: string }[] = [
   { q: "Saya menjalankan percetakan sendiri tanpa pegawai — bisa?", a: "Bisa. Saat mendaftar, akun Owner otomatis diberi semua peran (Admin, Designer, Operator, Gudang), jadi Anda bisa mengerjakan seluruh alur sendiri — dari order sampai barang diserahkan. Di Dashboard Owner ada panel \"Langkah berikutnya\" yang menunjukkan aksi tahap berikut untuk tiap order. Saat mulai merekrut, buka Pegawai & Akses lalu cabut peran yang tidak lagi Anda pegang." },
   { q: "Bedanya buat Order dan POS / Kasir apa?", a: "Order (dashboard Admin) = pekerjaan cetak yang lewat desain → produksi → QC → finishing → ambil, dengan DP & pelunasan. POS / Kasir = jual barang jadi yang sudah ada di rak (ATK, souvenir): pilih barang, sistem hitung total + PPN, pelanggan bayar lunas, transaksi langsung selesai dan stok berkurang. Tidak ada produksi." },
+  { q: "Bagaimana pegawai absen di aplikasi?", a: "Di dashboard pegawai (Operator / Gudang / Designer) ada kartu \"Absensi Hari Ini\". Tekan Absen Masuk — aplikasi meminta izin lokasi dan (kalau diwajibkan Owner) foto selfie. Di kartu yang sama ada tombol Mulai / Selesai Istirahat dan Absen Pulang. Waktu diambil dari server dan tidak bisa diubah siapa pun. Owner mengatur jam kerja, batas telat, geofence, dan wajib-selfie di Pengaturan Absensi." },
+  { q: "Apa itu absen lewat kiosk?", a: "Alternatif tanpa HP pribadi: satu tablet/PC bersama di kantor. Owner membuat perangkat kiosk di Pengaturan Absensi, membuka /kiosk di perangkat itu, lalu menempel token (sekali). Tiap pegawai diberi PIN 4–6 digit di halaman yang sama. Di kiosk: pilih nama → masukkan PIN → (selfie) → Absen Masuk/Pulang. Owner bisa menonaktifkan absen dari HP pribadi sehingga hanya kiosk yang dipakai." },
+  { q: "Masih perlu mesin fingerprint?", a: "Tidak wajib. Absen in-app (HP / kiosk) adalah cara utama. Impor CSV dari mesin fingerprint tetap tersedia sebagai cadangan / rekonsiliasi — kalau ada baris in-app untuk hari yang sama, data in-app yang dipakai dan impor hanya mengisi yang kosong; selisih besar ditandai untuk Owner." },
   { q: "Bagaimana format file absensi untuk diimpor?", a: "File CSV hasil ekspor mesin fingerprint. Dua bentuk didukung: (1) “harian” — satu baris per pegawai per hari dengan kolom jam masuk & jam pulang; (2) “scan log” — satu baris per sadap, sistem menggabungkan per nama+tanggal (paling awal = masuk, paling akhir = pulang). Saat impor, cocokkan kolom Nama, Tanggal, Jam Masuk/Pulang lewat dropdown; nama pegawai dicocokkan ke akun berdasarkan nama atau username. Tanggal menerima DD/MM/YYYY maupun YYYY-MM-DD." },
   { q: "Kenapa order saya tidak muncul di antrian produksi?", a: "Order baru masuk produksi setelah CONFIRMED (DP terpenuhi) dan lengkap: desain ACC, semua item punya produk + bahan + harga, deadline terisi. Kalau produk item belum punya “Mesin Default”, sistem tidak bisa merilis otomatis — Admin pakai tombol Assign manual." },
   { q: "Kenapa saya tidak bisa mulai job padahal ada di daftar?", a: "Operator hanya boleh 1 job aktif dalam satu waktu. Selesaikan atau jeda job yang sekarang dulu. Job antrian (PRODUCTION_QUEUED) bisa diklaim siapa saja; job yang sudah dipin ke operator lain tidak." },

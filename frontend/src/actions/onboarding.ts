@@ -16,23 +16,36 @@ export async function getSetupChecklist() {
     if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh melihat checklist penyiapan.");
 
     const T = { tenant_id: tenant.id };
-    const [machines, materials, printingProducts, retailProducts, storage, staff, orders] = await Promise.all([
-      prisma.machine.count({ where: T }),
-      prisma.material.count({ where: T }),
-      prisma.product.count({ where: T }),
-      prisma.retailProduct.count({ where: T }),
-      prisma.storageLocation.count({ where: T }),
-      // Pegawai selain Owner sendiri.
-      prisma.user.count({ where: { ...T, role: { name: { not: "owner" } } } }),
-      prisma.order.count({ where: T }),
-    ]);
+    const [machines, materials, printingProducts, printingWithMachine, retailProducts, storage, staff, orders] =
+      await Promise.all([
+        prisma.machine.count({ where: T }),
+        prisma.material.count({ where: T }),
+        prisma.product.count({ where: T }),
+        prisma.product.count({ where: { ...T, default_machine_id: { not: null } } }),
+        prisma.retailProduct.count({ where: T }),
+        prisma.storageLocation.count({ where: T }),
+        // Pegawai selain Owner sendiri.
+        prisma.user.count({ where: { ...T, role: { name: { not: "owner" } } } }),
+        prisma.order.count({ where: T }),
+      ]);
+
+    // Owner yang menjalankan sendiri (Solo Mode) = punya peran operasional
+    // tambahan → item "pegawai" dianggap tuntas (memang tak perlu staf).
+    const soloOwner = ["admin", "designer_sales", "operator", "gudang"].some((r) => actor.roles.includes(r));
+    const totalProducts = printingProducts + retailProducts;
 
     const items = [
       { key: "machine", done: machines > 0, count: machines },
       { key: "material", done: materials > 0, count: materials },
-      { key: "product", done: printingProducts + retailProducts > 0, count: printingProducts + retailProducts },
+      {
+        key: "product",
+        // Toko jasa cetak: minimal 1 produk cetak wajib punya Mesin Default,
+        // kalau tidak auto-release tak pernah jalan. Toko retail-only lolos.
+        done: totalProducts > 0 && (printingProducts === 0 || printingWithMachine > 0),
+        count: totalProducts,
+      },
       { key: "storage", done: storage > 0, count: storage },
-      { key: "staff", done: staff > 0, count: staff },
+      { key: "staff", done: staff > 0 || soloOwner, count: staff },
       { key: "order", done: orders > 0, count: orders },
     ];
     const doneCount = items.filter((i) => i.done).length;

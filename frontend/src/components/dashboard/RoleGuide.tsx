@@ -33,18 +33,21 @@ export const GUIDE_STEPS: Record<GuideRole, Step[]> = {
     { title: "Rilis ke pelanggan", body: <>Setelah barang siap di rak, lakukan serah terima dari <GuideLink href="/pos">POS / Kasir</GuideLink> atau detail order (scan / rilis).</> },
   ],
   designer_sales: [
+    { title: "Absen masuk", body: "Kartu Absensi di atas: tekan Absen Masuk (pakai lokasi + selfie). Ada tombol Mulai/Selesai Istirahat dan Absen Pulang di kartu yang sama." },
     { title: "Ambil job desain", body: "Antrian menampilkan job desain PENDING. Buka satu untuk mulai." },
     { title: "Upload versi desain", body: "Unggah file (PDF/AI/CDR/gambar). Tiap unggahan menambah nomor versi." },
     { title: "Tangani revisi", body: "Kalau pelanggan minta ubah, ajukan revisi — status kembali ke DESIGNING dan Anda unggah versi baru." },
     { title: "ACC desain", body: "Setelah final, ACC desain. Order lanjut ke pembayaran / produksi. Untuk order ONLINE, ACC butuh Admin/Owner." },
   ],
   operator: [
+    { title: "Absen masuk", body: "Kartu Absensi di atas: tekan Absen Masuk (pakai lokasi + selfie). Tombol istirahat & Absen Pulang ada di kartu yang sama." },
     { title: "Scan QR job", body: <>Di <GuideLink href="/scan">Scan QR</GuideLink>, pindai kode job pada lembar kerja. Kartu menampilkan status, jumlah rencana, dan pembayaran.</> },
     { title: "Mulai produksi (SCAN 1)", body: "Job antrian (PRODUCTION_QUEUED) bisa Anda klaim — begitu dimulai, job jadi tanggung jawab Anda. Hanya boleh 1 job aktif per operator." },
     { title: "Catat hasil (SCAN 2)", body: "Setelah selesai, isi jumlah aktual dan pemakaian bahan (wajib) + waste bila ada. Stok bahan otomatis berkurang." },
     { title: "Serahkan ke QC", body: "Job selesai otomatis masuk antrian QC di Gudang. Ambil job berikutnya." },
   ],
   gudang: [
+    { title: "Absen masuk", body: "Kartu Absensi di atas: tekan Absen Masuk (pakai lokasi + selfie). Tombol istirahat & Absen Pulang ada di kartu yang sama." },
     { title: "QC hasil produksi", body: "Tab QC: periksa hasil cetak. Lulus → lanjut finishing. Gagal → isi kategori + deskripsi (min. 20 karakter), Owner yang memutuskan rework." },
     { title: "Finishing", body: "Tab Finishing: kerjakan laminasi/potong/jahit, lalu tandai selesai dengan jumlah akhir. Cetak label QR di sini." },
     { title: "Simpan ke rak (SCAN 6–7)", body: "Tab Storage: scan job + scan lokasi rak. Barang tersimpan, order jadi READY_FOR_PICKUP, notifikasi ke pelanggan." },
@@ -69,9 +72,9 @@ type Checklist = { items: ChecklistItem[]; doneCount: number; total: number; all
 const CHECKLIST_META: Record<string, { label: string; href: string; hint: string }> = {
   machine: { label: "Tambah mesin cetak", href: "/admin/products", hint: "Katalog & Harga → tab Mesin" },
   material: { label: "Tambah bahan baku", href: "/finishing", hint: "Gudang & Finishing → tab Material" },
-  product: { label: "Buat katalog produk + harga", href: "/admin/products", hint: "jasa cetak & barang eceran" },
+  product: { label: "Buat katalog produk + harga", href: "/admin/products", hint: "produk jasa cetak wajib punya Mesin Default agar otomatis masuk produksi" },
   storage: { label: "Siapkan lokasi penyimpanan", href: "/finishing", hint: "Gudang & Finishing → tab Storage → Kelola Lokasi" },
-  staff: { label: "Tambah pegawai & atur peran", href: "/owner/users", hint: "Pegawai & Akses" },
+  staff: { label: "Tambah pegawai & atur peran", href: "/owner/users", hint: "lewati kalau Anda menjalankan sendiri (Mode Solo)" },
   order: { label: "Buat order pertama", href: "/admin", hint: "tombol + Order Baru" },
 };
 

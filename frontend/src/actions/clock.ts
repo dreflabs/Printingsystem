@@ -97,6 +97,10 @@ export async function startBreak(): Promise<ActionResult<{ recordId: string; bre
     const tenant = await requireTenant();
     const actor = await requireUser();
 
+    const set = await tenantSetting(tenant.id);
+    if (!set.personal_device_enabled)
+      return fail("Absen dari HP pribadi dinonaktifkan. Catat istirahat lewat perangkat kiosk.");
+
     const existing = await todayRecord(actor.id);
     if (existing?.break_start && !existing.break_end) return fail("Anda sedang istirahat.");
     if (existing?.break_start && existing.break_end) return fail("Jatah istirahat hari ini sudah dipakai.");
@@ -270,6 +274,8 @@ export async function clockOut(input: ClockPunchInput = {}): Promise<ActionResul
     const tenant = await requireTenant();
     const actor = await requireUser();
     const set = await tenantSetting(tenant.id);
+    if (!set.personal_device_enabled)
+      return fail("Absen dari HP pribadi dinonaktifkan. Gunakan perangkat kiosk di kantor.");
 
     const h = await headers();
     const res = await performClockOut({

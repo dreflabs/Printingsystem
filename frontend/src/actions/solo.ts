@@ -78,9 +78,12 @@ export async function getNextSteps() {
     const actor = await requireUser();
     // Panel ini memang untuk yang jalan sendiri — butuh > 1 peran.
     const solo = actor.roles.length > 1;
-    // Owner dengan 1 peran → tawarkan "Aktifkan Mode Solo".
+    // Owner yang BELUM punya satu pun peran operasional → tawarkan "Aktifkan Mode
+    // Solo". Begitu dia punya minimal satu (baik lewat Solo Mode maupun dipilih
+    // manual), tawaran berhenti muncul — supaya Owner yang sengaja melepas satu
+    // peran setelah merekrut tidak terus ditawari lagi.
     const canEnableSolo =
-      actor.roles.includes("owner") && !OPERATIONAL_ROLES.every((r) => actor.roles.includes(r));
+      actor.roles.includes("owner") && !OPERATIONAL_ROLES.some((r) => actor.roles.includes(r));
 
     const orders = await prisma.order.findMany({
       where: { tenant_id: tenant.id, status: { notIn: [...DONE] } },
@@ -139,10 +142,8 @@ export async function enableSoloMode() {
         }),
       ),
     );
-    await logAction(actor.id, "USER_ROLES_UPDATED", "User", actor.id, ["owner"], [
-      "owner",
-      ...OPERATIONAL_ROLES,
-    ]);
+    const after = [...new Set([...actor.roles, ...OPERATIONAL_ROLES])];
+    await logAction(actor.id, "USER_ROLES_UPDATED", "User", actor.id, actor.roles, after);
     revalidatePath("/owner");
     revalidatePath("/owner/users");
     void tenant;

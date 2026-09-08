@@ -11,8 +11,10 @@ import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { getOwnerDashboard } from "@/actions/queries";
 import { getSetupChecklist } from "@/actions/onboarding";
+import { getSessionUser } from "@/actions/session";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { SoloNextSteps } from "@/components/dashboard/SoloNextSteps";
+import { AbsenCard } from "@/components/dashboard/AbsenCard";
 import { decideDiscount } from "@/actions/orders";
 import { approveFinalAudit } from "@/actions/audit";
 import { decideRework, reassignProductionJob } from "@/actions/production";
@@ -114,6 +116,7 @@ export default function OwnerPage() {
   const [checklist, setChecklist] = useState<
     Extract<Awaited<ReturnType<typeof getSetupChecklist>>, { success: true }>["data"] | null
   >(null);
+  const [soloOwner, setSoloOwner] = useState(false);
 
   const load = useCallback(async () => {
     const res = await getOwnerDashboard();
@@ -121,6 +124,7 @@ export default function OwnerPage() {
     setError(null);
     setD(res.data);
     getSetupChecklist().then((r) => { if (r.success) setChecklist(r.data); });
+    getSessionUser().then((r) => { if (r.ok) setSoloOwner((r.user.roles?.length ?? 1) > 1); });
     try {
       const r = await fetch("/api/audit-logs?limit=10");
       const j = await r.json();
@@ -271,6 +275,7 @@ export default function OwnerPage() {
 
       <RoleGuide role="owner" checklist={checklist} />
       <SoloNextSteps />
+      {soloOwner && <AbsenCard />}
 
       {error && <div className="rounded-xl border border-status-red/20 bg-status-red/10 px-4 py-3 text-xs font-bold text-status-red">{error}</div>}
 

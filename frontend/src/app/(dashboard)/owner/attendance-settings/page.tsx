@@ -272,7 +272,15 @@ function KioskPanel() {
 
   return (
     <section className="rounded-2xl border border-border bg-card/70 p-4 space-y-4">
-      <h2 className="text-sm font-bold text-primary flex items-center gap-2"><Tablet className="h-4 w-4 text-accent-teal" /> Perangkat Kiosk</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold text-primary flex items-center gap-2"><Tablet className="h-4 w-4 text-accent-teal" /> Perangkat Kiosk</h2>
+        <a href="/kiosk" target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-accent-teal hover:underline">
+          Buka layar kiosk ↗
+        </a>
+      </div>
+      <p className="text-[11px] text-muted -mt-2">
+        Buat perangkat → buka <b>/kiosk</b> di tablet/PC kantor → tempel token. Setiap pegawai butuh PIN (di bawah).
+      </p>
 
       <div className="flex gap-2">
         <input

@@ -389,7 +389,29 @@ export default function AdminProductsPage() {
                 </tr>
               ))}
               {((tab === "retail" && fRetail.length === 0) || (tab === "printing" && fPrinting.length === 0) || (tab === "machine" && fMachine.length === 0)) && (
-                <tr><td colSpan={7} className="px-6 py-8 text-center text-muted">Belum ada data.</td></tr>
+                <tr>
+                  <td colSpan={7} className="px-6 py-10 text-center">
+                    <p className="text-sm text-primary font-medium">
+                      {q
+                        ? "Tidak ada yang cocok dengan pencarian."
+                        : tab === "retail"
+                          ? "Belum ada barang eceran."
+                          : tab === "printing"
+                            ? "Belum ada jasa cetak."
+                            : "Belum ada mesin."}
+                    </p>
+                    {!q && (
+                      <p className="text-xs text-muted mt-1">
+                        {tab === "retail"
+                          ? "Tambahkan produk jadi (ATK, souvenir, dll.) beserta stok & harga jualnya."
+                          : tab === "printing"
+                            ? "Tambahkan jasa cetak (spanduk, stiker, dll.) — bahan, mesin default, dan harga dipakai saat buat order."
+                            : "Tambahkan mesin cetak supaya order bisa dirilis ke produksi. Set juga “Mesin Default” di tiap jasa cetak."}
+                        {" "}Klik <b>{addLabel}</b> di kanan atas.
+                      </p>
+                    )}
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>

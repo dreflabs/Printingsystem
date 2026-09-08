@@ -42,8 +42,8 @@ export default function OpengraphImage() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div style={{ display: "flex", fontSize: 66, fontWeight: 800, color: "#F8FAFC", lineHeight: 1.1, maxWidth: 900 }}>
-            Kelola percetakan Anda tanpa pusing
+          <div style={{ display: "flex", fontSize: 60, fontWeight: 800, color: "#F8FAFC", lineHeight: 1.1, maxWidth: 940 }}>
+            Semua pesanan cetak tercatat, terpantau, tepat waktu
           </div>
           <div style={{ display: "flex", fontSize: 30, color: "#94A3B8", maxWidth: 880 }}>
             Kasir & order, kanban produksi, stok bahan otomatis, notifikasi WhatsApp.

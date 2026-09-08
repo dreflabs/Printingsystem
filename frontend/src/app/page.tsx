@@ -116,11 +116,11 @@ export default function MarketingPage() {
               </p>
 
               <h1 className="text-5xl md:text-6xl font-extrabold text-primary tracking-tight leading-[1.08] mb-6">
-                Kelola percetakan Anda tanpa pusing.
+                Semua pesanan cetak tercatat, terpantau, tepat waktu.
               </h1>
 
               <p className="text-lg text-muted max-w-xl mb-10 leading-relaxed">
-                Tinggalkan buku catatan dan Excel. Print Pilot mencatat setiap pesanan, memantau antrean produksi secara langsung, dan memotong stok bahan otomatis — supaya tidak ada order terselip dan deadline tidak molor.
+                Print Pilot menggantikan buku catatan dan Excel: catat order, pantau antrean produksi secara langsung, dan potong stok bahan otomatis — di satu aplikasi.
               </p>
 
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">

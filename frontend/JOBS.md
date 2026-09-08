@@ -24,6 +24,7 @@ Middleware sudah dikonfigurasi untuk membiarkan `/api/jobs/*` lewat tanpa sesi.
 | `/api/jobs/dispatch-notifications` | Kirim antrian `NotificationEvent` (WhatsApp) lewat provider. Retry maks. 3× jeda ≥5 menit; gagal permanen → `FAILED` + email fallback ke Admin. | tiap 2–5 menit |
 | `/api/jobs/deadline-alerts` | Buat baris `deadline_alerts` H1_WARNING (deadline ≤24 jam) & OVERDUE (lewat). Tutup alert saat order `READY_FOR_PICKUP`+. | tiap 1 jam |
 | `/api/jobs/break-warnings` | Menit ke-45 istirahat → WA ke pegawai. Lewat 60 menit → status `EXCEEDED` + WA ke Owner. | tiap 2–5 menit |
+| `/api/jobs/attendance-autoclose` | Tutup absen yang lupa pulang (`check_out_status=AUTO_CLOSED`), tutup istirahat menggantung (`EXCEEDED`), hapus selfie lebih tua dari `selfie_retention_days`. | 1× sehari (sesudah `auto_close_at`) |
 | `/api/jobs/tenant-lifecycle` | Housekeeping tenant: TRIAL lewat `trial_ends_at` >14 hari → `CHURNED` + slug dilepas; `SUSPENDED` tak tersentuh >60 hari → `CHURNED`; `CHURNED` >30 hari → **purge permanen** + nisan `RetiredTenant`. | 1× sehari |
 
 ## Menjalankan: pakai `scripts/run-job.sh`
@@ -32,6 +33,7 @@ Middleware sudah dikonfigurasi untuk membiarkan `/api/jobs/*` lewat tanpa sesi.
 ./scripts/run-job.sh dispatch-notifications
 ./scripts/run-job.sh deadline-alerts
 ./scripts/run-job.sh break-warnings
+./scripts/run-job.sh attendance-autoclose
 ./scripts/run-job.sh tenant-lifecycle
 ```
 
@@ -52,7 +54,7 @@ Contoh keluaran sukses:
 
 ## Jadwal di Coolify (Scheduled Tasks)
 
-Resource aplikasi → tab **Scheduled Tasks** → tambah tiga task. Perintahnya
+Resource aplikasi → tab **Scheduled Tasks** → tambah task berikut. Perintahnya
 dijalankan di dalam container aplikasi, jadi `JOBS_SECRET` sudah tersedia dari
 Environment Variables dan base URL default (`127.0.0.1:3000`) sudah benar.
 
@@ -61,6 +63,7 @@ Environment Variables dan base URL default (`127.0.0.1:3000`) sudah benar.
 | `dispatch-notifications` | `./scripts/run-job.sh dispatch-notifications` | `*/3 * * * *` |
 | `break-warnings` | `./scripts/run-job.sh break-warnings` | `*/3 * * * *` |
 | `deadline-alerts` | `./scripts/run-job.sh deadline-alerts` | `0 * * * *` |
+| `attendance-autoclose` | `./scripts/run-job.sh attendance-autoclose` | `5 0 * * *` |
 | `tenant-lifecycle` | `./scripts/run-job.sh tenant-lifecycle` | `30 3 * * *` |
 
 Setelah tersimpan, jalankan sekali manual dari UI dan periksa lognya berisi `ok`.
@@ -74,6 +77,7 @@ Kalau tidak memakai Scheduled Tasks, dari host VPS:
 */3 * * * * cd /path/ke/frontend && JOBS_SECRET=xxx JOBS_BASE_URL=https://app.contoh.id ./scripts/run-job.sh dispatch-notifications >> /var/log/printpilot-jobs.log 2>&1
 */3 * * * * cd /path/ke/frontend && JOBS_SECRET=xxx JOBS_BASE_URL=https://app.contoh.id ./scripts/run-job.sh break-warnings       >> /var/log/printpilot-jobs.log 2>&1
 0   * * * * cd /path/ke/frontend && JOBS_SECRET=xxx JOBS_BASE_URL=https://app.contoh.id ./scripts/run-job.sh deadline-alerts      >> /var/log/printpilot-jobs.log 2>&1
+5   0 * * * cd /path/ke/frontend && JOBS_SECRET=xxx JOBS_BASE_URL=https://app.contoh.id ./scripts/run-job.sh attendance-autoclose >> /var/log/printpilot-jobs.log 2>&1
 30  3 * * * cd /path/ke/frontend && JOBS_SECRET=xxx JOBS_BASE_URL=https://app.contoh.id ./scripts/run-job.sh tenant-lifecycle    >> /var/log/printpilot-jobs.log 2>&1
 ```
 

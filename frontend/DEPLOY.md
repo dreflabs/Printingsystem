@@ -159,13 +159,14 @@ di tab **Deployments**.
 Tiga endpoint `/api/jobs/*` hanya jalan kalau dipanggil scheduler. Tanpa ini,
 notifikasi WhatsApp tidak pernah terkirim dan `deadline_alerts` tetap kosong.
 
-Resource aplikasi → **Scheduled Tasks**, tambah tiga task:
+Resource aplikasi → **Scheduled Tasks**, tambah task berikut:
 
 | Nama | Command | Frequency |
 |---|---|---|
 | `dispatch-notifications` | `./scripts/run-job.sh dispatch-notifications` | `*/3 * * * *` |
 | `break-warnings` | `./scripts/run-job.sh break-warnings` | `*/3 * * * *` |
 | `deadline-alerts` | `./scripts/run-job.sh deadline-alerts` | `0 * * * *` |
+| `attendance-autoclose` | `./scripts/run-job.sh attendance-autoclose` | `5 0 * * *` |
 | `tenant-lifecycle` | `./scripts/run-job.sh tenant-lifecycle` | `30 3 * * *` |
 
 Jalankan sekali manual dan pastikan lognya berisi `ok`. Detail dan alternatif

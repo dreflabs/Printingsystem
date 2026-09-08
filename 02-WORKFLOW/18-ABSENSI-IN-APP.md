@@ -335,19 +335,29 @@ bukan menimpa — sesuai kata "lampiran" di doc lama §63. (Perbaikan kecil pada
 12. ✅ `getMonthlyReport` → `attendance[]` per pegawai {daysPresent, lateDays, lateMinutes, breakExceeded, autoClosed}; `owner/reports` tabel "Absensi Pegawai Bulanan" + baris CSV.
 13. ✅ `getAttendanceReport` records + `source`/`checkOutStatus`/`geoFlag`/`ipFlag`/`offDay`/`checkInLat|Lng`/`selfies[]`. `/admin/attendance` kolom "Sumber" (badge + titik merah flag + "auto" + link peta + thumbnail selfie). Route `GET /api/attendance/selfie/[id]` (Owner/Admin, tenant-scoped, no-store).
 14. ✅ `addAttendanceOwnerNote` kumulatif — append `[tgl · Nama] teks`, tidak menimpa.
-15. TODO ringan: pindahkan `11-FUTURE/ABSENSI-FINGERPRINT.md` → arsip; perbarui matriks RBAC bila perlu.
+15. ✅ `11-FUTURE/ABSENSI-FINGERPRINT.md` jadi stub arsip yang menunjuk ke dokumen ini. `attendance-autoclose` didaftarkan di `JOBS.md` + `DEPLOY.md`.
 
 **Perbaikan saat implementasi:** `updateAttendanceSettings` dulu menolak save pertama karena default `geofence_mode=FLAG` tapi titik null → kini titik wajib **hanya** untuk mode `ENFORCE`.
 
 ---
 
-## 11. Keputusan yang Masih Terbuka
+## 11. Keputusan (sudah diambil)
 
-1. **Selfie**: thumbnail di Postgres (rekomendasi, MVP) **atau** berdirikan
-   object storage dulu (lebih rapi, tapi proyek terpisah).
-2. **Geofence & IP**: mulai di mode `FLAG` (catat, jangan tolak) lalu naik ke
-   `ENFORCE` setelah data lokasi kantor terkumpul — atau langsung `ENFORCE`.
-3. **Shift per pegawai**: MVP satu jadwal per tenant. Perlu shift per orang/hari
-   sekarang, atau Fase C+?
-4. **Kiosk auth**: token panjang di cookie perangkat (rekomendasi) vs akun
-   "kiosk" khusus per tenant dengan password.
+1. **Selfie** → thumbnail WebP ≤320px di Postgres (`AttendanceSelfie`), tanpa
+   object storage. Purge cron setelah `selfie_retention_days`.
+2. **Geofence & IP** → mulai mode `FLAG` (catat + tandai). Owner menaikkan ke
+   `ENFORCE` sendiri lewat Pengaturan Absensi. Titik geofence hanya wajib untuk
+   `ENFORCE`.
+3. **Shift** → satu jadwal per tenant (`TenantAttendanceSetting`). Shift per
+   pegawai/hari ditunda (belum ada `EmployeeShift`).
+4. **Kiosk auth** → token panjang di cookie perangkat (`pp_kiosk`, hash SHA-256
+   di `KioskDevice`), revocable dari Pengaturan Absensi.
+
+## 12. Belum dikerjakan / catatan
+
+- `/kiosk` UI, kamera + GPS `AbsenCard`, dan render thumbnail selfie di rekap
+  belum diuji di browser nyata (verifikasi pane headless).
+- Deploy: aktifkan `WA_PROVIDER` supaya notifikasi telat/istirahat benar terkirim
+  (sekarang mode simulasi); daftarkan Scheduled Task `attendance-autoclose`.
+- Shift per pegawai, dan integrasi langsung ke mesin fingerprint (di luar scope —
+  import CSV sudah menutupi).

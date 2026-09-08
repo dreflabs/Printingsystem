@@ -12,11 +12,10 @@ const UPDATED = "8 September 2026";
 export default function KebijakanPrivasiPage() {
   return (
     <LegalShell title="Kebijakan Privasi" updated={UPDATED}>
-      {/* TODO: sesuaikan nama badan usaha pengelola & yurisdiksi sebelum publikasi resmi. */}
       <p>
-        Kebijakan ini menjelaskan bagaimana Print Pilot (&ldquo;Layanan&rdquo;, &ldquo;kami&rdquo;) mengumpulkan,
-        menggunakan, menyimpan, dan melindungi data Anda saat menggunakan aplikasi manajemen percetakan kami.
-        Dengan menggunakan Layanan, Anda menyetujui praktik yang diuraikan di sini.
+        Kebijakan ini menjelaskan bagaimana <b>PT DEMA DIGITAL ASIA</b> (&ldquo;Perusahaan&rdquo;, &ldquo;kami&rdquo;),
+        yang mengembangkan dan mengoperasikan layanan Print Pilot (&ldquo;Layanan&rdquo;), mengumpulkan, menggunakan,
+        menyimpan, dan melindungi data Anda. Dengan menggunakan Layanan, Anda menyetujui praktik yang diuraikan di sini.
       </p>
 
       <div>
@@ -82,6 +81,8 @@ export default function KebijakanPrivasiPage() {
       <div>
         <h2>8. Kontak</h2>
         <p>
+          PT DEMA DIGITAL ASIA &mdash; Sukabumi, Jawa Barat, Indonesia.
+          <br />
           Pertanyaan tentang privasi: <a href="mailto:privasi@printpilot.id">privasi@printpilot.id</a>.
         </p>
       </div>

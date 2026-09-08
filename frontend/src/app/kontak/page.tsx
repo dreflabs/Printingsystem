@@ -12,12 +12,22 @@ export default function KontakPage() {
   return (
     <LegalShell title="Hubungi Kami">
       <p>
-        Ada pertanyaan tentang produk, ingin demo, atau butuh bantuan langganan? Tim kami siap membantu.
+        Print Pilot dikembangkan dan dioperasikan oleh <b>PT DEMA DIGITAL ASIA</b>. Ada pertanyaan tentang
+        produk, ingin demo, atau butuh bantuan langganan? Tim kami siap membantu.
       </p>
 
       <div>
+        <h2>Perusahaan</h2>
+        <p>
+          PT DEMA DIGITAL ASIA
+          <br />
+          Sukabumi, Jawa Barat, Indonesia
+        </p>
+      </div>
+
+      <div>
         <h2>Email</h2>
-        {/* TODO: ganti dengan alamat email dukungan yang aktif */}
+        {/* TODO: pastikan alamat email di bawah sudah aktif sebelum publikasi */}
         <p>
           Umum &amp; penjualan: <a href="mailto:halo@printpilot.id">halo@printpilot.id</a>
           <br />
@@ -26,17 +36,8 @@ export default function KontakPage() {
       </div>
 
       <div>
-        <h2>WhatsApp</h2>
-        {/* TODO: ganti dengan nomor WhatsApp bisnis yang aktif */}
-        <p>
-          Chat tim penjualan &amp; dukungan pada jam kerja (Sen–Jum, 09.00–17.00 WIB).
-          Nomor WhatsApp resmi akan dicantumkan di sini.
-        </p>
-      </div>
-
-      <div>
-        <h2>Lokasi</h2>
-        <p>Jakarta, Indonesia — layanan beroperasi sepenuhnya secara daring.</p>
+        <h2>Jam layanan</h2>
+        <p>Senin&ndash;Jumat, 09.00&ndash;17.00 WIB. Layanan beroperasi sepenuhnya secara daring.</p>
       </div>
 
       <div>

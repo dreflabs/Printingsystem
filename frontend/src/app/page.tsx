@@ -23,7 +23,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "Apakah saya butuh perangkat komputer khusus?",
-    a: "Tidak. Print Pilot 100% berbasis cloud. Anda hanya butuh peramban biasa (Chrome, Safari, dll.) dan koneksi internet — bisa dibuka di komputer lama, laptop, atau tablet.",
+    a: "Tidak. Print Pilot 100% berbasis cloud. Anda hanya butuh peramban biasa (Chrome, Safari, dll.) dan koneksi internet. Bisa dibuka di komputer lama, laptop, atau tablet.",
   },
   {
     q: "Apakah bisa diakses dari HP?",
@@ -42,10 +42,16 @@ function StructuredData() {
       {
         "@type": "Organization",
         "@id": `${SITE_URL}/#organization`,
-        name: "Print Pilot",
+        name: "PT DEMA DIGITAL ASIA",
         url: SITE_URL,
         logo: `${SITE_URL}/PRINT_PILOT_LOGO.png`,
         areaServed: "ID",
+        address: {
+          "@type": "PostalAddress",
+          addressLocality: "Sukabumi",
+          addressRegion: "Jawa Barat",
+          addressCountry: "ID",
+        },
       },
       {
         "@type": "SoftwareApplication",
@@ -55,6 +61,8 @@ function StructuredData() {
         description:
           "Software manajemen percetakan berbasis cloud: kasir & order, kanban produksi, potong stok bahan otomatis, dan notifikasi WhatsApp.",
         url: SITE_URL,
+        publisher: { "@id": `${SITE_URL}/#organization` },
+        brand: { "@type": "Brand", name: "Print Pilot" },
         offers: [
           { "@type": "Offer", name: "Starter", price: "299000", priceCurrency: "IDR", url: `${SITE_URL}/register?plan=starter` },
           { "@type": "Offer", name: "Pro", price: "599000", priceCurrency: "IDR", url: `${SITE_URL}/register?plan=pro` },
@@ -93,7 +101,7 @@ export default function MarketingPage() {
           <nav className="hidden md:flex gap-8 text-sm font-medium text-muted">
             <a href="#fitur" className="hover:text-primary transition-colors">Fitur</a>
             <a href="#harga" className="hover:text-primary transition-colors">Harga</a>
-            <a href="#testimoni" className="hover:text-primary transition-colors">Testimoni</a>
+            <a href="#kegunaan" className="hover:text-primary transition-colors">Kegunaan</a>
           </nav>
           <div className="flex items-center gap-4">
             <Link href="/login" className="text-sm font-bold text-primary hover:text-accent-teal transition-colors">
@@ -120,7 +128,7 @@ export default function MarketingPage() {
               </h1>
 
               <p className="text-lg text-muted max-w-xl mb-10 leading-relaxed">
-                Print Pilot menggantikan buku catatan dan Excel: catat order, pantau antrean produksi secara langsung, dan potong stok bahan otomatis — di satu aplikasi.
+                Print Pilot menggantikan buku catatan dan Excel. Catat order, pantau antrean produksi secara langsung, dan potong stok bahan otomatis dalam satu aplikasi.
               </p>
 
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
@@ -255,7 +263,7 @@ export default function MarketingPage() {
           <div className="max-w-7xl mx-auto px-6">
             <div className="text-center max-w-2xl mx-auto mb-16">
               <h2 className="text-3xl font-bold text-primary mb-4">Pilih Paket Sesuai Skala Bisnis Anda</h2>
-              <p className="text-muted">Biaya transparan, bayar bulanan, batalkan kapan saja — jauh lebih murah daripada membangun sistem sendiri.</p>
+              <p className="text-muted">Biaya transparan, bayar bulanan, batalkan kapan saja. Jauh lebih hemat daripada membangun sistem sendiri.</p>
             </div>
 
             <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
@@ -316,7 +324,7 @@ export default function MarketingPage() {
                     </li>
                   ))}
                 </ul>
-                <Link href="/contact" className="w-full h-12 flex items-center justify-center rounded-xl bg-elevated border border-border text-primary font-bold hover:bg-border/50 transition-colors">
+                <Link href="/kontak" className="w-full h-12 flex items-center justify-center rounded-xl bg-elevated border border-border text-primary font-bold hover:bg-border/50 transition-colors">
                   Hubungi Tim Sales
                 </Link>
               </div>
@@ -325,11 +333,11 @@ export default function MarketingPage() {
         </section>
 
         {/* ─── USE CASES SECTION ───────────────────────────────────────────────── */}
-        <section id="testimoni" className="py-24 bg-elevated border-y border-border">
+        <section id="kegunaan" className="py-24 bg-elevated border-y border-border">
           <div className="max-w-7xl mx-auto px-6">
             <div className="text-center max-w-2xl mx-auto mb-16">
               <h2 className="text-3xl font-bold text-primary mb-4">Dibuat mengikuti alur kerja percetakan</h2>
-              <p className="text-muted">Print Pilot mengurut proses dari order masuk sampai barang diambil pelanggan — untuk digital printing, sablon &amp; merchandise, maupun offset.</p>
+              <p className="text-muted">Print Pilot mengurutkan proses dari order masuk sampai barang diambil pelanggan: untuk digital printing, sablon &amp; merchandise, maupun offset.</p>
             </div>
 
             <div className="grid md:grid-cols-3 gap-6">
@@ -344,7 +352,7 @@ export default function MarketingPage() {
                 },
                 {
                   title: "Owner",
-                  body: "Pantau omzet, produksi aktif, piutang, dan stok menipis dari satu layar — juga dari ponsel saat di luar pabrik.",
+                  body: "Pantau omzet, produksi aktif, piutang, dan stok menipis dari satu layar. Bisa juga dari ponsel saat di luar pabrik.",
                 },
               ].map((u, i) => (
                 <div key={i} className="bg-card border border-border p-8 rounded-2xl">
@@ -407,9 +415,10 @@ export default function MarketingPage() {
                 Software kasir &amp; produksi untuk industri percetakan digital dan offset di Indonesia.
               </p>
               <div className="pt-4 space-y-1 text-sm text-muted">
-                <p>Jakarta, Indonesia — layanan sepenuhnya daring.</p>
-                {/* TODO: ganti dengan alamat email dukungan yang aktif */}
-                <p><a href="mailto:halo@printpilot.id" className="hover:text-accent-teal transition-colors">halo@printpilot.id</a></p>
+                <p>
+                  Dikembangkan oleh <span className="font-semibold text-primary">PT DEMA DIGITAL ASIA</span>
+                </p>
+                <p>Sukabumi, Jawa Barat, Indonesia</p>
               </div>
             </div>
 
@@ -418,7 +427,7 @@ export default function MarketingPage() {
               <ul className="space-y-3 text-sm text-muted">
                 <li><a href="#fitur" className="hover:text-accent-teal transition-colors">Fitur</a></li>
                 <li><a href="#harga" className="hover:text-accent-teal transition-colors">Harga</a></li>
-                <li><a href="#testimoni" className="hover:text-accent-teal transition-colors">Cara pakai</a></li>
+                <li><a href="#kegunaan" className="hover:text-accent-teal transition-colors">Kegunaan</a></li>
                 <li><Link href="/register" className="hover:text-accent-teal transition-colors">Daftar</Link></li>
               </ul>
             </div>
@@ -433,17 +442,10 @@ export default function MarketingPage() {
             </div>
           </div>
 
-          <div className="pt-8 border-t border-border/50 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm text-muted">© {new Date().getFullYear()} Print Pilot. Hak cipta dilindungi undang-undang.</p>
-            {/* TODO: ganti dengan URL akun media sosial resmi */}
-            <div className="flex gap-4">
-              <a href="https://instagram.com/printpilot.id" target="_blank" rel="noopener noreferrer" aria-label="Instagram Print Pilot" className="h-8 w-8 rounded-full bg-elevated border border-border flex items-center justify-center hover:border-accent-teal transition-colors">
-                <span className="text-xs text-muted">IG</span>
-              </a>
-              <a href="https://facebook.com/printpilot.id" target="_blank" rel="noopener noreferrer" aria-label="Facebook Print Pilot" className="h-8 w-8 rounded-full bg-elevated border border-border flex items-center justify-center hover:border-accent-teal transition-colors">
-                <span className="text-xs text-muted">FB</span>
-              </a>
-            </div>
+          <div className="pt-8 border-t border-border/50 text-center md:text-left">
+            <p className="text-sm text-muted">
+              © {new Date().getFullYear()} PT DEMA DIGITAL ASIA. Seluruh hak cipta dilindungi.
+            </p>
           </div>
         </div>
       </footer>

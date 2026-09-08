@@ -36,8 +36,11 @@ export default function OpengraphImage() {
           >
             P
           </div>
-          <div style={{ display: "flex", fontSize: 34, fontWeight: 700, color: "#F8FAFC" }}>
-            Print Pilot.id
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", fontSize: 34, fontWeight: 700, color: "#F8FAFC" }}>
+              Print Pilot.id
+            </div>
+            <div style={{ display: "flex", fontSize: 18, color: "#64748B" }}>oleh PT DEMA DIGITAL ASIA</div>
           </div>
         </div>
 

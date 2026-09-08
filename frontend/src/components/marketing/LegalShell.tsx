@@ -36,7 +36,7 @@ export function LegalShell({
 
       <footer className="border-t border-border py-8">
         <div className="max-w-3xl mx-auto px-6 flex flex-col sm:flex-row justify-between gap-3 text-xs text-muted">
-          <p>© {new Date().getFullYear()} Print Pilot. Hak cipta dilindungi undang-undang.</p>
+          <p>© {new Date().getFullYear()} PT DEMA DIGITAL ASIA. Seluruh hak cipta dilindungi.</p>
           <nav className="flex gap-4">
             <Link href="/kebijakan-privasi" className="hover:text-primary">Kebijakan Privasi</Link>
             <Link href="/syarat-ketentuan" className="hover:text-primary">Syarat &amp; Ketentuan</Link>

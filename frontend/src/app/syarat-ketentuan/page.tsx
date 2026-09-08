@@ -12,10 +12,11 @@ const UPDATED = "8 September 2026";
 export default function SyaratKetentuanPage() {
   return (
     <LegalShell title="Syarat & Ketentuan" updated={UPDATED}>
-      {/* TODO: sesuaikan nama badan usaha pengelola & yurisdiksi sebelum publikasi resmi. */}
       <p>
-        Dengan membuat akun atau menggunakan Print Pilot (&ldquo;Layanan&rdquo;), Anda setuju terikat pada ketentuan berikut.
-        Bila Anda tidak setuju, mohon tidak menggunakan Layanan.
+        Layanan Print Pilot (&ldquo;Layanan&rdquo;) dikembangkan dan dioperasikan oleh <b>PT DEMA DIGITAL ASIA</b>
+        (&ldquo;Perusahaan&rdquo;, &ldquo;kami&rdquo;), berkedudukan di Sukabumi, Jawa Barat, Indonesia. Dengan membuat
+        akun atau menggunakan Layanan, Anda setuju terikat pada ketentuan berikut. Bila Anda tidak setuju, mohon tidak
+        menggunakan Layanan.
       </p>
 
       <div>
@@ -88,12 +89,17 @@ export default function SyaratKetentuanPage() {
 
       <div>
         <h2>9. Hukum yang berlaku</h2>
-        <p>Ketentuan ini diatur oleh hukum Republik Indonesia.</p>
+        <p>
+          Ketentuan ini diatur oleh hukum Republik Indonesia. Setiap sengketa yang timbul akan diselesaikan sesuai
+          yurisdiksi tempat kedudukan Perusahaan di Sukabumi, Jawa Barat.
+        </p>
       </div>
 
       <div>
         <h2>10. Kontak</h2>
         <p>
+          PT DEMA DIGITAL ASIA &mdash; Sukabumi, Jawa Barat, Indonesia.
+          <br />
           Pertanyaan tentang ketentuan ini: <a href="mailto:halo@printpilot.id">halo@printpilot.id</a>.
         </p>
       </div>

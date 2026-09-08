@@ -459,6 +459,54 @@ export async function purgeTenantPermanently(tenantId: string, opts?: { force?: 
   }
 }
 
+/**
+ * Hapus tenant SEKARANG dari daftar — tanpa perlu status CHURNED atau masa
+ * tenggang. Kalau tenant masih aktif, slug-nya di-churn dulu (dilepas +
+ * di-snapshot ke `retired_slug`) lalu seluruh datanya di-purge permanen dalam
+ * satu alur. Tidak bisa dibatalkan. Hanya sub-level SUPER_ADMIN.
+ *
+ * `confirmSlug` wajib sama persis dengan slug tenant (retired_slug diabaikan) —
+ * pengaman supaya tidak salah tenant.
+ */
+export async function deleteTenantNow(tenantId: string, confirmSlug: string, reason?: string) {
+  try {
+    const actor = await requireSubLevel("SUPER_ADMIN");
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, slug: true, status: true, retired_slug: true },
+    });
+    if (!tenant) return fail("Tenant tidak ditemukan.");
+
+    const typed = confirmSlug.trim();
+    if (typed !== tenant.slug && typed !== tenant.retired_slug) {
+      return fail(`Ketik subdomain "${tenant.retired_slug ?? tenant.slug}" persis untuk konfirmasi hapus.`);
+    }
+
+    // Lepas + arsipkan slug dulu bila tenant belum CHURNED, supaya nama
+    // subdomain langsung bebas dan nisan mencatat slug asli.
+    if (tenant.status !== "CHURNED") {
+      await prisma.$transaction((tx) => churnTenant(tx, tenant, "MANUAL", reason, actor.id));
+    }
+
+    const result = await purgeTenant(tenantId);
+    await logActor(actor, "TENANT_PURGED", {
+      targetType: "Tenant",
+      targetId: tenantId,
+      targetLabel: result.originalSlug,
+      detail: { direct: true, from_status: tenant.status, reason: reason ?? null, deleted: result.deleted, files: result.files.length },
+    });
+    console.log(
+      `[PURGE:direct] super_admin=${actor.name} slug=${result.originalSlug} from=${tenant.status} deleted=${JSON.stringify(result.deleted)}`
+    );
+
+    revalidatePath("/platform");
+    return ok(result);
+  } catch (e) {
+    console.error("deleteTenantNow:", e);
+    return fail(e instanceof Error ? e.message : "Gagal menghapus tenant.");
+  }
+}
+
 /** Daftar nisan tenant yang sudah dihapus permanen. */
 export async function listRetiredTenants() {
   try {

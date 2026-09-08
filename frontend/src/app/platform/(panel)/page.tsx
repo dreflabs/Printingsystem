@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Building2, DollarSign, Users, PauseCircle, PlayCircle, LogIn, AlertTriangle, X, Eye } from "lucide-react";
-import { getPlatformMetrics, listTenants, setTenantStatus, impersonateTenant } from "@/actions/platform";
+import { Building2, DollarSign, Users, PauseCircle, PlayCircle, LogIn, AlertTriangle, X, Eye, Trash2 } from "lucide-react";
+import { getPlatformMetrics, listTenants, setTenantStatus, impersonateTenant, deleteTenantNow } from "@/actions/platform";
 import { TenantDetailDrawer } from "@/components/platform/TenantDetailDrawer";
 
 type Metrics = { mrr: number; trialMrr: number; totalTenants: number; trial: number; active: number; suspended: number; churned: number };
@@ -31,6 +31,7 @@ export default function PlatformDashboard() {
     | null
   >(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [del, setDel] = useState<{ tenant: Tenant; slug: string; reason: string } | null>(null);
 
   const load = useCallback(async () => {
     const [m, t] = await Promise.all([getPlatformMetrics(), listTenants()]);
@@ -60,6 +61,17 @@ export default function PlatformDashboard() {
     if (!res.success) { setError(res.error ?? "Aksi gagal."); return; }
     setPrompt(null);
     if (kind === "impersonate") { window.location.href = "/owner"; return; }
+    await load();
+  }
+
+  async function confirmDelete() {
+    if (!del) return;
+    setBusy(del.tenant.id);
+    setError(null);
+    const res = await deleteTenantNow(del.tenant.id, del.slug, del.reason || undefined);
+    setBusy(null);
+    if (!res.success) { setError(res.error ?? "Gagal menghapus tenant."); return; }
+    setDel(null);
     await load();
   }
 
@@ -199,6 +211,14 @@ export default function PlatformDashboard() {
                       >
                         {t.status === "SUSPENDED" ? <><PlayCircle className="h-3.5 w-3.5" /> Aktifkan</> : <><PauseCircle className="h-3.5 w-3.5" /> Suspend</>}
                       </button>
+                      <span className="text-border">·</span>
+                      <button
+                        disabled={busy === t.id}
+                        onClick={() => { setError(null); setDel({ tenant: t, slug: "", reason: "" }); }}
+                        className="inline-flex items-center gap-1 text-xs text-status-red hover:underline disabled:opacity-40"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Hapus
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -216,10 +236,56 @@ export default function PlatformDashboard() {
         Login Super Admin = email + password; percobaan gagal berturut-turut mengunci akun sementara. Suspend tenant
         benar-benar memblokir login &amp; akses; impersonate SUPPORT lihat-saja untuk aksi uang/pembatalan/koreksi.
         Siklus hidup tenant: <b>Detail → Zona Berbahaya</b> untuk
-        <i>Churned</i> (lepas subdomain, data tetap) lalu <i>Hapus permanen</i>; job <code>tenant-lifecycle</code>
+        <i>Churned</i> (lepas subdomain, data tetap) lalu <i>Hapus permanen</i>. Tombol <b>Hapus</b> di baris
+        tenant memotong alur itu — churn + purge sekaligus, butuh ketik ulang subdomain; job <code>tenant-lifecycle</code>
         otomatis (TRIAL basi 14 hari → churned, churned 30 hari → purge). Aksi tenant tercatat di
         <code>tenant_audit_logs</code>; aksi platform (login, kelola akun, purge) di <b>Aktivitas</b>.
       </p>
+
+      {del && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-overlay backdrop-blur-sm" onClick={() => setDel(null)} />
+          <div className="relative w-full max-w-sm bg-card border border-status-red/40 rounded-2xl p-6 shadow-modal space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-base font-bold text-status-red">Hapus Tenant Permanen</h3>
+                <p className="text-xs text-muted mt-1">{del.tenant.name} · <span className="font-mono">{del.tenant.slug}</span></p>
+              </div>
+              <button onClick={() => setDel(null)} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-3 py-2.5 text-xs text-status-red">
+              Seluruh data tenant ini — user, order, produksi, pembayaran, absensi, gaji, audit log — dihapus dari database dan <b>tidak bisa dikembalikan</b>. Hanya tersisa nisan <span className="font-mono">RetiredTenant</span> untuk arsip.
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted">Ketik <span className="font-mono text-primary">{del.tenant.slug}</span> untuk konfirmasi</label>
+              <input
+                autoFocus
+                value={del.slug}
+                onChange={(e) => setDel({ ...del, slug: e.target.value })}
+                placeholder={del.tenant.slug}
+                className="w-full h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-status-red font-mono"
+              />
+            </div>
+            <textarea
+              value={del.reason}
+              onChange={(e) => setDel({ ...del, reason: e.target.value })}
+              rows={2}
+              placeholder="Alasan (opsional, untuk audit)…"
+              className="w-full rounded-xl bg-elevated border border-border text-sm text-primary p-3 outline-none focus:border-accent-teal resize-none"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setDel(null)} className="flex-1 h-10 rounded-xl bg-elevated border border-border text-xs font-bold text-muted hover:text-primary">Batal</button>
+              <button
+                disabled={busy === del.tenant.id || del.slug.trim() !== del.tenant.slug}
+                onClick={confirmDelete}
+                className="flex-1 h-10 rounded-xl text-xs font-bold text-white bg-status-red hover:brightness-110 disabled:opacity-40"
+              >
+                {busy === del.tenant.id ? "Menghapus…" : "Hapus permanen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {detailId && (
         <TenantDetailDrawer

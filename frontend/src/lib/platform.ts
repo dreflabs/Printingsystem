@@ -1,8 +1,10 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+// Sub-level DINONAKTIFKAN — semua Super Admin satu level (akses penuh).
+// Tipe & kolom `SuperAdmin.role` dibiarkan agar mudah dikembalikan bila perlu;
+// getPlatformActor selalu mengembalikan "SUPER_ADMIN" apa pun isi kolomnya.
 export type SuperAdminSubLevel = "SUPER_ADMIN" | "SUPPORT" | "FINANCE";
-const SUB_LEVELS: readonly SuperAdminSubLevel[] = ["SUPER_ADMIN", "SUPPORT", "FINANCE"];
 
 /** Batas umur sesi platform. Setelah ini, Super Admin harus login ulang (+ MFA). */
 export const PLATFORM_SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
@@ -34,17 +36,11 @@ export async function getPlatformActor(): Promise<PlatformActor | null> {
   const record = await prisma.superAdmin.findUnique({ where: { id: u.id } });
   if (!record || !record.active) return null;
 
-  // Fail-closed: nilai `role` yang tidak dikenal tidak boleh diperlakukan sebagai
-  // sub-level valid (apalagi kebetulan lolos jadi SUPER_ADMIN).
-  if (!SUB_LEVELS.includes(record.role as SuperAdminSubLevel)) {
-    console.error(`getPlatformActor: sub-level tak dikenal "${record.role}" untuk ${record.email}`);
-    return null;
-  }
-
+  // Sub-level dinonaktifkan: setiap Super Admin aktif = akses penuh.
   return {
     id: record.id,
     name: record.name ?? "Super Admin",
-    subLevel: record.role as SuperAdminSubLevel,
+    subLevel: "SUPER_ADMIN",
   };
 }
 

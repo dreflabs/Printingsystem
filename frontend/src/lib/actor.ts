@@ -103,6 +103,7 @@ export async function getCurrentUser(): Promise<Actor | null> {
     });
     if (!owner) return null;
 
+    // Sub-level dinonaktifkan: subLevel selalu "SUPER_ADMIN" → impersonate = mode aktif.
     const readOnly = actor.subLevel !== "SUPER_ADMIN";
     return {
       id: owner.id,

@@ -1,17 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Users, AlertTriangle, X, ShieldCheck, KeyRound, Lock, UserPlus } from "lucide-react";
+import { Users, AlertTriangle, X, KeyRound, Lock, UserPlus } from "lucide-react";
 import {
   listSuperAdmins,
   createSuperAdmin,
   setSuperAdminActive,
-  changeSuperAdminSubLevel,
   resetSuperAdminPassword,
   unlockSuperAdmin,
 } from "@/actions/platform-admins";
 
-type SubLevel = "SUPER_ADMIN" | "SUPPORT" | "FINANCE";
 type Admin = {
   id: string;
   name: string;
@@ -23,7 +21,6 @@ type Admin = {
   createdAt: Date | string;
 };
 
-const SUB_LEVELS: SubLevel[] = ["SUPER_ADMIN", "SUPPORT", "FINANCE"];
 const dt = (d: Date | string | null) =>
   d ? new Date(d).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
@@ -64,7 +61,7 @@ export default function PlatformAdminsPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary">Akun Super Admin</h1>
           <p className="text-sm text-muted mt-0.5">
-            Kelola akun pengelola platform &amp; sub-level-nya. {canManage ? "" : "Hanya SUPER_ADMIN yang bisa mengubah."}
+            Kelola akun pengelola platform. Semua akun punya akses penuh (satu level).
           </p>
         </div>
         {canManage && (
@@ -93,7 +90,6 @@ export default function PlatformAdminsPage() {
             <thead className="bg-elevated/50 border-b border-border text-muted text-xs font-semibold uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-2.5">Nama / Email</th>
-                <th className="px-4 py-2.5">Sub-level</th>
                 <th className="px-4 py-2.5">Status</th>
                 <th className="px-4 py-2.5">Login terakhir</th>
                 {canManage && <th className="px-4 py-2.5 text-right">Aksi</th>}
@@ -109,29 +105,6 @@ export default function PlatformAdminsPage() {
                         {a.name} {self && <span className="text-[10px] text-muted">(Anda)</span>}
                       </div>
                       <div className="text-xs text-muted font-mono">{a.email}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {canManage && !self ? (
-                        <select
-                          value={a.subLevel}
-                          disabled={busy === a.id}
-                          onChange={(e) =>
-                            run(a.id, () => changeSuperAdminSubLevel(a.id, e.target.value as SubLevel))
-                          }
-                          className="rounded-lg bg-elevated border border-border text-primary text-xs px-2 py-1 outline-none focus:border-accent-teal"
-                        >
-                          {SUB_LEVELS.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs font-bold text-primary">
-                          <ShieldCheck className="h-3.5 w-3.5 text-accent-teal" />
-                          {a.subLevel}
-                        </span>
-                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -201,14 +174,13 @@ function CreateModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [subLevel, setSubLevel] = useState<SubLevel>("SUPPORT");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function submit() {
     setBusy(true);
     setErr(null);
-    const r = await createSuperAdmin({ name, email, password, subLevel });
+    const r = await createSuperAdmin({ name, email, password });
     setBusy(false);
     if (r.success) {
       onDone();
@@ -246,18 +218,7 @@ function CreateModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
           placeholder="Kata sandi (min. 12, huruf + angka)"
           className="w-full h-10 rounded-lg bg-elevated border border-border px-3 text-sm text-primary outline-none focus:border-accent-teal"
         />
-        <select
-          value={subLevel}
-          onChange={(e) => setSubLevel(e.target.value as SubLevel)}
-          className="w-full h-10 rounded-lg bg-elevated border border-border px-3 text-sm text-primary outline-none focus:border-accent-teal"
-        >
-          {SUB_LEVELS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <p className="text-[11px] text-muted">Setiap login akun ini butuh kode 6 digit yang dikirim ke email di atas.</p>
+        <p className="text-[11px] text-muted">Akun ini akan punya <b>akses penuh</b> (semua Super Admin satu level).</p>
         <button
           onClick={submit}
           disabled={busy}

@@ -132,8 +132,8 @@ export default function PlatformDashboard() {
 
       <p className="text-xs text-muted">
         Belum ada di versi ini: broadcast notification, System Health. Login Super Admin = email + password; percobaan
-        gagal berturut-turut mengunci akun sementara. Suspend tenant benar-benar memblokir login &amp; akses;
-        impersonate SUPPORT lihat-saja untuk aksi uang/pembatalan/koreksi. Siklus hidup tenant:
+        gagal berturut-turut mengunci akun sementara. Semua akun Super Admin satu level (akses penuh). Suspend
+        tenant benar-benar memblokir login &amp; akses. Siklus hidup tenant:
         <b>Tenant → Detail → Zona Berbahaya</b> untuk <i>Churned</i> lalu <i>Hapus permanen</i>; job
         <code>tenant-lifecycle</code> &amp; <code>billing</code> berjalan otomatis (invoice bulanan idempoten).
       </p>

@@ -14,7 +14,6 @@ import { validateSuperAdminPassword } from "@/lib/super-admin-password";
 import { ok, fail } from "@/types";
 
 const BCRYPT_ROUNDS = 12;
-const SUB_LEVELS: SuperAdminSubLevel[] = ["SUPER_ADMIN", "SUPPORT", "FINANCE"];
 
 async function log(
   actor: PlatformActor,
@@ -75,7 +74,6 @@ export async function createSuperAdmin(input: {
   name: string;
   email: string;
   password: string;
-  subLevel: SuperAdminSubLevel;
 }) {
   try {
     const actor = await requireSubLevel("SUPER_ADMIN");
@@ -83,23 +81,23 @@ export async function createSuperAdmin(input: {
     const email = input.email?.trim().toLowerCase();
     if (!name) return fail("Nama wajib diisi.");
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail("Email tidak valid.");
-    if (!SUB_LEVELS.includes(input.subLevel)) return fail("Sub-level tidak dikenal.");
     const pwErr = validateSuperAdminPassword(input.password);
     if (pwErr) return fail(pwErr);
 
     const exists = await prisma.superAdmin.findUnique({ where: { email } });
     if (exists) return fail("Email sudah dipakai akun Super Admin lain.");
 
+    // Sub-level dinonaktifkan — semua akun Super Admin akses penuh.
     const created = await prisma.superAdmin.create({
       data: {
         name,
         email,
         password_hash: await bcrypt.hash(input.password, BCRYPT_ROUNDS),
-        role: input.subLevel,
+        role: "SUPER_ADMIN",
         active: true,
       },
     });
-    await log(actor, "SUPER_ADMIN_CREATED", { id: created.id, label: email }, { subLevel: input.subLevel });
+    await log(actor, "SUPER_ADMIN_CREATED", { id: created.id, label: email }, { subLevel: "SUPER_ADMIN" });
 
     revalidatePath("/platform/admins");
     return ok({ id: created.id });
@@ -139,34 +137,14 @@ export async function setSuperAdminActive(id: string, active: boolean) {
   }
 }
 
+/**
+ * DINONAKTIFKAN — semua Super Admin kini satu level (akses penuh). Dibiarkan
+ * sebagai stub agar pemanggil lama tidak error; tidak mengubah apa pun.
+ */
 export async function changeSuperAdminSubLevel(id: string, subLevel: SuperAdminSubLevel) {
-  try {
-    const actor = await requireSubLevel("SUPER_ADMIN");
-    if (!SUB_LEVELS.includes(subLevel)) return fail("Sub-level tidak dikenal.");
-    const target = await prisma.superAdmin.findUnique({ where: { id } });
-    if (!target) return fail("Akun tidak ditemukan.");
-    if (target.role === subLevel) return fail("Sub-level tidak berubah.");
-    if (
-      target.role === "SUPER_ADMIN" &&
-      subLevel !== "SUPER_ADMIN" &&
-      target.active &&
-      (await activeSuperAdminCount()) <= 1
-    ) {
-      return fail("Ini satu-satunya SUPER_ADMIN aktif — turunkan akun lain dulu.");
-    }
-
-    await prisma.superAdmin.update({ where: { id }, data: { role: subLevel } });
-    await log(actor, "SUPER_ADMIN_SUBLEVEL_CHANGED", { id, label: target.email }, {
-      from: target.role,
-      to: subLevel,
-    });
-
-    revalidatePath("/platform/admins");
-    return ok({ subLevel });
-  } catch (e) {
-    console.error("changeSuperAdminSubLevel:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengubah sub-level.");
-  }
+  void id; void subLevel;
+  await requireSubLevel("SUPER_ADMIN");
+  return fail("Sub-level dinonaktifkan — semua Super Admin sudah akses penuh.");
 }
 
 export async function resetSuperAdminPassword(id: string, newPassword: string) {

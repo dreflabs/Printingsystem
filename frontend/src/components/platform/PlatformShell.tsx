@@ -27,8 +27,6 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ReactNode;
-  /** Sub-level yang boleh melihat item ini. Kosong = semua. */
-  subLevels?: SuperAdminSubLevel[];
   /** Cocokkan hanya bila path persis (root section). */
   exact?: boolean;
 }
@@ -44,31 +42,25 @@ const NAV: NavGroup[] = [
     items: [
       { label: "Dashboard", href: "/platform", icon: <LayoutDashboard className="h-[18px] w-[18px]" />, exact: true },
       { label: "Tenant", href: "/platform/tenants", icon: <Building2 className="h-[18px] w-[18px]" /> },
-      { label: "Analitik", href: "/platform/analytics", icon: <TrendingUp className="h-[18px] w-[18px]" />, subLevels: ["SUPER_ADMIN", "FINANCE"] },
+      { label: "Analitik", href: "/platform/analytics", icon: <TrendingUp className="h-[18px] w-[18px]" /> },
     ],
   },
   {
     label: "Keuangan",
     items: [
-      { label: "Billing & Invoice", href: "/platform/billing", icon: <Receipt className="h-[18px] w-[18px]" />, subLevels: ["SUPER_ADMIN", "FINANCE"] },
-      { label: "Paket Langganan", href: "/platform/plans", icon: <CreditCard className="h-[18px] w-[18px]" />, subLevels: ["SUPER_ADMIN", "FINANCE"] },
+      { label: "Billing & Invoice", href: "/platform/billing", icon: <Receipt className="h-[18px] w-[18px]" /> },
+      { label: "Paket Langganan", href: "/platform/plans", icon: <CreditCard className="h-[18px] w-[18px]" /> },
     ],
   },
   {
     label: "Sistem",
     items: [
-      { label: "Akun Admin", href: "/platform/admins", icon: <Users className="h-[18px] w-[18px]" />, subLevels: ["SUPER_ADMIN"] },
+      { label: "Akun Admin", href: "/platform/admins", icon: <Users className="h-[18px] w-[18px]" /> },
       { label: "Aktivitas", href: "/platform/activity", icon: <ScrollText className="h-[18px] w-[18px]" /> },
-      { label: "Tenant Terhapus", href: "/platform/retired", icon: <Archive className="h-[18px] w-[18px]" />, subLevels: ["SUPER_ADMIN"] },
+      { label: "Tenant Terhapus", href: "/platform/retired", icon: <Archive className="h-[18px] w-[18px]" /> },
     ],
   },
 ];
-
-const SUBLEVEL_LABEL: Record<SuperAdminSubLevel, string> = {
-  SUPER_ADMIN: "Akses penuh",
-  SUPPORT: "Support — lihat & bantu",
-  FINANCE: "Finance",
-};
 
 export function PlatformShell({
   actor,
@@ -82,10 +74,7 @@ export function PlatformShell({
   const pathname = usePathname();
   const [open, setOpen] = React.useState(false);
 
-  const groups = NAV.map((g) => ({
-    ...g,
-    items: g.items.filter((i) => !i.subLevels || i.subLevels.includes(actor.subLevel)),
-  })).filter((g) => g.items.length > 0);
+  const groups = NAV;
 
   return (
     <div className="flex h-screen overflow-hidden bg-base text-primary">
@@ -164,7 +153,7 @@ export function PlatformShell({
             <div className="h-2 w-2 rounded-full bg-status-green animate-pulse shrink-0" />
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-primary truncate">{actor.name}</p>
-              <p className="text-[10px] text-muted truncate">{SUBLEVEL_LABEL[actor.subLevel]}</p>
+              <p className="text-[10px] text-muted truncate">Akses penuh</p>
             </div>
             <form action={signOutAction}>
               <button
@@ -195,7 +184,7 @@ export function PlatformShell({
           </span>
           <div className="hidden lg:block" />
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent-teal/10 text-accent-teal border border-accent-teal/30">
-            {actor.subLevel}
+            Super Admin
           </span>
         </header>
 

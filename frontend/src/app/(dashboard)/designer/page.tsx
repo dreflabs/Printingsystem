@@ -490,8 +490,8 @@ export default function DesignerDashboardPage() {
                         <>
                           <button
                             onClick={() => setUploadFor(r)}
-                            disabled={busy || !r.isOwnedByMe}
-                            className="px-2.5 py-1 rounded-lg bg-accent-teal/10 text-accent-teal font-bold hover:bg-accent-teal/20 transition-all flex items-center gap-1 disabled:opacity-40"
+                            disabled={busy || !r.isOwnedByMe || r.status === "APPROVED" || r.latestVersionStatus === "PENDING"}
+                            className="px-2.5 py-1 rounded-lg bg-accent-teal/10 text-accent-teal font-bold hover:bg-accent-teal/20 transition-all flex items-center gap-1 disabled:opacity-40 disabled:bg-elevated disabled:text-muted"
                           >
                             <Upload className="h-3 w-3" /> Upload
                           </button>

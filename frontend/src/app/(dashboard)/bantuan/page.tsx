@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   BookOpen, LayoutDashboard, ScanLine, ShoppingCart, Tag, Users, BarChart2,
-  Clock, Wallet, Palette, Settings2, Package, HelpCircle, ListChecks, Boxes,
+  Clock, Wallet, Palette, Settings2, Package, HelpCircle, ListChecks, Boxes, Search, ChevronDown
 } from "lucide-react";
 import { getSessionUser } from "@/actions/session";
 import { GUIDE_STEPS, ROLE_LABEL, type GuideRole } from "@/components/dashboard/RoleGuide";
+import { cn } from "@/lib/utils";
 
 const ALL_ROLES: GuideRole[] = ["owner", "admin", "designer_sales", "operator", "gudang"];
 
@@ -111,6 +112,8 @@ const FAQ: { q: string; a: string }[] = [
 export default function BantuanPage() {
   const [roles, setRoles] = useState<string[]>([]);
   const [active, setActive] = useState<GuideRole>("admin");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
 
   useEffect(() => {
     getSessionUser().then((r) => {
@@ -125,18 +128,39 @@ export default function BantuanPage() {
   const myGuideRoles = ALL_ROLES.filter((r) => roles.includes(r));
   const tabs = myGuideRoles.length > 0 ? myGuideRoles : ALL_ROLES;
 
-  const steps = GUIDE_STEPS[active];
-  const menus = MENUS[active];
+  const q = searchQuery.toLowerCase();
+  
+  // `s.body` bisa berupa JSX (ReactNode), bukan selalu string — hanya cocokkan
+  // yang string. Judul tetap dicari untuk semua langkah.
+  const filteredSteps = GUIDE_STEPS[active].filter(
+    (s) => s.title.toLowerCase().includes(q) || (typeof s.body === "string" && s.body.toLowerCase().includes(q))
+  );
+  const filteredMenus = MENUS[active].filter(m => m.label.toLowerCase().includes(q) || m.desc.toLowerCase().includes(q));
+  const filteredScanFlow = SCAN_FLOW.filter(s => s.code.toLowerCase().includes(q) || s.who.toLowerCase().includes(q) || s.what.toLowerCase().includes(q));
+  const filteredStatus = STATUS_PHASES.filter(s => s.phase.toLowerCase().includes(q) || s.states.toLowerCase().includes(q) || s.note.toLowerCase().includes(q));
+  const filteredGlossary = GLOSSARY.filter(g => g.term.toLowerCase().includes(q) || g.def.toLowerCase().includes(q));
+  const filteredFAQ = FAQ.filter(f => f.q.toLowerCase().includes(q) || f.a.toLowerCase().includes(q));
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-          <BookOpen className="h-6 w-6 text-accent-teal" /> Panduan Penggunaan
+    <div className="space-y-8 max-w-4xl mx-auto pb-10">
+      <div className="bg-gradient-to-r from-accent-teal/10 to-transparent p-6 sm:p-8 rounded-3xl border border-accent-teal/20">
+        <h1 className="text-3xl font-extrabold text-primary flex items-center gap-3">
+          <BookOpen className="h-8 w-8 text-accent-teal" /> Pusat Bantuan
         </h1>
-        <p className="text-sm text-muted mt-0.5">
-          Cara pakai aplikasi per peran, alur scan QR, arti status order, dan istilah. Baca kalau ada yang belum jelas.
+        <p className="text-base text-muted mt-2 max-w-2xl">
+          Cari panduan penggunaan, arti status order, alur kerja, hingga glosarium istilah di Print Pilot.
         </p>
+
+        <div className="mt-6 relative max-w-xl">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
+          <input
+            type="text"
+            placeholder="Cari kata kunci (misal: DP, Rework, Absen)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-12 pr-4 py-3.5 bg-background border border-border rounded-2xl focus:outline-none focus:border-accent-teal focus:ring-1 focus:ring-accent-teal shadow-sm text-sm text-primary transition-all"
+          />
+        </div>
       </div>
 
       {/* Pemilih peran */}
@@ -157,94 +181,133 @@ export default function BantuanPage() {
       </div>
 
       {/* Alur kerja harian */}
-      <Section icon={ListChecks} title={`Alur kerja harian — ${ROLE_LABEL[active]}`}>
-        <ol className="space-y-3">
-          {steps.map((s, i) => (
-            <li key={i} className="flex gap-3">
-              <span className="shrink-0 mt-0.5 h-5 w-5 rounded-full bg-elevated border border-border text-[11px] font-bold text-muted flex items-center justify-center">
-                {i + 1}
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-primary">{s.title}</p>
-                <p className="text-xs text-muted leading-relaxed">{s.body}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </Section>
+      {filteredSteps.length > 0 && (
+        <Section icon={ListChecks} title={`Alur kerja harian — ${ROLE_LABEL[active]}`}>
+          <ol className="space-y-4">
+            {filteredSteps.map((s, i) => (
+              <li key={i} className="flex gap-4">
+                <span className="shrink-0 mt-0.5 h-6 w-6 rounded-full bg-accent-teal/10 border border-accent-teal/20 text-[11px] font-bold text-accent-teal flex items-center justify-center">
+                  {i + 1}
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-primary">{s.title}</p>
+                  <p className="text-xs text-muted leading-relaxed mt-1">{s.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </Section>
+      )}
 
       {/* Menu & fungsinya */}
-      <Section icon={LayoutDashboard} title="Menu & fungsinya">
-        <ul className="space-y-2.5">
-          {menus.map((m) => (
-            <li key={m.label + m.href} className="flex gap-3">
-              <span className="inline-flex p-1.5 rounded-lg bg-elevated shrink-0 h-fit">
-                <m.icon className="h-4 w-4 text-accent-teal" />
-              </span>
-              <div>
-                <Link href={m.href} className="text-sm font-semibold text-primary hover:text-accent-teal">
-                  {m.label}
-                </Link>
-                <p className="text-xs text-muted leading-relaxed">{m.desc}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </Section>
+      {filteredMenus.length > 0 && (
+        <Section icon={LayoutDashboard} title="Menu & fungsinya">
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filteredMenus.map((m) => (
+              <li key={m.label + m.href} className="flex gap-3 p-4 rounded-xl border border-border bg-base hover:border-accent-teal/50 hover:shadow-sm transition-all group">
+                <span className="inline-flex p-2 rounded-lg bg-elevated shrink-0 h-fit group-hover:bg-accent-teal/10 transition-colors">
+                  <m.icon className="h-5 w-5 text-accent-teal" />
+                </span>
+                <div>
+                  <Link href={m.href} className="text-sm font-bold text-primary group-hover:text-accent-teal transition-colors">
+                    {m.label}
+                  </Link>
+                  <p className="text-xs text-muted leading-relaxed mt-1">{m.desc}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
 
       {/* Scan QR */}
-      <Section icon={ScanLine} title="Alur Scan QR (SCAN 1–10)">
-        <p className="text-xs text-muted mb-3">
-          Tiap job punya kode QR di lembar kerja. Pindai di menu <b>Scan QR</b>; aksi yang muncul menyesuaikan tahap job dan peran Anda.
-        </p>
-        <ul className="space-y-2">
-          {SCAN_FLOW.map((s) => (
-            <li key={s.code} className="grid grid-cols-[auto_1fr] gap-3 text-xs">
-              <span className="font-mono font-bold text-accent-teal whitespace-nowrap">{s.code}</span>
-              <span className="text-muted">
-                <b className="text-primary">{s.who}.</b> {s.what}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Section>
+      {filteredScanFlow.length > 0 && (
+        <Section icon={ScanLine} title="Alur Scan QR (SCAN 1–10)">
+          <p className="text-xs text-muted mb-6 bg-elevated p-3 rounded-xl border border-border">
+            Tiap job punya kode QR di lembar kerja. Pindai di menu <b>Scan QR</b>; aksi yang muncul menyesuaikan tahap job dan peran Anda.
+          </p>
+          <div className="relative pl-6 space-y-6 before:absolute before:inset-0 before:ml-[11px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
+            {filteredScanFlow.map((s, i) => (
+              <div key={s.code} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                <div className="absolute left-[-24px] flex items-center justify-center w-5 h-5 rounded-full border-2 border-background bg-accent-teal text-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 md:left-1/2">
+                  <div className="h-2 w-2 bg-white rounded-full"></div>
+                </div>
+                <div className="w-full md:w-[calc(50%-2rem)] bg-base p-4 rounded-xl border border-border shadow-sm group-hover:border-accent-teal/50 transition-all">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-mono font-bold text-xs bg-accent-teal/10 text-accent-teal px-2 py-0.5 rounded">{s.code}</span>
+                    <span className="text-xs font-bold text-primary">{s.who}</span>
+                  </div>
+                  <p className="text-xs text-muted leading-relaxed">{s.what}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
 
       {/* Status order */}
-      <Section icon={Boxes} title="Arti status order">
-        <div className="space-y-2.5">
-          {STATUS_PHASES.map((p) => (
-            <div key={p.phase} className="border-l-2 border-border pl-3">
-              <p className="text-sm font-semibold text-primary">{p.phase}</p>
-              <p className="text-[11px] font-mono text-accent-teal break-words">{p.states}</p>
-              <p className="text-xs text-muted">{p.note}</p>
-            </div>
-          ))}
-        </div>
-      </Section>
+      {filteredStatus.length > 0 && (
+        <Section icon={Boxes} title="Arti status order">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filteredStatus.map((p) => (
+              <div key={p.phase} className="p-4 rounded-xl border border-border bg-base hover:border-accent-teal/30 transition-all">
+                <p className="text-sm font-bold text-primary mb-2 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-accent-teal"></span> {p.phase}
+                </p>
+                <p className="text-[11px] font-mono text-accent-teal bg-accent-teal/5 p-2 rounded mb-2 break-words leading-relaxed">{p.states}</p>
+                <p className="text-xs text-muted leading-relaxed">{p.note}</p>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
 
       {/* Istilah */}
-      <Section icon={Tag} title="Istilah penting">
-        <dl className="space-y-2">
-          {GLOSSARY.map((g) => (
-            <div key={g.term}>
-              <dt className="text-sm font-semibold text-primary">{g.term}</dt>
-              <dd className="text-xs text-muted leading-relaxed">{g.def}</dd>
-            </div>
-          ))}
-        </dl>
-      </Section>
+      {filteredGlossary.length > 0 && (
+        <Section icon={Tag} title="Istilah penting">
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filteredGlossary.map((g) => (
+              <div key={g.term} className="p-4 rounded-xl border border-border bg-base hover:border-accent-teal/30 transition-all">
+                <dt className="text-sm font-bold text-primary mb-1">{g.term}</dt>
+                <dd className="text-xs text-muted leading-relaxed">{g.def}</dd>
+              </div>
+            ))}
+          </dl>
+        </Section>
+      )}
 
       {/* FAQ */}
-      <Section icon={HelpCircle} title="Tanya jawab">
-        <div className="space-y-3">
-          {FAQ.map((f, i) => (
-            <div key={i}>
-              <p className="text-sm font-semibold text-primary">{f.q}</p>
-              <p className="text-xs text-muted leading-relaxed">{f.a}</p>
-            </div>
-          ))}
+      {filteredFAQ.length > 0 && (
+        <Section icon={HelpCircle} title="Tanya jawab (FAQ)">
+          <div className="space-y-3">
+            {filteredFAQ.map((f, i) => {
+              const isOpen = openFaqIndex === i;
+              return (
+                <div key={i} className={cn("border border-border rounded-xl transition-all duration-300 overflow-hidden", isOpen ? "bg-base shadow-sm border-accent-teal/30" : "bg-card hover:bg-base")}>
+                  <button
+                    onClick={() => setOpenFaqIndex(isOpen ? null : i)}
+                    className="w-full flex items-center justify-between p-4 text-left cursor-pointer"
+                  >
+                    <span className="text-sm font-bold text-primary pr-4">{f.q}</span>
+                    <ChevronDown className={cn("h-4 w-4 text-muted transition-transform duration-300 shrink-0", isOpen && "rotate-180 text-accent-teal")} />
+                  </button>
+                  <div className={cn("px-4 pb-4 text-xs text-muted leading-relaxed transition-all duration-300", isOpen ? "block" : "hidden")}>
+                    {f.a}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {q && filteredSteps.length === 0 && filteredMenus.length === 0 && filteredScanFlow.length === 0 && filteredStatus.length === 0 && filteredGlossary.length === 0 && filteredFAQ.length === 0 && (
+        <div className="text-center py-12 px-4 bg-card border border-border rounded-2xl">
+          <Search className="h-10 w-10 text-muted mx-auto mb-3 opacity-30" />
+          <h3 className="text-lg font-bold text-primary mb-1">Tidak ditemukan</h3>
+          <p className="text-sm text-muted">Tidak ada hasil yang cocok dengan kata kunci "{searchQuery}".</p>
         </div>
-      </Section>
+      )}
     </div>
   );
 }

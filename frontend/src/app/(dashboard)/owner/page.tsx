@@ -14,6 +14,7 @@ import { getSetupChecklist } from "@/actions/onboarding";
 import { getSessionUser } from "@/actions/session";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { SoloNextSteps } from "@/components/dashboard/SoloNextSteps";
+import { WorkspaceModeNudge } from "@/components/dashboard/WorkspaceModeNudge";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
 import { decideDiscount } from "@/actions/orders";
 import { approveFinalAudit } from "@/actions/audit";
@@ -273,6 +274,7 @@ export default function OwnerPage() {
         <span className="px-3 py-1 rounded-full text-xs font-bold bg-accent-teal/10 text-accent-teal border border-border">Akses Penuh</span>
       </div>
 
+      <WorkspaceModeNudge />
       <RoleGuide role="owner" checklist={checklist} />
       <SoloNextSteps />
       {soloOwner && <AbsenCard />}

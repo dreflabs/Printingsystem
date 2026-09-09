@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser, requireMutableActor } from "@/lib/actor";
+import { requireUser, requireMutableActor, impersonationNote } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { TERMINAL_STATUSES } from "@/lib/order-status";
+import { normalizeWorkspaceMode, WORKSPACE_MODES, type WorkspaceMode } from "@/lib/workspace-mode";
 import { ok, fail } from "@/types";
 
 const OPERATIONAL_ROLES = ["admin", "designer_sales", "operator", "gudang"] as const;
@@ -125,12 +126,6 @@ export async function getNextSteps() {
     const actor = await requireUser();
     // Panel ini memang untuk yang jalan sendiri — butuh > 1 peran.
     const solo = actor.roles.length > 1;
-    // Owner yang BELUM punya satu pun peran operasional → tawarkan "Aktifkan Mode
-    // Solo". Begitu dia punya minimal satu (baik lewat Solo Mode maupun dipilih
-    // manual), tawaran berhenti muncul — supaya Owner yang sengaja melepas satu
-    // peran setelah merekrut tidak terus ditawari lagi.
-    const canEnableSolo =
-      actor.roles.includes("owner") && !OPERATIONAL_ROLES.some((r) => actor.roles.includes(r));
 
     const orders = await prisma.order.findMany({
       where: { tenant_id: tenant.id, status: { notIn: [...DONE] } },
@@ -163,41 +158,145 @@ export async function getNextSteps() {
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
 
-    return ok({ solo, canEnableSolo, items });
+    return ok({ solo, items });
   } catch (e) {
     console.error("getNextSteps:", e);
     return fail(e instanceof Error ? e.message : "Gagal memuat langkah berikutnya.");
   }
 }
 
+// ─── Tampilan Workspace: saran + ganti mode + peran Owner ─────────────────────
+
+const REVALIDATE_MODE = ["/owner", "/beranda", "/owner/users"] as const;
+function revalidateMode() {
+  for (const p of REVALIDATE_MODE) revalidatePath(p);
+}
+
 /**
- * Beri akun Owner yang sedang login semua peran operasional (Solo Mode).
- * Untuk tenant lama yang daftar sebelum peran otomatis diberikan.
+ * Saran ganti tampilan workspace untuk Owner, dihitung dari jumlah pegawai aktif
+ * (bukan lagi tebakan "Owner belum punya peran"). Mengembalikan `null` kalau
+ * tak ada yang perlu ditindak — jadi tenant yang sudah pas TIDAK di-nag.
+ *
+ * Aturan (hanya lintas batas SOLO ⟷ TIM; TEAM_SMALL/TEAM_FULL tidak saling nag):
+ *   - SOLO + ada ≥1 pegawai   → sarankan TEAM_SMALL (≤4) / TEAM_FULL (≥5)
+ *   - mode TIM + 0 pegawai    → sarankan kembali ke SOLO
+ *
+ * `sheddableRoles` = peran operasional yang masih dipegang Owner PADAHAL sudah
+ * ada pegawai aktif yang meng-cover-nya → aman ditawarkan untuk dilepas.
  */
-export async function enableSoloMode() {
+export async function getWorkspaceModeSuggestion() {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!actor.roles.includes("owner")) return ok(null);
+
+    const current = normalizeWorkspaceMode((tenant as { workspace_mode?: string }).workspace_mode);
+
+    const staff = await prisma.user.findMany({
+      where: { tenant_id: tenant.id, active: true, role: { name: { not: "owner" } } },
+      select: {
+        role: { select: { name: true } },
+        extra_roles: { select: { role: { select: { name: true } } } },
+      },
+    });
+    const staffCount = staff.length;
+    const covered = new Set<string>();
+    for (const s of staff) {
+      covered.add(s.role.name);
+      for (const er of s.extra_roles) covered.add(er.role.name);
+    }
+
+    let suggested: WorkspaceMode = current;
+    if (current === "SOLO" && staffCount > 0) suggested = staffCount <= 4 ? "TEAM_SMALL" : "TEAM_FULL";
+    else if (current !== "SOLO" && staffCount === 0) suggested = "SOLO";
+
+    const ownerOps = OPERATIONAL_ROLES.filter((r) => actor.roles.includes(r));
+    const sheddableRoles = ownerOps.filter((r) => covered.has(r));
+
+    if (current === suggested && sheddableRoles.length === 0) return ok(null);
+
+    return ok({ current, suggested, staffCount, ownerOps, sheddableRoles });
+  } catch (e) {
+    console.error("getWorkspaceModeSuggestion:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat saran tampilan.");
+  }
+}
+
+/** Ganti `Tenant.workspace_mode`. Owner saja. Tidak menyentuh izin/Role. */
+export async function setWorkspaceMode(mode: WorkspaceMode) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang bisa mengaktifkan Mode Solo.");
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang bisa mengubah tampilan workspace.");
+    if (!WORKSPACE_MODES.includes(mode)) return fail("Mode tampilan tidak dikenal.");
 
-    const roles = await prisma.role.findMany({ where: { name: { in: [...OPERATIONAL_ROLES] } } });
-    await prisma.$transaction(
-      roles.map((r) =>
-        prisma.userRole.upsert({
-          where: { user_id_role_id: { user_id: actor.id, role_id: r.id } },
-          update: {},
-          create: { user_id: actor.id, role_id: r.id },
-        }),
-      ),
-    );
-    const after = [...new Set([...actor.roles, ...OPERATIONAL_ROLES])];
-    await logAction(actor.id, "USER_ROLES_UPDATED", "User", actor.id, actor.roles, after);
-    revalidatePath("/owner");
-    revalidatePath("/owner/users");
-    void tenant;
+    const before = normalizeWorkspaceMode((tenant as { workspace_mode?: string }).workspace_mode);
+    if (before === mode) return ok(null);
+
+    await prisma.tenant.update({ where: { id: tenant.id }, data: { workspace_mode: mode } });
+    await logAction(actor.id, "WORKSPACE_MODE_SET", "Tenant", tenant.id, { mode: before }, { mode }, impersonationNote(actor));
+    revalidateMode();
     return ok(null);
   } catch (e) {
-    console.error("enableSoloMode:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengaktifkan Mode Solo.");
+    console.error("setWorkspaceMode:", e);
+    return fail(e instanceof Error ? e.message : "Gagal mengubah tampilan workspace.");
   }
+}
+
+/**
+ * Setel peran OPERASIONAL akun Owner yang sedang login menjadi PERSIS `names`
+ * (subset dari OPERATIONAL_ROLES). Menambah yang kurang, mencabut sisanya.
+ * Peran utama `owner` tidak pernah tersentuh. Dipakai untuk melepas peran yang
+ * sudah ada pegawainya — dan untuk membatalkannya (kirim daftar lama).
+ */
+export async function setOwnerOperationalRoles(names: string[]) {
+  try {
+    await requireTenant();
+    const actor = await requireMutableActor();
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang bisa mengatur peran akunnya sendiri di sini.");
+
+    const target = OPERATIONAL_ROLES.filter((r) => names.includes(r));
+    const currentOps = OPERATIONAL_ROLES.filter((r) => actor.roles.includes(r));
+    const toAdd = target.filter((r) => !currentOps.includes(r));
+    const toRemove = currentOps.filter((r) => !target.includes(r));
+    if (toAdd.length === 0 && toRemove.length === 0) return ok({ roles: currentOps });
+
+    const roleRows = await prisma.role.findMany({ where: { name: { in: [...OPERATIONAL_ROLES] } } });
+    const idOf = (n: string) => roleRows.find((x) => x.name === n)?.id;
+
+    await prisma.$transaction([
+      ...(toAdd.length
+        ? [prisma.userRole.createMany({
+            data: toAdd.map((n) => ({ user_id: actor.id, role_id: idOf(n)! })),
+            skipDuplicates: true,
+          })]
+        : []),
+      ...(toRemove.length
+        ? [prisma.userRole.deleteMany({
+            where: { user_id: actor.id, role_id: { in: toRemove.map(idOf).filter((x): x is string => !!x) } },
+          })]
+        : []),
+    ]);
+
+    await logAction(
+      actor.id, "OWNER_OPERATIONAL_ROLES_SET", "User", actor.id,
+      { roles: currentOps }, { roles: target }, impersonationNote(actor),
+    );
+    revalidateMode();
+    return ok({ roles: target });
+  } catch (e) {
+    console.error("setOwnerOperationalRoles:", e);
+    return fail(e instanceof Error ? e.message : "Gagal mengubah peran akun Anda.");
+  }
+}
+
+/**
+ * Kembali sepenuhnya ke Mode Solo: Owner dapat semua peran operasional lagi +
+ * `workspace_mode` = SOLO. Untuk tenant yang tim-nya bubar / Owner mau turun
+ * tangan lagi.
+ */
+export async function enableSoloMode() {
+  const r1 = await setOwnerOperationalRoles([...OPERATIONAL_ROLES]);
+  if (!r1.success) return r1;
+  return setWorkspaceMode("SOLO");
 }

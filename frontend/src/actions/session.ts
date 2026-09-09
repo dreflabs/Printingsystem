@@ -6,13 +6,9 @@ import { auth, signOut } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/actor";
 import { getCurrentTenant } from "@/lib/tenant";
 import { IMPERSONATE_COOKIE } from "@/lib/platform";
+import { normalizeWorkspaceMode, type WorkspaceMode } from "@/lib/workspace-mode";
 
-export type WorkspaceMode = "SOLO" | "TEAM_SMALL" | "TEAM_FULL";
-
-/** Nilai yang tidak dikenal / null → SOLO (tampilan paling sederhana, fail-safe). */
-function normalizeWorkspaceMode(v: unknown): WorkspaceMode {
-  return v === "TEAM_FULL" || v === "TEAM_SMALL" ? v : "SOLO";
-}
+export type { WorkspaceMode };
 
 export interface SessionUser {
   id: string;

@@ -24,10 +24,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/actions/session";
+import { WORKSPACE_MODE_LABEL, type WorkspaceMode } from "@/lib/workspace-mode";
 
 // All possible roles in the system
 type UserRole = "admin" | "designer_sales" | "operator" | "gudang" | "owner";
-type WorkspaceMode = "SOLO" | "TEAM_SMALL" | "TEAM_FULL";
 
 interface NavItem {
   label: string;
@@ -164,6 +164,26 @@ const SOLO_NAV: NavItem[] = [
   { label: "Bantuan", href: "/bantuan", icon: <BookOpen className="h-5 w-5" />, roles: ["owner"] },
 ];
 
+/**
+ * Navigasi Owner di mode TIM (TEAM_SMALL / TEAM_FULL): fokus pengawasan —
+ * setup, laporan, absensi, gaji, approval. TANPA dashboard per-divisi
+ * (Admin/Desainer/Operator/Finishing) — itu punya pegawainya. Owner tetap
+ * memegang perannya di balik layar; kalau perlu turun tangan, dashboard
+ * divisi masih bisa dibuka lewat "Pindah Dashboard" di bawah header.
+ */
+const TEAM_OWNER_NAV: NavItem[] = [
+  { label: "Dashboard", href: "/owner", icon: <LayoutDashboard className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Produksi & Laporan", href: "/admin/production", icon: <BarChart2 className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Pegawai & Akses", href: "/owner/users", icon: <Users className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Identitas Toko", href: "/owner/toko", icon: <Tag className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Laporan Bulanan", href: "/owner/reports", icon: <BarChart2 className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Pengaturan Absensi", href: "/owner/attendance-settings", icon: <Settings2 className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Absensi Pegawai", href: "/admin/attendance", icon: <Clock className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Gaji Pegawai", href: "/admin/payroll", icon: <Wallet className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Scan QR", href: "/scan", icon: <ScanLine className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Bantuan", href: "/bantuan", icon: <BookOpen className="h-5 w-5" />, roles: ["owner"] },
+];
+
 // Role switcher config: what dashboards each role maps to
 const ROLE_SWITCHER_CONFIG: { role: UserRole; label: string; href: string; color: string }[] = [
   { role: "owner",          label: "Owner",            href: "/owner",    color: "text-accent-teal" },
@@ -189,9 +209,15 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
   // Items visible to this user based on ALL their roles
   const userRoleSet = new Set(roles as UserRole[]);
 
-  // Mode SOLO khusus Owner: navigasi ramping tetap (SOLO_NAV), tanpa switcher.
-  // Non-owner (kalau ada) di tenant SOLO tetap pakai navigasi normal per-peran.
+  // Navigasi ditentukan `workspace_mode`, BUKAN jumlah peran. Owner yang baru
+  // daftar TEAM_FULL tetap memegang semua peran operasional, tapi sidebar-nya
+  // tidak ikut membengkak jadi 18 item.
+  //  - SOLO  + Owner → SOLO_NAV (8 item, alur 1 orang)
+  //  - TIM   + Owner → TEAM_OWNER_NAV (pengawasan, tanpa dashboard divisi)
+  //  - selain itu (pegawai biasa) → navigasi per-peran seperti biasa
   const soloView = workspaceMode === "SOLO" && userRoleSet.has("owner");
+  const teamOwnerView =
+    (workspaceMode === "TEAM_SMALL" || workspaceMode === "TEAM_FULL") && userRoleSet.has("owner");
 
   const visibleItems = NAV_ITEMS.filter((item) =>
     item.roles.some((r) => userRoleSet.has(r))
@@ -200,11 +226,14 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
   // De-duplicate by href (owner sees all, so some hrefs might appear twice)
   const uniqueItems = soloView
     ? SOLO_NAV
-    : visibleItems.filter(
-        (item, idx, arr) => arr.findIndex((i) => i.href === item.href) === idx
-      );
+    : teamOwnerView
+      ? TEAM_OWNER_NAV
+      : visibleItems.filter(
+          (item, idx, arr) => arr.findIndex((i) => i.href === item.href) === idx
+        );
 
-  // Role switcher entries: only show roles this user actually has
+  // Role switcher: tetap tampil untuk Owner mode TIM yang masih pegang peran
+  // divisi (jalan pintas turun tangan). Menyusut sendiri saat peran dilepas.
   const switcherRoles = ROLE_SWITCHER_CONFIG.filter((r) => userRoleSet.has(r.role));
   const hasMultipleRoles = !soloView && switcherRoles.length > 1;
 
@@ -340,14 +369,17 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
                 <span className="text-xs text-muted truncate block capitalize">
                   {soloView
                     ? "Mode Solo"
-                    : hasMultipleRoles
-                    ? `${roles.length} Role Aktif`
-                    : role.replace("_", " ")}
+                    : teamOwnerView
+                      ? WORKSPACE_MODE_LABEL[workspaceMode]
+                      : hasMultipleRoles
+                        ? `${roles.length} Role Aktif`
+                        : role.replace("_", " ")}
                 </span>
-                {(soloView || hasMultipleRoles) && (
-                  <span className="text-[10px] text-accent-teal font-semibold">
-                    {soloView ? "1 orang · semua peran" : "Solo Mode ✓"}
-                  </span>
+                {soloView && (
+                  <span className="text-[10px] text-accent-teal font-semibold">1 orang · semua peran</span>
+                )}
+                {teamOwnerView && switcherRoles.length > 1 && (
+                  <span className="text-[10px] text-muted">+ akses {switcherRoles.length - 1} divisi</span>
                 )}
               </div>
             </div>

@@ -179,7 +179,9 @@ function revalidateMode() {
  *
  * Aturan (hanya lintas batas SOLO ⟷ TIM; TEAM_SMALL/TEAM_FULL tidak saling nag):
  *   - SOLO + ada ≥1 pegawai   → sarankan TEAM_SMALL (≤4) / TEAM_FULL (≥5)
- *   - mode TIM + 0 pegawai    → sarankan kembali ke SOLO
+ *   - mode TIM + 0 pegawai + SUDAH pernah ada order → sarankan kembali ke SOLO
+ *     (tenant TIM yang baru daftar & belum jalan TIDAK di-nag balik ke SOLO —
+ *      dia memang sedang menuju merekrut, bukan "tim bubar")
  *
  * `sheddableRoles` = peran operasional yang masih dipegang Owner PADAHAL sudah
  * ada pegawai aktif yang meng-cover-nya → aman ditawarkan untuk dilepas.
@@ -207,8 +209,12 @@ export async function getWorkspaceModeSuggestion() {
     }
 
     let suggested: WorkspaceMode = current;
-    if (current === "SOLO" && staffCount > 0) suggested = staffCount <= 4 ? "TEAM_SMALL" : "TEAM_FULL";
-    else if (current !== "SOLO" && staffCount === 0) suggested = "SOLO";
+    if (current === "SOLO" && staffCount > 0) {
+      suggested = staffCount <= 4 ? "TEAM_SMALL" : "TEAM_FULL";
+    } else if (current !== "SOLO" && staffCount === 0) {
+      const hasOrders = (await prisma.order.count({ where: { tenant_id: tenant.id } })) > 0;
+      if (hasOrders) suggested = "SOLO";
+    }
 
     const ownerOps = OPERATIONAL_ROLES.filter((r) => actor.roles.includes(r));
     const sheddableRoles = ownerOps.filter((r) => covered.has(r));

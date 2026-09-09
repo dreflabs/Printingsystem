@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser, requireMutableActor } from "@/lib/actor";
+import { requireUser, requireMutableActor, impersonationNote } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { ok, fail } from "@/types";
 import { revalidatePath } from "next/cache";
@@ -195,7 +195,7 @@ export async function setEmployeeBaseSalary(userId: string, amount: number) {
     // Nominal gaji SENGAJA tidak dicatat di sini — /api/audit-logs bisa dibaca role
     // admin juga, dan itu akan membocorkan nominal yang justru disembunyikan dari
     // Admin di getPayrollPeriods/getPayrollPeriodDetail.
-    await logAction(actor.id, "EMPLOYEE_BASE_SALARY_SET", "User", userId, { changed: true }, { changed: true });
+    await logAction(actor.id, "EMPLOYEE_BASE_SALARY_SET", "User", userId, { changed: true }, { changed: true }, impersonationNote(actor));
 
     revalidatePath("/owner/users");
     revalidatePath("/owner/payroll");

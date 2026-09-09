@@ -6,14 +6,23 @@ import { getCurrentUser } from "@/lib/actor";
  * GET /api/audit-logs — read-only riwayat audit (anti-fraud chain).
  * Query: entity_type, entity_id, action, actor_id, limit (default 100, max 500).
  * Akses: Owner (penuh) & Admin. Role lain ditolak.
+ *
+ * Admin (non-Owner) TIDAK melihat entri `entity_type = "User"` — semua entri itu
+ * adalah jejak manajemen pegawai/HR (EMPLOYEE_*, USER_ROLES_*, ATTENDANCE_PIN_*,
+ * EMPLOYEE_BASE_SALARY_SET) yang memuat identitas, struktur peran, dan linimasa
+ * reset password. Di UI, halaman "Pegawai & Akses" sendiri owner-only; tanpa
+ * filter ini Admin bisa merekonstruksi seluruh roster lewat audit log.
  */
 export async function GET(request: Request) {
   try {
     const tenant = await requireTenant();
     const actor = await getCurrentUser();
-    if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+    // Cek berbasis SEMUA peran (multi-role), bukan hanya peran utama.
+    const isPrivileged = !!actor && (actor.roles.includes("owner") || actor.roles.includes("admin"));
+    if (!actor || !isPrivileged) {
       return Response.json({ error: "Tidak berwenang." }, { status: 403 });
     }
+    const isOwner = actor.roles.includes("owner");
 
     const url = new URL(request.url);
     const q = url.searchParams;
@@ -34,6 +43,9 @@ export async function GET(request: Request) {
               { entity_type: { contains: search, mode: "insensitive" } },
             ] }
           : {}),
+        // Redaksi jejak HR untuk non-Owner. AND terpisah supaya tidak bentrok
+        // dengan filter `entity_type` dari query.
+        ...(isOwner ? {} : { AND: [{ entity_type: { not: "User" } }] }),
       },
       orderBy: { created_at: "desc" },
       take: limit,

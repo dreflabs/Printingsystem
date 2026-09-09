@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser, requireMutableActor } from "@/lib/actor";
+import { requireUser, requireMutableActor, impersonationNote } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { generateTempPassword } from "@/lib/temp-password";
 import bcrypt from "bcryptjs";
@@ -119,7 +119,7 @@ export async function createEmployee(data: {
       username: data.username,
       role: data.role_name,
       extra_roles: data.extra_role_names ?? [],
-    });
+    }, impersonationNote(actor));
 
     revalidatePath("/owner/users");
     return { success: true, user: newUser, tempPassword };
@@ -182,7 +182,7 @@ export async function updateUserRoles(userId: string, roleNames: string[]) {
       });
     }
 
-    await logAction(actor.id, "USER_ROLES_UPDATED", "User", userId, oldRoleNames, roleNames);
+    await logAction(actor.id, "USER_ROLES_UPDATED", "User", userId, oldRoleNames, roleNames, impersonationNote(actor));
 
     revalidatePath("/owner/users");
     return { success: true };
@@ -213,7 +213,7 @@ export async function toggleEmployeeStatus(userId: string, active: boolean) {
       },
     });
 
-    await logAction(actor.id, active ? "EMPLOYEE_ACTIVATED" : "EMPLOYEE_DEACTIVATED", "User", userId, { active: user.active }, { active });
+    await logAction(actor.id, active ? "EMPLOYEE_ACTIVATED" : "EMPLOYEE_DEACTIVATED", "User", userId, { active: user.active }, { active }, impersonationNote(actor));
 
     revalidatePath("/owner/users");
     return { success: true };
@@ -242,7 +242,7 @@ export async function unlockEmployeeAccount(userId: string) {
       data: { failed_login_count: 0, locked_until: null },
     });
 
-    await logAction(actor.id, "EMPLOYEE_ACCOUNT_UNLOCKED", "User", userId);
+    await logAction(actor.id, "EMPLOYEE_ACCOUNT_UNLOCKED", "User", userId, undefined, undefined, impersonationNote(actor));
 
     revalidatePath("/owner/users");
     return { success: true };
@@ -281,7 +281,7 @@ export async function resetEmployeePassword(userId: string) {
       },
     });
 
-    await logAction(actor.id, "EMPLOYEE_PASSWORD_RESET", "User", userId);
+    await logAction(actor.id, "EMPLOYEE_PASSWORD_RESET", "User", userId, undefined, undefined, impersonationNote(actor));
 
     revalidatePath("/owner/users");
     return { success: true, newPassword };
@@ -390,7 +390,7 @@ export async function deleteEmployee(userId: string) {
         await tx.passwordResetToken.deleteMany({ where: { user_id: userId } });
         await tx.user.delete({ where: { id: userId } });
       });
-      await logAction(actor.id, "EMPLOYEE_DELETED", "User", userId, { name: user.name, username: user.username }, { mode: "hard_delete" });
+      await logAction(actor.id, "EMPLOYEE_DELETED", "User", userId, { name: user.name, username: user.username }, { mode: "hard_delete" }, impersonationNote(actor));
       revalidatePath("/owner/users");
       return { success: true, mode: "deleted" as const };
     }
@@ -419,7 +419,7 @@ export async function deleteEmployee(userId: string) {
         },
       });
     });
-    await logAction(actor.id, "EMPLOYEE_ANONYMIZED", "User", userId, { name: user.name, username: user.username }, { mode: "anonymize", kept_history: true });
+    await logAction(actor.id, "EMPLOYEE_ANONYMIZED", "User", userId, { name: user.name, username: user.username }, { mode: "anonymize", kept_history: true }, impersonationNote(actor));
     revalidatePath("/owner/users");
     return { success: true, mode: "anonymized" as const };
   } catch (e) {

@@ -15,6 +15,24 @@ export interface Actor {
   impersonated?: boolean;
   /** true = aktor hanya boleh baca (Super Admin sub-level SUPPORT saat impersonate) */
   readOnly?: boolean;
+  /** Id akun Super Admin sebenarnya (hanya diisi saat `impersonated`). */
+  platformActorId?: string;
+  /** Nama akun Super Admin sebenarnya (hanya diisi saat `impersonated`). */
+  platformActorName?: string;
+}
+
+/**
+ * Catatan untuk audit log ketika aksi tenant sebenarnya dijalankan oleh Super
+ * Admin yang sedang impersonate. `logAction` menyimpan `actor.id` = user Owner
+ * tenant, jadi tanpa ini jejak audit tenant tampak seolah Owner sendiri yang
+ * menghapus pegawai / mereset password. Kembalikan `undefined` untuk aktor
+ * tenant biasa (tidak menambah noise).
+ */
+export function impersonationNote(actor: Actor): string | undefined {
+  if (!actor.impersonated) return undefined;
+  const who = actor.platformActorName ?? "Super Admin";
+  const id = actor.platformActorId ? ` #${actor.platformActorId}` : "";
+  return `Dijalankan oleh Super Admin ${who}${id} (mode impersonate)`;
 }
 
 /** Prioritas peran — yang tertinggi jadi primary. */
@@ -93,6 +111,8 @@ export async function getCurrentUser(): Promise<Actor | null> {
       roles: rolesOf(owner),
       impersonated: true,
       readOnly,
+      platformActorId: actor.id,
+      platformActorName: actor.name,
     };
   }
 

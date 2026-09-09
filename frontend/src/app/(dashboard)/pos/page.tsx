@@ -107,7 +107,7 @@ function PosPaymentModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-5">
+      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-5 max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-bold text-primary">Pembayaran POS Kasir</h3>
 
         {/* Total Summary */}
@@ -388,7 +388,7 @@ export default function PosPage() {
     <div className="flex flex-col h-[calc(100vh-2rem)] bg-base gap-4 pb-4">
       
       {/* TABS */}
-      <div className="flex gap-2 p-1 bg-card border border-border rounded-xl w-fit shadow-sm shrink-0">
+      <div className="flex gap-2 p-1 bg-card border border-border rounded-xl w-fit max-w-full shadow-sm shrink-0 overflow-x-auto no-scrollbar">
         {[
           { id: "KASIR", label: "Kasir POS", icon: Receipt },
           { id: "HISTORY", label: "Riwayat Transaksi", icon: ClipboardList },
@@ -479,9 +479,9 @@ export default function PosPage() {
       )}
 
       {activeTab === "KASIR" && (
-        <div className="flex-1 flex overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
+        <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
           {/* LEFT PANEL - PRODUCTS */}
-          <div className="flex-1 flex flex-col min-w-0 border-r border-border">
+          <div className="flex-none lg:flex-1 h-[60vh] lg:h-auto flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-border">
         {/* Top Bar */}
         <div className="p-4 border-b border-border bg-card flex gap-4 items-center shrink-0">
           <div className="relative flex-1">
@@ -542,7 +542,7 @@ export default function PosPage() {
       </div>
 
       {/* RIGHT PANEL - CART */}
-      <div className="w-[380px] shrink-0 flex flex-col bg-card shadow-[-4px_0_24px_rgba(0,0,0,0.02)] z-10">
+      <div className="w-full lg:w-[380px] flex-none shrink-0 flex flex-col bg-card shadow-[0_-4px_24px_rgba(0,0,0,0.05)] lg:shadow-[-4px_0_24px_rgba(0,0,0,0.02)] z-10 min-h-[50vh] lg:min-h-0">
         {/* Customer Info */}
         <div className="p-4 border-b border-border shrink-0">
           <div className="flex items-center justify-between mb-3">
@@ -632,8 +632,8 @@ export default function PosPage() {
       {activeTab === "HISTORY" && (
         <div className="flex-1 bg-card border border-border rounded-2xl p-6 shadow-lg overflow-y-auto">
           <h2 className="text-xl font-bold text-primary mb-4 flex items-center gap-2"><ClipboardList className="h-5 w-5 text-accent-teal"/> Riwayat Transaksi Retail</h2>
-          <div className="bg-elevated rounded-xl border border-border overflow-hidden">
-             <div className="grid grid-cols-6 text-xs font-bold text-muted p-4 border-b border-border bg-background">
+          <div className="bg-elevated rounded-xl border border-border overflow-x-auto">
+             <div className="grid grid-cols-6 min-w-[700px] text-xs font-bold text-muted p-4 border-b border-border bg-background">
                <div>WAKTU</div>
                <div>NO. REF</div>
                <div>PELANGGAN</div>
@@ -646,7 +646,7 @@ export default function PosPage() {
              ) : history.length === 0 ? (
                <div className="p-8 text-center text-muted text-sm">Riwayat transaksi sedang kosong.</div>
              ) : (
-               <div className="divide-y divide-border">
+               <div className="divide-y divide-border min-w-[700px]">
                  {history.map((h) => (
                    <div key={h.id} className="grid grid-cols-6 text-sm p-4 hover:bg-elevated transition-colors items-center group">
                      <div className="text-muted">{new Date(h.createdAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}</div>

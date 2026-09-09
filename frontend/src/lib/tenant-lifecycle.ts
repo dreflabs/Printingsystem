@@ -172,6 +172,7 @@ export async function purgeTenant(tenantId: string): Promise<PurgeResult> {
         ["auditItems", () => tx.auditItem.deleteMany({ where })],
         ["payrollRecords", () => tx.payrollRecord.deleteMany({ where })],
         ["attendanceRecords", () => tx.attendanceRecord.deleteMany({ where })],
+        ["tenantAttendanceSettings", () => tx.tenantAttendanceSetting.deleteMany({ where })],
         ["designVersions", () => tx.designVersion.deleteMany({ where })],
         ["machineMaterials", () => tx.machineMaterial.deleteMany({ where })],
         ["materialMovements", () => tx.materialMovement.deleteMany({ where })],

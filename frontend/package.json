@@ -9,7 +9,8 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "bootstrap:superadmin": "node prisma/bootstrap-superadmin.mjs",
-    "backfill:churn-stale-trials": "node prisma/backfill-churn-stale-trials.mjs"
+    "backfill:churn-stale-trials": "node prisma/backfill-churn-stale-trials.mjs",
+    "backfill:workspace-mode": "node prisma/backfill-workspace-mode.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

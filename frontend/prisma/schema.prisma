@@ -28,6 +28,7 @@ model Tenant {
   wa_api_key                        String? // [ENCRYPTED]
   max_users                         Int?
   payroll_late_deduction_per_minute Decimal   @default(0) @db.Decimal(15, 2) // Rp potongan gaji per menit keterlambatan
+  workspace_mode                    String    @default("SOLO") // SOLO / TEAM_SMALL / TEAM_FULL — hanya mengatur tampilan navigasi & beranda, BUKAN izin (izin tetap berbasis Role)
   // Siklus hidup churn → purge (lihat src/lib/tenant-lifecycle.ts)
   churned_at                        DateTime? // saat status jadi CHURNED
   retired_slug                      String? // slug asli sebelum diarsip; slug aktif di-rename saat churn agar namanya bebas dipakai pendaftar baru

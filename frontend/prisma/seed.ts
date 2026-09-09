@@ -85,7 +85,9 @@ async function main() {
       plan: 'STARTER',
       status: 'ACTIVE',
       owner_name: 'Hendra',
-      owner_phone: '081234567890'
+      owner_phone: '081234567890',
+      workspace_mode: 'TEAM_FULL' // seed punya 5 staf per-divisi — contoh tim penuh
+
     }
   })
 

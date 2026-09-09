@@ -47,7 +47,20 @@ export type RegisterTenantInput = {
   address?: string;
   /** Paket yang diklik di landing page ("starter" default, "pro" opsional). Enterprise tidak self-serve. */
   plan?: string;
+  /**
+   * Jawaban wizard "berapa orang yang menjalankan percetakan ini?".
+   * "solo" (default) → 1 orang · "small" → 2–5 · "full" → 6+.
+   * Menentukan `Tenant.workspace_mode` (tampilan navigasi/beranda, bukan izin).
+   * Pemberian peran operasional ke Owner tetap seperti sekarang di Tahap 1;
+   * pengaturannya per-mode menyusul di Tahap 2.
+   */
+  teamSize?: "solo" | "small" | "full";
 };
+
+/** Map jawaban wizard ukuran tim → nilai kolom `Tenant.workspace_mode`. */
+function resolveWorkspaceMode(v: unknown): "SOLO" | "TEAM_SMALL" | "TEAM_FULL" {
+  return v === "full" ? "TEAM_FULL" : v === "small" ? "TEAM_SMALL" : "SOLO";
+}
 
 export type RegisterTenantResult = {
   slug: string;
@@ -97,6 +110,7 @@ export async function registerTenant(
     const usernameBase = slugify(email.split("@")[0]) || "owner";
     const planKey = resolvePlanKey(input.plan);
     const planDef = PLAN_CATALOG[planKey];
+    const workspaceMode = resolveWorkspaceMode(input.teamSize);
 
     const result = await prisma.$transaction(async (tx) => {
       // Roles are global (no tenant_id) — ensure the standard set exists.
@@ -137,6 +151,7 @@ export async function registerTenant(
           owner_name: ownerName,
           owner_phone: phone,
           max_users: plan.max_users,
+          workspace_mode: workspaceMode,
         },
       });
 
@@ -196,7 +211,7 @@ export async function registerTenant(
           tenant_id: tenant.id,
           actor_type: "SYSTEM",
           action: "TENANT_SELF_SIGNUP",
-          detail_json: JSON.stringify({ slug, email, plan: planDef.tenantPlan, address }),
+          detail_json: JSON.stringify({ slug, email, plan: planDef.tenantPlan, address, workspace_mode: workspaceMode }),
         },
       });
 

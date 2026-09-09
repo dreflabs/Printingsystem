@@ -5,6 +5,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor, impersonationNote } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { generateTempPassword } from "@/lib/temp-password";
+import { ok, fail, type ActionResult } from "@/types";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 

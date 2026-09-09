@@ -13,6 +13,7 @@ model Tenant {
   id                                String    @id @default(uuid())
   slug                              String    @unique // subdomain (e.g. majujayaprint)
   name                              String
+  logo_url                          String?   // URL/path gambar logo toko
   plan                              String // STARTER/PRO/ENTERPRISE
   status                            String // TRIAL/ACTIVE/SUSPENDED/CHURNED
   trial_ends_at                     DateTime?

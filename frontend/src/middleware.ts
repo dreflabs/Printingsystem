@@ -16,6 +16,7 @@ const AUTH_PAGES = ["/", "/login", "/register", "/forgot-password", "/reset-pass
 
 // Prefix rute → role yang boleh mengakses
 const ROUTE_ACCESS: { prefix: string; roles: string[] }[] = [
+  { prefix: "/beranda", roles: ["owner", "admin", "designer_sales", "operator", "gudang"] },
   { prefix: "/owner", roles: ["owner"] },
   { prefix: "/admin", roles: ["owner", "admin"] },
   { prefix: "/pos", roles: ["owner", "admin"] },

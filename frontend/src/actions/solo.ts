@@ -73,6 +73,52 @@ function stepFor(status: string, balance: number, jobCount: number): Step | null
   }
 }
 
+/**
+ * Kelompok tahap kasar untuk Antrean Kerja (Beranda mode Solo). Urutan kunci =
+ * urutan tampil di UI (lihat WORK_GROUPS di komponen WorkQueue).
+ */
+export type WorkGroup =
+  | "keputusan"
+  | "desain"
+  | "bayar"
+  | "produksi"
+  | "qc_finishing"
+  | "serah";
+
+function groupFor(status: string): WorkGroup {
+  switch (status) {
+    case "QC_REWORK_PENDING":
+    case "ON_HOLD":
+    case "INCIDENT":
+    case "FINAL_AUDIT_PENDING":
+    case "FINAL_AUDIT_COMPLETE":
+      return "keputusan";
+    case "DRAFT":
+    case "DESIGNING":
+      return "desain";
+    case "WAITING_PAYMENT":
+      return "bayar";
+    case "CONFIRMED":
+    case "PRODUCTION_ASSIGNED":
+    case "PRODUCTION_QUEUED":
+    case "PRODUCTION_STARTED":
+      return "produksi";
+    case "PRODUCTION_COMPLETE":
+    case "QC_PENDING":
+    case "QC_PASSED":
+    case "FINISHING_STARTED":
+    case "FINISHING_COMPLETE":
+    case "STORAGE_PENDING":
+      return "qc_finishing";
+    case "STORED":
+    case "READY_FOR_PICKUP":
+    case "IN_TRANSIT":
+      return "serah";
+    default:
+      return "produksi";
+  }
+}
+
 export async function getNextSteps() {
   try {
     const tenant = await requireTenant();
@@ -89,7 +135,7 @@ export async function getNextSteps() {
     const orders = await prisma.order.findMany({
       where: { tenant_id: tenant.id, status: { notIn: [...DONE] } },
       orderBy: [{ deadline: "asc" }, { created_at: "asc" }],
-      take: 40,
+      take: 200,
       select: {
         id: true,
         order_code: true,
@@ -111,6 +157,7 @@ export async function getNextSteps() {
           customerName: o.customer?.name ?? "Tanpa nama",
           status: o.status,
           deadline: o.deadline,
+          group: groupFor(o.status),
           step,
         };
       })

@@ -154,7 +154,7 @@ const NAV_ITEMS: NavItem[] = [
  * Beranda ("Langkah berikutnya"), jadi Scan QR sifatnya opsional.
  */
 const SOLO_NAV: NavItem[] = [
-  { label: "Beranda", href: "/owner", icon: <LayoutDashboard className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Beranda", href: "/beranda", icon: <LayoutDashboard className="h-5 w-5" />, roles: ["owner"] },
   { label: "Order", href: "/admin", icon: <ShoppingCart className="h-5 w-5" />, roles: ["owner"] },
   { label: "Produksi", href: "/admin/production", icon: <BarChart2 className="h-5 w-5" />, roles: ["owner"] },
   { label: "Kasir", href: "/pos", icon: <ShoppingCart className="h-5 w-5" />, roles: ["owner"] },

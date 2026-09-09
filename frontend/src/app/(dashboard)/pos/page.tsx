@@ -7,6 +7,7 @@ import { PosCartItem, CartItemType } from "@/components/pos/PosCartItem";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog, useToast } from "@/components/ui";
 import { getPosData, processRetailOrder, type RetailCartLine } from "@/actions/pos";
+import { getRetailHistory } from "@/actions/queries";
 
 function ReceiptModal({ open, transactionData, onClose }: { open: boolean, transactionData: any, onClose: () => void }) {
   const { toast } = useToast();
@@ -214,6 +215,8 @@ export default function PosPage() {
   type CustomerRow = { id: string; name: string; type: string; defaultDiscountPct: number };
   const [retailProducts, setRetailProducts] = useState<RetailProductRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   async function loadPosData() {
@@ -232,6 +235,16 @@ export default function PosPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPosData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "HISTORY") {
+      setLoadingHistory(true);
+      getRetailHistory(50).then((res) => {
+        if (res.success) setHistory(res.data);
+        setLoadingHistory(false);
+      });
+    }
+  }, [activeTab]);
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
   const displayCustomerName = selectedCustomer ? selectedCustomer.name : "Umum";
@@ -561,9 +574,23 @@ export default function PosPage() {
                <div>METODE</div>
                <div className="text-right">TOTAL</div>
              </div>
-             <div className="p-8 text-center text-muted text-sm">
-                Riwayat transaksi sedang kosong.
-             </div>
+             {loadingHistory ? (
+               <div className="p-8 text-center text-muted text-sm">Memuat riwayat...</div>
+             ) : history.length === 0 ? (
+               <div className="p-8 text-center text-muted text-sm">Riwayat transaksi sedang kosong.</div>
+             ) : (
+               <div className="divide-y divide-border">
+                 {history.map((h) => (
+                   <div key={h.id} className="grid grid-cols-5 text-sm p-4 hover:bg-elevated transition-colors items-center">
+                     <div className="text-muted">{new Date(h.createdAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}</div>
+                     <div className="font-mono text-primary font-bold">{h.orderCode}</div>
+                     <div className="truncate pr-4">{h.customerName}</div>
+                     <div><span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-muted/10">{h.method}</span></div>
+                     <div className="text-right font-mono font-bold text-status-yellow-text">{formatRupiah(h.total)}</div>
+                   </div>
+                 ))}
+               </div>
+             )}
           </div>
         </div>
       )}

@@ -204,6 +204,38 @@ export async function getDesignQueue() {
   }
 }
 
+/** Mengambil riwayat transaksi RETAIL terbaru untuk POS. */
+export async function getRetailHistory(limit = 50) {
+  try {
+    const tenant = await requireTenant();
+    await requireUser();
+
+    const orders = await prisma.order.findMany({
+      where: { tenant_id: tenant.id, order_type: "RETAIL" },
+      orderBy: { created_at: "desc" },
+      take: limit,
+      include: {
+        customer: { select: { name: true } },
+        payments: { select: { method: true }, take: 1, orderBy: { paid_at: "desc" } },
+      },
+    });
+
+    return ok(
+      orders.map((o) => ({
+        id: o.id,
+        createdAt: o.created_at,
+        orderCode: o.order_code,
+        customerName: o.customer?.name ?? "Umum",
+        method: o.payments[0]?.method ?? "-",
+        total: Number(o.total),
+      }))
+    );
+  } catch (e) {
+    console.error("getRetailHistory:", e);
+    return fail("Gagal memuat riwayat transaksi.");
+  }
+}
+
 const IN_PROGRESS = [
   "PRODUCTION_QUEUED", "PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_COMPLETE",
   "QC_PENDING", "QC_PASSED", "QC_REWORK_PENDING",

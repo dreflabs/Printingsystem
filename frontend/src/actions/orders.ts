@@ -295,7 +295,14 @@ export async function addPayment(
       const dpMet = paidAmount + 1e-6 >= dpRequired;
 
       let status = order.status;
-      if (dpMet && order.status === "WAITING_PAYMENT") status = "CONFIRMED";
+      if (dpMet && order.status === "WAITING_PAYMENT") {
+        const orderWithDesign = await tx.order.findFirst({
+          where: { id: order.id, tenant_id: tenant.id },
+          include: { design_jobs: { select: { status: true } } },
+        });
+        const designApproved = orderWithDesign?.design_jobs.some(d => d.status === "APPROVED");
+        status = designApproved ? "CONFIRMED" : "DESIGNING";
+      }
 
       await tx.order.update({
         where: { id: order.id },

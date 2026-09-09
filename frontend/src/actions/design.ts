@@ -235,7 +235,7 @@ export async function approveDesign(
       // order dibuat), langsung CONFIRMED supaya order tidak nyangkut.
       const ord = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
       let release: Awaited<ReturnType<typeof autoReleaseToProduction>> = { released: false, jobCodes: [], missing: [] };
-      if (ord && ["DRAFT", "DESIGNING", "WAITING_APPROVAL"].includes(ord.status)) {
+      if (ord && ["DRAFT", "DESIGNING", "WAITING_APPROVAL", "CONFIRMED"].includes(ord.status)) {
         const dpReq = Number(ord.dp_required ?? Math.round(Number(ord.total) * 0.5));
         const dpMet = Number(ord.paid_amount) + 1e-6 >= dpReq;
         await tx.order.update({

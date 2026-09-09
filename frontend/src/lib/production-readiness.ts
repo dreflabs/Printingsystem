@@ -69,12 +69,10 @@ export function checkProductionReadiness(input: ReadinessInput): ReadinessResult
     missing.push("Diskon masih menunggu keputusan Owner");
   }
 
-  // 5. Identitas pemesan (order PRINTING wajib punya customer + nama + kontak)
+  // 5. Identitas pemesan (order PRINTING wajib punya nama customer)
   if (input.orderType === "PRINTING") {
     if (!input.customerId || !input.customerName?.trim()) {
       missing.push("Data pemesan belum lengkap (nama)");
-    } else if (!input.customerContact?.trim()) {
-      missing.push("Kontak pemesan belum diisi");
     }
   }
 

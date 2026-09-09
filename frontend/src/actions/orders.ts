@@ -295,12 +295,19 @@ export async function addPayment(
       const dpMet = paidAmount + 1e-6 >= dpRequired;
 
       let status = order.status;
-      if (dpMet && order.status === "WAITING_PAYMENT") {
+      // Naikkan status saat DP terpenuhi, dari state manapun yang relevan:
+      // - DRAFT: order baru dibuat & DP dibayar sekaligus
+      // - WAITING_PAYMENT: DP dibayar belakangan
+      // - DESIGNING: DP dilunasi saat desainer sedang mengerjakan
+      const promotable = ["DRAFT", "WAITING_PAYMENT", "DESIGNING"];
+      if (dpMet && promotable.includes(order.status)) {
         const orderWithDesign = await tx.order.findFirst({
           where: { id: order.id, tenant_id: tenant.id },
           include: { design_jobs: { select: { status: true } } },
         });
         const designApproved = orderWithDesign?.design_jobs.some(d => d.status === "APPROVED");
+        // Kalau desain sudah ACC → langsung CONFIRMED lalu coba auto-release.
+        // Kalau belum → DESIGNING (menunggu desainer).
         status = designApproved ? "CONFIRMED" : "DESIGNING";
       }
 

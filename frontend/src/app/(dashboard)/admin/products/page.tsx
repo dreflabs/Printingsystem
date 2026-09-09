@@ -5,8 +5,8 @@ import { Plus, Search, X, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   getRetailProducts, createRetailProduct, updateRetailProduct, deleteRetailProduct,
-  getPrintingProducts, createPrintingProduct, updatePrintingProduct,
-  getMachines, createMachine, updateMachine,
+  getPrintingProducts, createPrintingProduct, updatePrintingProduct, deletePrintingProduct,
+  getMachines, createMachine, updateMachine, deleteMachine,
   getMaterials, getProductCategories,
 } from "@/actions/master-data";
 import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES } from "@/lib/catalog-constants";
@@ -259,7 +259,8 @@ export default function AdminProductsPage() {
   const [retailModal, setRetailModal] = useState<{ open: boolean; editing: Retail | null }>({ open: false, editing: null });
   const [printingModal, setPrintingModal] = useState<{ open: boolean; editing: Printing | null }>({ open: false, editing: null });
   const [machineModal, setMachineModal] = useState<{ open: boolean; editing: Machine | null }>({ open: false, editing: null });
-  const [confirmDel, setConfirmDel] = useState<Retail | null>(null);
+  const [confirmDel, setConfirmDel] = useState<{ type: Tab; item: any } | null>(null);
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>("ALL");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -281,19 +282,46 @@ export default function AdminProductsPage() {
   const matName = (id: string | null) => materials.find((m) => m.id === id)?.name ?? "—";
   const machName = (id: string | null) => machines.find((m) => m.id === id)?.name ?? "—";
   const q = search.toLowerCase();
-  const fRetail = retail.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
-  const fPrinting = printing.filter((p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
-  const fMachine = machines.filter((p) => p.name.toLowerCase().includes(q) || p.machine_code.toLowerCase().includes(q));
+  
+  // Filter logic
+  const fRetail = retail.filter((p) => {
+    const matchQ = p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+    const matchC = activeCategoryFilter === "ALL" || p.category === activeCategoryFilter;
+    return matchQ && matchC;
+  });
+  const fPrinting = printing.filter((p) => {
+    const matchQ = p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q);
+    const matchC = activeCategoryFilter === "ALL" || p.category === activeCategoryFilter;
+    return matchQ && matchC;
+  });
+  const fMachine = machines.filter((p) => {
+    const matchQ = p.name.toLowerCase().includes(q) || p.machine_code.toLowerCase().includes(q);
+    const matchC = activeCategoryFilter === "ALL" || p.category === activeCategoryFilter;
+    return matchQ && matchC;
+  });
+  
   const machineCatSuggestions = Array.from(
     new Set<string>([...MACHINE_CATEGORIES, ...machines.map((m) => m.category).filter(Boolean)]),
   ).sort((a, b) => a.localeCompare(b, "id"));
 
-  async function del(p: Retail) {
+  async function del() {
+    if (!confirmDel) return;
+    const { type, item } = confirmDel;
     setConfirmDel(null);
-    const res = await deleteRetailProduct(p.id);
+    let res;
+    if (type === "retail") res = await deleteRetailProduct(item.id);
+    else if (type === "printing") res = await deletePrintingProduct(item.id);
+    else res = await deleteMachine(item.id);
+
     if (!res.success) { setError(res.error ?? null); return; }
     load();
   }
+
+  // Handle Tab Change to reset category filter
+  const handleTabChange = (newTab: Tab) => {
+    setTab(newTab);
+    setActiveCategoryFilter("ALL");
+  };
 
   const addLabel = tab === "retail" ? "Tambah Barang" : tab === "printing" ? "Tambah Jasa Cetak" : "Tambah Mesin";
   const onAdd = () =>
@@ -317,19 +345,31 @@ export default function AdminProductsPage() {
 
       <div className="flex items-center gap-4 border-b border-border">
         {(["retail", "printing", "machine"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
+          <button key={t} onClick={() => handleTabChange(t)}
             className={cn("pb-3 px-1 border-b-2 font-bold text-sm transition-colors", tab === t ? "border-accent-teal text-accent-teal" : "border-transparent text-muted hover:text-primary")}>
             {t === "retail" ? "Barang Retail" : t === "printing" ? "Jasa Cetak" : "Mesin"}
           </button>
         ))}
       </div>
 
-      <div className="bg-card p-4 rounded-xl border border-border">
-        <div className="relative">
+      <div className="bg-card p-4 rounded-xl border border-border flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
           <input placeholder="Cari nama / kode…" value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-elevated border border-border rounded-lg outline-none focus:border-accent-teal text-sm" />
         </div>
+        
+        {/* Category Filter */}
+        <select 
+          value={activeCategoryFilter}
+          onChange={(e) => setActiveCategoryFilter(e.target.value)}
+          className="w-full sm:w-64 px-4 py-2 bg-elevated border border-border rounded-lg outline-none focus:border-accent-teal text-sm text-primary appearance-none cursor-pointer"
+        >
+          <option value="ALL">Semua Kategori</option>
+          {(tab === "retail" ? cats.retail : tab === "printing" ? cats.printing : machineCatSuggestions).map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
@@ -337,7 +377,7 @@ export default function AdminProductsPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-elevated border-b border-border text-muted uppercase text-xs font-semibold">
               {tab === "retail" && (
-                <tr><th className="px-5 py-4">SKU</th><th className="px-5 py-4">Produk & Kategori</th><th className="px-5 py-4">Harga</th><th className="px-5 py-4">Makloon</th><th className="px-5 py-4">Stok</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
+                <tr><th className="px-5 py-4">SKU</th><th className="px-5 py-4">Produk & Kategori</th><th className="px-5 py-4">Harga</th><th className="px-5 py-4">Stok</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
               )}
               {tab === "printing" && (
                 <tr><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Harga Dasar</th><th className="px-5 py-4">Material Default</th><th className="px-5 py-4">Mesin Default</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
@@ -352,13 +392,12 @@ export default function AdminProductsPage() {
                   <td className="px-5 py-4 font-mono text-xs text-muted">{p.sku}</td>
                   <td className="px-5 py-4"><div className="font-semibold text-primary">{p.name}</div><div className="text-xs text-muted mt-0.5">{p.category}</div></td>
                   <td className="px-5 py-4 font-mono text-status-blue">{rupiah(p.price)}</td>
-                  <td className="px-5 py-4 font-mono text-xs text-muted">{p.makloon_price != null ? rupiah(p.makloon_price) : "—"}</td>
-                  <td className="px-5 py-4 text-xs"><span className={cn(p.stock_quantity <= p.min_stock && "text-status-red font-bold")}>{p.stock_quantity}</span> <span className="text-muted">/ min {p.min_stock}</span></td>
+                  <td className="px-5 py-4 text-xs"><span className={cn(p.stock_quantity <= p.min_stock && "text-status-red font-bold")}>{p.stock_quantity}</span> {p.min_stock > 0 && <span className="text-muted">/ min {p.min_stock}</span>}</td>
                   <td className="px-5 py-4"><Badge active={p.active} /></td>
                   <td className="px-5 py-4 text-right">
                     <RowActions
                       onEdit={() => setRetailModal({ open: true, editing: p })}
-                      onDelete={() => setConfirmDel(p)}
+                      onDelete={() => setConfirmDel({ type: "retail", item: p })}
                     />
                   </td>
                 </tr>
@@ -367,11 +406,16 @@ export default function AdminProductsPage() {
                 <tr key={p.id} className={cn("hover:bg-elevated/50 transition-colors", !p.active && "opacity-60")}>
                   <td className="px-5 py-4 font-semibold text-primary">{p.name}</td>
                   <td className="px-5 py-4 text-muted text-xs">{p.category}</td>
-                  <td className="px-5 py-4 font-mono text-xs">{p.base_price != null ? `${rupiah(p.base_price)} / ${p.unit === "M2" ? "m²" : p.unit.toLowerCase()}` : <span className="text-muted">manual</span>}</td>
+                  <td className="px-5 py-4 font-mono text-xs">{p.base_price != null ? `${rupiah(p.base_price)} / ${p.unit === "M2" ? "m²" : p.unit.toLowerCase()}` : <span className="bg-muted/10 text-muted px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider">Harga Manual</span>}</td>
                   <td className="px-5 py-4 text-muted text-xs">{matName(p.default_material_id)}</td>
                   <td className="px-5 py-4 text-muted text-xs">{p.default_machine_id ? machName(p.default_machine_id) : <span className="text-status-yellow-text">belum diset</span>}</td>
                   <td className="px-5 py-4"><Badge active={p.active} /></td>
-                  <td className="px-5 py-4 text-right"><RowActions onEdit={() => setPrintingModal({ open: true, editing: p })} /></td>
+                  <td className="px-5 py-4 text-right">
+                    <RowActions 
+                      onEdit={() => setPrintingModal({ open: true, editing: p })} 
+                      onDelete={() => setConfirmDel({ type: "printing", item: p })}
+                    />
+                  </td>
                 </tr>
               ))}
               {tab === "machine" && fMachine.map((p) => (
@@ -385,7 +429,12 @@ export default function AdminProductsPage() {
                         : p.status === "MAINTENANCE" ? "bg-status-yellow/10 text-status-yellow-text border-status-yellow/30"
                           : "bg-muted/10 text-muted border-muted/20")}>{p.status}</span>
                   </td>
-                  <td className="px-5 py-4 text-right"><RowActions onEdit={() => setMachineModal({ open: true, editing: p })} /></td>
+                  <td className="px-5 py-4 text-right">
+                    <RowActions 
+                      onEdit={() => setMachineModal({ open: true, editing: p })} 
+                      onDelete={() => setConfirmDel({ type: "machine", item: p })}
+                    />
+                  </td>
                 </tr>
               ))}
               {((tab === "retail" && fRetail.length === 0) || (tab === "printing" && fPrinting.length === 0) || (tab === "machine" && fMachine.length === 0)) && (
@@ -423,16 +472,20 @@ export default function AdminProductsPage() {
       {machineModal.open && <MachineModal editing={machineModal.editing} suggestions={machineCatSuggestions} onClose={() => setMachineModal({ open: false, editing: null })} onSaved={done} />}
 
       {confirmDel && (
-        <Shell title="Hapus Barang Retail" onClose={() => setConfirmDel(null)} busy={false}>
-          <p className="text-sm text-primary"><b>{confirmDel.name}</b> akan dihapus.</p>
+        <Shell 
+          title={`Hapus ${confirmDel.type === "retail" ? "Barang Retail" : confirmDel.type === "printing" ? "Jasa Cetak" : "Mesin"}`} 
+          onClose={() => setConfirmDel(null)} 
+          busy={false}
+        >
+          <p className="text-sm text-primary"><b>{confirmDel.type === "machine" ? confirmDel.item.name : confirmDel.item.name}</b> akan dihapus.</p>
           <p className="text-xs text-muted">
-            Kalau produk ini sudah pernah masuk penjualan atau mutasi stok, ia tidak dihapus permanen
-            (memutus riwayat) — hanya <b>dinonaktifkan</b> dan disembunyikan dari kasir. Kalau belum
-            pernah dipakai, barisnya dihapus.
+            {confirmDel.type === "retail" && "Kalau produk ini sudah pernah masuk penjualan atau mutasi stok, ia tidak dihapus permanen (memutus riwayat) — hanya dinonaktifkan dan disembunyikan dari kasir."}
+            {confirmDel.type === "printing" && "Kalau jasa ini sudah memiliki riwayat produksi, Anda mungkin tidak bisa menghapusnya secara langsung."}
+            {confirmDel.type === "machine" && "Kalau mesin ini terikat dengan riwayat produksi, statusnya akan diubah menjadi INACTIVE agar riwayat tidak hilang."}
           </p>
           <div className="flex gap-3 pt-1">
             <button onClick={() => setConfirmDel(null)} className="flex-1 h-10 rounded-xl bg-elevated border border-border text-xs font-bold text-muted hover:text-primary">Batal</button>
-            <button onClick={() => del(confirmDel)} className="flex-1 h-10 rounded-xl bg-status-red text-white text-xs font-bold hover:brightness-110">Hapus</button>
+            <button onClick={() => del()} className="flex-1 h-10 rounded-xl bg-status-red text-white text-xs font-bold hover:brightness-110">Hapus</button>
           </div>
         </Shell>
       )}

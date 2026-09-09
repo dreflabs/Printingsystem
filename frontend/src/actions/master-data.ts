@@ -297,6 +297,31 @@ export async function updatePrintingProduct(
   }
 }
 
+export async function deletePrintingProduct(id: string) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh menghapus jasa cetak.");
+    const existing = await prisma.product.findFirst({
+      where: { id, tenant_id: tenant.id },
+      select: { id: true, _count: { select: { order_items: true } } },
+    });
+    if (!existing) return fail("Jasa cetak tidak ditemukan.");
+
+    if (existing._count.order_items > 0) {
+      await prisma.product.update({ where: { id }, data: { active: false } });
+      revalidatePath("/admin/products");
+      return ok({ mode: "deactivated" as const });
+    }
+    await prisma.product.delete({ where: { id } });
+    revalidatePath("/admin/products");
+    return ok({ mode: "deleted" as const });
+  } catch (e) {
+    console.error("deletePrintingProduct:", e);
+    return fail(e instanceof Error ? e.message : "Gagal menghapus jasa cetak.");
+  }
+}
+
 // -- CUSTOMERS --
 
 async function nextCode(model: "customer" | "material" | "machine", tenantId: string, prefix: string, pad: number) {
@@ -657,3 +682,37 @@ export async function updateMachine(
     return fail(e instanceof Error ? e.message : "Gagal memperbarui mesin.");
   }
 }
+
+export async function deleteMachine(id: string) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh menghapus mesin.");
+    
+    // Check if machine is used in Production Jobs or as Default Machine in Products
+    const existing = await prisma.machine.findFirst({
+      where: { id, tenant_id: tenant.id },
+      select: { 
+        id: true, 
+        _count: { select: { production_jobs: true, default_for_products: true } } 
+      },
+    });
+    if (!existing) return fail("Mesin tidak ditemukan.");
+
+    const used = existing._count.production_jobs > 0 || existing._count.default_for_products > 0;
+    if (used) {
+      // Soft delete: set status to INACTIVE
+      await prisma.machine.update({ where: { id }, data: { status: "INACTIVE" } });
+      revalidatePath("/admin/products");
+      return ok({ mode: "deactivated" as const });
+    }
+    await prisma.machine.delete({ where: { id } });
+    revalidatePath("/admin/products");
+    return ok({ mode: "deleted" as const });
+  } catch (e) {
+    console.error("deleteMachine:", e);
+    return fail(e instanceof Error ? e.message : "Gagal menghapus mesin.");
+  }
+}
+
+

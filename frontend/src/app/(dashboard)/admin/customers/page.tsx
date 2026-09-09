@@ -8,7 +8,6 @@ import { getCustomers, createCustomer, updateCustomer } from "@/actions/master-d
 
 type Row = Extract<Awaited<ReturnType<typeof getCustomers>>, { success: true }>["data"][number];
 
-const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 
 export default function AdminCustomersPage() {
@@ -45,14 +44,16 @@ export default function AdminCustomersPage() {
   function openEdit(c: Row) {
     setEditingId(c.id); setName(c.name); setPhone(c.phone ?? "");
     setType((["Umum", "Makloon", "B2B"].includes(c.type) ? c.type : "Umum") as "Umum" | "Makloon" | "B2B");
-    setDiscount(c.default_discount ? String(c.default_discount) : ""); setError(null);
+    setDiscount(c.default_discount_pct ? String(c.default_discount_pct) : ""); setError(null);
     setModalOpen(true);
   }
 
   async function save() {
     if (!name.trim()) { setError("Nama pelanggan wajib diisi."); return; }
     setBusy(true);
-    const payload = { name: name.trim(), phone: phone.trim() || undefined, type, default_discount: Number(discount) || null };
+    const pct = Number(discount) || 0;
+    if (pct < 0 || pct > 100) { setBusy(false); setError("Diskon default harus 0–100%."); return; }
+    const payload = { name: name.trim(), phone: phone.trim() || undefined, type, default_discount_pct: pct || null };
     const res = editingId ? await updateCustomer(editingId, payload) : await createCustomer(payload);
     setBusy(false);
     if (!res.success) { setError(res.error); return; }
@@ -120,8 +121,8 @@ export default function AdminCustomersPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    {c.default_discount && c.default_discount > 0
-                      ? <span className="font-mono font-bold text-status-red">-{rupiah(c.default_discount)}</span>
+                    {c.default_discount_pct && c.default_discount_pct > 0
+                      ? <span className="font-mono font-bold text-status-red">-{c.default_discount_pct}%</span>
                       : <span className="text-muted">-</span>}
                   </td>
                   <td className="px-6 py-4 text-muted text-xs">{fmtDate(c.created_at)}</td>
@@ -162,10 +163,10 @@ export default function AdminCustomersPage() {
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted block mb-1">Diskon Default per Transaksi (Rp)</label>
-            <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0"
+            <label className="text-xs font-medium text-muted block mb-1">Diskon Default per Transaksi (%)</label>
+            <input type="number" min={0} max={100} step={0.5} value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0"
               className="w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm outline-none focus:border-accent-teal font-mono" />
-            <p className="text-[10px] text-muted mt-1">Otomatis memotong total tagihan saat pelanggan ini dipilih di Kasir (POS).</p>
+            <p className="text-[10px] text-muted mt-1">Persen (0–100). Mengisi awal kolom diskon saat pelanggan ini dipilih di Order Baru / Kasir — Owner tetap perlu menyetujui diskonnya per order.</p>
           </div>
           <button disabled={busy} onClick={save} className="w-full h-11 mt-2 bg-accent-teal text-white rounded-xl text-sm font-bold hover:brightness-110 transition-all disabled:opacity-50">
             {busy ? "Menyimpan…" : "Simpan Pelanggan"}

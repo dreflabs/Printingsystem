@@ -339,7 +339,7 @@ export async function getPosData() {
       prisma.customer.findMany({
         where: { tenant_id: tenant.id },
         orderBy: { name: "asc" },
-        select: { id: true, name: true, type: true, default_discount: true },
+        select: { id: true, name: true, type: true, default_discount_pct: true },
       }),
     ]);
 
@@ -356,7 +356,7 @@ export async function getPosData() {
         id: c.id,
         name: c.name,
         type: c.type,
-        defaultDiscountRp: c.default_discount ? Number(c.default_discount) : 0,
+        defaultDiscountPct: c.default_discount_pct == null ? 0 : Number(c.default_discount_pct),
       })),
     });
   } catch (e) {

@@ -305,7 +305,7 @@ model Customer {
   address          String?
   company          String?
   notes            String?
-  default_discount Decimal? @db.Decimal(15, 2)
+  default_discount_pct Decimal? @db.Decimal(5, 2) // persen diskon standing pelanggan (0–100); mengisi awal Order.discount (Rp) saat order dibuat
   created_by       String
   creator          User     @relation(fields: [created_by], references: [id])
   created_at       DateTime @default(now())

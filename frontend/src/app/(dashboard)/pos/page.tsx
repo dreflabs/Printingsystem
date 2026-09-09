@@ -211,7 +211,7 @@ export default function PosPage() {
   const { toast } = useToast();
 
   type RetailProductRow = { id: string; name: string; sku: string; category: string; price: number; stock: number };
-  type CustomerRow = { id: string; name: string; type: string; defaultDiscountRp: number };
+  type CustomerRow = { id: string; name: string; type: string; defaultDiscountPct: number };
   const [retailProducts, setRetailProducts] = useState<RetailProductRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -235,7 +235,7 @@ export default function PosPage() {
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
   const displayCustomerName = selectedCustomer ? selectedCustomer.name : "Umum";
-  const defaultDiscount = selectedCustomer ? selectedCustomer.defaultDiscountRp : 0;
+  const defaultDiscountPct = selectedCustomer ? selectedCustomer.defaultDiscountPct : 0;
 
   // Map DB rows to Product interface
   const allProducts: Product[] = retailProducts.map(p => ({
@@ -388,7 +388,7 @@ export default function PosPage() {
         open={showPaymentModal}
         totalAmount={total}
         customerName={displayCustomerName}
-        defaultDiscount={defaultDiscount}
+        defaultDiscount={defaultDiscountPct > 0 && subtotal > 0 ? Math.round((subtotal * defaultDiscountPct) / 100) : 0}
         onClose={() => setShowPaymentModal(false)}
         onSuccess={handleCheckoutSuccess}
       />

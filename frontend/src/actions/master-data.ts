@@ -10,6 +10,13 @@ import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES } from "@/lib/cata
 const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
 const isGudang = (r: string[]) => r.includes("gudang") || r.includes("owner");
 
+/** null/undefined/0 → null; 0<n≤100 → n; selain itu → "invalid". */
+function clampPct(v: number | null | undefined): number | null | "invalid" {
+  if (v == null || v === 0) return null;
+  if (!Number.isFinite(v) || v < 0 || v > 100) return "invalid";
+  return v;
+}
+
 // -- RETAIL PRODUCTS --
 
 export async function getRetailProducts() {
@@ -311,7 +318,10 @@ export async function getCustomers() {
       orderBy: { name: "asc" },
     });
     return ok(
-      customers.map((c) => ({ ...c, default_discount: c.default_discount ? Number(c.default_discount) : null }))
+      customers.map((c) => ({
+        ...c,
+        default_discount_pct: c.default_discount_pct == null ? null : Number(c.default_discount_pct),
+      }))
     );
   } catch (e) {
     console.error("getCustomers:", e);
@@ -326,7 +336,7 @@ export async function createCustomer(data: {
   address?: string;
   company?: string;
   type?: string;
-  default_discount?: number | null;
+  default_discount_pct?: number | null;
   notes?: string;
 }) {
   try {
@@ -334,6 +344,8 @@ export async function createCustomer(data: {
     const actor = await requireUser();
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengelola data customer.");
     if (!data.name?.trim()) return fail("Nama customer wajib diisi.");
+    const pct = clampPct(data.default_discount_pct);
+    if (pct === "invalid") return fail("Diskon default harus 0–100%.");
     const customer = await prisma.customer.create({
       data: {
         tenant_id: tenant.id,
@@ -344,7 +356,7 @@ export async function createCustomer(data: {
         address: data.address || null,
         company: data.company || null,
         type: data.type || "Umum",
-        default_discount: data.default_discount ?? null,
+        default_discount_pct: pct,
         notes: data.notes || null,
         created_by: actor.id,
       },
@@ -366,7 +378,7 @@ export async function updateCustomer(
     address?: string | null;
     company?: string | null;
     type?: string;
-    default_discount?: number | null;
+    default_discount_pct?: number | null;
     notes?: string | null;
   }
 ) {
@@ -376,7 +388,14 @@ export async function updateCustomer(
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengelola data customer.");
     const existing = await prisma.customer.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!existing) return fail("Customer tidak ditemukan.");
-    const customer = await prisma.customer.update({ where: { id }, data });
+    const { default_discount_pct, ...rest } = data;
+    let pctPatch: { default_discount_pct?: number | null } = {};
+    if (default_discount_pct !== undefined) {
+      const pct = clampPct(default_discount_pct);
+      if (pct === "invalid") return fail("Diskon default harus 0–100%.");
+      pctPatch = { default_discount_pct: pct };
+    }
+    const customer = await prisma.customer.update({ where: { id }, data: { ...rest, ...pctPatch } });
     revalidatePath("/admin/customers");
     return ok(customer);
   } catch (e) {

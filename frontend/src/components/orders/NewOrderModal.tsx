@@ -26,18 +26,20 @@ interface OrderForm {
   dpAmount: string;
   dpMethod: string;
   discountRp: number;
+  /** % diskon default pelanggan — mengisi awal discountRp; 0 = tak ada */
+  discountPct: number;
   discountReason: string;
 }
 
 const INITIAL_FORM: OrderForm = {
   customerId: "", customerName: "", customerPhone: "", orderType: "", productId: "",
   width: "", height: "", qty: "1", materialId: "", finishing: "", notes: "", deadline: "",
-  totalPrice: "", dpAmount: "", dpMethod: "", discountRp: 0, discountReason: "",
+  totalPrice: "", dpAmount: "", dpMethod: "", discountRp: 0, discountPct: 0, discountReason: "",
 };
 
 type Opt = { value: string; label: string };
 type ProductOpt = Opt & { category: string; unit: string; basePrice: number | null };
-type CustomerRow = { id: string; name: string; phone: string | null; type: string; defaultDiscountRp: number };
+type CustomerRow = { id: string; name: string; phone: string | null; type: string; defaultDiscountPct: number };
 
 const STEPS = [
   { label: "Produk", icon: Package },
@@ -122,7 +124,9 @@ function Step1({
     onChange("customerId", c.id);
     onChange("customerName", c.name);
     onChange("customerPhone", c.phone ?? "");
-    onChange("discountRp", c.defaultDiscountRp || 0);
+    // Diskon default pelanggan = PERSEN; nominal Rp-nya dihitung otomatis dari
+    // Harga Total (lihat efek di NewOrderModal). Owner tetap perlu menyetujui.
+    onChange("discountPct", c.defaultDiscountPct || 0);
     if (c.type === "Makloon" && form.orderType !== "makloon") onChange("orderType", "makloon");
     setShowSuggestions(false);
   };
@@ -150,6 +154,7 @@ function Step1({
             onChange={(e) => {
               onChange("customerId", "");
               onChange("customerName", e.target.value);
+              if (form.discountPct > 0) onChange("discountPct", 0);
               if (form.discountRp > 0) onChange("discountRp", 0);
               setShowSuggestions(true);
             }}
@@ -277,10 +282,14 @@ function Step3({
         leftAddon={<span className="text-xs font-semibold">Rp</span>}
       />
 
-      {form.discountRp > 0 && (
+      {(form.discountRp > 0 || form.discountPct > 0) && (
         <div className="space-y-2">
           <Input
-            label="Diskon (Rp)"
+            label={
+              form.discountPct > 0
+                ? `Diskon (Rp) — default pelanggan ${form.discountPct}%`
+                : "Diskon (Rp)"
+            }
             value={formatRp(String(form.discountRp))}
             onChange={(e) => onChange("discountRp", parseRp(e.target.value))}
             leftAddon={<span className="text-xs font-semibold">Rp</span>}
@@ -394,12 +403,24 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
   }, [open]);
 
   const [priceTouched, setPriceTouched] = useState(false);
+  const [discountTouched, setDiscountTouched] = useState(false);
 
   const handleFormChange = useCallback((key: keyof OrderForm, value: string | number) => {
     if (key === "totalPrice") setPriceTouched(true);
     if (key === "productId") setPriceTouched(false); // produk ganti → boleh auto-isi lagi
+    if (key === "discountRp") setDiscountTouched(true); // Admin ubah nominal manual → stop auto-hitung
+    if (key === "discountPct") setDiscountTouched(false); // pelanggan (baru) dipilih → boleh auto-hitung lagi
     setForm((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
   }, []);
+
+  // Diskon default pelanggan (%) → isi awal nominal Rp dari Harga Total.
+  // Berhenti begitu Admin mengetik nominalnya sendiri (discountTouched).
+  useEffect(() => {
+    if (discountTouched) return;
+    const subtotal = parseRp(form.totalPrice);
+    const rp = form.discountPct > 0 && subtotal > 0 ? Math.round((subtotal * form.discountPct) / 100) : 0;
+    setForm((prev) => (prev.discountRp === rp ? prev : { ...prev, discountRp: rp })); // eslint-disable-line react-hooks/set-state-in-effect
+  }, [discountTouched, form.discountPct, form.totalPrice]);
 
   // Auto-isi "Harga Total" dari harga dasar produk cetak (selama belum diubah manual).
   useEffect(() => {

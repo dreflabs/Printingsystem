@@ -545,8 +545,8 @@ model DesignJob {
   tenant          Tenant   @relation(fields: [tenant_id], references: [id])
   order_id        String
   order           Order    @relation(fields: [order_id], references: [id])
-  designer_id     String
-  designer        User     @relation(fields: [designer_id], references: [id])
+  designer_id     String?
+  designer        User?    @relation(fields: [designer_id], references: [id])
   status          String
   current_version Int      @default(1)
   approval_method String // WALK_IN/MAKLOON/WHATSAPP

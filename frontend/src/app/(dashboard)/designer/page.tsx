@@ -13,6 +13,7 @@ import {
   uploadDesignVersion,
   approveDesign,
   requestDesignRevision,
+  takeDesignJob,
 } from "@/actions/design";
 
 const ACCEPT = ".pdf,.ai,.cdr,.eps,.svg,.psd,.png,.jpg,.jpeg,.webp,.tif,.tiff,application/pdf,image/*";
@@ -43,7 +44,10 @@ type Row = {
   orderCode: string;
   orderStatus: string;
   customerName: string;
+  designerId: string | null;
   designer: string;
+  isOwnedByMe: boolean;
+  isUnassigned: boolean;
   method: string;
   status: string;
   currentVersion: number;
@@ -399,6 +403,7 @@ export default function DesignerDashboardPage() {
               <tr>
                 <th className="px-4 py-3">Kode Order</th>
                 <th className="px-4 py-3">Konsumen</th>
+                <th className="px-4 py-3">PIC</th>
                 <th className="px-4 py-3">Metode</th>
                 <th className="px-4 py-3">Versi</th>
                 <th className="px-4 py-3">Status Desain</th>
@@ -427,6 +432,16 @@ export default function DesignerDashboardPage() {
                         {r.items.length > 1 ? ` +${r.items.length - 1}` : ""}
                       </span>
                     )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={cn(
+                      "px-2 py-0.5 rounded-md text-[10px] font-bold",
+                      r.isUnassigned ? "bg-status-yellow/10 text-status-yellow-text border border-status-yellow/30" 
+                      : r.isOwnedByMe ? "bg-status-green/10 text-status-green border border-status-green/30" 
+                      : "bg-elevated text-muted border border-border"
+                    )}>
+                      {r.designer}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold",
@@ -463,28 +478,40 @@ export default function DesignerDashboardPage() {
                       >
                         <FileText className="h-3 w-3" /> Detail
                       </button>
-                      <button
-                        onClick={() => setUploadFor(r)}
-                        disabled={busy}
-                        className="px-2.5 py-1 rounded-lg bg-accent-teal/10 text-accent-teal font-bold hover:bg-accent-teal/20 transition-all flex items-center gap-1 disabled:opacity-40"
-                      >
-                        <Upload className="h-3 w-3" /> Upload
-                      </button>
-                      <button
-                        onClick={() => run(() => approveDesign(r.orderId, {}))}
-                        disabled={busy || r.status === "APPROVED" || r.latestVersionStatus == null}
-                        className="px-2.5 py-1 rounded-lg bg-status-green/10 text-status-green font-bold hover:bg-status-green/20 transition-all disabled:opacity-40"
-                        title={r.latestVersionStatus == null ? "Upload versi dulu" : "Setujui desain"}
-                      >
-                        ACC
-                      </button>
-                      <button
-                        onClick={() => setRevisionFor(r)}
-                        disabled={busy || r.latestVersionStatus == null}
-                        className="px-2.5 py-1 rounded-lg bg-status-yellow/10 text-status-yellow-text font-bold hover:bg-status-yellow/20 transition-all flex items-center gap-1 disabled:opacity-40"
-                      >
-                        <RefreshCw className="h-3 w-3" /> Revisi
-                      </button>
+                      {r.isUnassigned ? (
+                        <button
+                          onClick={() => run(() => takeDesignJob(r.orderId))}
+                          disabled={busy}
+                          className="px-2.5 py-1 rounded-lg bg-accent-teal text-white font-bold hover:brightness-110 transition-all disabled:opacity-40"
+                        >
+                          Ambil Tugas
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setUploadFor(r)}
+                            disabled={busy || !r.isOwnedByMe}
+                            className="px-2.5 py-1 rounded-lg bg-accent-teal/10 text-accent-teal font-bold hover:bg-accent-teal/20 transition-all flex items-center gap-1 disabled:opacity-40"
+                          >
+                            <Upload className="h-3 w-3" /> Upload
+                          </button>
+                          <button
+                            onClick={() => run(() => approveDesign(r.orderId, {}))}
+                            disabled={busy || !r.isOwnedByMe || r.status === "APPROVED" || r.latestVersionStatus == null || r.method === "ONLINE"}
+                            className="px-2.5 py-1 rounded-lg bg-status-green/10 text-status-green font-bold hover:bg-status-green/20 transition-all disabled:opacity-40 disabled:bg-elevated disabled:text-muted"
+                            title={r.method === "ONLINE" ? "Tunggu Admin" : r.latestVersionStatus == null ? "Upload versi dulu" : "Setujui desain"}
+                          >
+                            {r.method === "ONLINE" ? "Tunggu Admin" : "ACC"}
+                          </button>
+                          <button
+                            onClick={() => setRevisionFor(r)}
+                            disabled={busy || !r.isOwnedByMe || r.latestVersionStatus == null}
+                            className="px-2.5 py-1 rounded-lg bg-status-yellow/10 text-status-yellow-text font-bold hover:bg-status-yellow/20 transition-all flex items-center gap-1 disabled:opacity-40"
+                          >
+                            <RefreshCw className="h-3 w-3" /> Revisi
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

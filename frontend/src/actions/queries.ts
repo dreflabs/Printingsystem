@@ -134,10 +134,19 @@ export async function getGudangQueues() {
 export async function getDesignQueue() {
   try {
     const tenant = await requireTenant();
-    await requireUser();
+    const actor = await requireUser();
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     const djs = await prisma.designJob.findMany({
-      where: { tenant_id: tenant.id, status: { in: ["PENDING", "DESIGNING", "APPROVED"] } },
+      where: { 
+        tenant_id: tenant.id, 
+        OR: [
+          { status: { in: ["PENDING", "DESIGNING"] } },
+          { status: "APPROVED", updated_at: { gte: sevenDaysAgo } }
+        ]
+      },
       orderBy: { updated_at: "desc" },
       include: {
         designer: { select: { name: true } },
@@ -161,11 +170,14 @@ export async function getDesignQueue() {
     return ok(
       djs.map((d) => ({
         orderId: d.order_id,
+        isOwnedByMe: d.designer_id === actor.id,
+        isUnassigned: d.designer_id === null,
         orderCode: d.order.order_code,
         orderStatus: d.order.status,
         customerName: d.order.customer?.name ?? "-",
         customerPhone: d.order.customer?.phone ?? null,
-        designer: d.designer.name,
+        designerId: d.designer_id,
+        designer: d.designer?.name ?? "Belum Diambil",
         method: d.approval_method,
         status: d.status,
         currentVersion: d.current_version,

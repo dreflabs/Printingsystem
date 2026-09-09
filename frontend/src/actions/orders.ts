@@ -196,19 +196,11 @@ export async function createPrintingOrder(
       }
 
       // 5. DesignJob kosong
-      let designerId = input.designerId || null;
-      if (!designerId) {
-        const designer = await tx.user.findFirst({
-          where: { tenant_id: tenant.id, active: true, role: { name: "designer_sales" } },
-          orderBy: { created_at: "asc" },
-        });
-        designerId = designer?.id ?? actor.id;
-      }
       await tx.designJob.create({
         data: {
           tenant_id: tenant.id,
           order_id: order.id,
-          designer_id: designerId,
+          designer_id: input.designerId || null,
           status: "PENDING",
           current_version: 1,
           approval_method: APPROVAL_METHOD[input.orderType],

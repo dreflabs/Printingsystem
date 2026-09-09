@@ -443,3 +443,41 @@ export async function assignProductionJob(
     return fail(e instanceof Error ? e.message : "Gagal assign produksi.");
   }
 }
+
+/**
+ * Ambil tugas desain yang belum ada PIC-nya (designer_id === null).
+ */
+export async function takeDesignJob(orderId: string): Promise<ActionResult<{ success: boolean }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+
+    if (!canDesign(actor.roles)) {
+      return fail("Hanya Designer / Admin yang boleh mengambil tugas ini.");
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const job = await tx.designJob.findFirst({
+        where: { order_id: orderId, tenant_id: tenant.id },
+      });
+      if (!job) throw new Error("Job desain tidak ditemukan.");
+      if (job.designer_id) {
+        if (job.designer_id === actor.id) return { success: true };
+        throw new Error("Job ini sudah diambil oleh designer lain.");
+      }
+
+      await tx.designJob.update({
+        where: { id: job.id },
+        data: { designer_id: actor.id },
+      });
+      return { success: true };
+    });
+
+    await logAction(actor.id, "DESIGN_JOB_TAKEN", "Order", orderId, null);
+    revalidatePath("/designer");
+    return ok(result);
+  } catch (e) {
+    console.error("takeDesignJob:", e);
+    return fail(e instanceof Error ? e.message : "Gagal mengambil tugas desain.");
+  }
+}

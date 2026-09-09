@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Settings2, ScanLine, CheckCircle2, AlertCircle, Timer, Layers, Pause, Play } from "lucide-react";
+import { Settings2, ScanLine, CheckCircle2, AlertCircle, Timer, Layers, Pause, Play, ShieldAlert } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
@@ -114,6 +114,7 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
 export default function OperatorPage() {
   const [mine, setMine] = useState<Job[]>([]);
   const [claimable, setClaimable] = useState<Job[]>([]);
+  const [hasMachines, setHasMachines] = useState(true); // default true biar ga flash
   const [materials, setMaterials] = useState<MaterialOpt[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -127,6 +128,7 @@ export default function OperatorPage() {
     setError(null);
     setMine(res.data.mine);
     setClaimable(res.data.queue);
+    setHasMachines(res.data.hasMachines);
   }, []);
 
   useEffect(() => {
@@ -164,6 +166,20 @@ export default function OperatorPage() {
       </div>
 
       <RoleGuide role="operator" />
+
+      {!hasMachines && (
+        <div className="bg-status-red/10 border border-status-red/30 p-5 rounded-2xl flex items-start gap-4 animate-in fade-in zoom-in-95">
+          <ShieldAlert className="h-6 w-6 text-status-red shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-bold text-status-red">Perhatian: Anda belum memiliki akses mesin</h3>
+            <p className="text-sm text-status-red mt-1">
+              Saat ini Anda tidak ditugaskan ke mesin cetak apapun. Anda tidak akan bisa melihat atau mengambil job antrean baru. 
+              <br className="hidden sm:block" />
+              Silakan hubungi Owner untuk mengatur penugasan mesin Anda melalui menu Manajemen Pegawai.
+            </p>
+          </div>
+        </div>
+      )}
 
       <AbsenCard />
 

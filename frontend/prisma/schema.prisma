@@ -37,6 +37,7 @@ model Tenant {
 
   // Relations
   users                  User[]
+  user_machines          UserMachine[]
   subscription_plans     TenantSubscription[]
   invoices               Invoice[]
   tenant_audit_logs      TenantAuditLog[]
@@ -241,10 +242,14 @@ model User {
   // Multi-role support: extra_roles stores additional roles beyond the primary role
   extra_roles UserRole[]
 
+  // Operator-specific: machines they are assigned to
+  user_machines UserMachine[]
+
   // Relations (inverse side)
   created_customers      Customer[]
   added_materials        Material[]
   material_movements     MaterialMovement[]
+  assigned_machines      UserMachine[]         @relation("MachineAssignedBy")
   created_orders         Order[]               @relation("OrderCreatedBy")
   designed_orders        Order[]               @relation("OrderDesigner")
   discount_approved      Order[]               @relation("DiscountApprovedBy")
@@ -289,6 +294,22 @@ model UserRole {
   role    Role   @relation(fields: [role_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, role_id])
+}
+
+// Join table: Operator ↔ Machine (many-to-many, owner-assigned)
+model UserMachine {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id])
+  user_id     String
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  machine_id  String
+  machine     Machine  @relation(fields: [machine_id], references: [id], onDelete: Cascade)
+  assigned_by String
+  assigner    User     @relation("MachineAssignedBy", fields: [assigned_by], references: [id])
+  assigned_at DateTime @default(now())
+
+  @@unique([user_id, machine_id])
 }
 
 // ─── MASTER DATA ──────────────────────────────────────────────────────────────
@@ -351,6 +372,7 @@ model Machine {
   material_movements    MaterialMovement[]
   production_jobs       ProductionJob[]
   default_for_products  Product[]         @relation("ProductDefaultMachine")
+  user_machines         UserMachine[]
 
   @@unique([tenant_id, machine_code])
 }

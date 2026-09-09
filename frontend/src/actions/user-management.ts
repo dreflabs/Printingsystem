@@ -22,7 +22,56 @@ const USER_SELECT = {
   base_salary: true,
   role: { select: { name: true } },
   extra_roles: { select: { role: { select: { name: true } } } },
+  user_machines: { select: { machine_id: true, machine: { select: { name: true } } } },
 } as const;
+
+export async function updateOperatorMachines(userId: string, machineIds: string[]): Promise<ActionResult<null>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    
+    // Hanya Owner yang boleh mengatur ini
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh mengatur penugasan mesin.");
+
+    // Verifikasi user yang dituju ada di tenant yang sama
+    const target = await prisma.user.findFirst({
+      where: { id: userId, tenant_id: tenant.id },
+      include: { role: true, extra_roles: { include: { role: true } } }
+    });
+    if (!target) return fail("Pegawai tidak ditemukan.");
+
+    // Pastikan user tersebut punya role operator
+    const isOp = target.role.name === "operator" || target.extra_roles.some(er => er.role.name === "operator");
+    if (!isOp) return fail("Pegawai ini tidak memiliki role Operator Cetak.");
+
+    await prisma.$transaction(async (tx) => {
+      // Hapus yang lama
+      await tx.userMachine.deleteMany({
+        where: { tenant_id: tenant.id, user_id: userId }
+      });
+      
+      // Insert yang baru
+      if (machineIds.length > 0) {
+        await tx.userMachine.createMany({
+          data: machineIds.map(mid => ({
+            tenant_id: tenant.id,
+            user_id: userId,
+            machine_id: mid,
+            assigned_by: actor.id,
+          }))
+        });
+      }
+      
+      await logAction(actor.id, "UPDATE_OPERATOR_MACHINES", "User", userId, "Assigned machines updated", { machineIds });
+    });
+
+    revalidatePath("/owner/users");
+    return ok(null);
+  } catch (error) {
+    console.error("updateOperatorMachines error:", error);
+    return fail("Terjadi kesalahan saat menyimpan tugas mesin.");
+  }
+}
 
 export async function getTenantUsers() {
   try {

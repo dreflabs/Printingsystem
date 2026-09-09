@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Users, UserPlus, KeyRound, UserX, UserCheck, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Wallet, Trash2, X, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserFormModal, CredentialRevealDialog } from "@/components/owner/UserFormModal";
+import { MachineAssignmentModal } from "@/components/owner/MachineAssignmentModal";
 import { ConfirmDialog } from "@/components/ui";
 import {
   getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword,
@@ -41,6 +42,7 @@ export default function OwnerUsersPage() {
   >(null);
   const [deleteFor, setDeleteFor] = useState<{ id: string; name: string } | null>(null);
   const [roleEditFor, setRoleEditFor] = useState<{ id: string; name: string; primary: string; roles: string[] } | null>(null);
+  const [machineEditFor, setMachineEditFor] = useState<{ id: string; name: string; user_machines: any[] } | null>(null);
 
   const runPendingConfirm = async () => {
     if (!pendingConfirm) return;
@@ -293,6 +295,23 @@ export default function OwnerUsersPage() {
                           </span>
                         )}
                       </div>
+                      {getUserRoles(user).includes("operator") && (
+                        <div className="mt-2">
+                          <button
+                            onClick={() => setMachineEditFor({ id: user.id, name: user.name, user_machines: user.user_machines || [] })}
+                            className={cn(
+                              "text-[10px] font-bold px-2 py-1 rounded border transition-colors",
+                              (user.user_machines?.length || 0) > 0
+                                ? "bg-accent-teal/10 border-accent-teal/30 text-accent-teal hover:bg-accent-teal/20"
+                                : "bg-status-red/10 border-status-red/30 text-status-red hover:bg-status-red/20"
+                            )}
+                          >
+                            {(user.user_machines?.length || 0) > 0
+                              ? `Akses: ${user.user_machines.length} Mesin`
+                              : "⚠️ Belum ada mesin"}
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col items-start gap-1">
@@ -454,6 +473,19 @@ export default function OwnerUsersPage() {
           onDone={(msg) => {
             setRoleEditFor(null);
             setActionMessage({ type: "success", text: msg });
+            loadUsers();
+          }}
+        />
+      )}
+
+      {/* Machine Checklist Modal */}
+      {machineEditFor && (
+        <MachineAssignmentModal
+          user={machineEditFor}
+          onClose={() => setMachineEditFor(null)}
+          onSuccess={() => {
+            setMachineEditFor(null);
+            setActionMessage({ type: "success", text: "Checklist mesin berhasil disimpan." });
             loadUsers();
           }}
         />

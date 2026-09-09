@@ -39,6 +39,12 @@ export async function getOperatorJobs() {
     const tenant = await requireTenant();
     const actor = await requireUser();
 
+    const userMachines = await prisma.userMachine.findMany({
+      where: { tenant_id: tenant.id, user_id: actor.id },
+      select: { machine_id: true }
+    });
+    const allowedMachineIds = userMachines.map(um => um.machine_id);
+
     const include = {
       machine: { select: { name: true, machine_code: true } },
       order: { select: { order_code: true, deadline: true, customer: { select: { name: true } } } },
@@ -54,11 +60,13 @@ export async function getOperatorJobs() {
         orderBy: [{ priority: "desc" }, { created_at: "asc" }],
         include,
       }),
+      // Hanya ambil job dari mesin yang ditugaskan ke operator ini
       prisma.productionJob.findMany({
         where: {
           tenant_id: tenant.id,
           operator_id: null,
           status: "PRODUCTION_QUEUED",
+          machine_id: { in: allowedMachineIds }
         },
         orderBy: [{ priority: "desc" }, { order: { deadline: "asc" } }, { created_at: "asc" }],
         include,
@@ -77,7 +85,11 @@ export async function getOperatorJobs() {
       startedAt: j.actual_start,
     });
 
-    return ok({ mine: mineRows.map(shape), queue: queueRows.map(shape) });
+    return ok({ 
+      mine: mineRows.map(shape), 
+      queue: queueRows.map(shape),
+      hasMachines: allowedMachineIds.length > 0
+    });
   } catch (e) {
     console.error("getOperatorJobs:", e);
     return fail(e instanceof Error ? e.message : "Gagal memuat job operator.");

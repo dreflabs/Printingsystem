@@ -163,20 +163,20 @@ export default function OwnerPage() {
   const reviewCount = d ? d.pendingDiscounts.length + d.auditsPending.length + (d.lowStock.length ? 1 : 0) : 0;
 
   const kpi = [
-    { icon: ShoppingBag, label: "Total Order Hari Ini", value: d?.kpi.ordersToday ?? "—" },
-    { icon: Package, label: "Siap Diambil", value: d?.kpi.readyPickup ?? "—" },
-    { icon: Activity, label: "Produksi Aktif", value: d?.kpi.produksiAktif ?? "—" },
-    { icon: TrendingUp, label: "Omset Bulan Ini", value: d ? rupiah(d.kpi.omsetBulanIni) : "—", gold: true },
+    { icon: ShoppingBag, label: "Total Order Hari Ini", value: d?.kpi.ordersToday ?? "—", href: "/admin" },
+    { icon: Package, label: "Siap Diambil", value: d?.kpi.readyPickup ?? "—", href: "/admin?status=READY_FOR_PICKUP" },
+    { icon: Activity, label: "Produksi Aktif", value: d?.kpi.produksiAktif ?? "—", href: "/admin/production?status=PRODUCTION_STARTED" },
+    { icon: TrendingUp, label: "Omset Bulan Ini", value: d ? rupiah(d.kpi.omsetBulanIni) : "—", gold: true, href: "/owner/reports" },
   ];
 
   const pipelineStages = d
     ? [
-        { label: "Produksi", n: d.pipeline.produksi },
-        { label: "QC", n: d.pipeline.qc },
-        { label: "Finishing", n: d.pipeline.finishing },
-        { label: "Storage", n: d.pipeline.storage },
-        { label: "Tersimpan", n: d.pipeline.stored },
-        { label: "Siap Ambil", n: d.pipeline.siapAmbil },
+        { label: "Produksi", n: d.pipeline.produksi, href: "/admin/production?status=PRODUCTION_STARTED" },
+        { label: "QC", n: d.pipeline.qc, href: "/finishing" },
+        { label: "Finishing", n: d.pipeline.finishing, href: "/finishing" },
+        { label: "Storage", n: d.pipeline.storage, href: "/finishing" },
+        { label: "Tersimpan", n: d.pipeline.stored, href: "/finishing" },
+        { label: "Siap Ambil", n: d.pipeline.siapAmbil, href: "/admin?status=READY_FOR_PICKUP" },
       ]
     : [];
 
@@ -311,16 +311,20 @@ export default function OwnerPage() {
 
       {error && <div className="rounded-xl border border-status-red/20 bg-status-red/10 px-4 py-3 text-xs font-bold text-status-red">{error}</div>}
 
-      {/* KPI (spec: 4 card) */}
+      {/* KPI (spec: 4 card) — klik untuk buka daftar terkait */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         {kpi.map((k) => (
-          <div key={k.label} className="bg-card border border-border rounded-2xl p-5">
+          <Link
+            key={k.label}
+            href={k.href}
+            className="bg-card border border-border rounded-2xl p-5 block transition-colors hover:border-accent-teal/50"
+          >
             <div className={cn("p-2.5 rounded-xl w-fit mb-3", k.gold ? "bg-status-yellow/10" : "bg-accent-teal/10")}>
               <k.icon className={cn("h-5 w-5", k.gold ? "text-status-yellow-text" : "text-accent-teal")} />
             </div>
             <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">{k.label}</p>
             <p className={cn("text-2xl font-bold mt-1 font-mono", k.gold ? "text-status-yellow-text" : "text-primary")}>{k.value}</p>
-          </div>
+          </Link>
         ))}
       </div>
 
@@ -390,7 +394,8 @@ export default function OwnerPage() {
             ))}
             {d && d.lowStock.length > 0 && (
               <AlertRow icon={ShieldAlert} label={`Stok Menipis (${d.lowStock.length} bahan)`}
-                sub={d.lowStock.map((s) => `${s.name}: ${s.current} ${s.unit}`).join(" · ")} tier="orange" />
+                sub={d.lowStock.map((s) => `${s.name}: ${s.current} ${s.unit}`).join(" · ")} tier="orange"
+                action="Isi Stok" href="/finishing" />
             )}
             {reviewCount === 0 && <OkGreen text="Tidak ada diskon / audit / stok yang perlu ditinjau" />}
           </div>
@@ -406,11 +411,11 @@ export default function OwnerPage() {
           </div>
           <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
             {pipelineStages.map((s) => (
-              <div key={s.label} className="text-center">
+              <Link key={s.label} href={s.href} className="text-center rounded-xl p-2 -m-2 transition-colors hover:bg-elevated/60">
                 <div className="h-1.5 rounded-full bg-accent-teal/50 mb-2" />
                 <p className="text-3xl font-bold text-primary">{s.n}</p>
                 <p className="text-[10px] text-muted font-medium uppercase tracking-wide">{s.label}</p>
-              </div>
+              </Link>
             ))}
             {pipelineStages.length === 0 && <p className="col-span-6 text-center text-xs text-muted py-4">Memuat…</p>}
           </div>
@@ -452,7 +457,9 @@ export default function OwnerPage() {
               {d.attendance.autoClosedYesterday} pegawai lupa absen pulang kemarin (ditutup otomatis).
             </p>
           )}
-          <p className="text-[10px] text-muted mt-3">Detail di menu Absensi Pegawai.</p>
+          <Link href="/admin/attendance" className="inline-flex items-center gap-1 mt-3 text-[10px] font-semibold text-accent-teal hover:underline">
+            Detail di menu Absensi Pegawai <ArrowRight className="h-3 w-3" />
+          </Link>
         </div>
       </div>
 

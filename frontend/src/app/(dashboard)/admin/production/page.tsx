@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Package, Wrench, AlertTriangle, Clock, Play, RotateCcw, ShieldAlert, RefreshCw, X } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -63,6 +63,8 @@ export default function ProductionPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [reassignJob, setReassignJob] = useState<JobRow | null>(null);
+  const jobTableRef = useRef<HTMLDivElement>(null);
+  const materialRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const res = await getProductionOverview();
@@ -74,16 +76,29 @@ export default function ProductionPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
+  // Seed filter dari ?status= (dipakai deep-link dari Dashboard Owner).
+  useEffect(() => {
+    const s = new URLSearchParams(window.location.search).get("status");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (s) setStatusFilter(s);
+  }, []);
+
+  /** Klik kartu KPI → filter tabel job + scroll ke tabelnya. */
+  function focusJobs(status: string) {
+    setStatusFilter(status);
+    jobTableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   const jobs = (d?.jobs ?? []).filter((j) => !statusFilter || j.status === statusFilter);
 
   const kpis = d ? [
-    { label: "Antri (belum diambil)", value: d.kpi.queued, color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Clock },
-    { label: "Ditugaskan (pin)", value: d.kpi.assigned, color: "text-status-blue", bg: "bg-status-blue/10", icon: Clock },
-    { label: "Sedang Berjalan", value: d.kpi.running, color: "text-status-blue", bg: "bg-status-blue/10", icon: Play },
-    { label: "Dijeda", value: d.kpi.paused, color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Wrench },
-    { label: "Antrian QC", value: d.kpi.qcQueue, color: "text-accent-teal", bg: "bg-accent-teal/10", icon: Package },
-    { label: "Rework Menunggu Owner", value: d.kpi.failedRework, color: "text-status-red", bg: "bg-status-red/10", icon: AlertTriangle },
-    { label: "Stok Menipis", value: d.kpi.lowStock, color: "text-status-red", bg: "bg-status-red/10", icon: ShieldAlert },
+    { label: "Antri (belum diambil)", value: d.kpi.queued, color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Clock, status: "PRODUCTION_QUEUED" },
+    { label: "Ditugaskan (pin)", value: d.kpi.assigned, color: "text-status-blue", bg: "bg-status-blue/10", icon: Clock, status: "PRODUCTION_ASSIGNED" },
+    { label: "Sedang Berjalan", value: d.kpi.running, color: "text-status-blue", bg: "bg-status-blue/10", icon: Play, status: "PRODUCTION_STARTED" },
+    { label: "Dijeda", value: d.kpi.paused, color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Wrench, status: "PRODUCTION_PAUSED" },
+    { label: "Antrian QC", value: d.kpi.qcQueue, color: "text-accent-teal", bg: "bg-accent-teal/10", icon: Package, status: "PRODUCTION_COMPLETE" },
+    { label: "Rework Menunggu Owner", value: d.kpi.failedRework, color: "text-status-red", bg: "bg-status-red/10", icon: AlertTriangle, status: "FAILED_REWORK" },
+    { label: "Stok Menipis", value: d.kpi.lowStock, color: "text-status-red", bg: "bg-status-red/10", icon: ShieldAlert, status: "" },
   ] : [];
 
   return (
@@ -101,11 +116,20 @@ export default function ProductionPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         {kpis.map((k) => (
-          <div key={k.label} className="bg-card border border-border rounded-2xl p-4 shadow-sm">
+          <button
+            key={k.label}
+            type="button"
+            onClick={() =>
+              k.status
+                ? focusJobs(k.status)
+                : materialRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+            className="bg-card border border-border rounded-2xl p-4 shadow-sm text-left transition-colors hover:border-accent-teal/50 focus:outline-none focus:border-accent-teal"
+          >
             <div className={cn("inline-flex p-2 rounded-xl mb-3", k.bg)}><k.icon className={cn("h-5 w-5", k.color)} /></div>
             <p className={cn("text-3xl font-bold", k.color)}>{k.value}</p>
             <p className="text-xs text-muted mt-1 leading-tight">{k.label}</p>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -142,7 +166,7 @@ export default function ProductionPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div ref={jobTableRef} className="lg:col-span-2 bg-card border border-border rounded-2xl shadow-sm overflow-hidden scroll-mt-4">
           <div className="p-4 border-b border-border flex flex-wrap gap-3 items-center justify-between">
             <h2 className="text-base font-bold text-primary">Antrian Job</h2>
             <div className="flex items-center gap-2">
@@ -191,7 +215,7 @@ export default function ProductionPage() {
         </div>
 
         <div className="space-y-4">
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+          <div ref={materialRef} className="bg-card border border-border rounded-2xl p-5 shadow-sm scroll-mt-4">
             <div className="flex items-center gap-2 mb-3">
               <ShieldAlert className="h-5 w-5 text-status-red" />
               <h3 className="font-bold text-sm text-primary">Material Menipis</h3>

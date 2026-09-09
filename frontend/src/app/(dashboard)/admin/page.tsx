@@ -460,12 +460,26 @@ export default function AdminDashboardPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState<"" | "PRINTING" | "RETAIL">("");
   const [search, setSearch] = useState("");
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
 
   useEffect(() => {
     getSessionUser().then((r) => {
       if (r.ok) setIsOwner(r.user.role === "owner" || r.user.roles.includes("owner"));
     });
+  }, []);
+
+  // Seed filter dari query param — deep-link dari Dashboard Owner
+  // (`/admin?status=…`, `/admin?type=…`, `/admin?overdue=1`).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const s = p.get("status");
+    const t = p.get("type");
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (s) setStatusFilter(s);
+    if (t === "PRINTING" || t === "RETAIL") setTypeFilter(t);
+    if (p.get("overdue") === "1") setOverdueOnly(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   const load = useCallback(async () => {
@@ -489,6 +503,7 @@ export default function AdminDashboardPage() {
 
   const readyPickup = orders.filter((o) => o.status === "READY_FOR_PICKUP");
   const awaitingAudit = orders.filter((o) => o.status === "FINAL_AUDIT_PENDING");
+  const shownOrders = overdueOnly ? orders.filter((o) => o.overdue) : orders;
 
   return (
     <div className="space-y-6">
@@ -569,7 +584,15 @@ export default function AdminDashboardPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <TrendingUp className="h-5 w-5 text-accent-teal" />
             <h2 className="text-base font-semibold text-primary">Daftar Order</h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent-teal/10 text-accent-teal border border-accent-teal/30">{orders.length}</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent-teal/10 text-accent-teal border border-accent-teal/30">{shownOrders.length}</span>
+            {overdueOnly && (
+              <button
+                onClick={() => setOverdueOnly(false)}
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-red/10 text-status-red border border-status-red/30 hover:bg-status-red/20"
+              >
+                Overdue saja ✕
+              </button>
+            )}
             {(statusFilter || typeFilter) && (
               <button onClick={() => { setStatusFilter(""); setTypeFilter(""); }} className="text-xs text-status-red hover:underline">✕ Hapus Filter</button>
             )}
@@ -607,7 +630,7 @@ export default function AdminDashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {orders.map((o) => (
+              {shownOrders.map((o) => (
                 <tr key={o.id} className="border-b border-border/50 hover:bg-elevated/30 transition-colors cursor-pointer" onClick={() => setDetailFor(o)}>
                   <td className="px-4 py-3 font-mono text-xs text-accent-teal whitespace-nowrap">{o.orderCode}</td>
                   <td className="px-4 py-3 font-medium text-primary whitespace-nowrap">{o.customerName}</td>

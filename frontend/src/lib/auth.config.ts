@@ -27,6 +27,9 @@ export const authConfig = {
         token.platformLoginAt = user.platformLoginAt ?? null;
         token.pwChangedAt = user.pwChangedAt ?? 0;
         token.mustChangePassword = user.mustChangePassword ?? false;
+        // Simpan tenant info di JWT agar context tenant tersedia tanpa subdomain
+        token.tenantId = (user as { tenantId?: string }).tenantId ?? null;
+        token.tenantSlug = (user as { tenantSlug?: string }).tenantSlug ?? null;
       }
       return token;
     },
@@ -41,6 +44,9 @@ export const authConfig = {
         session.user.platformLoginAt = token.platformLoginAt ?? null;
         session.user.pwChangedAt = token.pwChangedAt ?? 0;
         session.user.mustChangePassword = token.mustChangePassword ?? false;
+        // Ekspos tenant info di session
+        (session.user as unknown as Record<string, unknown>).tenantId = (token.tenantId as string | null) ?? null;
+        (session.user as unknown as Record<string, unknown>).tenantSlug = (token.tenantSlug as string | null) ?? null;
       }
       return session;
     },

@@ -33,8 +33,11 @@ export async function getTenantSlug(): Promise<string | null> {
 async function getSessionTenantId(): Promise<string | null> {
   try {
     const session = await auth();
-    const u = session?.user as { id?: string; platform?: boolean } | undefined;
+    const u = session?.user as { id?: string; platform?: boolean; tenantId?: string } | undefined;
     if (!u?.id || u.platform) return null;
+    // Jika tenantId sudah ada di JWT session, langsung gunakan tanpa query DB
+    if (u.tenantId) return u.tenantId;
+    // Fallback: query DB (untuk sesi lama yang belum punya tenantId di token)
     const rec = await prisma.user.findUnique({
       where: { id: u.id },
       select: { tenant_id: true },

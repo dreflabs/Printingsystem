@@ -136,7 +136,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const tenant = await prisma.tenant.findUnique({
           where: { slug: workspace },
-          select: { id: true, status: true },
+          select: { id: true, status: true, slug: true },
         });
         if (!tenant) return null;
 
@@ -196,6 +196,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: user.name,
           role: primaryRole,   // primary role (backward compat)
           roles: allRoles,     // all roles (new multi-role support)
+          tenantId: tenant.id,
+          tenantSlug: tenant.slug,
           pwChangedAt: user.password_changed_at ? user.password_changed_at.getTime() : 0,
           mustChangePassword: user.must_change_password === true,
         };

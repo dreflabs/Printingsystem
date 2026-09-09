@@ -4,11 +4,13 @@ import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/shared/Sidebar";
 import { Header } from "@/components/shared/Header";
 import { ImpersonationBanner } from "@/components/shared/ImpersonationBanner";
-import { getSessionUser } from "@/actions/session";
+import { getSessionUser, type WorkspaceMode } from "@/actions/session";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [user, setUser] = useState<{ id: string; name: string; role: string; roles: string[] } | null>(null);
+  const [user, setUser] = useState<
+    { id: string; name: string; role: string; roles: string[]; workspaceMode: WorkspaceMode } | null
+  >(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -25,7 +27,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen overflow-hidden bg-base">
-      <Sidebar role={role} roles={roles} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar
+        role={role}
+        roles={roles}
+        workspaceMode={user?.workspaceMode ?? "TEAM_FULL"}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <ImpersonationBanner />

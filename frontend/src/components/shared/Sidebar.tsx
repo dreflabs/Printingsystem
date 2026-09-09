@@ -27,6 +27,7 @@ import { signOutAction } from "@/actions/session";
 
 // All possible roles in the system
 type UserRole = "admin" | "designer_sales" | "operator" | "gudang" | "owner";
+type WorkspaceMode = "SOLO" | "TEAM_SMALL" | "TEAM_FULL";
 
 interface NavItem {
   label: string;
@@ -85,7 +86,7 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["owner", "admin"],
   },
   {
-    label: "Dashboard",
+    label: "Dashboard Admin",
     href: "/admin",
     icon: <LayoutDashboard className="h-5 w-5" />,
     roles: ["admin"],
@@ -115,13 +116,13 @@ const NAV_ITEMS: NavItem[] = [
     roles: ["admin"],
   },
   {
-    label: "Dashboard",
+    label: "Dashboard Desainer",
     href: "/designer",
     icon: <Palette className="h-5 w-5" />,
     roles: ["designer_sales"],
   },
   {
-    label: "Dashboard",
+    label: "Dashboard Operator",
     href: "/operator",
     icon: <Settings2 className="h-5 w-5" />,
     roles: ["operator"],
@@ -146,6 +147,23 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+/**
+ * Navigasi mode SOLO (percetakan dijalankan 1 orang). Daftar rata & pendek —
+ * tanpa dashboard per-peran, tanpa role switcher. Owner tetap punya semua
+ * peran di baliknya; ini murni menyederhanakan tampilan. Alur order dipandu di
+ * Beranda ("Langkah berikutnya"), jadi Scan QR sifatnya opsional.
+ */
+const SOLO_NAV: NavItem[] = [
+  { label: "Beranda", href: "/owner", icon: <LayoutDashboard className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Order", href: "/admin", icon: <ShoppingCart className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Produksi", href: "/admin/production", icon: <BarChart2 className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Kasir", href: "/pos", icon: <ShoppingCart className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Katalog & Harga", href: "/admin/products", icon: <Tag className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Scan QR", href: "/scan", icon: <ScanLine className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Pegawai & Akses", href: "/owner/users", icon: <Users className="h-5 w-5" />, roles: ["owner"] },
+  { label: "Bantuan", href: "/bantuan", icon: <BookOpen className="h-5 w-5" />, roles: ["owner"] },
+];
+
 // Role switcher config: what dashboards each role maps to
 const ROLE_SWITCHER_CONFIG: { role: UserRole; label: string; href: string; color: string }[] = [
   { role: "owner",          label: "Owner",            href: "/owner",    color: "text-accent-teal" },
@@ -158,29 +176,37 @@ const ROLE_SWITCHER_CONFIG: { role: UserRole; label: string; href: string; color
 interface SidebarProps {
   role: UserRole;
   roles?: string[]; // All roles this user has (multi-role support)
+  workspaceMode?: WorkspaceMode;
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function Sidebar({ role, roles = [role], isOpen, onClose }: SidebarProps) {
+export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
 
   // Items visible to this user based on ALL their roles
   const userRoleSet = new Set(roles as UserRole[]);
+
+  // Mode SOLO khusus Owner: navigasi ramping tetap (SOLO_NAV), tanpa switcher.
+  // Non-owner (kalau ada) di tenant SOLO tetap pakai navigasi normal per-peran.
+  const soloView = workspaceMode === "SOLO" && userRoleSet.has("owner");
+
   const visibleItems = NAV_ITEMS.filter((item) =>
     item.roles.some((r) => userRoleSet.has(r))
   );
 
   // De-duplicate by href (owner sees all, so some hrefs might appear twice)
-  const uniqueItems = visibleItems.filter(
-    (item, idx, arr) => arr.findIndex((i) => i.href === item.href) === idx
-  );
+  const uniqueItems = soloView
+    ? SOLO_NAV
+    : visibleItems.filter(
+        (item, idx, arr) => arr.findIndex((i) => i.href === item.href) === idx
+      );
 
   // Role switcher entries: only show roles this user actually has
   const switcherRoles = ROLE_SWITCHER_CONFIG.filter((r) => userRoleSet.has(r.role));
-  const hasMultipleRoles = switcherRoles.length > 1;
+  const hasMultipleRoles = !soloView && switcherRoles.length > 1;
 
   const currentRoleLabel =
     ROLE_SWITCHER_CONFIG.find((r) => {
@@ -312,10 +338,16 @@ export function Sidebar({ role, roles = [role], isOpen, onClose }: SidebarProps)
               <div className="h-2 w-2 rounded-full bg-status-green animate-pulse shrink-0" />
               <div className="min-w-0">
                 <span className="text-xs text-muted truncate block capitalize">
-                  {hasMultipleRoles ? `${roles.length} Role Aktif` : role.replace("_", " ")}
+                  {soloView
+                    ? "Mode Solo"
+                    : hasMultipleRoles
+                    ? `${roles.length} Role Aktif`
+                    : role.replace("_", " ")}
                 </span>
-                {hasMultipleRoles && (
-                  <span className="text-[10px] text-accent-teal font-semibold">Solo Mode ✓</span>
+                {(soloView || hasMultipleRoles) && (
+                  <span className="text-[10px] text-accent-teal font-semibold">
+                    {soloView ? "1 orang · semua peran" : "Solo Mode ✓"}
+                  </span>
                 )}
               </div>
             </div>

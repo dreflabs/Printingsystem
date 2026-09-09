@@ -52,6 +52,16 @@ type Row = {
   latestFileName: string | null;
   latestFileUrl: string | null;
   deadline: string | Date | null;
+  customerPhone: string | null;
+  notes: string | null;
+  items: {
+    product: string;
+    description: string | null;
+    size: string | null;
+    quantity: number;
+    material: string | null;
+    finishing: string | null;
+  }[];
 };
 
 const fmtDeadline = (d: string | Date | null) =>
@@ -206,6 +216,64 @@ function ReasonModal({ title, label, orderCode, onClose, onSubmit }: {
   );
 }
 
+/** Detail brief + spesifikasi order untuk Designer (read-only, tanpa harga). */
+function DesignDetailModal({ row, onClose }: { row: Row; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-xl max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-card">
+          <div>
+            <h3 className="text-base font-bold text-primary flex items-center gap-2">
+              <FileText className="h-4 w-4 text-accent-teal" /> {row.orderCode}
+            </h3>
+            <p className="text-xs text-muted mt-0.5">
+              {row.customerName}
+              {row.customerPhone ? ` · ${row.customerPhone}` : ""} · jatuh tempo {fmtDeadline(row.deadline)}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted mb-1.5">Brief dari Admin</p>
+            {row.notes?.trim() ? (
+              <p className="text-sm text-primary whitespace-pre-wrap rounded-xl bg-elevated/60 border border-border p-3">{row.notes}</p>
+            ) : (
+              <p className="text-sm text-muted italic">Admin tidak menuliskan catatan. Hubungi Admin/konsumen bila perlu.</p>
+            )}
+          </div>
+
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted mb-1.5">Spesifikasi ({row.items.length} item)</p>
+            {row.items.length === 0 ? (
+              <p className="text-sm text-muted italic">Tidak ada item tercatat.</p>
+            ) : (
+              <ul className="space-y-2">
+                {row.items.map((it, i) => (
+                  <li key={i} className="rounded-xl border border-border bg-elevated/40 p-3">
+                    <p className="text-sm font-semibold text-primary">{it.product}</p>
+                    {it.description && <p className="text-xs text-muted mt-0.5">{it.description}</p>}
+                    <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+                      {it.size && <span>Ukuran: <span className="text-primary font-medium">{it.size}</span></span>}
+                      <span>Jumlah: <span className="text-primary font-medium">{it.quantity}</span></span>
+                      {it.material && <span>Bahan: <span className="text-primary font-medium">{it.material}</span></span>}
+                      {it.finishing && <span>Finishing: <span className="text-primary font-medium">{it.finishing}</span></span>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DesignerDashboardPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -213,6 +281,7 @@ export default function DesignerDashboardPage() {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [uploadFor, setUploadFor] = useState<Row | null>(null);
   const [revisionFor, setRevisionFor] = useState<Row | null>(null);
+  const [detailFor, setDetailFor] = useState<Row | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
 
@@ -255,6 +324,7 @@ export default function DesignerDashboardPage() {
     <div className="space-y-6">
       <NewOrderModal open={showOrderModal} onClose={() => setShowOrderModal(false)} onCreated={() => load()} />
       {uploadFor && <UploadModal row={uploadFor} onClose={() => setUploadFor(null)} onDone={() => { setUploadFor(null); load(); }} />}
+      {detailFor && <DesignDetailModal row={detailFor} onClose={() => setDetailFor(null)} />}
       {revisionFor && (
         <ReasonModal
           title="Minta Revisi Desain"
@@ -339,8 +409,25 @@ export default function DesignerDashboardPage() {
             <tbody className="divide-y divide-border">
               {filtered.map((r) => (
                 <tr key={r.orderId} className="hover:bg-elevated/50 transition-colors">
-                  <td className="px-4 py-3 font-mono text-accent-teal font-bold">{r.orderCode}</td>
-                  <td className="px-4 py-3 font-medium text-primary">{r.customerName}</td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => setDetailFor(r)}
+                      className="font-mono text-accent-teal font-bold hover:underline"
+                      title="Lihat brief & spesifikasi"
+                    >
+                      {r.orderCode}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="font-medium text-primary">{r.customerName}</span>
+                    {r.items[0] && (
+                      <span className="block text-[10px] text-muted truncate max-w-[180px]">
+                        {r.items[0].product}
+                        {r.items[0].size ? ` · ${r.items[0].size}` : ""} · {r.items[0].quantity} pcs
+                        {r.items.length > 1 ? ` +${r.items.length - 1}` : ""}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold",
                       r.method === "MAKLOON" ? "bg-accent-teal/10 text-accent-teal"
@@ -370,6 +457,12 @@ export default function DesignerDashboardPage() {
                   <td className="px-4 py-3 font-mono text-muted">{fmtDeadline(r.deadline)}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setDetailFor(r)}
+                        className="px-2.5 py-1 rounded-lg bg-elevated text-muted font-bold hover:text-primary transition-all flex items-center gap-1"
+                      >
+                        <FileText className="h-3 w-3" /> Detail
+                      </button>
                       <button
                         onClick={() => setUploadFor(r)}
                         disabled={busy}

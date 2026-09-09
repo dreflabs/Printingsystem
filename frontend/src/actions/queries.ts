@@ -141,7 +141,19 @@ export async function getDesignQueue() {
       orderBy: { updated_at: "desc" },
       include: {
         designer: { select: { name: true } },
-        order: { select: { order_code: true, status: true, deadline: true, customer: { select: { name: true } } } },
+        order: {
+          select: {
+            order_code: true, status: true, deadline: true, notes: true,
+            customer: { select: { name: true, phone: true } },
+            items: {
+              select: {
+                description: true, size: true, quantity: true, finishing: true,
+                product: { select: { name: true } },
+                material: { select: { name: true } },
+              },
+            },
+          },
+        },
         versions: { orderBy: { version_no: "desc" }, take: 1 },
       },
     });
@@ -152,6 +164,7 @@ export async function getDesignQueue() {
         orderCode: d.order.order_code,
         orderStatus: d.order.status,
         customerName: d.order.customer?.name ?? "-",
+        customerPhone: d.order.customer?.phone ?? null,
         designer: d.designer.name,
         method: d.approval_method,
         status: d.status,
@@ -161,6 +174,16 @@ export async function getDesignQueue() {
         latestFileName: d.versions[0]?.file_name ?? null,
         latestFileUrl: d.versions[0]?.file_path ? `/api/design/${d.versions[0]!.id}` : null,
         deadline: d.order.deadline,
+        // Brief & spesifikasi dari Admin — supaya Designer tahu yang harus dikerjakan.
+        notes: d.order.notes ?? null,
+        items: d.order.items.map((it) => ({
+          product: it.product?.name ?? it.description ?? "Item",
+          description: it.description ?? null,
+          size: it.size ?? null,
+          quantity: it.quantity,
+          material: it.material?.name ?? null,
+          finishing: it.finishing ?? null,
+        })),
       }))
     );
   } catch (e) {

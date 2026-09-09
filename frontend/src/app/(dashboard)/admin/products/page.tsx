@@ -32,7 +32,6 @@ function RetailModal({
 }: {
   editing: Retail | null; categories: string[]; onClose: () => void; onSaved: () => void;
 }) {
-  const listId = useId();
   const [f, setF] = useState({
     sku: editing?.sku ?? "",
     name: editing?.name ?? "",
@@ -74,8 +73,7 @@ function RetailModal({
       <Grid2>
         <Field label="SKU *"><input className={inp} value={f.sku} onChange={(e) => set("sku", e.target.value)} placeholder="P-KRT-001" /></Field>
         <Field label="Kategori">
-          <input list={listId} className={inp} value={f.category} onChange={(e) => set("category", e.target.value)} placeholder="Ketik / pilih — mis. Stiker" />
-          <datalist id={listId}>{categories.map((c) => <option key={c} value={c} />)}</datalist>
+          <input className={inp} value={f.category} onChange={(e) => set("category", e.target.value)} placeholder="Ketik bebas — mis. Stiker" />
         </Field>
       </Grid2>
       <Field label="Nama Produk *"><input className={inp} value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Nama lengkap produk" /></Field>
@@ -100,7 +98,6 @@ function PrintingModal({
 }: {
   editing: Printing | null; materials: MatOpt[]; machines: Machine[]; categories: string[]; onClose: () => void; onSaved: () => void;
 }) {
-  const catListId = useId();
   const [name, setName] = useState(editing?.name ?? "");
   const [category, setCategory] = useState(editing?.category ?? "");
   const [unit, setUnit] = useState(editing?.unit ?? "M2");
@@ -135,8 +132,7 @@ function PrintingModal({
       {err && <Err msg={err} />}
       <Field label="Nama Produk *"><input className={inp} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Spanduk Outdoor" /></Field>
       <Field label="Kategori">
-        <input list={catListId} className={inp} value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Ketik / pilih — mis. STIKER" />
-        <datalist id={catListId}>{categories.map((c) => <option key={c} value={c} />)}</datalist>
+        <input className={inp} value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Ketik bebas — mis. STIKER" />
       </Field>
       <Grid2>
         <Field label="Satuan Harga">
@@ -207,14 +203,10 @@ function MachineModal({
         <Field label="Jenis / Kategori (opsional)">
           <input
             className={inp}
-            list="machine-cat-suggest"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             placeholder="ketik bebas — mis. Eco Solvent, UV Flatbed, DTF"
           />
-          <datalist id="machine-cat-suggest">
-            {suggestions.map((c) => <option key={c} value={c} />)}
-          </datalist>
         </Field>
         <Field label="Status">
           <select className={inp} value={status} onChange={(e) => setStatus(e.target.value)}>

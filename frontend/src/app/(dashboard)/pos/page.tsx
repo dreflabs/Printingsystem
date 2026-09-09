@@ -8,8 +8,6 @@ import { cn } from "@/lib/utils";
 import { ConfirmDialog, useToast } from "@/components/ui";
 import { getPosData, processRetailOrder, type RetailCartLine } from "@/actions/pos";
 
-const CATEGORIES = ["Semua", "Kertas", "Tinta", "Alat Tulis", "Merchandise", "Lainnya"];
-
 function ReceiptModal({ open, transactionData, onClose }: { open: boolean, transactionData: any, onClose: () => void }) {
   const { toast } = useToast();
   if (!open || !transactionData) return null;
@@ -244,6 +242,8 @@ export default function PosPage() {
     id: p.id, name: p.name, price: p.price, stock: p.stock, category: p.category
   }));
 
+  const dynamicCategories = ["Semua", ...Array.from(new Set(allProducts.map(p => p.category).filter(Boolean)))];
+
   const filteredProducts = allProducts.filter(p => {
     const matchCategory = activeCategory === "Semua" || p.category === activeCategory;
     const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -426,7 +426,7 @@ export default function PosPage() {
 
         {/* Categories */}
         <div className="px-4 py-3 bg-elevated border-b border-border overflow-x-auto shrink-0 flex gap-2 no-scrollbar">
-          {CATEGORIES.map(cat => (
+          {dynamicCategories.map(cat => (
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}

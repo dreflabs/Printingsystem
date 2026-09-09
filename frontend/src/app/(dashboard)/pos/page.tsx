@@ -6,7 +6,7 @@ import { PosProductCard, Product } from "@/components/pos/PosProductCard";
 import { PosCartItem, CartItemType } from "@/components/pos/PosCartItem";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog, useToast } from "@/components/ui";
-import { getPosData, processRetailOrder, type RetailCartLine } from "@/actions/pos";
+import { getPosData, processRetailOrder, voidRetailOrder, type RetailCartLine } from "@/actions/pos";
 import { getRetailHistory } from "@/actions/queries";
 
 function ReceiptModal({ open, transactionData, onClose }: { open: boolean, transactionData: any, onClose: () => void }) {
@@ -218,6 +218,10 @@ export default function PosPage() {
   const [history, setHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  
+  const [voidOrder, setVoidOrder] = useState<any | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [voidSubmitting, setVoidSubmitting] = useState(false);
 
   async function loadPosData() {
     const res = await getPosData();
@@ -236,14 +240,15 @@ export default function PosPage() {
     loadPosData();
   }, []);
 
+  async function fetchHistory() {
+    setLoadingHistory(true);
+    const res = await getRetailHistory(50);
+    if (res.success) setHistory(res.data);
+    setLoadingHistory(false);
+  }
+
   useEffect(() => {
-    if (activeTab === "HISTORY") {
-      setLoadingHistory(true);
-      getRetailHistory(50).then((res) => {
-        if (res.success) setHistory(res.data);
-        setLoadingHistory(false);
-      });
-    }
+    if (activeTab === "HISTORY") fetchHistory();
   }, [activeTab]);
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
@@ -374,7 +379,7 @@ export default function PosPage() {
         {[
           { id: "KASIR", label: "Kasir POS", icon: Receipt },
           { id: "HISTORY", label: "Riwayat Transaksi", icon: ClipboardList },
-          { id: "STOCK", label: "Manajemen Stok", icon: Package },
+          { id: "STOCK", label: "Informasi Stok", icon: Package },
         ].map(tab => (
           <button
             key={tab.id}
@@ -405,6 +410,54 @@ export default function PosPage() {
         onClose={() => setShowPaymentModal(false)}
         onSuccess={handleCheckoutSuccess}
       />
+
+      {/* Void Modal */}
+      {voidOrder && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={() => setVoidOrder(null)} />
+          <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
+            <h3 className="text-lg font-bold text-status-red flex items-center gap-2">
+              ⚠️ Batalkan Transaksi
+            </h3>
+            <p className="text-sm text-muted">
+              Anda yakin ingin membatalkan transaksi <strong className="text-primary">{voidOrder.orderCode}</strong>? Stok akan dikembalikan dan pembayaran akan direfund. Tindakan ini tidak bisa dibatalkan.
+            </p>
+            <div>
+              <label className="text-xs text-muted font-bold block mb-1">Alasan Pembatalan (Wajib)</label>
+              <textarea
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+                placeholder="Ketikan alasan minimal 5 karakter..."
+                className="w-full rounded-xl bg-background border border-border p-3 text-sm outline-none focus:border-status-red"
+                rows={3}
+              />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button disabled={voidSubmitting} onClick={() => setVoidOrder(null)} className="flex-1 py-2 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary transition-colors cursor-pointer disabled:opacity-50">Batal</button>
+              <button 
+                disabled={voidSubmitting || voidReason.trim().length < 5} 
+                onClick={async () => {
+                  setVoidSubmitting(true);
+                  const res = await voidRetailOrder(voidOrder.id, { reason: voidReason });
+                  setVoidSubmitting(false);
+                  if (!res.success) {
+                    toast({ type: "error", title: "Gagal", message: res.error });
+                  } else {
+                    toast({ type: "success", title: "Transaksi Dibatalkan", message: "Stok telah dikembalikan." });
+                    setVoidOrder(null);
+                    setVoidReason("");
+                    fetchHistory();
+                    loadPosData();
+                  }
+                }} 
+                className="flex-[2] py-2 rounded-xl bg-status-red hover:brightness-110 text-white text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {voidSubmitting ? "Memproses..." : "Ya, Batalkan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loadError && (
         <div className="shrink-0 rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-3 text-sm text-status-red">
@@ -567,12 +620,13 @@ export default function PosPage() {
         <div className="flex-1 bg-card border border-border rounded-2xl p-6 shadow-lg overflow-y-auto">
           <h2 className="text-xl font-bold text-primary mb-4 flex items-center gap-2"><ClipboardList className="h-5 w-5 text-accent-teal"/> Riwayat Transaksi Retail</h2>
           <div className="bg-elevated rounded-xl border border-border overflow-hidden">
-             <div className="grid grid-cols-5 text-xs font-bold text-muted p-4 border-b border-border bg-background">
+             <div className="grid grid-cols-6 text-xs font-bold text-muted p-4 border-b border-border bg-background">
                <div>WAKTU</div>
                <div>NO. REF</div>
                <div>PELANGGAN</div>
                <div>METODE</div>
                <div className="text-right">TOTAL</div>
+               <div className="text-right pr-2">AKSI</div>
              </div>
              {loadingHistory ? (
                <div className="p-8 text-center text-muted text-sm">Memuat riwayat...</div>
@@ -581,12 +635,20 @@ export default function PosPage() {
              ) : (
                <div className="divide-y divide-border">
                  {history.map((h) => (
-                   <div key={h.id} className="grid grid-cols-5 text-sm p-4 hover:bg-elevated transition-colors items-center">
+                   <div key={h.id} className="grid grid-cols-6 text-sm p-4 hover:bg-elevated transition-colors items-center group">
                      <div className="text-muted">{new Date(h.createdAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}</div>
                      <div className="font-mono text-primary font-bold">{h.orderCode}</div>
                      <div className="truncate pr-4">{h.customerName}</div>
                      <div><span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-muted/10">{h.method}</span></div>
                      <div className="text-right font-mono font-bold text-status-yellow-text">{formatRupiah(h.total)}</div>
+                     <div className="text-right flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                       <button onClick={() => window.open(`/print/nota/${encodeURIComponent(h.orderCode)}`, "_blank")} className="px-2 py-1 bg-accent-teal/10 text-accent-teal rounded hover:bg-accent-teal hover:text-white transition-colors cursor-pointer text-xs font-bold" title="Cetak Nota">
+                         Cetak
+                       </button>
+                       <button onClick={() => setVoidOrder(h)} className="px-2 py-1 bg-status-red/10 text-status-red rounded hover:bg-status-red hover:text-white transition-colors cursor-pointer text-xs font-bold" title="Batalkan Transaksi">
+                         Void
+                       </button>
+                     </div>
                    </div>
                  ))}
                </div>
@@ -597,7 +659,7 @@ export default function PosPage() {
 
       {activeTab === "STOCK" && (
         <div className="flex-1 bg-card border border-border rounded-2xl p-6 shadow-lg overflow-y-auto">
-          <h2 className="text-xl font-bold text-primary mb-4 flex items-center gap-2"><Package className="h-5 w-5 text-status-yellow-text"/> Manajemen Stok Retail</h2>
+          <h2 className="text-xl font-bold text-primary mb-4 flex items-center gap-2"><Package className="h-5 w-5 text-status-yellow-text"/> Informasi Stok Retail</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {retailProducts.map(p => (
               <div key={p.id} className="bg-elevated p-4 rounded-xl border border-border flex items-center justify-between">

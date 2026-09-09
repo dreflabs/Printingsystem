@@ -4,10 +4,26 @@ import * as React from "react";
 import Link from "next/link";
 import { BookOpen, ChevronDown, CheckCircle2, Circle, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { WorkspaceMode } from "@/lib/workspace-mode";
 
 export type GuideRole = "owner" | "admin" | "designer_sales" | "operator" | "gudang";
 
 type Step = { title: string; body: React.ReactNode };
+
+/**
+ * Panduan mode SOLO: satu alur linear "1 order dari terima sampai serah",
+ * bukan 5 panduan per-peran. Owner yang jalan sendiri memikirkan perjalanan
+ * order, bukan struktur jabatan.
+ */
+export const SOLO_FLOW_STEPS: Step[] = [
+  { title: "Terima order", body: <>Menu <GuideLink href="/admin">Order</GuideLink> → <b>+ Order Baru</b>: pilih/entri pelanggan, tambah item cetak dari katalog, isi ukuran &amp; jumlah, tentukan deadline.</> },
+  { title: "Desain & ACC", body: "Unggah file desain, tangani revisi bila ada, lalu ACC saat final. Order lanjut ke pembayaran / produksi." },
+  { title: "Terima DP", body: "Catat DP di detail order → order jadi CONFIRMED dan otomatis masuk antrian produksi (produk cetak wajib punya Mesin Default)." },
+  { title: "Cetak", body: <>Menu <GuideLink href="/scan">Scan QR</GuideLink> atau Produksi: mulai job (SCAN 1), lalu isi jumlah aktual &amp; pemakaian bahan saat selesai (SCAN 2).</> },
+  { title: "QC & finishing", body: "Gudang & Finishing: periksa hasil cetak (SCAN 3), kerjakan laminasi/potong/jahit, tandai selesai dengan jumlah akhir." },
+  { title: "Simpan ke rak", body: "Scan job + scan lokasi rak (SCAN 6–7). Pelanggan otomatis dapat notifikasi barang siap diambil." },
+  { title: "Serahkan", body: <>Saat pelanggan datang: terima pelunasan lalu serah terima di <GuideLink href="/pos">Kasir</GuideLink> (SCAN 10).</> },
+];
 
 export const ROLE_LABEL: Record<GuideRole, string> = {
   owner: "Owner",
@@ -80,8 +96,17 @@ const CHECKLIST_META: Record<string, { label: string; href: string; hint: string
 
 // ── Component ───────────────────────────────────────────────────────────────
 
-export function RoleGuide({ role, checklist }: { role: GuideRole; checklist?: Checklist | null }) {
-  const storageKey = `pp_guide_${role}`;
+export function RoleGuide({
+  role,
+  checklist,
+  workspaceMode,
+}: {
+  role: GuideRole;
+  checklist?: Checklist | null;
+  workspaceMode?: WorkspaceMode;
+}) {
+  const soloFlow = role === "owner" && workspaceMode === "SOLO";
+  const storageKey = `pp_guide_${soloFlow ? "solo_flow" : role}`;
   // Preferensi lipat per-peran. Server & render hidrasi pertama selalu `null`
   // (netral) supaya tidak ada mismatch; nilai asli dari localStorage dipasang
   // setelahnya via ref + state di bawah.
@@ -112,7 +137,8 @@ export function RoleGuide({ role, checklist }: { role: GuideRole; checklist?: Ch
     }
   }
 
-  const steps = GUIDE_STEPS[role];
+  const steps = soloFlow ? SOLO_FLOW_STEPS : GUIDE_STEPS[role];
+  const guideTitle = soloFlow ? "Alur 1 Order" : ROLE_LABEL[role];
   const showChecklist = role === "owner" && checklist && !checklist.allDone;
 
   return (
@@ -126,7 +152,7 @@ export function RoleGuide({ role, checklist }: { role: GuideRole; checklist?: Ch
           <BookOpen className="h-4 w-4 text-accent-teal" />
         </span>
         <span className="flex-1">
-          <span className="text-sm font-bold text-primary">Panduan — {ROLE_LABEL[role]}</span>
+          <span className="text-sm font-bold text-primary">Panduan — {guideTitle}</span>
           {showChecklist && (
             <span className="ml-2 text-[11px] font-bold text-accent-teal">
               Penyiapan {checklist!.doneCount}/{checklist!.total}
@@ -178,7 +204,9 @@ export function RoleGuide({ role, checklist }: { role: GuideRole; checklist?: Ch
 
           <div>
             {showChecklist && (
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted mt-3 mb-2">Alur harian</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted mt-3 mb-2">
+                {soloFlow ? "Alur 1 order (terima → serah)" : "Alur harian"}
+              </p>
             )}
             <ol className="space-y-2.5 mt-3">
               {steps.map((s, i) => (

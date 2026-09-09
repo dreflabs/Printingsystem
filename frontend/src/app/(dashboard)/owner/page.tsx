@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { getOwnerDashboard } from "@/actions/queries";
 import { getSetupChecklist } from "@/actions/onboarding";
 import { getSessionUser } from "@/actions/session";
+import type { WorkspaceMode } from "@/lib/workspace-mode";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { SoloNextSteps } from "@/components/dashboard/SoloNextSteps";
 import { WorkspaceModeNudge } from "@/components/dashboard/WorkspaceModeNudge";
@@ -117,7 +118,15 @@ export default function OwnerPage() {
   const [checklist, setChecklist] = useState<
     Extract<Awaited<ReturnType<typeof getSetupChecklist>>, { success: true }>["data"] | null
   >(null);
-  const [soloOwner, setSoloOwner] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("TEAM_FULL");
+  const [selfAttendance, setSelfAttendance] = useState(false);
+
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelfAttendance(localStorage.getItem("pp_owner_selfattendance") === "1");
+    } catch { /* ignore */ }
+  }, []);
 
   const load = useCallback(async () => {
     const res = await getOwnerDashboard();
@@ -125,7 +134,7 @@ export default function OwnerPage() {
     setError(null);
     setD(res.data);
     getSetupChecklist().then((r) => { if (r.success) setChecklist(r.data); });
-    getSessionUser().then((r) => { if (r.ok) setSoloOwner((r.user.roles?.length ?? 1) > 1); });
+    getSessionUser().then((r) => { if (r.ok) setWorkspaceMode(r.user.workspaceMode); });
     try {
       const r = await fetch("/api/audit-logs?limit=10");
       const j = await r.json();
@@ -275,9 +284,30 @@ export default function OwnerPage() {
       </div>
 
       <WorkspaceModeNudge />
-      <RoleGuide role="owner" checklist={checklist} />
+      <RoleGuide role="owner" checklist={checklist} workspaceMode={workspaceMode} />
       <SoloNextSteps />
-      {soloOwner && <AbsenCard />}
+
+      {workspaceMode === "SOLO" && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-2.5">
+          <span className="text-xs text-muted">Catat absensi Anda sendiri (jam kerja, istirahat)?</span>
+          <button
+            onClick={() => {
+              const next = !selfAttendance;
+              setSelfAttendance(next);
+              try { localStorage.setItem("pp_owner_selfattendance", next ? "1" : "0"); } catch { /* ignore */ }
+            }}
+            className={cn(
+              "shrink-0 h-7 px-3 rounded-lg text-xs font-bold transition-colors",
+              selfAttendance
+                ? "bg-accent-teal/10 text-accent-teal hover:bg-accent-teal/20"
+                : "bg-elevated text-muted hover:text-primary"
+            )}
+          >
+            {selfAttendance ? "Aktif — sembunyikan" : "Aktifkan"}
+          </button>
+        </div>
+      )}
+      {workspaceMode === "SOLO" && selfAttendance && <AbsenCard />}
 
       {error && <div className="rounded-xl border border-status-red/20 bg-status-red/10 px-4 py-3 text-xs font-bold text-status-red">{error}</div>}
 

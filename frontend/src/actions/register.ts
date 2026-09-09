@@ -178,11 +178,14 @@ export async function registerTenant(
         },
       });
 
-      // Solo Mode / UMKM: percetakan yang baru daftar biasanya dijalankan
-      // sendiri. Owner diberi SEMUA peran operasional sebagai extra_roles supaya
-      // bisa menyelesaikan alur (kasir → desain → produksi → QC → finishing →
-      // rak → serah) tanpa membuat akun kedua. Owner tinggal mencabut peran dari
-      // dirinya di "Pegawai & Akses" begitu mulai merekrut.
+      // Owner diberi SEMUA peran operasional sebagai extra_roles supaya bisa
+      // menyelesaikan alur (kasir → desain → produksi → QC → finishing → rak →
+      // serah) sendiri tanpa akun kedua — berlaku untuk SEMUA workspace_mode,
+      // termasuk TEAM_FULL: saat baru daftar belum ada satu pun pegawai, jadi
+      // Owner tetap butuh akses penuh untuk menyiapkan & menjalankan toko.
+      // `workspace_mode` hanya mengubah TAMPILAN (menu + beranda). Pencabutan
+      // peran Owner yang sudah ada penggantinya dituntun terpisah begitu Owner
+      // menambah pegawai (rencana Tahap 5), dan selalu bisa dibatalkan.
       await tx.userRole.createMany({
         data: DEFAULT_ROLES.filter((r) => r !== "owner").map((name) => ({
           user_id: owner.id,

@@ -12,6 +12,7 @@ import {
   Phone,
   ShieldCheck,
   User,
+  Users,
   ArrowLeft,
   Loader2,
   Lock,
@@ -39,8 +40,16 @@ function InputField({ label, icon: Icon, ...props }: any) {
 
 const STEPS = [
   { s: 1, title: "Akun Owner", desc: "Informasi login Anda" },
-  { s: 2, title: "Profil Percetakan", desc: "Data & subdomain" },
+  { s: 2, title: "Profil Percetakan", desc: "Data, subdomain & ukuran tim" },
   { s: 3, title: "Selesai", desc: "Masuk dashboard" },
+];
+
+type TeamSize = "solo" | "small" | "full";
+
+const TEAM_SIZE_OPTIONS: { value: TeamSize; label: string; hint: string; icon: typeof User }[] = [
+  { value: "solo", label: "Saya sendiri", hint: "1 orang — semua tahap dikerjakan sendiri", icon: User },
+  { value: "small", label: "Tim kecil", hint: "2–5 orang, tugas kadang tumpang tindih", icon: Users },
+  { value: "full", label: "Tim per divisi", hint: "6+ orang, tiap bagian ada penanggung jawabnya", icon: Building2 },
 ];
 
 export default function RegisterPage() {
@@ -68,6 +77,7 @@ function RegisterWizard() {
     shopName: "",
     subdomain: "",
     address: "",
+    teamSize: "solo" as TeamSize,
   });
 
   const pw = formData.password;
@@ -104,6 +114,7 @@ function RegisterWizard() {
       subdomain: formData.subdomain,
       address: formData.address || undefined,
       plan,
+      teamSize: formData.teamSize,
     });
     if (!res.success) {
       setIsLoading(false);
@@ -370,6 +381,52 @@ function RegisterWizard() {
                         onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                         className="w-full bg-base border border-border rounded-xl p-3 text-sm text-primary placeholder:text-muted/50 focus:border-accent-teal outline-none transition-all resize-none"
                       />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-semibold text-muted">Berapa orang yang menjalankan percetakan ini?</label>
+                      <div className="grid gap-2">
+                        {TEAM_SIZE_OPTIONS.map((opt) => {
+                          const selected = formData.teamSize === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setFormData({ ...formData, teamSize: opt.value })}
+                              className={cn(
+                                "flex items-start gap-3 rounded-xl border p-3 text-left transition-all",
+                                selected
+                                  ? "border-accent-teal bg-accent-teal/5"
+                                  : "border-border hover:border-accent-teal/40"
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  "mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                                  selected ? "bg-accent-teal/15 text-accent-teal" : "bg-elevated text-muted"
+                                )}
+                              >
+                                <opt.icon className="h-4 w-4" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className={cn("block text-sm font-bold", selected ? "text-primary" : "text-muted")}>
+                                  {opt.label}
+                                </span>
+                                <span className="block text-[11px] text-muted mt-0.5 leading-relaxed">{opt.hint}</span>
+                              </span>
+                              <span
+                                className={cn(
+                                  "mt-1 h-4 w-4 shrink-0 rounded-full border-2 transition-all",
+                                  selected ? "border-accent-teal bg-accent-teal" : "border-muted/40"
+                                )}
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-muted">
+                        Menentukan tampilan awal — menu &amp; beranda menyesuaikan. Bisa diubah kapan saja di Pengaturan.
+                      </p>
                     </div>
                   </div>
 

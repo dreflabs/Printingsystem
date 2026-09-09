@@ -77,10 +77,7 @@ function RetailModal({
         </Field>
       </Grid2>
       <Field label="Nama Produk *"><input className={inp} value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Nama lengkap produk" /></Field>
-      <Grid2>
-        <Field label="Harga Umum (Rp) *"><input className={inp} type="number" min={0} value={f.price} onChange={(e) => set("price", e.target.value)} placeholder="20000" /></Field>
-        <Field label="Harga Makloon (Rp)"><input className={inp} type="number" min={0} value={f.makloon} onChange={(e) => set("makloon", e.target.value)} placeholder="15000" /></Field>
-      </Grid2>
+      <Field label="Harga (Rp) *"><input className={inp} type="number" min={0} value={f.price} onChange={(e) => set("price", e.target.value)} placeholder="20000" /></Field>
       <Grid2>
         <Field label={editing ? "Stok (ubah lewat menu Gudang)" : "Stok Awal"}>
           <input className={inp} type="number" min={0} value={f.stock} onChange={(e) => set("stock", e.target.value)} placeholder="0" disabled={!!editing} />

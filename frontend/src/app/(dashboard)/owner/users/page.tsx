@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Wallet, Trash2, X, Pencil } from "lucide-react";
+import { Users, UserPlus, KeyRound, UserX, UserCheck, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Wallet, Trash2, X, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserFormModal, CredentialRevealDialog } from "@/components/owner/UserFormModal";
 import { ConfirmDialog } from "@/components/ui";
@@ -183,11 +183,11 @@ export default function OwnerUsersPage() {
   );
 
   const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
-    owner:          { label: "Owner",             cls: "bg-accent-teal/10 text-accent-teal border-accent-teal/20" },
-    admin:          { label: "Admin",             cls: "bg-accent-teal/10 text-accent-teal border-accent-teal/20" },
-    designer_sales: { label: "Designer/Setting",  cls: "bg-status-yellow/10 text-status-yellow-text border-status-yellow/20" },
-    operator:       { label: "Operator Cetak",    cls: "bg-status-blue/10 text-status-blue border-status-blue/20" },
-    gudang:         { label: "Finishing & Gudang", cls: "bg-status-green/10 text-status-green border-status-green/20" },
+    owner:          { label: "Owner",             cls: "bg-accent-teal/10 text-accent-teal" },
+    admin:          { label: "Admin",             cls: "bg-accent-teal/10 text-accent-teal" },
+    designer_sales: { label: "Designer/Setting",  cls: "bg-status-yellow/10 text-status-yellow-text" },
+    operator:       { label: "Operator Cetak",    cls: "bg-status-blue/10 text-status-blue" },
+    gudang:         { label: "Finishing & Gudang", cls: "bg-status-green/10 text-status-green" },
   };
 
   /** Returns all role names for a user (primary + extra) */
@@ -279,28 +279,19 @@ export default function OwnerUsersPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap items-center gap-1">
-                        {getUserRoles(user).map((roleName) => {
-                          const badge = ROLE_BADGE[roleName] ?? { label: roleName, cls: "bg-base text-muted border-border" };
+                        {getUserRoles(user).slice(0, 2).map((roleName) => {
+                          const badge = ROLE_BADGE[roleName] ?? { label: roleName, cls: "bg-base text-muted" };
                           return (
-                            <span key={roleName} className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border", badge.cls)}>
+                            <span key={roleName} className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold", badge.cls)}>
                               {badge.label}
                             </span>
                           );
                         })}
-                        <button
-                          onClick={() =>
-                            setRoleEditFor({
-                              id: user.id,
-                              name: user.name,
-                              primary: user.role.name,
-                              roles: getUserRoles(user),
-                            })
-                          }
-                          className="ml-1 inline-flex items-center gap-1 text-[10px] font-bold text-muted hover:text-accent-teal"
-                          title="Ubah peran"
-                        >
-                          <Pencil className="h-3 w-3" /> Ubah
-                        </button>
+                        {getUserRoles(user).length > 2 && (
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-elevated text-muted cursor-help" title={getUserRoles(user).slice(2).map(r => ROLE_BADGE[r]?.label || r).join(', ')}>
+                            +{getUserRoles(user).length - 2} Lainnya
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -349,46 +340,63 @@ export default function OwnerUsersPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {user.role.name !== "owner" && (
-                        <div className="flex items-center justify-end gap-2">
-                          {isLocked(user) && (
-                            <button
-                              onClick={() => handleUnlock(user.id, user.name)}
-                              className="p-2 text-status-red bg-status-red/10 hover:text-status-green hover:bg-status-green/10 rounded-lg transition-colors"
-                              title="Buka Kunci Akun"
-                            >
-                              <Unlock className="h-4 w-4" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleResetPassword(user)}
-                            className="p-2 text-muted hover:text-status-yellow-text hover:bg-status-yellow/10 rounded-lg transition-colors group relative"
-                            title="Reset Password"
-                          >
-                            <KeyRound className="h-4 w-4" />
-                          </button>
-                          
-                          <button
-                            onClick={() => handleToggleStatus(user.id, user.active, user.role.name)}
-                            className={cn(
-                              "p-2 rounded-lg transition-colors group relative",
-                              user.active
-                                ? "text-muted hover:text-status-red hover:bg-status-red/10"
-                                : "text-status-red bg-status-red/10 hover:text-status-green hover:bg-status-green/10"
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() =>
+                            setRoleEditFor({
+                              id: user.id,
+                              name: user.name,
+                              primary: user.role.name,
+                              roles: getUserRoles(user),
+                            })
+                          }
+                          className="p-2 text-muted hover:text-accent-teal hover:bg-accent-teal/10 rounded-lg transition-colors group relative"
+                          title="Ubah Peran"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        
+                        {user.role.name !== "owner" && (
+                          <>
+                            {isLocked(user) && (
+                              <button
+                                onClick={() => handleUnlock(user.id, user.name)}
+                                className="p-2 text-status-red bg-status-red/10 hover:text-status-green hover:bg-status-green/10 rounded-lg transition-colors"
+                                title="Buka Kunci Akun"
+                              >
+                                <Unlock className="h-4 w-4" />
+                              </button>
                             )}
-                            title={user.active ? "Nonaktifkan Akun" : "Aktifkan Akun"}
-                          >
-                            {user.active ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                          </button>
-                          <button
-                            onClick={() => setDeleteFor({ id: user.id, name: user.name })}
-                            className="p-2 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors"
-                            title="Hapus Pegawai"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
+                            <button
+                              onClick={() => handleResetPassword(user)}
+                              className="p-2 text-muted hover:text-status-yellow-text hover:bg-status-yellow/10 rounded-lg transition-colors group relative"
+                              title="Reset Password"
+                            >
+                              <KeyRound className="h-4 w-4" />
+                            </button>
+                            
+                            <button
+                              onClick={() => handleToggleStatus(user.id, user.active, user.role.name)}
+                              className={cn(
+                                "p-2 rounded-lg transition-colors group relative",
+                                user.active
+                                  ? "text-muted hover:text-status-red hover:bg-status-red/10"
+                                  : "text-status-red bg-status-red/10 hover:text-status-green hover:bg-status-green/10"
+                              )}
+                              title={user.active ? "Nonaktifkan Akun" : "Aktifkan Akun"}
+                            >
+                              {user.active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                            </button>
+                            <button
+                              onClick={() => setDeleteFor({ id: user.id, name: user.name })}
+                              className="p-2 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors"
+                              title="Hapus Pegawai"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -37,6 +37,17 @@ const INITIAL_FORM: OrderForm = {
   totalPrice: "", dpAmount: "", dpMethod: "", discountRp: 0, discountPct: 0, discountReason: "",
 };
 
+function getDefaultDeadline(): string {
+  const d = new Date();
+  d.setHours(d.getHours() + 24);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+}
+
 type Opt = { value: string; label: string };
 type ProductOpt = Opt & { category: string; unit: string; basePrice: number | null };
 type CustomerRow = { id: string; name: string; phone: string | null; type: string; defaultDiscountPct: number };
@@ -242,7 +253,7 @@ function Step2({
           </datalist>
         </div>
       </div>
-      <Input label="Deadline" type="date" value={form.deadline} onChange={(e) => onChange("deadline", e.target.value)} />
+      <Input label="Deadline" type="datetime-local" value={form.deadline} onChange={(e) => onChange("deadline", e.target.value)} />
       <Textarea
         label="Catatan Tambahan"
         placeholder="Instruksi khusus, warna pilihan, atau catatan penting lainnya..."
@@ -386,6 +397,13 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
 
   useEffect(() => {
     if (!open) return;
+    
+    // Set default deadline to +24 hours if it's completely empty
+    setForm((prev) => {
+      if (!prev.deadline) return { ...prev, deadline: getDefaultDeadline() };
+      return prev;
+    });
+
     let cancelled = false;
     getOrderFormData().then((res) => {
       if (cancelled || !res.success) {
@@ -503,7 +521,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
       }
 
       onCreated?.(res.data.orderCode);
-      setForm(INITIAL_FORM);
+      setForm({ ...INITIAL_FORM, deadline: getDefaultDeadline() });
       setStep(0);
       onClose();
     } finally {

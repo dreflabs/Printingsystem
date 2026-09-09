@@ -9,7 +9,15 @@ import { ConfirmDialog, useToast } from "@/components/ui";
 import { getPosData, processRetailOrder, voidRetailOrder, type RetailCartLine } from "@/actions/pos";
 import { getRetailHistory } from "@/actions/queries";
 
-function ReceiptModal({ open, transactionData, onClose }: { open: boolean, transactionData: any, onClose: () => void }) {
+export interface ReceiptDataType {
+  total: number;
+  method: string;
+  cashGiven: number;
+  change: number;
+  orderCode: string;
+}
+
+function ReceiptModal({ open, transactionData, onClose }: { open: boolean, transactionData: ReceiptDataType | null, onClose: () => void }) {
   const { toast } = useToast();
   if (!open || !transactionData) return null;
   const formatRupiah = (amount: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
@@ -77,9 +85,11 @@ function PosPaymentModal({
   // Set default discount when modal opens
   useEffect(() => {
     if (open) {
-      setDiscountInput(defaultDiscount > 0 ? defaultDiscount.toString() : "");
-      setCashInput("");
-      setMethod("TUNAI");
+      setTimeout(() => {
+        setDiscountInput(defaultDiscount > 0 ? defaultDiscount.toString() : "");
+        setCashInput("");
+        setMethod("TUNAI");
+      }, 0);
     }
   }, [open, defaultDiscount]);
 
@@ -206,20 +216,21 @@ export default function PosPage() {
   const [cart, setCart] = useState<CartItemType[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [receiptData, setReceiptData] = useState<any>(null);
+  const [receiptData, setReceiptData] = useState<ReceiptDataType | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const { toast } = useToast();
 
   type RetailProductRow = { id: string; name: string; sku: string; category: string; price: number; stock: number };
   type CustomerRow = { id: string; name: string; type: string; defaultDiscountPct: number };
+  type RetailHistoryRow = { id: string; createdAt: Date; orderCode: string; customerName: string; method: string; total: number };
   const [retailProducts, setRetailProducts] = useState<RetailProductRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<RetailHistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   
-  const [voidOrder, setVoidOrder] = useState<any | null>(null);
+  const [voidOrder, setVoidOrder] = useState<RetailHistoryRow | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [voidSubmitting, setVoidSubmitting] = useState(false);
 
@@ -248,7 +259,9 @@ export default function PosPage() {
   }
 
   useEffect(() => {
-    if (activeTab === "HISTORY") fetchHistory();
+    if (activeTab === "HISTORY") {
+      setTimeout(() => fetchHistory(), 0);
+    }
   }, [activeTab]);
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId);

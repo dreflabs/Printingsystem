@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser, requireMutableActor } from "@/lib/actor";
+import { requireMutableActor } from "@/lib/actor";
 import { retryOnUnique } from "@/lib/retry";
 import { logAction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";

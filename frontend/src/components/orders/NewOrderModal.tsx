@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Check, ChevronRight, ChevronLeft, X, Package, FileText, CreditCard } from "lucide-react";
-import { Button, Input, Textarea, Select } from "@/components/ui";
+import { Check, ChevronRight, ChevronLeft, X, Package, FileText, CreditCard, Grid2x2 } from "lucide-react";
+import { Button, Input, Textarea, Select, Modal } from "@/components/ui";
+import { LayoutCalculator } from "@/components/tools/LayoutCalculator";
 import { cn } from "@/lib/utils";
 import { getOrderFormData, createPrintingOrder, type CreatePrintingOrderInput } from "@/actions/orders";
 import { addPayment } from "@/actions/orders";
@@ -224,6 +225,7 @@ function Step2({
   materials: Opt[];
   finishings: string[];
 }) {
+  const [calcOpen, setCalcOpen] = useState(false);
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-4">
@@ -231,6 +233,25 @@ function Step2({
         <Input label="Tinggi (cm)" type="number" placeholder="mis. 100" value={form.height} onChange={(e) => onChange("height", e.target.value)} />
         <Input label="Qty (pcs)" type="number" min="1" value={form.qty} onChange={(e) => onChange("qty", e.target.value)} />
       </div>
+
+      <button
+        type="button"
+        onClick={() => setCalcOpen(true)}
+        className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-teal hover:underline"
+      >
+        <Grid2x2 className="h-3.5 w-3.5" /> Kalkulator layout — potong/lembar &amp; jumlah lembar
+      </button>
+      <Modal open={calcOpen} onClose={() => setCalcOpen(false)} title="Kalkulator Layout" size="lg">
+        <LayoutCalculator
+          initialPieceW={form.width}
+          initialPieceH={form.height}
+          initialQty={form.qty}
+          onApply={(s) => {
+            onChange("notes", form.notes ? `${form.notes.trim()}\n${s}` : s);
+            setCalcOpen(false);
+          }}
+        />
+      </Modal>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Select
           label="Material / Bahan"

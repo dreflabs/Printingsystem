@@ -31,6 +31,23 @@ type Detail = Extract<Awaited<ReturnType<typeof getOrderDetail>>, { success: tru
 const fmtRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—");
 
+/** Progres mini per job produksi (antri → cetak → selesai → diambil). */
+function JobProgress({ status }: { status: string }) {
+  const step =
+    ["PRODUCTION_QUEUED", "PRODUCTION_ASSIGNED"].includes(status) ? 1 :
+    ["PRODUCTION_STARTED", "PRODUCTION_PAUSED"].includes(status) ? 2 :
+    status === "PRODUCTION_COMPLETE" ? 3 :
+    status === "PICKED_UP" ? 4 : 0;
+  if (status === "FAILED_REWORK") return <div className="h-1 rounded-full bg-status-red/50" />;
+  return (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4].map((n) => (
+        <div key={n} className={cn("h-1 flex-1 rounded-full", n <= step ? "bg-accent-teal" : "bg-border")} />
+      ))}
+    </div>
+  );
+}
+
 // ── Detail Modal ─────────────────────────────────────────────────────────────
 function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
   orderId: string; isOwner: boolean; onClose: () => void; onBayar: () => void; onChanged: () => void;
@@ -113,7 +130,12 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
                 <div className="border border-border rounded-xl divide-y divide-border/60 text-xs">
                   {d.items.map((it, i) => (
                     <div key={i} className="flex justify-between px-3 py-2">
-                      <span className="text-primary">{it.name} · {it.quantity} pcs {it.size ? `· ${it.size}` : ""}</span>
+                      <span className="text-primary">
+                        {it.name} · {it.quantity} pcs {it.size ? `· ${it.size}` : ""}
+                        {it.deadline && (
+                          <span className="ml-1 text-[10px] font-bold text-status-yellow-text">· ⏱ {fmtDate(it.deadline)}</span>
+                        )}
+                      </span>
                       <span className="font-mono text-muted">{fmtRp(it.totalPrice)}</span>
                     </div>
                   ))}
@@ -159,12 +181,22 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
 
               {d.productionJobs.length > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-primary mb-2">Job Produksi</p>
-                  <div className="border border-border rounded-xl divide-y divide-border/60 text-xs">
+                  <p className="text-xs font-bold text-primary mb-2">Progres Produksi per Item</p>
+                  <div className="border border-border rounded-xl divide-y divide-border/60">
                     {d.productionJobs.map((j) => (
-                      <div key={j.jobCode} className="flex justify-between px-3 py-2">
-                        <span className="font-mono text-accent-teal">{j.jobCode}</span>
-                        <span className="text-muted">{j.status} · {j.machine} · {j.operator} · {j.actualQty}/{j.plannedQty}</span>
+                      <div key={j.jobCode} className="px-3 py-2.5 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-xs text-accent-teal">{j.jobCode}</span>
+                          <StatusPill status={j.status} />
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-muted">
+                          <span>{j.machine} · {j.operator}</span>
+                          <span>
+                            {j.actualQty}/{j.plannedQty} pcs
+                            {j.deadline && <span className="font-bold text-status-yellow-text"> · ⏱ {fmtDate(j.deadline)}</span>}
+                          </span>
+                        </div>
+                        <JobProgress status={j.status} />
                       </div>
                     ))}
                   </div>

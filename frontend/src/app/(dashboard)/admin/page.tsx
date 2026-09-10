@@ -162,17 +162,7 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
                     {d.payments.map((p, i) => (
                       <div key={p.id ?? i} className="flex items-center justify-between px-3 py-2 gap-2">
                         <span className="text-muted truncate">{p.method} · {p.status} · {p.receivedBy}</span>
-                        <span className="flex items-center gap-2 shrink-0">
-                          <span className="font-mono text-primary">{fmtRp(p.amount)}</span>
-                          {p.id && p.amount > 0 && (
-                            <button
-                              onClick={() => window.open(`/print/kwitansi/${p.id}`, "_blank", "noopener")}
-                              className="text-[10px] font-bold text-accent-teal hover:underline"
-                            >
-                              Kwitansi
-                            </button>
-                          )}
-                        </span>
+                        <span className="font-mono text-primary shrink-0">{fmtRp(p.amount)}</span>
                       </div>
                     ))}
                   </div>
@@ -406,14 +396,14 @@ function PaymentModal({ order, onClose, onDone }: { order: OrderRow; onClose: ()
   const [reference, setReference] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [done, setDone] = useState<{ paymentId: string; balance: number; dpMet: boolean; fullyPaid: boolean } | null>(null);
+  const [done, setDone] = useState<{ balance: number; dpMet: boolean; fullyPaid: boolean } | null>(null);
 
   async function submit() {
     setBusy(true); setErr(null);
     const res = await addPayment(order.id, { amount: Number(amount), method, reference: reference.trim() || undefined });
     setBusy(false);
     if (!res.success) { setErr(res.error); return; }
-    setDone({ paymentId: res.data.paymentId, balance: res.data.balance, dpMet: res.data.dpMet, fullyPaid: res.data.fullyPaid });
+    setDone({ balance: res.data.balance, dpMet: res.data.dpMet, fullyPaid: res.data.fullyPaid });
   }
   const inp = "w-full h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal";
 
@@ -434,14 +424,8 @@ function PaymentModal({ order, onClose, onDone }: { order: OrderRow; onClose: ()
               {!done.fullyPaid && (done.dpMet ? " DP terpenuhi." : " DP belum terpenuhi.")}
             </div>
             <button
-              onClick={() => window.open(`/print/kwitansi/${done.paymentId}`, "_blank", "noopener")}
-              className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110"
-            >
-              Cetak Kwitansi
-            </button>
-            <button
               onClick={() => window.open(`/print/nota/${order.id}`, "_blank", "noopener")}
-              className="w-full h-11 rounded-xl bg-elevated border border-border text-sm font-bold text-primary hover:bg-elevated/70"
+              className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110"
             >
               Cetak Nota{done.fullyPaid ? "" : " / Bukti DP"}
             </button>

@@ -597,7 +597,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
           setError(`Order ${res.data.orderCode} dibuat, tapi pencatatan DP gagal: ${pay.error}`);
           return;
         }
-        window.open(`/print/kwitansi/${pay.data.paymentId}?noprint`, "_blank", "noopener");
+        window.open(`/print/nota/${res.data.orderId}?noprint`, "_blank", "noopener");
       }
 
       onCreated?.(res.data.orderCode);

@@ -249,7 +249,7 @@ export interface AddPaymentInput {
 }
 
 export interface AddPaymentResult {
-  /** id Payment yang baru dibuat — untuk cetak kwitansi */
+  /** id Payment yang baru dibuat */
   paymentId: string;
   paidAmount: number;
   balance: number;

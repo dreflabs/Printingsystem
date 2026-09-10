@@ -5,7 +5,7 @@ import {
   ScanLine, CheckCircle2, Timer, Layers, Pause, Play,
   ShieldAlert, FileWarning, FileDown, MoreVertical, Clock,
 } from "lucide-react";
-import { StatusPill, Modal, DropdownMenu, DropdownMenuItem } from "@/components/ui";
+import { StatusPill, Modal, DropdownMenu, DropdownMenuItem, InfoTip } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
@@ -330,13 +330,19 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
         <p className={fSection}>Hasil</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className={fLbl}>Jumlah jadi (pcs) *</label>
+            <label className={fLbl}>
+              Jumlah jadi (pcs) *
+              <InfoTip text="Potong bagus yang keluar dari mesin. Sudah diisi angka target — ubah kalau kenyataannya beda (mis. ada yang rusak)." />
+            </label>
             <input type="number" inputMode="numeric" className={fInp} value={actualQty} onChange={(e) => setActualQty(e.target.value)} />
             <p className="mt-1 text-[11px] text-muted">Target: {job.plannedQty} pcs</p>
           </div>
           {areaUnit && (
             <div>
-              <label className={fLbl}>Total {areaUnit} tercetak *</label>
+              <label className={fLbl}>
+                Total {areaUnit} tercetak *
+                <InfoTip text="Luas media yang benar-benar tercetak. Dihitung otomatis dari ukuran × jumlah — biasanya biarkan, ubah kalau ada tambahan area (mis. cetak ulang sebagian)." />
+              </label>
               <div className="relative">
                 <input
                   type="number" inputMode="decimal"
@@ -352,7 +358,10 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
           )}
         </div>
         <div>
-          <label className={fLbl}>Reprint saat proses <span className="font-normal text-muted">(pcs, opsional)</span></label>
+          <label className={fLbl}>
+            Reprint saat proses <span className="font-normal text-muted">(pcs, opsional)</span>
+            <InfoTip text="Potong yang dicetak ulang di tengah job. Hasil akhirnya tetap sama, tapi pemakaian bahan jadi lebih besar. Kosongkan / 0 kalau tidak ada." />
+          </label>
           <input type="number" inputMode="numeric" min="0" placeholder="0" className={fInp} value={reprint} onChange={(e) => setReprint(e.target.value)} />
           <p className="mt-1 text-[11px] text-muted">potong yang dicetak ulang di tengah job</p>
         </div>
@@ -360,7 +369,10 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
 
       {/* 2. Bahan */}
       <div className="space-y-2">
-        <p className={fSection}>Bahan dipakai</p>
+        <p className={cn(fSection, "flex items-center gap-1.5")}>
+          Bahan dipakai
+          <InfoTip text="Berapa banyak bahan HABIS untuk job ini (satuan di kanan kotak). ⚠️ Angka ini langsung memotong stok — isi sejujurnya, jangan asal." />
+        </p>
         {materials.length === 0 && (
           <p className="text-[11px] text-status-yellow-text">Belum ada master material — tambahkan di Katalog dulu.</p>
         )}
@@ -418,13 +430,16 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
 
       {/* 3. Gagal / sisa */}
       <div className="space-y-2">
-        <button
-          type="button"
-          onClick={() => setShowWaste((v) => !v)}
-          className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-muted hover:text-primary"
-        >
-          {showWaste ? "−" : "+"} Ada potong gagal / sisa bahan?
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowWaste((v) => !v)}
+            className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-muted hover:text-primary"
+          >
+            {showWaste ? "−" : "+"} Ada potong gagal / sisa bahan?
+          </button>
+          <InfoTip text={<><b>Potong reject</b> = hasil cetak rusak, hitung per pcs. <b>Sisa bahan</b> (di baris bahan) = ujung roll / strip tes warna / sisa roll kependekan, hitung meter. Jangan tertukar.</>} />
+        </div>
         {showWaste && (
           <div className="rounded-xl border border-status-yellow/30 bg-status-yellow/5 p-3 space-y-2">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[120px_1fr]">

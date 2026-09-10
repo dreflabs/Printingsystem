@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { isTenantKey } from "@/lib/storage";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 
@@ -54,6 +55,19 @@ export async function updateProfile(userId: string, data: { name: string; userna
 
     if (!user) throw new Error("User not found or access denied");
 
+    // avatar_url = "/api/avatar?key=avatars/<tenant ini>/…" atau kosong.
+    // Tolak referensi ke key milik tenant lain (cegah tanam foto lintas-tenant).
+    const rawAvatar = (data.avatar_url ?? "").trim();
+    let safeAvatarUrl: string | null = null;
+    if (rawAvatar) {
+      const m = /^\/api\/avatar\?key=(.+)$/.exec(rawAvatar);
+      const key = m ? decodeURIComponent(m[1]) : "";
+      if (!key || !isTenantKey(key, tenant.id, ["avatars"])) {
+        throw new Error("Foto profil tidak valid.");
+      }
+      safeAvatarUrl = `/api/avatar?key=${key}`;
+    }
+
     // Username & email hanya unik PER TENANT, jadi pemeriksaannya dibatasi ke
     // percetakan ini. Tanpa `tenant_id`, pengguna ditolak hanya karena percetakan
     // lain memakai nama yang sama — dan pesan galatnya bisa dipakai menebak akun
@@ -79,7 +93,7 @@ export async function updateProfile(userId: string, data: { name: string; userna
         username: data.username,
         email: data.email,
         phone: data.phone || null,
-        avatar_url: data.avatar_url || null
+        avatar_url: safeAvatarUrl
       },
       select: {
         id: true,

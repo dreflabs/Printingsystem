@@ -64,6 +64,31 @@ export function assertSafeKey(key: string): string {
   return k;
 }
 
+/**
+ * Validasi object key + pastikan MILIK tenant ini. Konvensi key aplikasi:
+ * `<namespace>/<tenantId>/…` (mis. `avatars/<id>/…`, `tenants/<id>/logo-…`).
+ * Melempar kalau namespace di luar daftar, atau segmen tenant tidak cocok.
+ * Dipakai route penyaji file yang menerima `key` dari client.
+ */
+export function assertTenantKey(key: string, tenantId: string, namespaces: readonly string[]): string {
+  const k = assertSafeKey(key);
+  const seg = k.split("/");
+  if (seg.length < 3 || !namespaces.includes(seg[0]) || seg[1] !== tenantId) {
+    throw new Error("Akses ke objek ini ditolak.");
+  }
+  return k;
+}
+
+/** Versi non-throw dari `assertTenantKey` — untuk validasi input server action. */
+export function isTenantKey(key: string, tenantId: string, namespaces: readonly string[]): boolean {
+  try {
+    assertTenantKey(key, tenantId, namespaces);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function localPathFor(key: string): string {
   return path.join(LOCAL_STORAGE_DIR, assertSafeKey(key));
 }

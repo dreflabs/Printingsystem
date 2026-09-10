@@ -6,6 +6,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { presignPut } from "@/lib/r2";
+import { isTenantKey } from "@/lib/storage";
 import { ok, fail, type ActionResult } from "@/types";
 
 export interface ShopIdentity {
@@ -148,6 +149,11 @@ export async function updateLogoUrl(url: string): Promise<ActionResult<string>> 
   try {
     const tenant = await requireTenant();
     await requireUser();
+    // `url` sebenarnya adalah object key dari createLogoUploadUrl. Tolak apa pun
+    // yang bukan `tenants/<tenant ini>/…` — cegah menanam referensi lintas-tenant.
+    if (!isTenantKey(url, tenant.id, ["tenants", "logos"])) {
+      return fail("Key logo tidak valid.");
+    }
     await prisma.tenant.update({
       where: { id: tenant.id },
       data: { logo_url: url },

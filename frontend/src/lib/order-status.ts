@@ -33,6 +33,39 @@ export const ORDER_STATUSES = [
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 /**
+ * Label bahasa Indonesia untuk `Order.status` — sumber tunggal teks yang dilihat
+ * user. Enum teknis tetap; ini hanya lapisan tampilan. `<StatusPill>` juga
+ * memakainya untuk order.
+ */
+export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+  DRAFT: "Draft",
+  DESIGNING: "Proses Desain",
+  WAITING_PAYMENT: "Menunggu DP",
+  CONFIRMED: "Siap Produksi",
+  PRODUCTION_ASSIGNED: "Antrian Cetak",
+  PRODUCTION_STARTED: "Proses Cetak",
+  QC_PENDING: "Cetak Selesai — Menunggu QC",
+  QC_PASSED: "Lulus QC",
+  QC_REWORK_PENDING: "Perlu Perbaikan (Rework)",
+  FINISHING_STARTED: "Proses Finishing",
+  FINISHING_COMPLETE: "Finishing Selesai",
+  STORED: "Tersimpan di Rak",
+  READY_FOR_PICKUP: "Siap Diambil",
+  IN_TRANSIT: "Di Counter Pengambilan",
+  FINAL_AUDIT_PENDING: "Sudah Diserahkan — Menunggu Audit",
+  FINAL_AUDIT_COMPLETE: "Audit Akhir — Perlu Approval Owner",
+  CLOSED: "Selesai",
+  ON_HOLD: "Ditahan",
+  CANCELLED: "Dibatalkan",
+  INCIDENT: "Barang Hilang / Insiden",
+};
+
+/** Label ramah untuk status order; kembalikan apa adanya kalau tak dikenal. */
+export function orderStatusLabel(status: string): string {
+  return (ORDER_STATUS_LABEL as Record<string, string>)[status] ?? status;
+}
+
+/**
  * Deadline order dianggap TERPENUHI begitu barang siap diambil. Dipakai untuk
  * menghitung "overdue" — sekali READY_FOR_PICKUP, keterlambatan pengambilan oleh
  * pelanggan bukan tanggung jawab toko. Sinkron dengan `RESOLVED_STATUSES` di

@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { ORDER_STATUS_LABEL } from "@/lib/order-status";
 
 type OrderStatus =
   | "DRAFT"
@@ -81,6 +82,9 @@ export function StatusPill({ status, className }: StatusPillProps) {
     color: "bg-muted/15 text-muted border-muted/30",
     dotColor: "bg-muted",
   };
+  // Label order = sumber tunggal di lib/order-status; STATUS_MAP fallback untuk
+  // status yang hanya ada di record anak (PRODUCTION_QUEUED, PICKED_UP, dsb).
+  const label = (ORDER_STATUS_LABEL as Record<string, string>)[status] ?? config.label;
 
   return (
     <span
@@ -97,7 +101,7 @@ export function StatusPill({ status, className }: StatusPillProps) {
           config.pulse && "animate-pulse"
         )}
       />
-      {config.label}
+      {label}
     </span>
   );
 }

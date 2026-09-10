@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { DollarSign, PackageX, Activity, Receipt, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { orderStatusLabel } from "@/lib/order-status";
 import { getDailyRevenue, getOperatorPerformance, getOutstandingReceivables, getRevenueSeries } from "@/actions/reports";
 import { toCsv, downloadCsv, stampedName } from "@/lib/csv";
 
@@ -227,7 +228,7 @@ export default function ReportsPage() {
                   <td className="px-4 py-3 font-mono text-muted">{rupiah(o.paidAmount)}</td>
                   <td className="px-4 py-3 font-mono font-bold text-status-yellow-text">{rupiah(o.balance)}</td>
                   <td className={cn("px-4 py-3 text-xs", o.overdue ? "text-status-red font-bold" : "text-muted")}>{fmtDate(o.deadline)}</td>
-                  <td className="px-4 py-3 text-xs text-muted">{o.status}</td>
+                  <td className="px-4 py-3 text-xs text-muted">{orderStatusLabel(o.status)}</td>
                 </tr>
               ))}
               {recv.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-muted">Tidak ada piutang.</td></tr>}

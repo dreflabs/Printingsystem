@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { orderStatusLabel } from "@/lib/order-status";
 import { getOwnerDashboard } from "@/actions/queries";
 import { getSetupChecklist } from "@/actions/onboarding";
 import { getSessionUser } from "@/actions/session";
@@ -229,7 +230,7 @@ export default function OwnerPage() {
       {modal?.kind === "cancel" && (
         <ApprovalModal
           title={`Permintaan Cancel — ${modal.row.orderCode}`}
-          description={`${modal.row.customerName} · produksi berjalan (${modal.row.orderStatus})`}
+          description={`${modal.row.customerName} · produksi berjalan (${orderStatusLabel(modal.row.orderStatus)})`}
           details={[
             { label: "Alasan diajukan Admin", value: modal.row.reason ?? "-" },
             { label: "DP masuk", value: rupiah(modal.row.paidAmount) },

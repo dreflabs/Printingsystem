@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ClipboardList, Wrench, Package, Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
 import { QCTab } from "./QCTab";
 import { FinishingTab } from "./FinishingTab";
@@ -24,10 +25,10 @@ export default function FinishingPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-primary">Dashboard Gudang & Finishing</h1>
-        <p className="text-sm text-muted mt-0.5">Inspeksi QC, penyelesaian produk, dan pengaturan barang di rak & stok bahan baku</p>
-      </div>
+      <PageHeader
+        title="Dashboard Gudang & Finishing"
+        subtitle="Inspeksi QC, penyelesaian produk, dan pengaturan barang di rak & stok bahan baku"
+      />
 
       <RoleGuide role="gudang" defaultCollapsed />
 

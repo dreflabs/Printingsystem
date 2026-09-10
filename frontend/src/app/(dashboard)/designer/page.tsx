@@ -6,6 +6,7 @@ import { StatusPill, ErrorState, DropdownMenu, DropdownMenuItem, DropdownMenuDiv
 import { NewOrderModal } from "@/components/orders/NewOrderModal";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
 import { getDesignQueue } from "@/actions/queries";
 import {
@@ -492,18 +493,18 @@ export default function DesignerDashboardPage() {
         />
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">Dashboard Designer Sales</h1>
-          <p className="text-sm text-muted mt-0.5">Alur desain, revisi, dan ACC spesifikasi konsumen</p>
-        </div>
-        <button
-          onClick={() => setShowOrderModal(true)}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white text-sm font-semibold shadow-lg shadow-accent-teal/20 hover:brightness-110 transition-all"
-        >
-          <Palette className="h-4 w-4" /> Buat Order Baru
-        </button>
-      </div>
+      <PageHeader
+        title="Dashboard Designer Sales"
+        subtitle="Alur desain, revisi, dan ACC spesifikasi konsumen"
+        actions={
+          <button
+            onClick={() => setShowOrderModal(true)}
+            className="flex items-center gap-2 px-4 sm:px-5 h-10 rounded-xl bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white text-sm font-semibold shadow-lg shadow-accent-teal/20 hover:brightness-110 transition-all"
+          >
+            <Palette className="h-4 w-4" /> Buat Order Baru
+          </button>
+        }
+      />
 
       <RoleGuide role="designer_sales" defaultCollapsed />
 
@@ -546,7 +547,69 @@ export default function DesignerDashboardPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto border border-border rounded-xl">
+        {/* Mobile: kartu. Desktop: tabel. */}
+        <div className="md:hidden space-y-2">
+          {filtered.map((r) => (
+            <div key={r.orderId} className="rounded-xl border border-border p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-primary truncate">{r.customerName}</p>
+                  <p className="text-[11px] text-muted truncate">
+                    <button onClick={() => setDetailFor(r)} className="font-mono text-accent-teal">#{r.orderCode.slice(-4)}</button>
+                    {r.items[0] && ` · ${r.items[0].product}${r.items[0].size ? ` ${r.items[0].size}` : ""} · ${r.items[0].quantity} pcs`}
+                    {r.items.length > 1 ? ` +${r.items.length - 1} item` : ""}
+                  </p>
+                </div>
+                <span className={cn(
+                  "shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold",
+                  r.isUnassigned ? "bg-status-yellow/10 text-status-yellow-text border border-status-yellow/30"
+                    : r.isOwnedByMe ? "bg-status-green/10 text-status-green border border-status-green/30"
+                    : "bg-elevated text-muted border border-border"
+                )}>{r.designer}</span>
+              </div>
+
+              <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                <StatusPill status={r.status} />
+                <span className="text-[10px] font-mono text-muted">V{r.currentVersion}</span>
+                {r.items.length > 1 && (
+                  <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold",
+                    r.pendingCount === 0 ? "bg-status-green/15 text-status-green" : "bg-status-yellow/15 text-status-yellow-text")}>
+                    {r.items.length - r.pendingCount}/{r.items.length} item
+                  </span>
+                )}
+              </div>
+              {looksLikeFilename(r.latestFileName) && r.latestFileUrl && (
+                <a href={r.latestFileUrl} target="_blank" rel="noopener noreferrer"
+                  className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-muted hover:text-accent-teal max-w-full">
+                  <FileText className="h-3 w-3 shrink-0" /><span className="truncate">{r.latestFileName}</span>
+                </a>
+              )}
+              {r.latestVersionStatus === "REJECTED" && r.latestRejectionReason && (
+                <p className="mt-1 text-[10px] text-status-red truncate" title={r.latestRejectionReason}>⚠ {r.latestRejectionReason}</p>
+              )}
+
+              <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+                <span className="text-[11px] text-muted whitespace-nowrap">
+                  {r.method} · ⏱ {fmtDeadline(r.deadline)}
+                </span>
+                <DesignRowActions
+                  r={r}
+                  busy={busy}
+                  onDetail={() => setDetailFor(r)}
+                  onUpload={() => setUploadFor(r)}
+                  onRevisi={() => setRevisionFor(r)}
+                  onTake={() => run(() => takeDesignJob(r.orderId))}
+                  onAcc={() => run(() => approveDesign(r.orderId, {}))}
+                />
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <p className="p-6 text-center text-sm text-muted">Tidak ada antrian desain yang cocok.</p>
+          )}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto border border-border rounded-xl">
           <table className="w-full text-xs text-left">
             <thead className="bg-elevated/70 border-b border-border text-muted font-semibold uppercase tracking-wider">
               <tr>

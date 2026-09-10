@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { getOrders, getOrderDetail } from "@/actions/queries";
 import { addPayment } from "@/actions/orders";
 import { assignProductionJob, getProductionAssignData } from "@/actions/design";
@@ -665,17 +666,17 @@ export default function AdminDashboardPage() {
       {payFor && <PaymentModal order={payFor} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); load(); }} />}
       {auditFor && <FinalAuditModal order={auditFor} onClose={() => setAuditFor(null)} onDone={() => { setAuditFor(null); load(); }} />}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">Dashboard Admin</h1>
-          <p className="text-sm text-muted mt-0.5">{new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <a href="/scan" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-border text-sm text-primary hover:bg-elevated"><ScanLine className="h-4 w-4 text-accent-teal" /> Scan QR</a>
-          <a href="/pos" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-border text-sm text-primary hover:bg-elevated"><ShoppingCart className="h-4 w-4 text-accent-teal" /> Kasir POS</a>
-          <button onClick={() => setShowOrderModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent-teal text-white text-sm font-semibold hover:brightness-110"><Plus className="h-4 w-4" /> Order Baru</button>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard Admin"
+        subtitle={new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+        actions={
+          <>
+            <a href="/scan" aria-label="Scan QR" className="flex items-center gap-2 px-3 sm:px-4 h-10 rounded-xl bg-card border border-border text-sm text-primary hover:bg-elevated"><ScanLine className="h-4 w-4 text-accent-teal" /><span className="hidden sm:inline">Scan QR</span></a>
+            <a href="/pos" aria-label="Kasir POS" className="flex items-center gap-2 px-3 sm:px-4 h-10 rounded-xl bg-card border border-border text-sm text-primary hover:bg-elevated"><ShoppingCart className="h-4 w-4 text-accent-teal" /><span className="hidden sm:inline">Kasir POS</span></a>
+            <button onClick={() => setShowOrderModal(true)} className="flex items-center gap-2 px-4 sm:px-5 h-10 rounded-xl bg-accent-teal text-white text-sm font-semibold hover:brightness-110"><Plus className="h-4 w-4" /> Order Baru</button>
+          </>
+        }
+      />
 
       <RoleGuide role="admin" defaultCollapsed />
 
@@ -773,7 +774,41 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile: kartu. Desktop: tabel. */}
+        <div className="md:hidden divide-y divide-border/60">
+          {shownOrders.map((o) => (
+            <div key={o.id} className="py-3 flex items-start gap-3" onClick={() => setDetailFor(o)}>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-primary truncate">{o.customerName}</p>
+                <p className="text-[11px] text-muted truncate">
+                  <span className="font-mono text-accent-teal">#{o.orderCode.slice(-4)}</span> · {o.type}
+                  {" · "}
+                  <span className={o.balance > 0 ? "text-status-yellow-text" : "text-status-green"}>
+                    {o.balance > 0 ? `sisa ${fmtRp(o.balance)}` : "Lunas"}
+                  </span>
+                </p>
+                <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                  <StatusPill status={o.status} />
+                  <span className={cn("text-[11px]", o.overdue ? "text-status-red font-bold" : "text-muted")}>
+                    ⏱ {fmtDate(o.deadline)}
+                  </span>
+                </div>
+              </div>
+              <div className="shrink-0 flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => setDetailFor(o)} className="text-xs font-bold text-accent-teal">Detail</button>
+                {o.balance > 0 && o.type === "PRINTING" && (
+                  <button onClick={() => setPayFor(o)} className="text-xs font-bold text-status-yellow-text">Bayar</button>
+                )}
+                {o.status === "FINAL_AUDIT_PENDING" && (
+                  <button onClick={() => setAuditFor(o)} className="text-xs font-bold text-accent-teal">Audit</button>
+                )}
+              </div>
+            </div>
+          ))}
+          {orders.length === 0 && <p className="py-8 text-center text-muted text-sm">Tidak ada order.</p>}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-elevated/50">

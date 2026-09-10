@@ -15,6 +15,7 @@ import { getSetupChecklist } from "@/actions/onboarding";
 import { getSessionUser } from "@/actions/session";
 import type { WorkspaceMode } from "@/lib/workspace-mode";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { SoloNextSteps } from "@/components/dashboard/SoloNextSteps";
 import { WorkspaceModeNudge } from "@/components/dashboard/WorkspaceModeNudge";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
@@ -276,13 +277,12 @@ export default function OwnerPage() {
         />
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Crown className="h-6 w-6 text-accent-teal" /> Dashboard Owner</h1>
-          <p className="text-sm text-muted mt-0.5">Visibilitas penuh — Keuangan · Produksi · Approval · Audit</p>
-        </div>
-        <span className="px-3 py-1 rounded-full text-xs font-bold bg-accent-teal/10 text-accent-teal border border-border">Akses Penuh</span>
-      </div>
+      <PageHeader
+        icon={<Crown className="h-6 w-6 text-accent-teal" />}
+        title="Dashboard Owner"
+        subtitle="Visibilitas penuh — Keuangan · Produksi · Approval · Audit"
+        actions={<span className="px-3 py-1 rounded-full text-xs font-bold bg-accent-teal/10 text-accent-teal border border-border">Akses Penuh</span>}
+      />
 
       <WorkspaceModeNudge />
       <RoleGuide role="owner" checklist={checklist} workspaceMode={workspaceMode} defaultCollapsed />

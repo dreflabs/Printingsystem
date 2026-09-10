@@ -100,10 +100,13 @@ export function RoleGuide({
   role,
   checklist,
   workspaceMode,
+  defaultCollapsed = false,
 }: {
   role: GuideRole;
   checklist?: Checklist | null;
   workspaceMode?: WorkspaceMode;
+  /** Awal terlipat kalau belum ada preferensi tersimpan (mis. dashboard operator). */
+  defaultCollapsed?: boolean;
 }) {
   const soloFlow = role === "owner" && workspaceMode === "SOLO";
   const storageKey = `pp_guide_${soloFlow ? "solo_flow" : role}`;
@@ -120,12 +123,12 @@ export function RoleGuide({
       /* private mode / blocked */
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOpen(stored !== "0");
-  }, [storageKey]);
+    setOpen(stored != null ? stored !== "0" : !defaultCollapsed);
+  }, [storageKey, defaultCollapsed]);
 
   // `null` (belum terhidrasi) diperlakukan sebagai terbuka — default untuk
   // pengunjung baru, dan menghindari kedip collapse→expand saat mount.
-  const isOpen = open ?? true;
+  const isOpen = open ?? !defaultCollapsed;
 
   function toggle() {
     const next = !isOpen;

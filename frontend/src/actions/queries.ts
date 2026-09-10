@@ -53,6 +53,18 @@ export async function getOperatorJobs() {
           order_code: true,
           deadline: true,
           customer: { select: { name: true } },
+          // Apa yang dicetak — untuk operator setel mesin.
+          items: {
+            where: { retail_product_id: null },
+            select: {
+              description: true,
+              quantity: true,
+              size: true,
+              finishing: true,
+              product: { select: { name: true, default_machine_id: true } },
+              material: { select: { name: true } },
+            },
+          },
           // File cetak = versi desain yang sudah APPROVED (bukan draft/revisi pending).
           design_jobs: {
             select: {
@@ -93,16 +105,27 @@ export async function getOperatorJobs() {
 
     const shape = (j: (typeof mineRows)[number]) => {
       const ver = j.order.design_jobs.flatMap((d) => d.versions).find((v) => v.file_path) ?? null;
+      // Item yang relevan ke mesin job ini; fallback ke semua item non-retail.
+      const forMachine = j.order.items.filter((it) => it.product?.default_machine_id === j.machine_id);
+      const items = (forMachine.length ? forMachine : j.order.items).map((it) => ({
+        product: it.product?.name ?? it.description?.trim() ?? "Item cetak",
+        size: it.size ?? null,
+        qty: it.quantity,
+        material: it.material?.name ?? null,
+        finishing: it.finishing?.trim() || null,
+      }));
       return {
         jobCode: j.job_code,
         orderCode: j.order.order_code,
         customerName: j.order.customer?.name ?? "-",
         machine: j.machine.name,
         status: j.status,
+        priority: j.priority,
         plannedQty: j.planned_qty,
         actualQty: j.actual_qty,
         deadline: j.order.deadline,
         startedAt: j.actual_start,
+        items,
         fileUrl: ver ? `/api/design/${ver.id}` : null,
         fileName: ver?.file_name ?? null,
       };

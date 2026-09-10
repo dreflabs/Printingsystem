@@ -11,6 +11,7 @@ Menjalankan produksi di mesin, scan QR, dan input pemakaian material.
 | Input actual qty & waste saat selesai | ✅ |
 | Input pemakaian material per job | ✅ |
 | Lihat spesifikasi produk pada job | ✅ |
+| Buka / unduh file cetak (versi desain APPROVED) untuk di-RIP ke mesin | ✅ |
 | Lihat nama konsumen pada job | ✅ |
 | Lihat nomor HP / email konsumen | ❌ |
 | Lihat job operator lain | ❌ |

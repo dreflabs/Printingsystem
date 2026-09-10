@@ -128,6 +128,13 @@ export async function getScanContext(code: string) {
     const actions: ScanAction[] = [];
     const s = job.status;
 
+    // File cetak (versi desain yang sudah APPROVED) untuk dibuka Operator.
+    const printVer = await prisma.designVersion.findFirst({
+      where: { tenant_id: tenant.id, design_job: { order_id: order.id }, approval_status: "APPROVED", NOT: { file_path: null } },
+      orderBy: { version_no: "desc" },
+      select: { id: true, file_name: true },
+    });
+
     if (actor.roles.includes("operator")) {
       const mine = job.operator_id === actor.id;
       const claimable = s === "PRODUCTION_QUEUED" && job.operator_id == null;
@@ -172,6 +179,8 @@ export async function getScanContext(code: string) {
       isAssignedOperator: job.operator_id === actor.id,
       paidAmount: Number(order.paid_amount),
       balance: Number(order.balance),
+      fileUrl: printVer ? `/api/design/${printVer.id}` : null,
+      fileName: printVer?.file_name ?? null,
       availableActions: actions,
     });
   } catch (e) {

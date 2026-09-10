@@ -48,7 +48,24 @@ export async function getOperatorJobs() {
 
     const include = {
       machine: { select: { name: true, machine_code: true } },
-      order: { select: { order_code: true, deadline: true, customer: { select: { name: true } } } },
+      order: {
+        select: {
+          order_code: true,
+          deadline: true,
+          customer: { select: { name: true } },
+          // File cetak = versi desain yang sudah APPROVED (bukan draft/revisi pending).
+          design_jobs: {
+            select: {
+              versions: {
+                where: { approval_status: "APPROVED" },
+                orderBy: { version_no: "desc" },
+                take: 1,
+                select: { id: true, file_name: true, file_path: true },
+              },
+            },
+          },
+        },
+      },
     } as const;
 
     const [mineRows, queueRows] = await Promise.all([
@@ -74,17 +91,22 @@ export async function getOperatorJobs() {
       }),
     ]);
 
-    const shape = (j: (typeof mineRows)[number]) => ({
-      jobCode: j.job_code,
-      orderCode: j.order.order_code,
-      customerName: j.order.customer?.name ?? "-",
-      machine: j.machine.name,
-      status: j.status,
-      plannedQty: j.planned_qty,
-      actualQty: j.actual_qty,
-      deadline: j.order.deadline,
-      startedAt: j.actual_start,
-    });
+    const shape = (j: (typeof mineRows)[number]) => {
+      const ver = j.order.design_jobs.flatMap((d) => d.versions).find((v) => v.file_path) ?? null;
+      return {
+        jobCode: j.job_code,
+        orderCode: j.order.order_code,
+        customerName: j.order.customer?.name ?? "-",
+        machine: j.machine.name,
+        status: j.status,
+        plannedQty: j.planned_qty,
+        actualQty: j.actual_qty,
+        deadline: j.order.deadline,
+        startedAt: j.actual_start,
+        fileUrl: ver ? `/api/design/${ver.id}` : null,
+        fileName: ver?.file_name ?? null,
+      };
+    };
 
     return ok({ 
       mine: mineRows.map(shape), 

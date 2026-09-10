@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Settings2, ScanLine, CheckCircle2, AlertCircle, Timer, Layers, Pause, Play, ShieldAlert, FileWarning } from "lucide-react";
+import { Settings2, ScanLine, CheckCircle2, AlertCircle, Timer, Layers, Pause, Play, ShieldAlert, FileWarning, FileDown } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
@@ -20,8 +20,29 @@ type Job = {
   actualQty: number;
   deadline: string | Date | null;
   startedAt: string | Date | null;
+  fileUrl: string | null;
+  fileName: string | null;
 };
 type MaterialOpt = { id: string; name: string };
+
+/** Link ke file cetak (versi desain APPROVED) — dibuka di tab baru untuk di-RIP ke mesin. */
+function PrintFileLink({ url, name, className }: { url: string | null; name: string | null; className?: string }) {
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        "inline-flex max-w-full items-center gap-1.5 text-[11px] font-bold text-accent-teal hover:underline",
+        className
+      )}
+    >
+      <FileDown className="h-3.5 w-3.5 shrink-0" />
+      <span className="truncate">{name || "Buka file cetak"}</span>
+    </a>
+  );
+}
 
 const WASTE_REASONS = [
   "Tinta blobor / kotor",
@@ -225,6 +246,7 @@ export default function OperatorPage() {
                   <p className="text-xs text-muted">{j.machine} · deadline {fmtDeadline(j.deadline)}</p>
                   <p className="text-lg font-black text-primary">{j.plannedQty}<span className="text-[10px] font-medium text-muted"> pcs</span></p>
                 </div>
+                {j.fileUrl && <PrintFileLink url={j.fileUrl} name={j.fileName} className="mt-2" />}
                 <button
                   disabled={busy}
                   onClick={() => act(() => startProduction(j.jobCode))}
@@ -268,6 +290,11 @@ export default function OperatorPage() {
                   <p className="text-[10px] font-bold text-status-blue uppercase tracking-wider mb-0.5">{job.customerName}</p>
                   <p className="font-mono text-sm text-primary">{job.jobCode} · {job.orderCode}</p>
                   <p className="text-2xl font-black text-primary mt-2">{job.plannedQty} <span className="text-sm">pcs target</span></p>
+                  <div className="mt-3 pt-3 border-t border-border">
+                    {job.fileUrl
+                      ? <PrintFileLink url={job.fileUrl} name={job.fileName} />
+                      : <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-status-yellow-text"><FileWarning className="h-3.5 w-3.5" /> File cetak belum tersedia</span>}
+                  </div>
                 </div>
 
                 <div className="flex gap-3">

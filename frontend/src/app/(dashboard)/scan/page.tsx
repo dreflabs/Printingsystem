@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ScanLine, Camera, Package, CreditCard, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
+import { ScanLine, Camera, Package, CreditCard, CheckCircle2, AlertCircle, RotateCcw, FileDown } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { QRScanner } from "@/components/ui/QRScanner";
@@ -25,6 +25,8 @@ type ScanCtx = {
   isAssignedOperator: boolean;
   paidAmount: number;
   balance: number;
+  fileUrl: string | null;
+  fileName: string | null;
   availableActions: { action: string; label: string }[];
 };
 type MaterialOpt = { id: string; name: string };
@@ -288,6 +290,18 @@ export default function ScanPage() {
                 </p>
               </div>
             </div>
+
+            {ctx.fileUrl && (
+              <a
+                href={ctx.fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mx-5 mb-5 flex items-center gap-2 rounded-xl border border-accent-teal/30 bg-accent-teal/10 px-4 py-3 text-sm font-bold text-accent-teal hover:bg-accent-teal/20 transition-colors"
+              >
+                <FileDown className="h-4 w-4 shrink-0" />
+                <span className="truncate">{ctx.fileName || "Buka file cetak"}</span>
+              </a>
+            )}
 
             {errorMsg && (
               <div className="mx-5 mb-4 rounded-lg border border-status-red/30 bg-status-red/10 px-3 py-2 text-xs text-status-red">{errorMsg}</div>

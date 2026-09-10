@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { Check, ChevronRight, ChevronLeft, X, Package, FileText, CreditCard, Grid2x2 } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { ChevronLeft, X, Package, FileText, CreditCard, Grid2x2, Plus, Trash2 } from "lucide-react";
 import { Button, Input, Textarea, Select, Modal } from "@/components/ui";
 import { LayoutCalculator } from "@/components/tools/LayoutCalculator";
 import { cn } from "@/lib/utils";
@@ -10,20 +10,29 @@ import { addPayment } from "@/actions/orders";
 import { getSessionUser } from "@/actions/session";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-interface OrderForm {
-  customerId: string;
-  customerName: string;
-  customerPhone: string;
-  orderType: string;
+interface ItemRow {
+  key: string;
   productId: string;
   width: string;
   height: string;
   qty: string;
   materialId: string;
   finishing: string;
+  /** total harga item (Rp, ter-format). Auto dari produk selama belum diubah manual. */
+  price: string;
+  priceTouched: boolean;
+  /** override deadline item (datetime-local). Kosong = ikut deadline order. */
+  deadline: string;
+}
+
+interface OrderForm {
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  orderType: string;
+  items: ItemRow[];
   notes: string;
   deadline: string;
-  totalPrice: string;
   dpAmount: string;
   dpMethod: string;
   discountRp: number;
@@ -32,10 +41,18 @@ interface OrderForm {
   discountReason: string;
 }
 
+let rowSeq = 0;
+const blankItem = (): ItemRow => ({
+  key: `it${++rowSeq}`,
+  productId: "", width: "", height: "", qty: "1", materialId: "", finishing: "",
+  price: "", priceTouched: false, deadline: "",
+});
+
 const INITIAL_FORM: OrderForm = {
-  customerId: "", customerName: "", customerPhone: "", orderType: "", productId: "",
-  width: "", height: "", qty: "1", materialId: "", finishing: "", notes: "", deadline: "",
-  totalPrice: "", dpAmount: "", dpMethod: "", discountRp: 0, discountPct: 0, discountReason: "",
+  customerId: "", customerName: "", customerPhone: "", orderType: "",
+  items: [blankItem()],
+  notes: "", deadline: "",
+  dpAmount: "", dpMethod: "", discountRp: 0, discountPct: 0, discountReason: "",
 };
 
 function getDefaultDeadline(): string {
@@ -54,51 +71,58 @@ type ProductOpt = Opt & { category: string; unit: string; basePrice: number | nu
 type CustomerRow = { id: string; name: string; phone: string | null; type: string; defaultDiscountPct: number };
 
 const STEPS = [
-  { label: "Produk", icon: Package },
-  { label: "Spesifikasi", icon: FileText },
+  { label: "Pelanggan", icon: Package },
+  { label: "Item Pesanan", icon: FileText },
   { label: "Harga & DP", icon: CreditCard },
 ];
 
 const ORDER_TYPE_TO_INPUT: Record<string, CreatePrintingOrderInput["orderType"]> = {
-  walkin: "walkin",
-  online: "online",
-  makloon: "makloon",
+  walkin: "walkin", online: "online", makloon: "makloon",
 };
 
 function formatRp(val: string) {
   return val.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 function parseRp(val: string) {
-  return parseFloat(val.replace(/\./g, "")) || 0;
+  return parseFloat(String(val).replace(/\./g, "")) || 0;
+}
+
+/** Harga item otomatis dari harga dasar produk (M2 = per m², selain itu per pcs). */
+function autoItemPrice(it: ItemRow, products: ProductOpt[]): number {
+  const p = products.find((x) => x.value === it.productId);
+  if (!p?.basePrice) return 0;
+  const qty = Math.max(1, Number(it.qty) || 1);
+  if (p.unit === "M2") {
+    const area = ((Number(it.width) || 0) / 100) * ((Number(it.height) || 0) / 100);
+    return area > 0 ? Math.round(p.basePrice * area * qty) : 0;
+  }
+  return Math.round(p.basePrice * qty);
 }
 
 // ─── Step Indicator ──────────────────────────────────────────────────────────
 function StepIndicator({ currentStep }: { currentStep: number }) {
   return (
     <div className="flex items-center justify-center gap-0 mb-8">
-      {STEPS.map((step, i) => {
-        const Icon = step.icon;
-        const done = i < currentStep;
-        const active = i === currentStep;
+      {STEPS.map((step, index) => {
+        const isDone = index < currentStep;
+        const isActive = index === currentStep;
         return (
           <div key={step.label} className="flex items-center">
             <div className="flex flex-col items-center gap-1.5">
               <div
                 className={cn(
                   "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-300",
-                  done ? "bg-accent-teal border-accent-teal text-white"
-                    : active ? "bg-accent-teal/20 border-accent-teal text-accent-teal"
-                    : "bg-elevated border-border text-muted"
+                  isActive ? "border-accent-teal bg-accent-teal text-white" :
+                  isDone ? "border-accent-teal bg-accent-teal/10 text-accent-teal" :
+                  "border-border bg-elevated text-muted"
                 )}
               >
-                {done ? <Check className="h-5 w-5" /> : <Icon className="h-4 w-4" />}
+                <step.icon className="h-4 w-4" />
               </div>
-              <span className={cn("text-xs font-medium", active ? "text-accent-teal" : done ? "text-primary" : "text-muted")}>
-                {step.label}
-              </span>
+              <span className={cn("text-[10px] font-bold", isActive || isDone ? "text-primary" : "text-muted")}>{step.label}</span>
             </div>
-            {i < STEPS.length - 1 && (
-              <div className={cn("w-20 h-0.5 mb-5 mx-2 transition-all duration-300", i < currentStep ? "bg-accent-teal" : "bg-border")} />
+            {index < STEPS.length - 1 && (
+              <div className={cn("mx-2 h-0.5 w-8 sm:w-12 rounded", index < currentStep ? "bg-accent-teal" : "bg-border")} />
             )}
           </div>
         );
@@ -107,24 +131,15 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
   );
 }
 
-// ─── Step 1 ──────────────────────────────────────────────────────────────────
+// ─── Step 1: Pelanggan & order ───────────────────────────────────────────────
 function Step1({
-  form, onChange, products, customers,
+  form, onChange, customers,
 }: {
   form: OrderForm;
   onChange: (k: keyof OrderForm, v: string | number) => void;
-  products: ProductOpt[];
   customers: CustomerRow[];
 }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const productGroups = Object.entries(
-    products.reduce<Record<string, Opt[]>>((acc, p) => {
-      (acc[p.category] ??= []).push({ value: p.value, label: p.label });
-      return acc;
-    }, {})
-  )
-    .sort(([a], [b]) => a.localeCompare(b, "id"))
-    .map(([label, options]) => ({ label, options }));
 
   const suggestions = customers.filter((c) => {
     if (!form.customerName || form.customerName.length < 1) return false;
@@ -136,8 +151,6 @@ function Step1({
     onChange("customerId", c.id);
     onChange("customerName", c.name);
     onChange("customerPhone", c.phone ?? "");
-    // Diskon default pelanggan = PERSEN; nominal Rp-nya dihitung otomatis dari
-    // Harga Total (lihat efek di NewOrderModal). Owner tetap perlu menyetujui.
     onChange("discountPct", c.defaultDiscountPct || 0);
     if (c.type === "Makloon" && form.orderType !== "makloon") onChange("orderType", "makloon");
     setShowSuggestions(false);
@@ -204,124 +217,183 @@ function Step1({
         />
       </div>
 
-      <Select
-        label="Produk *"
-        placeholder="Pilih jenis produk..."
-        value={form.productId}
-        onChange={(e) => onChange("productId", e.target.value)}
-        groups={productGroups}
-        hint={products.length === 0 ? "Belum ada produk cetak — tambahkan dulu di Katalog Produk." : undefined}
-      />
-    </div>
-  );
-}
+      <Input label="Deadline Order *" type="datetime-local" value={form.deadline} onChange={(e) => onChange("deadline", e.target.value)} />
 
-// ─── Step 2 ──────────────────────────────────────────────────────────────────
-function Step2({
-  form, onChange, materials, finishings,
-}: {
-  form: OrderForm;
-  onChange: (k: keyof OrderForm, v: string | number) => void;
-  materials: Opt[];
-  finishings: string[];
-}) {
-  const [calcOpen, setCalcOpen] = useState(false);
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-4">
-        <Input label="Lebar (cm)" type="number" placeholder="mis. 200" value={form.width} onChange={(e) => onChange("width", e.target.value)} />
-        <Input label="Tinggi (cm)" type="number" placeholder="mis. 100" value={form.height} onChange={(e) => onChange("height", e.target.value)} />
-        <Input label="Qty (pcs)" type="number" min="1" value={form.qty} onChange={(e) => onChange("qty", e.target.value)} />
-      </div>
-
-      <button
-        type="button"
-        onClick={() => setCalcOpen(true)}
-        className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-teal hover:underline"
-      >
-        <Grid2x2 className="h-3.5 w-3.5" /> Kalkulator layout — potong/lembar &amp; jumlah lembar
-      </button>
-      <Modal open={calcOpen} onClose={() => setCalcOpen(false)} title="Kalkulator Layout" size="lg">
-        <LayoutCalculator
-          initialPieceW={form.width}
-          initialPieceH={form.height}
-          initialQty={form.qty}
-          onApply={(s) => {
-            onChange("notes", form.notes ? `${form.notes.trim()}\n${s}` : s);
-            setCalcOpen(false);
-          }}
-        />
-      </Modal>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Select
-          label="Material / Bahan"
-          placeholder="Pilih bahan..."
-          value={form.materialId}
-          onChange={(e) => onChange("materialId", e.target.value)}
-          options={materials}
-        />
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-muted">Finishing</label>
-          <input
-            list="order-finishing-list"
-            placeholder="mis. Laminasi doff + potong"
-            value={form.finishing}
-            onChange={(e) => onChange("finishing", e.target.value)}
-            className="w-full h-12 rounded-xl bg-elevated border border-border text-primary text-sm px-4 outline-none focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/20 transition-all"
-          />
-          <datalist id="order-finishing-list">
-            {finishings.map((f) => <option key={f} value={f} />)}
-          </datalist>
-        </div>
-      </div>
-      <Input label="Deadline *" type="datetime-local" value={form.deadline} onChange={(e) => onChange("deadline", e.target.value)} />
       <Textarea
         label="Catatan Tambahan"
         placeholder="Instruksi khusus, warna pilihan, atau catatan penting lainnya..."
         value={form.notes}
         onChange={(e) => onChange("notes", e.target.value)}
-        hint="Misal: Tolong cetak dengan bleed 3mm, warna harus vivid."
+        hint="Berlaku untuk seluruh order. Detail per produk isi di tiap item."
       />
     </div>
   );
 }
 
-// ─── Step 3 ──────────────────────────────────────────────────────────────────
+// ─── Step 2: Item pesanan (multi) ────────────────────────────────────────────
+function ItemsStep({
+  form, products, materials, finishings, subtotal,
+  updateItem, addItem, removeItem,
+}: {
+  form: OrderForm;
+  products: ProductOpt[];
+  materials: Opt[];
+  finishings: string[];
+  subtotal: number;
+  updateItem: (key: string, patch: Partial<ItemRow>) => void;
+  addItem: () => void;
+  removeItem: (key: string) => void;
+}) {
+  const [calcFor, setCalcFor] = useState<string | null>(null);
+
+  const productGroups = Object.entries(
+    products.reduce<Record<string, Opt[]>>((acc, p) => {
+      (acc[p.category] ??= []).push({ value: p.value, label: p.label });
+      return acc;
+    }, {})
+  )
+    .sort(([a], [b]) => a.localeCompare(b, "id"))
+    .map(([label, options]) => ({ label, options }));
+
+  const calcItem = form.items.find((i) => i.key === calcFor) ?? null;
+
+  return (
+    <div className="space-y-4">
+      {products.length === 0 && (
+        <p className="text-[11px] text-status-yellow-text">Belum ada produk cetak — tambahkan dulu di Katalog Produk.</p>
+      )}
+
+      {form.items.map((it, i) => (
+        <div key={it.key} className="rounded-2xl border border-border bg-base p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black uppercase tracking-wider text-muted">Item {i + 1}</span>
+            {form.items.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeItem(it.key)}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-status-red hover:underline"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Hapus
+              </button>
+            )}
+          </div>
+
+          <Select
+            label="Produk *"
+            placeholder="Pilih jenis produk..."
+            value={it.productId}
+            onChange={(e) => updateItem(it.key, { productId: e.target.value, priceTouched: false })}
+            groups={productGroups}
+          />
+
+          <div className="grid grid-cols-3 gap-3">
+            <Input label="Lebar (cm)" type="number" placeholder="mis. 300" value={it.width} onChange={(e) => updateItem(it.key, { width: e.target.value })} />
+            <Input label="Tinggi (cm)" type="number" placeholder="mis. 100" value={it.height} onChange={(e) => updateItem(it.key, { height: e.target.value })} />
+            <Input label="Qty (pcs) *" type="number" min="1" value={it.qty} onChange={(e) => updateItem(it.key, { qty: e.target.value })} />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setCalcFor(it.key)}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-teal hover:underline"
+          >
+            <Grid2x2 className="h-3.5 w-3.5" /> Kalkulator layout — potong/lembar
+          </button>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Select
+              label="Material / Bahan"
+              placeholder="Pilih bahan..."
+              value={it.materialId}
+              onChange={(e) => updateItem(it.key, { materialId: e.target.value })}
+              options={materials}
+            />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-muted">Finishing</label>
+              <input
+                list="order-finishing-list"
+                placeholder="mis. Laminasi doff + potong"
+                value={it.finishing}
+                onChange={(e) => updateItem(it.key, { finishing: e.target.value })}
+                className="w-full h-12 rounded-xl bg-elevated border border-border text-primary text-sm px-4 outline-none focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/20 transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Harga item (Rp) *"
+              placeholder="mis. 450.000"
+              value={it.price}
+              onChange={(e) => updateItem(it.key, { price: formatRp(e.target.value), priceTouched: true })}
+              leftAddon={<span className="text-xs font-semibold">Rp</span>}
+            />
+            <Input
+              label="Deadline item (opsional)"
+              type="datetime-local"
+              value={it.deadline}
+              onChange={(e) => updateItem(it.key, { deadline: e.target.value })}
+            />
+          </div>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={addItem}
+        className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-accent-teal/40 bg-accent-teal/5 px-4 py-2 text-xs font-bold text-accent-teal hover:bg-accent-teal/10"
+      >
+        <Plus className="h-4 w-4" /> Tambah item
+      </button>
+
+      <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-sm">
+        <span className="text-muted">Subtotal ({form.items.length} item)</span>
+        <span className="font-bold text-primary">Rp {formatRp(String(subtotal))}</span>
+      </div>
+
+      <datalist id="order-finishing-list">
+        {finishings.map((f) => <option key={f} value={f} />)}
+      </datalist>
+
+      <Modal open={!!calcItem} onClose={() => setCalcFor(null)} title="Kalkulator Layout" size="lg">
+        {calcItem && (
+          <LayoutCalculator
+            initialPieceW={calcItem.width}
+            initialPieceH={calcItem.height}
+            initialQty={calcItem.qty}
+          />
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+// ─── Step 3: Harga & DP ──────────────────────────────────────────────────────
 function Step3({
-  form, onChange, role,
+  form, onChange, role, subtotal,
 }: {
   form: OrderForm;
   onChange: (k: keyof OrderForm, v: string | number) => void;
   role: string;
+  subtotal: number;
 }) {
-  const total = parseRp(form.totalPrice);
+  const total = subtotal;
   const dp = parseRp(form.dpAmount);
   const sisa = total - dp;
   const suggestedDp = total > 0 ? Math.round(total * 0.5) : 0;
 
   return (
     <div className="space-y-5">
-      <div className="bg-status-blue/5 border border-status-blue/20 rounded-xl p-3 text-xs text-status-blue">
-        ℹ️ Masukkan harga total order. DP minimum yang disarankan adalah <strong>50%</strong>
-        {suggestedDp > 0 && <> (Rp {formatRp(String(suggestedDp))})</>}.
+      <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
+        <span className="text-sm text-muted">Harga Total Order</span>
+        <span className="text-lg font-black text-primary">Rp {formatRp(String(subtotal))}</span>
       </div>
-
-      <Input
-        label="Harga Total (Rp) *"
-        placeholder="mis. 450.000"
-        value={form.totalPrice}
-        onChange={(e) => onChange("totalPrice", formatRp(e.target.value))}
-        leftAddon={<span className="text-xs font-semibold">Rp</span>}
-      />
+      <p className="text-[11px] text-muted">Dihitung dari harga tiap item. DP minimum disarankan <b>50%</b>{suggestedDp > 0 && <> (Rp {formatRp(String(suggestedDp))})</>}.</p>
 
       {(form.discountRp > 0 || form.discountPct > 0) && (
         <div className="space-y-2">
           <Input
-            label={
-              form.discountPct > 0
-                ? `Diskon (Rp) — default pelanggan ${form.discountPct}%`
-                : "Diskon (Rp)"
-            }
+            label={form.discountPct > 0 ? `Diskon (Rp) — default pelanggan ${form.discountPct}%` : "Diskon (Rp)"}
             value={formatRp(String(form.discountRp))}
             onChange={(e) => onChange("discountRp", parseRp(e.target.value))}
             leftAddon={<span className="text-xs font-semibold">Rp</span>}
@@ -362,7 +434,7 @@ function Step3({
         <div className="bg-card rounded-xl border border-border p-4 space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-muted">Total Order</span>
-            <span className="text-primary font-semibold">Rp {form.totalPrice}</span>
+            <span className="text-primary font-semibold">Rp {formatRp(String(total))}</span>
           </div>
           {role !== "designer_sales" ? (
             <>
@@ -399,10 +471,11 @@ interface NewOrderModalProps {
 
 export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) {
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState<OrderForm>(INITIAL_FORM);
+  const [form, setForm] = useState<OrderForm>(() => ({ ...INITIAL_FORM, items: [blankItem()], deadline: getDefaultDeadline() }));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [role, setRole] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [discountTouched, setDiscountTouched] = useState(false);
 
   const [products, setProducts] = useState<ProductOpt[]>([]);
   const [materials, setMaterials] = useState<Opt[]>([]);
@@ -411,20 +484,12 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
 
   useEffect(() => {
     getSessionUser().then((r) => {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (r.ok) setRole(r.user.role);
     });
   }, []);
 
   useEffect(() => {
     if (!open) return;
-    
-    // Set default deadline to +24 hours if it's completely empty
-    setForm((prev) => {
-      if (!prev.deadline) return { ...prev, deadline: getDefaultDeadline() };
-      return prev;
-    });
-
     let cancelled = false;
     getOrderFormData().then((res) => {
       if (cancelled || !res.success) {
@@ -441,70 +506,59 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
     return () => { cancelled = true; };
   }, [open]);
 
-  const [priceTouched, setPriceTouched] = useState(false);
-  const [discountTouched, setDiscountTouched] = useState(false);
+  const subtotal = useMemo(
+    () => form.items.reduce((s, it) => s + parseRp(it.price), 0),
+    [form.items]
+  );
 
   const handleFormChange = useCallback((key: keyof OrderForm, value: string | number) => {
-    if (key === "totalPrice") setPriceTouched(true);
-    if (key === "productId") setPriceTouched(false); // produk ganti → boleh auto-isi lagi
-    if (key === "discountRp") setDiscountTouched(true); // Admin ubah nominal manual → stop auto-hitung
-    if (key === "discountPct") setDiscountTouched(false); // pelanggan (baru) dipilih → boleh auto-hitung lagi
+    if (key === "discountRp") setDiscountTouched(true);
+    if (key === "discountPct") setDiscountTouched(false);
     setForm((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
   }, []);
 
-  // Diskon default pelanggan (%) → isi awal nominal Rp dari Harga Total.
-  // Berhenti begitu Admin mengetik nominalnya sendiri (discountTouched).
+  const updateItem = useCallback((key: string, patch: Partial<ItemRow>) => {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((it) => {
+        if (it.key !== key) return it;
+        const next = { ...it, ...patch };
+        // Auto-isi harga kalau produk/dimensi/qty berubah & belum diubah manual.
+        if (!next.priceTouched && ("productId" in patch || "width" in patch || "height" in patch || "qty" in patch)) {
+          const auto = autoItemPrice(next, products);
+          if (auto > 0) next.price = formatRp(String(auto));
+        }
+        return next;
+      }),
+    }));
+  }, [products]);
+
+  const addItem = useCallback(() => setForm((p) => ({ ...p, items: [...p.items, blankItem()] })), []);
+  const removeItem = useCallback((key: string) =>
+    setForm((p) => ({ ...p, items: p.items.length > 1 ? p.items.filter((it) => it.key !== key) : p.items })), []);
+
+  // Diskon default pelanggan (%) → nominal Rp dari subtotal. Berhenti bila Admin ubah manual.
   useEffect(() => {
     if (discountTouched) return;
-    const subtotal = parseRp(form.totalPrice);
     const rp = form.discountPct > 0 && subtotal > 0 ? Math.round((subtotal * form.discountPct) / 100) : 0;
-    setForm((prev) => (prev.discountRp === rp ? prev : { ...prev, discountRp: rp })); // eslint-disable-line react-hooks/set-state-in-effect
-  }, [discountTouched, form.discountPct, form.totalPrice]);
-
-  // Auto-isi "Harga Total" dari harga dasar produk cetak (selama belum diubah manual).
-  useEffect(() => {
-    if (priceTouched) return;
-    const p = products.find((x) => x.value === form.productId);
-    if (!p?.basePrice) return;
-    const qty = Math.max(1, Number(form.qty) || 1);
-    let amount: number;
-    if (p.unit === "M2") {
-      const w = Number(form.width) || 0;
-      const h = Number(form.height) || 0;
-      const areaM2 = (w / 100) * (h / 100);
-      if (areaM2 <= 0) return;
-      amount = Math.round(p.basePrice * areaM2 * qty);
-    } else {
-      amount = Math.round(p.basePrice * qty);
-    }
-    if (amount > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setForm((prev) => (parseRp(prev.totalPrice) === amount ? prev : { ...prev, totalPrice: formatRp(String(amount)) }));
-    }
-  }, [priceTouched, products, form.productId, form.width, form.height, form.qty]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setForm((prev) => (prev.discountRp === rp ? prev : { ...prev, discountRp: rp }));
+  }, [discountTouched, form.discountPct, subtotal]);
 
   function canNext() {
-    if (step === 0) return !!(form.customerName && form.orderType && form.productId);
-    if (step === 1) return !!form.qty;
+    if (step === 0) return !!(form.customerName && form.orderType && form.deadline);
+    if (step === 1) return form.items.every((it) => it.productId && Number(it.qty) > 0 && parseRp(it.price) >= 0) && subtotal > 0;
     return true;
   }
 
   async function handleSubmit() {
     setError(null);
-    if (!form.deadline) {
-      setError("Deadline order wajib diisi.");
-      return;
-    }
-    if (form.discountRp > 0 && !form.discountReason.trim()) {
-      setError("Alasan diskon wajib diisi.");
-      return;
-    }
+    if (!form.deadline) { setError("Deadline order wajib diisi."); return; }
+    if (form.discountRp > 0 && !form.discountReason.trim()) { setError("Alasan diskon wajib diisi."); return; }
+    if (form.items.some((it) => !it.productId || Number(it.qty) <= 0)) { setError("Tiap item wajib punya produk & qty > 0."); return; }
+
     setIsSubmitting(true);
     try {
-      const total = parseRp(form.totalPrice);
-      const qty = Number(form.qty) || 1;
-      // Field "Harga Total" = harga seluruh order untuk 1 item ini → turunkan ke harga satuan
-      const unitPrice = qty > 0 ? Math.round(total / qty) : total;
       const input: CreatePrintingOrderInput = {
         customer: form.customerId
           ? { id: form.customerId }
@@ -514,24 +568,24 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
         notes: form.notes || null,
         discount: form.discountRp || 0,
         discountReason: form.discountReason || undefined,
-        items: [
-          {
-            productId: form.productId || null,
-            width: form.width ? Number(form.width) : undefined,
-            height: form.height ? Number(form.height) : undefined,
+        items: form.items.map((it) => {
+          const qty = Math.max(1, Number(it.qty) || 1);
+          const itemTotal = parseRp(it.price) || autoItemPrice(it, products);
+          return {
+            productId: it.productId || null,
+            width: it.width ? Number(it.width) : undefined,
+            height: it.height ? Number(it.height) : undefined,
             quantity: qty,
-            materialId: form.materialId || null,
-            finishing: form.finishing || null,
-            unitPrice,
-          },
-        ],
+            materialId: it.materialId || null,
+            finishing: it.finishing || null,
+            unitPrice: Math.round(itemTotal / qty),
+            deadline: it.deadline || null,
+          };
+        }),
       };
 
       const res = await createPrintingOrder(input);
-      if (!res.success) {
-        setError(res.error);
-        return;
-      }
+      if (!res.success) { setError(res.error); return; }
 
       const dp = parseRp(form.dpAmount);
       if (role !== "designer_sales" && dp > 0 && form.dpMethod) {
@@ -543,12 +597,12 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
           setError(`Order ${res.data.orderCode} dibuat, tapi pencatatan DP gagal: ${pay.error}`);
           return;
         }
-        // Buka kwitansi DP di tab baru (tanpa auto-print) — bukti untuk konsumen.
         window.open(`/print/kwitansi/${pay.data.paymentId}?noprint`, "_blank", "noopener");
       }
 
       onCreated?.(res.data.orderCode);
-      setForm({ ...INITIAL_FORM, deadline: getDefaultDeadline() });
+      rowSeq = 0;
+      setForm({ ...INITIAL_FORM, items: [blankItem()], deadline: getDefaultDeadline() });
       setStep(0);
       onClose();
     } finally {
@@ -561,7 +615,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-xl bg-card/95 backdrop-blur-2xl border border-border rounded-3xl shadow-[0_8px_48px_rgba(0,0,0,0.6)] flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-xl bg-card border border-border rounded-3xl shadow-modal flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-6 pt-6 pb-2">
           <div>
             <h2 className="text-lg font-bold text-primary">Order Baru (Printing)</h2>
@@ -582,9 +636,20 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
               {error}
             </div>
           )}
-          {step === 0 && <Step1 form={form} onChange={handleFormChange} products={products} customers={customers} />}
-          {step === 1 && <Step2 form={form} onChange={handleFormChange} materials={materials} finishings={finishings} />}
-          {step === 2 && <Step3 form={form} onChange={handleFormChange} role={role} />}
+          {step === 0 && <Step1 form={form} onChange={handleFormChange} customers={customers} />}
+          {step === 1 && (
+            <ItemsStep
+              form={form}
+              products={products}
+              materials={materials}
+              finishings={finishings}
+              subtotal={subtotal}
+              updateItem={updateItem}
+              addItem={addItem}
+              removeItem={removeItem}
+            />
+          )}
+          {step === 2 && <Step3 form={form} onChange={handleFormChange} role={role} subtotal={subtotal} />}
         </div>
 
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-border">
@@ -597,17 +662,11 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
             {step === 0 ? "Batal" : "Kembali"}
           </Button>
           {step < STEPS.length - 1 ? (
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={!canNext()}
-              onClick={() => setStep((s) => s + 1)}
-              rightIcon={<ChevronRight className="h-4 w-4" />}
-            >
-              Lanjutkan
+            <Button variant="primary" size="sm" onClick={() => setStep((s) => s + 1)} disabled={!canNext()}>
+              Lanjut
             </Button>
           ) : (
-            <Button variant="primary" size="sm" isLoading={isSubmitting} onClick={handleSubmit} disabled={!form.totalPrice}>
+            <Button variant="primary" size="sm" isLoading={isSubmitting} onClick={handleSubmit} disabled={subtotal <= 0}>
               Buat Order
             </Button>
           )}

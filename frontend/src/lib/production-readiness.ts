@@ -18,6 +18,8 @@ export interface ReadinessItem {
   materialId: string | null;
   unitPrice: number;
   totalPrice: number;
+  /** override deadline item — dipakai auto-release untuk prioritas per job, diabaikan gate. */
+  deadline?: Date | string | null;
 }
 
 export interface ReadinessInput {

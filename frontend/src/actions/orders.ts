@@ -27,6 +27,8 @@ export interface PrintingOrderItemInput {
   materialId?: string | null;
   finishing?: string | null;
   unitPrice: number;
+  /** override deadline item (ISO / datetime-local). Kosong = ikut deadline order. */
+  deadline?: string | null;
 }
 
 export interface CreatePrintingOrderInput {
@@ -184,6 +186,7 @@ export async function createPrintingOrder(
       for (const i of items) {
         const size =
           i.width && i.height ? `${i.width}x${i.height}` : i.width ? `${i.width}` : null;
+        const itemDeadline = i.deadline ? new Date(i.deadline) : null;
         await tx.orderItem.create({
           data: {
             tenant_id: tenant.id,
@@ -194,6 +197,7 @@ export async function createPrintingOrder(
             size,
             material_id: i.materialId || null,
             finishing: i.finishing || null,
+            deadline: itemDeadline && !Number.isNaN(itemDeadline.getTime()) ? itemDeadline : null,
             unit_price: i.unitPrice,
             total_price: i.unitPrice * i.quantity,
           },

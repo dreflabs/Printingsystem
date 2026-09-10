@@ -129,7 +129,7 @@ export async function getOperatorJobs() {
         priority: j.priority,
         plannedQty: j.planned_qty,
         actualQty: j.actual_qty,
-        deadline: j.order.deadline,
+        deadline: j.deadline ?? j.order.deadline,
         startedAt: j.actual_start,
         items,
         fileUrl: ver ? `/api/design/${ver.id}` : null,

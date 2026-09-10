@@ -104,6 +104,7 @@ export async function autoReleaseToProduction(
       materialId: it.material_id,
       unitPrice: Number(it.unit_price),
       totalPrice: Number(it.total_price),
+      deadline: it.deadline ?? null,
     }));
 
   const gate = checkProductionReadiness({
@@ -181,13 +182,19 @@ export async function autoReleaseToProduction(
   const activeOpSet = new Set(activeOps.map((u) => u.id));
 
   // Gabungkan item per mesin default → 1 job per mesin, qty dijumlah.
+  // Deadline job = yang PALING AWAL di antara item-itemnya (fallback deadline order).
   const qtyByMachine = new Map<string, number>();
+  const deadlineByMachine = new Map<string, Date | null>();
+  const orderDeadline = order.deadline ? new Date(order.deadline) : null;
   for (const it of items) {
     const mid = it.defaultMachineId as string;
     qtyByMachine.set(mid, (qtyByMachine.get(mid) ?? 0) + it.quantity);
+    const d = it.deadline ? new Date(it.deadline) : orderDeadline;
+    const cur = deadlineByMachine.has(mid) ? deadlineByMachine.get(mid)! : undefined;
+    if (cur === undefined) deadlineByMachine.set(mid, d);
+    else if (d && (!cur || d < cur)) deadlineByMachine.set(mid, d);
   }
 
-  const priority = priorityFromDeadline(order.deadline);
   const machineById = new Map(machines.map((m) => [m.id, m]));
 
   const jobCodes: string[] = [];
@@ -195,6 +202,7 @@ export async function autoReleaseToProduction(
     const machine = machineById.get(machineId);
     const defOp = machine?.default_operator_id ?? null;
     const pinned = defOp && activeOpSet.has(defOp);
+    const jobDeadline = deadlineByMachine.get(machineId) ?? orderDeadline;
     const code = await nextJobCode(tx, tenantId);
     await tx.productionJob.create({
       data: {
@@ -204,7 +212,8 @@ export async function autoReleaseToProduction(
         machine_id: machineId,
         operator_id: pinned ? defOp : null,
         status: pinned ? "PRODUCTION_ASSIGNED" : "PRODUCTION_QUEUED",
-        priority,
+        priority: priorityFromDeadline(jobDeadline),
+        deadline: jobDeadline,
         planned_qty: plannedQty,
       },
     });

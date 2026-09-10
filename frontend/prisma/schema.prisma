@@ -524,6 +524,7 @@ model OrderItem {
   material_id       String?
   material          Material?      @relation(fields: [material_id], references: [id])
   finishing         String?
+  deadline          DateTime? // override deadline per item; kosong = ikut Order.deadline
   unit_price        Decimal        @db.Decimal(15, 2)
   total_price       Decimal        @db.Decimal(15, 2)
 }
@@ -631,6 +632,7 @@ model ProductionJob {
   planned_end   DateTime?
   actual_start  DateTime?
   actual_end    DateTime?
+  deadline      DateTime? // dari OrderItem.deadline (fallback Order.deadline) saat auto-release
   planned_qty   Int
   actual_qty    Int             @default(0)
   actual_area   Decimal?        @db.Decimal(12, 3) // m² / meter tercetak (produk non-PCS)

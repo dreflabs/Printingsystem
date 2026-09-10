@@ -139,12 +139,14 @@ export default function ProductionPage() {
                   <p className="text-xs font-mono font-bold text-primary">{s.orderCode} <span className="text-muted font-sans">· {s.customerName}</span></p>
                   {s.awaitingRelease ? (
                     <p className="text-[11px] text-status-yellow-text mt-0.5">Menunggu rilis Admin (data lengkap, tinggal dilepas).</p>
+                  ) : s.ready ? (
+                    <p className="text-[11px] text-status-green mt-0.5">Data sudah lengkap — tinggal dirilis.</p>
                   ) : (
                     <p className="text-[11px] text-status-red mt-0.5">{s.reasons.join(" · ") || "Data order belum lengkap."}</p>
                   )}
                 </div>
                 <span className="text-[10px] text-muted whitespace-nowrap">deadline {fmtDate(s.deadline)}</span>
-                {s.awaitingRelease ? (
+                {s.ready ? (
                   <button
                     onClick={() => handleRelease(s.orderId)}
                     disabled={releasingId === s.orderId}

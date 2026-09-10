@@ -439,26 +439,63 @@ export async function getProductionOverview() {
       prisma.order.findMany({
         where: { ...T, status: "CONFIRMED", auto_release_blocked: { not: null } },
         orderBy: { deadline: "asc" },
-        select: { id: true, order_code: true, deadline: true, auto_release_blocked: true, customer: { select: { name: true } } },
+        include: {
+          customer: { select: { name: true, phone: true, email: true } },
+          items: { include: { product: { select: { unit: true, default_machine_id: true } } } },
+          design_jobs: { select: { status: true, versions: { orderBy: { version_no: "desc" }, take: 1, select: { approval_status: true, file_path: true, file_name: true } } } },
+        },
       }),
     ]);
 
     const stuckOrders = stuckRows.map((o) => {
       const awaitingRelease = o.auto_release_blocked === "AWAITING_ADMIN_RELEASE";
       let reasons: string[] = [];
-      if (!awaitingRelease && o.auto_release_blocked) {
-        try {
-          const parsed = JSON.parse(o.auto_release_blocked);
-          reasons = Array.isArray(parsed) ? parsed.map(String) : [String(o.auto_release_blocked)];
-        } catch {
-          reasons = [o.auto_release_blocked];
-        }
+      let liveReady = false;
+      if (!awaitingRelease) {
+        // Hitung ulang alasan secara LIVE — supaya panel langsung update saat data
+        // order dilengkapi, tanpa menunggu Admin menekan "Coba Rilis".
+        const designApproved = o.design_jobs.some((d) => d.status === "APPROVED");
+        const designFilePresent = o.design_jobs.some((d) =>
+          d.versions.some((v) => v.approval_status === "APPROVED" && (v.file_path || v.file_name))
+        );
+        const rItems: ReadinessItem[] = o.items
+          .filter((i) => !i.retail_product_id)
+          .map((i) => ({
+            label: i.description || "",
+            productId: i.product_id,
+            productUnit: i.product?.unit ?? null,
+            defaultMachineId: i.product?.default_machine_id ?? null,
+            quantity: i.quantity,
+            size: i.size,
+            materialId: i.material_id,
+            unitPrice: num(i.unit_price),
+            totalPrice: num(i.total_price),
+          }));
+        const r = checkProductionReadiness({
+          status: o.status,
+          orderType: o.order_type,
+          customerId: o.customer_id,
+          customerName: o.customer?.name ?? null,
+          customerContact: o.customer?.phone || o.customer?.email || null,
+          deadline: o.deadline,
+          discount: num(o.discount),
+          discountApprovedBy: o.discount_approved_by,
+          paidAmount: num(o.paid_amount),
+          dpRequired: num(o.dp_required ?? Math.round(num(o.total) * 0.5)),
+          designApproved,
+          designFilePresent,
+          items: rItems,
+        });
+        reasons = r.missing;
+        liveReady = r.autoRoutable;
       }
       return {
         orderId: o.id,
         orderCode: o.order_code,
         customerName: o.customer?.name ?? "-",
         deadline: o.deadline,
+        // ready = tinggal dirilis (baik karena gatekeeper, atau data sudah lengkap)
+        ready: awaitingRelease || liveReady,
         awaitingRelease,
         reasons,
       };

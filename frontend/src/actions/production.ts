@@ -7,6 +7,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { autoReleaseToProduction } from "@/lib/auto-release";
+import { advanceOrderWhenAllJobs } from "@/lib/order-progress";
 import { ok, fail, type ActionResult } from "@/types";
 
 const isGudang = (r: string[]) => r.includes("gudang");
@@ -72,26 +73,6 @@ async function findJobByCode(tx: Prisma.TransactionClient, tenantId: string, cod
   return job;
 }
 
-/** Naikkan status order kalau SEMUA production job order tsb sudah mencapai `reached`. */
-async function advanceOrderWhenAllJobs(
-  tx: Prisma.TransactionClient,
-  orderId: string,
-  reached: string[],
-  newOrderStatus: string,
-  fromOrderStatuses: string[]
-) {
-  const jobs = await tx.productionJob.findMany({
-    where: { order_id: orderId, parent_job_id: null },
-  });
-  const allReached = jobs.length > 0 && jobs.every((j) => reached.includes(j.status));
-  if (allReached) {
-    await tx.order.updateMany({
-      where: { id: orderId, status: { in: fromOrderStatuses } },
-      data: { status: newOrderStatus },
-    });
-  }
-  return allReached;
-}
 
 async function nextJobCode(tx: Prisma.TransactionClient, tenantId: string): Promise<string> {
   const now = new Date();
@@ -560,14 +541,8 @@ export async function finishProduction(
         },
       });
 
-      // order → PRODUCTION_COMPLETE → QC_PENDING kalau semua job selesai
-      const allDone = await advanceOrderWhenAllJobs(
-        tx,
-        job.order_id,
-        ["PRODUCTION_COMPLETE"],
-        "QC_PENDING",
-        ["PRODUCTION_STARTED", "PRODUCTION_COMPLETE"]
-      );
+      // order → QC_PENDING kalau semua job order sudah minimal PRODUCTION_COMPLETE
+      const allDone = await advanceOrderWhenAllJobs(tx, job.order_id, "PRODUCTION_COMPLETE", "QC_PENDING");
 
       return { jobCode: job.job_code, orderId: job.order_id, jobStatus: "PRODUCTION_COMPLETE", lowStock, allDone };
     });
@@ -638,14 +613,16 @@ export async function submitQC(
 
       if (input.result === "PASS") {
         await tx.productionJob.update({ where: { id: job.id }, data: { status: "QC_PASSED" } });
-        await advanceOrderWhenAllJobs(tx, job.order_id, ["QC_PASSED"], "QC_PASSED", ["QC_PENDING", "PRODUCTION_COMPLETE"]);
+        await advanceOrderWhenAllJobs(tx, job.order_id, "QC_PASSED", "QC_PASSED");
         return { jobCode: job.job_code, orderId: job.order_id, result: "PASS", jobStatus: "QC_PASSED" };
       }
 
-      // FAIL → job FAILED_REWORK, order QC_FAILED → QC_REWORK_PENDING
+      // FAIL → job FAILED_REWORK, order → QC_REWORK_PENDING.
+      // `from` mencakup PRODUCTION_STARTED: pada order multi-job, order bisa masih
+      // PRODUCTION_STARTED (job lain belum selesai) saat satu job gagal QC.
       await tx.productionJob.update({ where: { id: job.id }, data: { status: "FAILED_REWORK", rework_reason: input.notes } });
       await tx.order.updateMany({
-        where: { id: job.order_id, status: { in: ["QC_PENDING", "PRODUCTION_COMPLETE"] } },
+        where: { id: job.order_id, status: { in: ["QC_PENDING", "PRODUCTION_COMPLETE", "PRODUCTION_STARTED"] } },
         data: { status: "QC_REWORK_PENDING" },
       });
       return { jobCode: job.job_code, orderId: job.order_id, result: "FAIL", jobStatus: "FAILED_REWORK" };
@@ -748,6 +725,9 @@ export async function decideRework(
           rework_reason: input.reason.trim(),
         },
       });
+      // Job lama sudah digantikan → SUPERSEDED. Keluar dari antrian "perlu keputusan
+      // rework" Owner, dan tidak lagi dihitung di kemajuan order multi-job.
+      await tx.productionJob.update({ where: { id: job.id }, data: { status: "SUPERSEDED" } });
       await tx.order.updateMany({
         where: { id: job.order_id, status: { in: ["QC_REWORK_PENDING", "ON_HOLD"] } },
         data: { status: "PRODUCTION_ASSIGNED" },
@@ -799,7 +779,7 @@ export async function startFinishing(jobCode: string): Promise<ActionResult<{ jo
         },
       });
       await tx.productionJob.update({ where: { id: job.id }, data: { status: "FINISHING_STARTED" } });
-      await advanceOrderWhenAllJobs(tx, job.order_id, ["FINISHING_STARTED"], "FINISHING_STARTED", ["QC_PASSED"]);
+      await advanceOrderWhenAllJobs(tx, job.order_id, "FINISHING_STARTED", "FINISHING_STARTED");
       return { jobCode: job.job_code, jobStatus: "FINISHING_STARTED" };
     });
 
@@ -847,13 +827,7 @@ export async function finishFinishing(
       await tx.productionJob.update({ where: { id: job.id }, data: { status: "FINISHING_COMPLETE" } });
       // Catatan: FINISHING_COMPLETE saja TIDAK membuat order READY_FOR_PICKUP —
       // wajib lewat storage (SCAN 6+7) di Sprint 5.
-      await advanceOrderWhenAllJobs(
-        tx,
-        job.order_id,
-        ["FINISHING_COMPLETE"],
-        "FINISHING_COMPLETE",
-        ["FINISHING_STARTED"]
-      );
+      await advanceOrderWhenAllJobs(tx, job.order_id, "FINISHING_COMPLETE", "FINISHING_COMPLETE");
       return { jobCode: job.job_code, jobStatus: "FINISHING_COMPLETE" };
     });
 

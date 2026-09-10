@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "bootstrap:superadmin": "node prisma/bootstrap-superadmin.mjs",
     "backfill:churn-stale-trials": "node prisma/backfill-churn-stale-trials.mjs",
-    "backfill:workspace-mode": "node prisma/backfill-workspace-mode.mjs"
+    "backfill:workspace-mode": "node prisma/backfill-workspace-mode.mjs",
+    "backfill:storage-slots": "node prisma/backfill-storage-slot-count.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

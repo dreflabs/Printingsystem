@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
+import { allLiveJobsReached, DEAD_JOB_STATUS } from "@/lib/order-progress";
 import { ok, fail, type ActionResult } from "@/types";
 import { buildLocationCode, defaultLocationName, buildStorageLocations } from "@/lib/starter-data";
 
@@ -251,32 +252,45 @@ export async function assignStorageLocation(
       });
 
       await tx.productionJob.update({ where: { id: job.id }, data: { status: "STORED" } });
-      await tx.order.updateMany({
-        where: { id: job.order_id, status: { in: ["FINISHING_COMPLETE", "STORAGE_PENDING"] } },
-        data: { status: "READY_FOR_PICKUP" },
-      });
 
-      // Notifikasi WhatsApp (layer provider terpisah — di sini hanya antrikan PENDING)
+      // Order → READY_FOR_PICKUP HANYA kalau semua job order sudah tersimpan.
+      // Order multi-item bisa punya beberapa job (1 per mesin) — jangan flip &
+      // jangan notifikasi pelanggan sampai barang terakhir masuk rak.
+      const allStored = await allLiveJobsReached(tx, job.order_id, "STORED");
       let notified = false;
-      const order = job.order;
-      if (order.customer_id && order.customer?.phone) {
-        const lunas = Number(order.balance) <= 0;
-        await tx.notificationEvent.create({
-          data: {
-            tenant_id: tenant.id,
-            order_id: order.id,
-            customer_id: order.customer_id,
-            event_type: "READY_FOR_PICKUP",
-            channel: "WHATSAPP",
-            recipient: order.customer.phone,
-            template_code: lunas ? "READY_FOR_PICKUP_PAID" : "READY_FOR_PICKUP_UNPAID",
-            status: "PENDING",
+      let orderStatus = job.order.status;
+      if (allStored) {
+        const flip = await tx.order.updateMany({
+          where: {
+            id: job.order_id,
+            status: { in: ["FINISHING_COMPLETE", "STORAGE_PENDING", "FINISHING_STARTED", "QC_PASSED"] },
           },
+          data: { status: "READY_FOR_PICKUP" },
         });
-        notified = true;
+        if (flip.count > 0) {
+          orderStatus = "READY_FOR_PICKUP";
+          // Notifikasi WhatsApp (layer provider terpisah — di sini hanya antrikan PENDING)
+          const order = job.order;
+          if (order.customer_id && order.customer?.phone) {
+            const lunas = Number(order.balance) <= 0;
+            await tx.notificationEvent.create({
+              data: {
+                tenant_id: tenant.id,
+                order_id: order.id,
+                customer_id: order.customer_id,
+                event_type: "READY_FOR_PICKUP",
+                channel: "WHATSAPP",
+                recipient: order.customer.phone,
+                template_code: lunas ? "READY_FOR_PICKUP_PAID" : "READY_FOR_PICKUP_UNPAID",
+                status: "PENDING",
+              },
+            });
+            notified = true;
+          }
+        }
       }
 
-      return { orderId: job.order_id, jobCode: job.job_code, locationCode: code, orderStatus: "READY_FOR_PICKUP", notified };
+      return { orderId: job.order_id, jobCode: job.job_code, locationCode: code, orderStatus, notified };
     });
 
     await logAction(actor.id, "STORED", "ProductionJob", result.jobCode, null, { location: result.locationCode });
@@ -342,8 +356,10 @@ export async function confirmItemAtCounter(jobCode: string): Promise<ActionResul
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
       if (!job) throw new Error("Job tidak ditemukan.");
-      if (job.order.status !== "READY_FOR_PICKUP") {
-        throw new Error(`Order belum READY_FOR_PICKUP (sekarang: ${job.order.status}).`);
+      // Order multi-job: job pertama membawa order ke IN_TRANSIT, job berikutnya
+      // dikonfirmasi selagi order sudah IN_TRANSIT.
+      if (job.order.status !== "READY_FOR_PICKUP" && job.order.status !== "IN_TRANSIT") {
+        throw new Error(`Order belum siap diambil (sekarang: ${job.order.status}).`);
       }
       const item = await tx.storageItem.findFirst({ where: { job_id: job.id, status: "STORED" } });
       if (!item) throw new Error("Barang tidak ada di storage (status bukan STORED).");
@@ -366,8 +382,17 @@ export async function confirmItemAtCounter(jobCode: string): Promise<ActionResul
         where: { id: item.location_id },
         data: { capacity_current: { decrement: 1 } },
       });
-      await tx.order.update({ where: { id: job.order_id }, data: { status: "IN_TRANSIT" } });
-      return { jobCode: job.job_code, orderStatus: "IN_TRANSIT" };
+      await tx.productionJob.update({ where: { id: job.id }, data: { status: "IN_TRANSIT" } });
+
+      // Order → IN_TRANSIT hanya kalau semua job order sudah di counter.
+      const allTransit = await allLiveJobsReached(tx, job.order_id, "IN_TRANSIT");
+      if (allTransit) {
+        await tx.order.updateMany({
+          where: { id: job.order_id, status: "READY_FOR_PICKUP" },
+          data: { status: "IN_TRANSIT" },
+        });
+      }
+      return { jobCode: job.job_code, orderStatus: allTransit ? "IN_TRANSIT" : job.order.status };
     });
 
     await logAction(actor.id, "IN_TRANSIT", "ProductionJob", result.jobCode, null, null);
@@ -440,11 +465,35 @@ export async function releaseOrder(
         },
       });
 
+      // Serah terima itu order-level: lepas SEMUA job & storage item order ini,
+      // bukan cuma yang di-scan (order multi-item bisa punya beberapa job).
+      const orderJobs = await tx.productionJob.findMany({
+        where: { order_id: order.id },
+        select: { id: true },
+      });
+      const jobIds = orderJobs.map((j) => j.id);
+
+      // Bebaskan slot rak untuk barang yang belum sempat lewat counter (masih STORED
+      // → slot-nya masih terhitung; yang sudah IN_TRANSIT sudah di-decrement di SCAN 9).
+      const stillStored = await tx.storageItem.findMany({
+        where: { job_id: { in: jobIds }, status: "STORED" },
+        select: { location_id: true },
+      });
+      for (const si of stillStored) {
+        await tx.storageLocation.update({
+          where: { id: si.location_id },
+          data: { capacity_current: { decrement: 1 } },
+        });
+      }
+
       await tx.storageItem.updateMany({
-        where: { job_id: job.id, status: { in: ["IN_TRANSIT", "STORED"] } },
+        where: { job_id: { in: jobIds }, status: { in: ["IN_TRANSIT", "STORED"] } },
         data: { status: "RELEASED", released_by: actor.id, released_at: new Date() },
       });
-      await tx.productionJob.update({ where: { id: job.id }, data: { status: "PICKED_UP" } });
+      await tx.productionJob.updateMany({
+        where: { order_id: order.id, status: { notIn: DEAD_JOB_STATUS } },
+        data: { status: "PICKED_UP" },
+      });
       // PICKED_UP → FINAL_AUDIT_PENDING (sistem)
       await tx.order.update({
         where: { id: order.id },

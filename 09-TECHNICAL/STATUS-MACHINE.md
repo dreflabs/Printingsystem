@@ -11,7 +11,7 @@ disimpan di `Order.status`, tapi di record anak:
 | Sub-proses | Di mana state-nya |
 |---|---|
 | Pengerjaan & approval desain | `DesignJob.status` + `DesignVersion.approval_status` (PENDING/DESIGNING/WAITING_APPROVAL/APPROVED/REJECTED) |
-| Produksi per item, jeda, rework | `ProductionJob.status` (PRODUCTION_QUEUED/ASSIGNED/STARTED/PAUSED/COMPLETE/FAILED_REWORK/PICKED_UP) |
+| Produksi per item, jeda, rework | `ProductionJob.status` (PRODUCTION_QUEUED/ASSIGNED/STARTED/PAUSED/COMPLETE/QC_PASSED/FINISHING_STARTED/FINISHING_COMPLETE/STORED/IN_TRANSIT/PICKED_UP · FAILED_REWORK · SUPERSEDED = job rework yang sudah digantikan) |
 | Hasil QC | `QcRecord` (PASS/FAIL + kategori + rework_decision) |
 | Finishing per job | `FinishingJob.status` |
 | Penyimpanan & insiden rak | `StorageItem.status` (STORED/INCIDENT/IN_TRANSIT/RELEASED) |
@@ -38,7 +38,7 @@ itu ada di record anak).
 | `QC_PENDING` | SCAN 2 — **semua** job order sudah `PRODUCTION_COMPLETE` (`advanceOrderWhenAllJobs`) | sistem |
 | `QC_PASSED` | SCAN 3 PASS — semua job `QC_PASSED` | Gudang (`submitQC`) |
 | `QC_REWORK_PENDING` | SCAN 3 FAIL — job jadi `FAILED_REWORK` | Gudang |
-| `PRODUCTION_ASSIGNED` (lagi) | `decideRework` APPROVED/REJECTED → child/reprint job dibuat, order balik ke pipeline | Owner |
+| `PRODUCTION_ASSIGNED` (lagi) | `decideRework` APPROVED/REJECTED → child/reprint job dibuat, job lama → `SUPERSEDED` (keluar dari antrian rework & tak lagi menahan kemajuan order), order balik ke pipeline | Owner |
 | `ON_HOLD` | `decideRework` HOLD | Owner |
 | `FINISHING_STARTED` | SCAN 4 — semua job `FINISHING_STARTED` | Gudang |
 | `FINISHING_COMPLETE` | SCAN 5 — semua job `FINISHING_COMPLETE` (label dicetak) | Gudang |
@@ -97,7 +97,7 @@ RETAIL:  (buat) ─▶ CLOSED  ─voidRetailOrder─▶ CANCELLED
 ## Aturan
 
 - **Tiap transisi di-guard**: aksi memakai `updateMany({ where: { id, status: { in: [status_asal_yang_sah] } } })`. Status tidak sah → tidak ada perubahan (tidak error diam-diam ganda).
-- **Order multi-item**: `advanceOrderWhenAllJobs` — order hanya maju kalau **semua** `ProductionJob` non-child order itu sudah mencapai tahap tsb. Pengecualian: `startProduction` memajukan order begitu **job pertama** mulai (order dianggap "sedang produksi" walau sebagian item masih antre).
+- **Order multi-item**: `advanceOrderWhenAllJobs` (`src/lib/order-progress.ts`) — order hanya maju kalau **semua** job hidup order (bukan child rework, bukan `FAILED_REWORK`/`SUPERSEDED`) sudah **minimal** mencapai fase tsb. Perbandingan pakai **peringkat fase**, bukan cocok status persis, supaya job yang lebih cepat (sudah menyalip fase yang dicek) tetap dihitung "sudah sampai" dan order tidak macet. Helper tidak pernah memundurkan status dan tidak menyentuh status non-pipeline (`ON_HOLD`, `QC_REWORK_PENDING`, dst). Pengecualian: `startProduction` memajukan order begitu **job pertama** mulai. Rantai storage→counter→release (`src/actions/storage.ts`) memakai `allLiveJobsReached` dengan aturan sama: `READY_FOR_PICKUP` hanya setelah **semua** job `STORED`, `IN_TRANSIT` hanya setelah semua job di counter, `releaseOrder` melepas **semua** job + StorageItem order sekaligus (bukan hanya yang di-scan).
 - **Deadline dianggap terpenuhi** sejak `READY_FOR_PICKUP` (lihat `DEADLINE_SETTLED` di `src/lib/order-status.ts` + `RESOLVED_STATUSES` di cron `deadline-alerts`). Order pada status itu ke atas tidak lagi dihitung "overdue".
 - **Setelah `CLOSED`**: tidak ada transisi maju. Perbaikan data lewat `corrections` (record baru, tidak mengedit asli). Pengecualian tunggal: `voidRetailOrder` (`CLOSED → CANCELLED`) untuk pembatalan transaksi retail.
 - Setiap perpindahan dicatat di `audit_logs`.

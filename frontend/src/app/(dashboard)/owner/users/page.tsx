@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, UserPlus, KeyRound, UserX, UserCheck, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Wallet, Trash2, X, Pencil } from "lucide-react";
+import { Users, UserPlus, KeyRound, UserX, UserCheck, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Trash2, X, Pencil, MoreVertical, Eye, EyeOff, ClipboardList, Cpu, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserFormModal, CredentialRevealDialog } from "@/components/owner/UserFormModal";
 import { MachineAssignmentModal } from "@/components/owner/MachineAssignmentModal";
-import { ConfirmDialog } from "@/components/ui";
+import { ConfirmDialog, DropdownMenu, DropdownMenuItem, DropdownMenuDivider, RoleBadge, ROLE_META, roleLabel } from "@/components/ui";
 import {
   getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword,
   unlockEmployeeAccount, getEmployeeDeleteImpact, deleteEmployee, updateUserRoles,
@@ -36,6 +36,8 @@ export default function OwnerUsersPage() {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
   const [savingSalaryId, setSavingSalaryId] = useState<string | null>(null);
+  const [hideSalary, setHideSalary] = useState(false);
+  const [roleFilter, setRoleFilter] = useState("ALL");
   const [workspaceSlug, setWorkspaceSlug] = useState<string | null>(null);
   const [createdCred, setCreatedCred] = useState<
     { name: string; username: string; tempPassword: string; reset?: boolean } | null
@@ -178,19 +180,13 @@ export default function OwnerUsersPage() {
     }
   };
 
-  const filteredUsers = users.filter(u =>
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.role.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
-    owner:          { label: "Owner",             cls: "bg-accent-teal/10 text-accent-teal" },
-    admin:          { label: "Admin",             cls: "bg-accent-teal/10 text-accent-teal" },
-    designer_sales: { label: "Designer/Setting",  cls: "bg-status-yellow/10 text-status-yellow-text" },
-    operator:       { label: "Operator Cetak",    cls: "bg-status-blue/10 text-status-blue" },
-    gudang:         { label: "Finishing & Gudang", cls: "bg-status-green/10 text-status-green" },
-  };
+  const filteredUsers = users.filter(u => {
+    const matchSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        u.role.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchRole = roleFilter === "ALL" || getUserRoles(u).includes(roleFilter);
+    return matchSearch && matchRole;
+  });
 
   /** Returns all role names for a user (primary + extra) */
   const getUserRoles = (user: any): string[] => {
@@ -241,181 +237,264 @@ export default function OwnerUsersPage() {
             className="w-full pl-9 pr-4 py-2 bg-base border border-border rounded-xl focus:outline-none focus:border-accent-teal text-sm text-primary transition-colors"
           />
         </div>
+        <select
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value)}
+          className="px-4 py-2 bg-base border border-border rounded-xl text-sm text-primary focus:outline-none focus:border-accent-teal cursor-pointer"
+        >
+          <option value="ALL">Semua Peran</option>
+          <option value="owner">Owner</option>
+          <option value="admin">Admin / Kasir</option>
+          <option value="designer_sales">Designer / Setting</option>
+          <option value="operator">Operator Cetak</option>
+          <option value="gudang">Finishing & Gudang</option>
+        </select>
       </div>
 
       {/* User Table */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-elevated border-b border-border text-muted uppercase text-[10px] font-bold tracking-wider">
+            <thead className="bg-elevated border-b border-border text-muted text-xs font-semibold tracking-wide">
               <tr>
                 <th className="px-6 py-4">Informasi Pegawai</th>
                 <th className="px-6 py-4">Role / Peran</th>
+                <th className="px-6 py-4">Akses Mesin</th>
                 <th className="px-6 py-4">Status Akun</th>
-                <th className="px-6 py-4">Gaji Pokok</th>
+                <th className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    Gaji Pokok
+                    <button onClick={() => setHideSalary(!hideSalary)} className="p-1 hover:bg-elevated rounded-md text-muted hover:text-primary transition-colors" title={hideSalary ? "Tampilkan Gaji" : "Sembunyikan Gaji"}>
+                      {hideSalary ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                </th>
                 <th className="px-6 py-4 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-muted">Memuat data pegawai...</td>
+                  <td colSpan={6} className="px-6 py-8 text-center text-muted">Memuat data pegawai...</td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-muted flex flex-col items-center justify-center">
+                  <td colSpan={6} className="px-6 py-12 text-center text-muted flex flex-col items-center justify-center">
                     <Users className="h-12 w-12 mb-3 opacity-20" />
                     Belum ada data pegawai ditemukan.
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((user) => (
-                  <tr key={user.id} className={cn("transition-colors hover:bg-elevated/30", !user.active && "opacity-60 bg-base/50")}>
+                  <tr key={user.id} className={cn("transition-colors hover:bg-elevated/50", !user.active && "opacity-60 bg-base/50")}>
                     <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-primary">{user.name}</span>
-                        <span className="text-xs text-muted flex items-center gap-2 mt-0.5">
-                          @{user.username} <span className="text-border/50">•</span> {user.email}
-                        </span>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-accent-teal/10 text-accent-teal flex items-center justify-center font-bold shrink-0 shadow-sm border border-accent-teal/20">
+                          {user.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-primary">{user.name}</span>
+                          <span className="text-xs text-muted mt-0.5">@{user.username}</span>
+                          <span className="text-xs text-muted/70">{user.email}</span>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex flex-wrap items-center gap-1">
-                        {getUserRoles(user).slice(0, 2).map((roleName) => {
-                          const badge = ROLE_BADGE[roleName] ?? { label: roleName, cls: "bg-base text-muted" };
-                          return (
-                            <span key={roleName} className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold", badge.cls)}>
-                              {badge.label}
-                            </span>
-                          );
-                        })}
-                        {getUserRoles(user).length > 2 && (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-elevated text-muted cursor-help" title={getUserRoles(user).slice(2).map(r => ROLE_BADGE[r]?.label || r).join(', ')}>
-                            +{getUserRoles(user).length - 2} Lainnya
-                          </span>
-                        )}
-                      </div>
-                      {getUserRoles(user).includes("operator") && (
-                        <div className="mt-2">
+                      {(() => {
+                        const primary = user.role?.name;
+                        const ordered = [
+                          ...(primary ? [primary] : []),
+                          ...getUserRoles(user).filter((r) => r !== primary),
+                        ];
+                        const primaryRole = ordered[0];
+                        const rest = ordered.slice(1);
+                        return (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {primaryRole && <RoleBadge role={primaryRole} variant="primary" />}
+                            {rest.length > 0 && (
+                              <button
+                                onClick={() => setRoleEditFor({ id: user.id, name: user.name, primary: user.role.name, roles: getUserRoles(user) })}
+                                title={`Juga: ${rest.map((r) => roleLabel(r, true)).join(", ")}`}
+                                aria-label={`${rest.length} peran lain — ubah peran`}
+                                className="cursor-pointer rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold text-muted transition-colors hover:border-accent-teal/40 hover:text-accent-teal hover:bg-accent-teal/5"
+                              >
+                                +{rest.length}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-6 py-4">
+                      {getUserRoles(user).includes("operator") ? (() => {
+                        const count = user.user_machines?.length || 0;
+                        return (
                           <button
                             onClick={() => setMachineEditFor({ id: user.id, name: user.name, user_machines: user.user_machines || [] })}
+                            aria-label={`Atur akses mesin untuk ${user.name}`}
+                            title={count > 0 ? user.user_machines.map((um: any) => um.machine.name).join(", ") : undefined}
                             className={cn(
-                              "text-[10px] font-bold px-2 py-1 rounded border transition-colors",
-                              (user.user_machines?.length || 0) > 0
-                                ? "bg-accent-teal/10 border-accent-teal/30 text-accent-teal hover:bg-accent-teal/20"
-                                : "bg-status-red/10 border-status-red/30 text-status-red hover:bg-status-red/20"
+                              "inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium rounded-md border transition-colors cursor-pointer",
+                              count > 0 
+                                ? "bg-base border-border text-muted hover:border-accent-teal/50 hover:text-accent-teal" 
+                                : "bg-status-yellow/10 border-status-yellow/30 text-status-yellow-text hover:bg-status-yellow/20 hover:border-status-yellow/50"
                             )}
                           >
-                            {(user.user_machines?.length || 0) > 0
-                              ? `Akses: ${user.user_machines.length} Mesin`
-                              : "⚠️ Belum ada mesin"}
+                            {count > 0 ? (
+                              <Cpu className="h-3 w-3 shrink-0" />
+                            ) : (
+                              <AlertTriangle className="h-3 w-3 shrink-0" />
+                            )}
+                            {count > 0 ? `${count} mesin` : "Belum ada mesin"}
                           </button>
-                        </div>
+                        );
+                      })() : (
+                        <span className="text-muted/40 font-medium text-xs">-</span>
                       )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col items-start gap-1">
-                        <span className={cn(
-                          "px-2 py-0.5 rounded text-[10px] font-bold",
-                          user.active ? "bg-status-green/10 text-status-green" : "bg-status-red/10 text-status-red"
-                        )}>
-                          {user.active ? "Aktif" : "Nonaktif"}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {user.active ? (
+                            <div className="flex items-center gap-2 bg-status-green/5 border border-status-green/20 text-status-green px-2.5 py-1 rounded-md text-xs font-semibold">
+                              Aktif
+                              <span className="w-1 h-1 rounded-full bg-status-green/30 mx-0.5" />
+                              <span className="flex items-center gap-1.5 font-medium">
+                                {user.liveStatus === "BEKERJA" && (
+                                  <><span title="Sedang Bekerja" className="w-2 h-2 rounded-full bg-status-green shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" /> Bekerja</>
+                                )}
+                                {user.liveStatus === "PULANG" && (
+                                  <><span title="Sudah Pulang" className="w-2 h-2 rounded-full bg-status-red" /> Pulang</>
+                                )}
+                                {user.liveStatus === "LIBUR" && (
+                                  <><span title="Libur / Cuti" className="w-2 h-2 rounded-full bg-status-yellow" /> Libur</>
+                                )}
+                                {user.liveStatus === "BELUM_ABSEN" && (
+                                  <><span title="Belum Absen" className="w-2 h-2 rounded-full bg-border" /> Off</>
+                                )}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="bg-status-red/5 border border-status-red/20 text-status-red px-2.5 py-1 rounded-md text-xs font-semibold">
+                              Nonaktif
+                            </span>
+                          )}
+                        </div>
                         {user.must_change_password && (
-                          <span className="text-[10px] text-status-yellow-text font-medium flex items-center gap-1 bg-status-yellow/10 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] text-status-yellow-text font-medium flex items-center gap-1 bg-status-yellow/10 px-1.5 py-0.5 rounded border border-status-yellow/20">
                             <KeyRound className="h-3 w-3" /> Wajib ubah sandi
                           </span>
                         )}
                         {isLocked(user) && (
-                          <span className="text-[10px] text-status-red font-medium flex items-center gap-1 bg-status-red/10 px-1.5 py-0.5 rounded">
-                            <LockKeyhole className="h-3 w-3" /> Terkunci ({user.failed_login_count}× gagal)
+                          <span className="text-[10px] text-status-red font-medium flex items-center gap-1 bg-status-red/10 px-1.5 py-0.5 rounded border border-status-red/20">
+                            <LockKeyhole className="h-3 w-3" /> Terkunci ({user.failed_login_count}×)
                           </span>
                         )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5">
-                        <Wallet className="h-3.5 w-3.5 text-muted shrink-0" />
-                        <input
-                          type="number"
-                          min={0}
-                          placeholder="Belum diset"
-                          value={salaryDrafts[user.id] ?? (user.base_salary ?? "")}
-                          onChange={(e) => setSalaryDrafts((prev) => ({ ...prev, [user.id]: e.target.value }))}
-                          className="w-28 px-2 py-1 bg-base border border-border rounded-lg text-xs text-primary focus:outline-none focus:border-accent-teal"
-                        />
-                        {salaryDrafts[user.id] !== undefined && Number(salaryDrafts[user.id]) !== (user.base_salary ?? null) && (
-                          <button
-                            onClick={() => handleSaveSalary(user.id)}
-                            disabled={savingSalaryId === user.id}
-                            className="text-[10px] font-bold text-accent-teal hover:underline disabled:opacity-50"
-                          >
-                            {savingSalaryId === user.id ? "..." : "Simpan"}
-                          </button>
-                        )}
-                      </div>
-                      {user.base_salary != null && salaryDrafts[user.id] === undefined && (
-                        <span className="text-[10px] text-muted mt-0.5 block">{formatRp(user.base_salary)}/bulan</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() =>
-                            setRoleEditFor({
-                              id: user.id,
-                              name: user.name,
-                              primary: user.role.name,
-                              roles: getUserRoles(user),
-                            })
-                          }
-                          className="p-2 text-muted hover:text-accent-teal hover:bg-accent-teal/10 rounded-lg transition-colors group relative"
-                          title="Ubah Peran"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        
-                        {user.role.name !== "owner" && (
+                      <div className="flex items-center gap-2 group">
+                        {salaryDrafts[user.id] !== undefined ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min={0}
+                              placeholder="0"
+                              autoFocus
+                              value={salaryDrafts[user.id]}
+                              onChange={(e) => setSalaryDrafts((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                              className="w-24 px-2 py-1 bg-base border border-border rounded-lg text-xs text-primary focus:outline-none focus:border-accent-teal"
+                            />
+                            <button
+                              onClick={() => handleSaveSalary(user.id)}
+                              disabled={savingSalaryId === user.id}
+                              className="text-[10px] font-bold text-accent-teal hover:bg-accent-teal/10 px-2 py-1 rounded"
+                            >
+                              {savingSalaryId === user.id ? "..." : "Simpan"}
+                            </button>
+                            <button
+                              onClick={() => setSalaryDrafts(prev => { const n={...prev}; delete n[user.id]; return n; })}
+                              className="text-[10px] font-bold text-muted hover:bg-elevated px-2 py-1 rounded"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        ) : (
                           <>
-                            {isLocked(user) && (
-                              <button
-                                onClick={() => handleUnlock(user.id, user.name)}
-                                className="p-2 text-status-red bg-status-red/10 hover:text-status-green hover:bg-status-green/10 rounded-lg transition-colors"
-                                title="Buka Kunci Akun"
-                              >
-                                <Unlock className="h-4 w-4" />
-                              </button>
+                            {hideSalary ? (
+                              <span className="font-mono font-bold text-primary tabular-nums tracking-widest">Rp •••••••</span>
+                            ) : (
+                              <span className="font-bold text-primary tabular-nums">
+                                {user.base_salary != null ? formatRp(user.base_salary) + " / bulan" : <span className="text-muted font-normal text-xs italic tracking-normal">Belum diset</span>}
+                              </span>
                             )}
                             <button
-                              onClick={() => handleResetPassword(user)}
-                              className="p-2 text-muted hover:text-status-yellow-text hover:bg-status-yellow/10 rounded-lg transition-colors group relative"
-                              title="Reset Password"
+                              onClick={() => setSalaryDrafts(prev => ({ ...prev, [user.id]: String(user.base_salary ?? "") }))}
+                              className="p-1.5 text-muted hover:text-accent-teal opacity-0 group-hover:opacity-100 transition-opacity rounded hover:bg-elevated"
+                              title="Ubah Gaji"
                             >
-                              <KeyRound className="h-4 w-4" />
-                            </button>
-                            
-                            <button
-                              onClick={() => handleToggleStatus(user.id, user.active, user.role.name)}
-                              className={cn(
-                                "p-2 rounded-lg transition-colors group relative",
-                                user.active
-                                  ? "text-muted hover:text-status-red hover:bg-status-red/10"
-                                  : "text-status-red bg-status-red/10 hover:text-status-green hover:bg-status-green/10"
-                              )}
-                              title={user.active ? "Nonaktifkan Akun" : "Aktifkan Akun"}
-                            >
-                              {user.active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                            </button>
-                            <button
-                              onClick={() => setDeleteFor({ id: user.id, name: user.name })}
-                              className="p-2 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors"
-                              title="Hapus Pegawai"
-                            >
-                              <Trash2 className="h-4 w-4" />
+                              <Pencil className="h-3 w-3" />
                             </button>
                           </>
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <DropdownMenu
+                        label={`Aksi untuk ${user.name}`}
+                        trigger={<MoreVertical className="h-4 w-4" />}
+                      >
+                        <DropdownMenuItem
+                          icon={<Pencil className="h-4 w-4" />}
+                          onSelect={() =>
+                            setRoleEditFor({ id: user.id, name: user.name, primary: user.role.name, roles: getUserRoles(user) })
+                          }
+                        >
+                          Ubah Peran
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          icon={<ClipboardList className="h-4 w-4" />}
+                          onSelect={() =>
+                            setActionMessage({ type: "success", text: "Fitur Riwayat Kinerja akan segera hadir!" })
+                          }
+                        >
+                          Riwayat Kinerja
+                        </DropdownMenuItem>
+
+                        {user.role.name !== "owner" && (
+                          <>
+                            <DropdownMenuDivider />
+                            {isLocked(user) && (
+                              <DropdownMenuItem
+                                icon={<Unlock className="h-4 w-4" />}
+                                onSelect={() => handleUnlock(user.id, user.name)}
+                              >
+                                Buka Kunci Akun
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              icon={<KeyRound className="h-4 w-4" />}
+                              onSelect={() => handleResetPassword(user)}
+                            >
+                              Reset Password
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              icon={user.active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                              onSelect={() => handleToggleStatus(user.id, user.active, user.role.name)}
+                            >
+                              {user.active ? "Nonaktifkan Akun" : "Aktifkan Akun"}
+                            </DropdownMenuItem>
+                            <DropdownMenuDivider />
+                            <DropdownMenuItem
+                              danger
+                              icon={<Trash2 className="h-4 w-4" />}
+                              onSelect={() => setDeleteFor({ id: user.id, name: user.name })}
+                            >
+                              Hapus Pegawai
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenu>
                     </td>
                   </tr>
                 ))
@@ -494,13 +573,10 @@ export default function OwnerUsersPage() {
   );
 }
 
-const ALL_ROLE_OPTIONS: { name: string; label: string }[] = [
-  { name: "owner", label: "Owner" },
-  { name: "admin", label: "Admin / Kasir" },
-  { name: "designer_sales", label: "Designer / Setting" },
-  { name: "operator", label: "Operator Cetak" },
-  { name: "gudang", label: "Finishing & Gudang" },
-];
+// Sumber tunggal label/ikon peran: `ROLE_META` di components/ui/RoleBadge.
+const ALL_ROLE_OPTIONS: { name: string; label: string }[] = Object.keys(ROLE_META).map(
+  (name) => ({ name, label: roleLabel(name, true) })
+);
 
 function RoleEditModal({
   target, onClose, onDone,

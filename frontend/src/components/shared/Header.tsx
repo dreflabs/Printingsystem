@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Menu, Bell, User, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DropdownMenu, DropdownMenuItem, DropdownMenuDivider } from "@/components/ui";
 import { getUserProfileById, getMyWorkspace } from "@/actions/profile";
 import { signOutAction } from "@/actions/session";
 import { ProfileModal } from "./ProfileModal";
@@ -26,7 +27,6 @@ interface HeaderProps {
 type DbUser = { id: string; name: string; username: string; email: string; phone: string | null; avatar_url: string | null };
 
 export function Header({ userId, userName, role, onMenuClick, className }: HeaderProps) {
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [dbUser, setDbUser] = useState<DbUser | null>(null);
   const [workspace, setWorkspace] = useState<{ slug: string; name: string } | null>(null);
@@ -71,47 +71,42 @@ export function Header({ userId, userName, role, onMenuClick, className }: Heade
           <Bell className="h-5 w-5" />
         </button>
 
-        <div className="relative">
-          <button
-            onClick={() => setShowUserDropdown(!showUserDropdown)}
-            className="flex items-center gap-2 pl-3 border-l border-border hover:opacity-80 transition-opacity cursor-pointer"
+        <div className="pl-3 border-l border-border">
+          <DropdownMenu
+            label="Menu akun"
+            triggerClassName="flex items-center gap-2 rounded-xl p-0 bg-transparent hover:bg-transparent hover:opacity-80"
+            trigger={
+              <>
+                <span className="text-right hidden sm:block">
+                  <span className="block text-xs font-bold text-primary leading-tight">{dbUser?.name ?? userName}</span>
+                  <span className="block text-[10px] text-accent-teal font-semibold leading-tight">{roleLabel}</span>
+                </span>
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-gradient-to-br from-accent-teal to-accent-teal/70 shadow-md shadow-accent-teal/10">
+                  {dbUser?.avatar_url ? (
+                    <img src={dbUser.avatar_url} alt="Profil" className="h-full w-full object-cover" />
+                  ) : (
+                    <User className="h-4 w-4 text-white" />
+                  )}
+                </span>
+              </>
+            }
           >
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold text-primary leading-tight">{dbUser?.name ?? userName}</p>
-              <p className="text-[10px] text-accent-teal font-semibold leading-tight">{roleLabel}</p>
-            </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-gradient-to-br from-accent-teal to-accent-teal/70 shadow-md shadow-accent-teal/10">
-              {dbUser?.avatar_url ? (
-                <img src={dbUser.avatar_url} alt="Profil" className="h-full w-full object-cover" />
-              ) : (
-                <User className="h-4 w-4 text-white" />
-              )}
-            </div>
-          </button>
-
-          {showUserDropdown && (
-            <>
-              <div className="fixed inset-0 z-30" onClick={() => setShowUserDropdown(false)} />
-              <div className="absolute right-0 mt-2 z-40 w-48 bg-card border border-border rounded-2xl shadow-2xl py-2">
-                <button
-                  onClick={() => { setShowUserDropdown(false); setShowProfileModal(true); }}
-                  disabled={!dbUser}
-                  className="w-full text-left px-4 py-2 text-sm font-semibold text-primary hover:bg-elevated flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-40"
-                >
-                  <Settings className="h-4 w-4 text-muted" /> Edit Profil
-                </button>
-                <div className="h-px bg-border my-1" />
-                <form action={signOutAction}>
-                  <button
-                    type="submit"
-                    className="w-full text-left px-4 py-2 text-sm font-semibold text-status-red hover:bg-status-red/10 flex items-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <LogOut className="h-4 w-4" /> Keluar
-                  </button>
-                </form>
-              </div>
-            </>
-          )}
+            <DropdownMenuItem
+              icon={<Settings className="h-4 w-4" />}
+              disabled={!dbUser}
+              onSelect={() => setShowProfileModal(true)}
+            >
+              Edit Profil
+            </DropdownMenuItem>
+            <DropdownMenuDivider />
+            <DropdownMenuItem
+              danger
+              icon={<LogOut className="h-4 w-4" />}
+              onSelect={() => { void signOutAction(); }}
+            >
+              Keluar
+            </DropdownMenuItem>
+          </DropdownMenu>
         </div>
       </div>
 

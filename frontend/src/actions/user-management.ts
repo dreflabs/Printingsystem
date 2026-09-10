@@ -80,16 +80,44 @@ export async function getTenantUsers() {
     const actor = await requireUser();
     if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh melihat daftar pegawai.");
 
+    // Start of today in local timezone (assuming server runs on same TZ or we just use simple UTC boundary)
+    // To be perfectly safe, we'll fetch records created in the last 24 hours or just fetch the latest 1 record per user.
+    // Since AttendanceRecord has `date` (00:00), we can just fetch the latest 1.
     const users = await prisma.user.findMany({
       where: { tenant_id: tenant.id },
-      select: USER_SELECT,
+      select: {
+        ...USER_SELECT,
+        attendance_records: {
+          take: 1,
+          orderBy: { date: "desc" }
+        }
+      },
       orderBy: { created_at: "desc" },
     });
+    
     // Decimal tidak bisa lewat batas Server Action — konversi ke number/null.
-    return users.map((u) => ({ ...u, base_salary: u.base_salary == null ? null : Number(u.base_salary) }));
+    return users.map((u) => {
+      const att = u.attendance_records[0];
+      let liveStatus = "BELUM_ABSEN";
+      if (att) {
+        // If the record is today
+        const isToday = new Date(att.date).toDateString() === new Date().toDateString();
+        if (isToday) {
+          if (att.off_day) liveStatus = "LIBUR";
+          else if (att.check_in && !att.check_out) liveStatus = "BEKERJA";
+          else if (att.check_out) liveStatus = "PULANG";
+        }
+      }
+
+      return {
+        ...u,
+        base_salary: u.base_salary == null ? null : Number(u.base_salary),
+        liveStatus
+      };
+    });
   } catch (error) {
     console.error("Error fetching tenant users:", error);
-    throw new Error("Failed to fetch users");
+    throw error;
   }
 }
 

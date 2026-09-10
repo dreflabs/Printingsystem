@@ -44,9 +44,9 @@ itu ada di record anak).
 | `FINISHING_COMPLETE` | SCAN 5 — semua job `FINISHING_COMPLETE` (label dicetak) | Gudang |
 | `STORED` | SCAN 6+7 — job disimpan ke rak (`StorageItem` STORED) | Gudang (`assignStorageLocation`) |
 | `READY_FOR_PICKUP` | langsung setelah `STORED` (aksi yang sama) → antre notifikasi WA | sistem |
-| `IN_TRANSIT` | SCAN 9 — barang dikonfirmasi di counter, slot rak dibebaskan | Gudang (`confirmItemAtCounter`) |
-| `FINAL_AUDIT_PENDING` | SCAN 10 — `releaseOrder`: gate **lunas** (atau Owner + alasan override) → `PickupRecord` dibuat, job → `PICKED_UP` | Admin / Owner |
-| `CLOSED` | `submitFinalAudit` hasil **GREEN** | Admin (`submitFinalAudit`) |
+| `IN_TRANSIT` | SCAN 9 — barang dikonfirmasi di counter, slot rak dibebaskan; job → `IN_TRANSIT`, order → `IN_TRANSIT` hanya kalau **semua** job di counter | Gudang (`confirmItemAtCounter`) |
+| `FINAL_AUDIT_PENDING` | SCAN 10 — `releaseOrder`: gate **lunas** (atau Owner + alasan override); kalau `Tenant.require_counter_confirmation` true wajib order sudah `IN_TRANSIT` (tidak bisa langsung dari `READY_FOR_PICKUP`) → `PickupRecord` dibuat, **semua** job order → `PICKED_UP`, semua StorageItem → `RELEASED` | Admin / Owner |
+| `CLOSED` | `submitFinalAudit` hasil **GREEN**. GREEN ditolak (server & UI) kalau rekonsiliasi otomatis `getFinalAuditChecks` menemukan temuan **CRIT** (job belum `PICKED_UP`, StorageItem belum `RELEASED`/`INCIDENT`, tagihan belum lunas tanpa override) | Admin (`submitFinalAudit`) |
 | `FINAL_AUDIT_COMPLETE` | `submitFinalAudit` hasil **YELLOW** (perlu approve Owner) | Admin |
 | `CLOSED` / `ON_HOLD` | `approveFinalAudit` atas audit YELLOW (approve → CLOSED, tolak → ON_HOLD) | Owner |
 | `ON_HOLD` | `submitFinalAudit` hasil **RED** (blokir CLOSED) | sistem |

@@ -26,6 +26,9 @@ type Job = {
   deadline: string | Date | null;
   startedAt: string | Date | null;
   items: JobItem[];
+  productUnit: string;
+  firstItemSize: string | null;
+  firstItemQty: number;
   suggestedMaterialId: string | null;
   fileUrl: string | null;
   fileName: string | null;
@@ -244,12 +247,34 @@ type MatRow = { key: number; materialId: string; usageQty: string; wasteQty: str
 let rowSeq = 0;
 const newRow = (materialId = ""): MatRow => ({ key: ++rowSeq, materialId, usageQty: "", wasteQty: "", wasteReason: "" });
 
+/** Parse "300x100" (cm dari form order) atau "3x1 m" → luas m² & panjang m. */
+function parseDims(size: string | null): { areaM2: number; lenM: number } | null {
+  const m = size?.match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/i);
+  if (!m) return null;
+  let w = parseFloat(m[1].replace(",", "."));
+  let h = parseFloat(m[2].replace(",", "."));
+  const inMeters = /(^|[^a-z])m([^a-z]|$)/i.test(size!) && !/mm|cm/i.test(size!);
+  if (!inMeters) { w /= 100; h /= 100; }
+  if (!(w > 0 && h > 0)) return null;
+  return { areaM2: w * h, lenM: Math.max(w, h) };
+}
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 const fInp = "w-full h-11 rounded-xl bg-elevated border border-border text-primary text-sm px-3 outline-none focus:border-accent-teal";
 const fLbl = "text-xs font-bold text-primary mb-1 block";
 const fSection = "text-[11px] font-black uppercase tracking-wider text-muted";
 
 function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialOpt[]; onDone: () => void }) {
+  const areaUnit = job.productUnit === "M2" ? "m²" : job.productUnit === "METER" ? "m" : null;
+  const dims = parseDims(job.firstItemSize);
+  const areaPrefill =
+    areaUnit && dims
+      ? round2((job.productUnit === "M2" ? dims.areaM2 : dims.lenM) * (job.firstItemQty || 1))
+      : null;
+
   const [actualQty, setActualQty] = useState(String(job.plannedQty || ""));
+  const [area, setArea] = useState(areaPrefill != null ? String(areaPrefill) : "");
+  const [reprint, setReprint] = useState("");
   const [rows, setRows] = useState<MatRow[]>([newRow(job.suggestedMaterialId ?? "")]);
   const [showWaste, setShowWaste] = useState(false);
   const [rejectQty, setRejectQty] = useState("");
@@ -269,6 +294,7 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
 
   const canSubmit =
     Number(actualQty) > 0 &&
+    (!areaUnit || Number(area) > 0) &&
     filledRows.length > 0 &&
     filledRows.every((r) => Number(r.wasteQty) <= 0 || !!r.wasteReason) &&
     (rejectN === 0 || !!rejectFinal);
@@ -278,6 +304,8 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
     setErr(null);
     const res = await finishProduction(job.jobCode, {
       actualQty: Number(actualQty),
+      actualArea: areaUnit && Number(area) > 0 ? Number(area) : undefined,
+      reprintQty: Number(reprint) > 0 ? Number(reprint) : undefined,
       wasteQty: rejectN > 0 ? rejectN : 0,
       wasteReason: rejectN > 0 ? rejectFinal : undefined,
       notes: notes.trim() || undefined,
@@ -300,10 +328,33 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
       {/* 1. Hasil */}
       <div className="space-y-2">
         <p className={fSection}>Hasil</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className={fLbl}>Jumlah jadi (pcs) *</label>
+            <input type="number" inputMode="numeric" className={fInp} value={actualQty} onChange={(e) => setActualQty(e.target.value)} />
+            <p className="mt-1 text-[11px] text-muted">Target: {job.plannedQty} pcs</p>
+          </div>
+          {areaUnit && (
+            <div>
+              <label className={fLbl}>Total {areaUnit} tercetak *</label>
+              <div className="relative">
+                <input
+                  type="number" inputMode="decimal"
+                  className={cn(fInp, "pr-10")}
+                  value={area} onChange={(e) => setArea(e.target.value)}
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-muted">{areaUnit}</span>
+              </div>
+              {areaPrefill != null && job.firstItemSize && (
+                <p className="mt-1 text-[11px] text-muted">otomatis dari {job.firstItemSize} × {job.firstItemQty}</p>
+              )}
+            </div>
+          )}
+        </div>
         <div>
-          <label className={fLbl}>Jumlah jadi (pcs) *</label>
-          <input type="number" inputMode="numeric" className={fInp} value={actualQty} onChange={(e) => setActualQty(e.target.value)} />
-          <p className="mt-1 text-[11px] text-muted">Target: {job.plannedQty} pcs</p>
+          <label className={fLbl}>Reprint saat proses <span className="font-normal text-muted">(pcs, opsional)</span></label>
+          <input type="number" inputMode="numeric" min="0" placeholder="0" className={fInp} value={reprint} onChange={(e) => setReprint(e.target.value)} />
+          <p className="mt-1 text-[11px] text-muted">potong yang dicetak ulang di tengah job</p>
         </div>
       </div>
 

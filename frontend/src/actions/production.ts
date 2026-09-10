@@ -452,6 +452,11 @@ export interface MaterialUsageInput {
 
 export interface FinishProductionInput {
   actualQty: number;
+  /** m² / meter tercetak — untuk produk non-PCS. Opsional. */
+  actualArea?: number;
+  /** potong yang dicetak ulang di tengah job. */
+  reprintQty?: number;
+  /** potong reject (pcs). Sisa bahan/offcut lewat materials[].wasteQty. */
   wasteQty?: number;
   wasteReason?: string;
   notes?: string;
@@ -547,6 +552,8 @@ export async function finishProduction(
           status: "PRODUCTION_COMPLETE",
           actual_end: new Date(),
           actual_qty: input.actualQty,
+          actual_area: input.actualArea && input.actualArea > 0 ? input.actualArea : null,
+          reprint_qty: input.reprintQty && input.reprintQty > 0 ? Math.round(input.reprintQty) : 0,
           waste_qty: input.wasteQty ?? 0,
           waste_reason: input.wasteReason?.trim() || null,
           notes: input.notes || job.notes,

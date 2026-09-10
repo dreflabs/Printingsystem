@@ -633,8 +633,9 @@ model ProductionJob {
   actual_end    DateTime?
   planned_qty   Int
   actual_qty    Int             @default(0)
+  actual_area   Decimal?        @db.Decimal(12, 3) // m² / meter tercetak (produk non-PCS)
   reprint_qty   Int             @default(0)
-  waste_qty     Int             @default(0)
+  waste_qty     Int             @default(0) // potong reject (pcs) — sisa bahan/offcut ada di MaterialMovement WASTE
   waste_reason  String?
   parent_job_id String?
   parent_job    ProductionJob?  @relation("ReworkJobs", fields: [parent_job_id], references: [id])

@@ -708,7 +708,7 @@ export async function getOrderDetail(orderId: string) {
         unitPrice: num(i.unit_price),
         totalPrice: num(i.total_price),
       })),
-      payments: o.payments.map((p) => ({ amount: num(p.amount), method: p.method, status: p.status, receivedBy: p.receiver.name, paidAt: p.paid_at })),
+      payments: o.payments.map((p) => ({ id: p.id, amount: num(p.amount), method: p.method, status: p.status, receivedBy: p.receiver.name, paidAt: p.paid_at })),
       designJobs: o.design_jobs.map((d) => ({
         status: d.status,
         method: d.approval_method,
@@ -854,8 +854,10 @@ export async function getOrderReceipt(codeOrId: string) {
       discount: n(order.discount),
       discountApproved: !!order.discount_approved_by,
       total: n(order.total),
+      dpRequired: n(order.dp_required ?? Math.round(n(order.total) * 0.5)),
       paid: n(order.paid_amount),
       balance: n(order.balance),
+      dpMet: n(order.paid_amount) + 1e-6 >= n(order.dp_required ?? Math.round(n(order.total) * 0.5)),
       payments: order.payments.map((p) => ({
         amount: n(p.amount),
         method: p.method,
@@ -867,5 +869,90 @@ export async function getOrderReceipt(codeOrId: string) {
   } catch (e) {
     console.error("getOrderReceipt:", e);
     return fail(e instanceof Error ? e.message : "Gagal memuat data nota.");
+  }
+}
+
+/**
+ * Data satu kwitansi pembayaran (untuk /print/kwitansi/[id]).
+ * Menghitung "dibayar s/d pembayaran ini" & sisa tagihan setelahnya, supaya
+ * kwitansi jujur menyatakan posisi tagihan pada saat itu.
+ */
+export async function getPaymentReceipt(paymentId: string) {
+  try {
+    const tenant = await requireTenant();
+    await requireUser();
+    const n = (d: unknown) => Number(d ?? 0);
+
+    const [t, payment] = await Promise.all([
+      prisma.tenant.findUnique({
+        where: { id: tenant.id },
+        select: { name: true, owner_phone: true, address: true },
+      }),
+      prisma.payment.findFirst({
+        where: { id: paymentId.trim(), tenant_id: tenant.id },
+        include: {
+          receiver: { select: { name: true } },
+          order: {
+            select: {
+              order_code: true, order_type: true, total: true, dp_required: true,
+              customer: { select: { name: true, phone: true } },
+            },
+          },
+        },
+      }),
+    ]);
+    if (!payment || !payment.order) return fail("Pembayaran tidak ditemukan.");
+
+    // Dibayar kumulatif s/d pembayaran ini (urut waktu, tie-break id).
+    const priorAgg = await prisma.payment.aggregate({
+      where: {
+        order_id: payment.order_id,
+        status: "CONFIRMED",
+        OR: [
+          { paid_at: { lt: payment.paid_at } },
+          { AND: [{ paid_at: payment.paid_at }, { id: { lte: payment.id } }] },
+        ],
+      },
+      _sum: { amount: true },
+    });
+    const amount = n(payment.amount);
+    const isRefund = amount < 0;
+    const total = n(payment.order.total);
+    const paidThrough = n(priorAgg._sum.amount);
+    const dpRequired = n(payment.order.dp_required ?? Math.round(total * 0.5));
+    const balanceAfter = Math.max(0, total - paidThrough);
+
+    // Jenis pembayaran: pelunasan kalau menutup sisa, selain itu DP/cicilan.
+    const kind = isRefund
+      ? "REFUND"
+      : balanceAfter <= 0
+        ? "PELUNASAN"
+        : paidThrough <= amount + 1e-6
+          ? "DP"
+          : "CICILAN";
+
+    return ok({
+      shop: { name: t?.name ?? "Percetakan", phone: t?.owner_phone ?? null, address: t?.address ?? null },
+      paymentId: payment.id,
+      orderCode: payment.order.order_code,
+      orderType: payment.order.order_type as "PRINTING" | "RETAIL",
+      customerName: payment.order.customer?.name ?? "-",
+      customerPhone: payment.order.customer?.phone ?? null,
+      cashier: payment.receiver?.name ?? "-",
+      amount: Math.abs(amount),
+      isRefund,
+      method: payment.method,
+      reference: payment.reference ?? null,
+      paidAt: payment.paid_at,
+      kind, // DP | CICILAN | PELUNASAN | REFUND
+      total,
+      dpRequired,
+      paidThrough,
+      balanceAfter,
+      printedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("getPaymentReceipt:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat data kwitansi.");
   }
 }

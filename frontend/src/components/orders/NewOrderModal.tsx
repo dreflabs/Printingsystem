@@ -522,6 +522,8 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
           setError(`Order ${res.data.orderCode} dibuat, tapi pencatatan DP gagal: ${pay.error}`);
           return;
         }
+        // Buka kwitansi DP di tab baru (tanpa auto-print) — bukti untuk konsumen.
+        window.open(`/print/kwitansi/${pay.data.paymentId}?noprint`, "_blank", "noopener");
       }
 
       onCreated?.(res.data.orderCode);

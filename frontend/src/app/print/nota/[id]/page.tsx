@@ -55,6 +55,14 @@ export default function PrintNotaPage() {
 
   const isPrinting = nota.order.type === "PRINTING";
   const showDiscount = nota.discount > 0;
+  // Sudah ada pembayaran tapi belum lunas → dokumen berfungsi sbg BUKTI DP.
+  const isDpProof = isPrinting && nota.balance > 0 && nota.paid > 0;
+  const docTitle = isDpProof ? "NOTA / BUKTI DP" : isPrinting ? "NOTA PESANAN" : "NOTA PENJUALAN";
+  // saldo tagihan setelah tiap pembayaran (running balance) — tanpa mutasi scope
+  const remainingAfter = nota.payments.map((_, i) => {
+    const paidThrough = nota.payments.slice(0, i + 1).reduce((s, x) => s + x.amount, 0);
+    return Math.max(0, nota.total - paidThrough);
+  });
 
   return (
     <div className="w-full flex justify-center bg-elevated min-h-screen py-10 print:bg-white print:py-0">
@@ -75,8 +83,8 @@ export default function PrintNotaPage() {
 
         <Sep />
 
-        <div className="flex justify-between">
-          <span>{isPrinting ? "NOTA PESANAN" : "NOTA PENJUALAN"}</span>
+        <div className="flex justify-between font-bold">
+          <span>{docTitle}</span>
           <span>{nota.order.type}</span>
         </div>
         <Row k="No." v={nota.order.code} />
@@ -116,14 +124,31 @@ export default function PrintNotaPage() {
           </div>
         </div>
 
+        {isDpProof && (
+          <div className="mt-2 border border-black p-1.5">
+            <div className="text-center font-bold text-[11px] tracking-wide">BUKTI PEMBAYARAN DP</div>
+            <div className="border-t border-dashed border-black my-1" />
+            <Row k="DP wajib" v={rp(nota.dpRequired)} />
+            <Row k="Sudah dibayar" v={rp(nota.paid)} />
+            <div className="flex justify-between font-bold">
+              <span>Status DP</span>
+              <span>{nota.dpMet ? "✓ TERPENUHI" : `KURANG ${rp(Math.max(0, nota.dpRequired - nota.paid))}`}</span>
+            </div>
+            <Row k="Sisa tagihan" v={rp(nota.balance)} />
+          </div>
+        )}
+
         {nota.payments.length > 0 && (
           <>
             <Sep />
-            <div className="text-[10px]">Riwayat bayar:</div>
+            <div className="text-[10px] font-bold">Riwayat Pembayaran</div>
+            <div className="flex justify-between text-[9px] text-neutral-500">
+              <span>Tanggal · Metode</span><span>Bayar / Sisa</span>
+            </div>
             {nota.payments.map((p, i) => (
-              <div key={i} className="flex justify-between text-[10px]">
+              <div key={i} className="flex justify-between">
                 <span>{fmtDay(p.paidAt)} · {METHOD_LABEL[p.method] ?? p.method}</span>
-                <span>{rp(p.amount)}</span>
+                <span>{rp(p.amount)} <span className="text-neutral-500">/ {rp(remainingAfter[i])}</span></span>
               </div>
             ))}
           </>

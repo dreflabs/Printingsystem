@@ -138,9 +138,19 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
                   <p className="text-xs font-bold text-primary mb-2">Pembayaran</p>
                   <div className="border border-border rounded-xl divide-y divide-border/60 text-xs">
                     {d.payments.map((p, i) => (
-                      <div key={i} className="flex justify-between px-3 py-2">
-                        <span className="text-muted">{p.method} · {p.status} · {p.receivedBy}</span>
-                        <span className="font-mono text-primary">{fmtRp(p.amount)}</span>
+                      <div key={p.id ?? i} className="flex items-center justify-between px-3 py-2 gap-2">
+                        <span className="text-muted truncate">{p.method} · {p.status} · {p.receivedBy}</span>
+                        <span className="flex items-center gap-2 shrink-0">
+                          <span className="font-mono text-primary">{fmtRp(p.amount)}</span>
+                          {p.id && p.amount > 0 && (
+                            <button
+                              onClick={() => window.open(`/print/kwitansi/${p.id}`, "_blank", "noopener")}
+                              className="text-[10px] font-bold text-accent-teal hover:underline"
+                            >
+                              Kwitansi
+                            </button>
+                          )}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -364,37 +374,66 @@ function PaymentModal({ order, onClose, onDone }: { order: OrderRow; onClose: ()
   const [reference, setReference] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<{ paymentId: string; balance: number; dpMet: boolean; fullyPaid: boolean } | null>(null);
 
   async function submit() {
     setBusy(true); setErr(null);
     const res = await addPayment(order.id, { amount: Number(amount), method, reference: reference.trim() || undefined });
     setBusy(false);
     if (!res.success) { setErr(res.error); return; }
-    onDone();
+    setDone({ paymentId: res.data.paymentId, balance: res.data.balance, dpMet: res.data.dpMet, fullyPaid: res.data.fullyPaid });
   }
   const inp = "w-full h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={done ? onDone : onClose} />
       <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
         <div className="flex justify-between items-center border-b border-border pb-3">
-          <div><h3 className="text-base font-bold text-primary">Catat Pembayaran</h3><p className="text-xs text-muted font-mono">{order.orderCode}</p></div>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
+          <div><h3 className="text-base font-bold text-primary">{done ? "Pembayaran Tercatat" : "Catat Pembayaran"}</h3><p className="text-xs text-muted font-mono">{order.orderCode}</p></div>
+          <button onClick={done ? onDone : onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
         </div>
-        {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
-        <p className="text-xs text-muted">Sisa tagihan: <span className="font-bold text-status-yellow-text">{fmtRp(order.balance)}</span></p>
-        <div><label className="text-xs text-muted mb-1 block">Jumlah</label><input type="number" className={inp} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-        <div><label className="text-xs text-muted mb-1 block">Metode</label>
-          <select className={inp} value={method} onChange={(e) => setMethod(e.target.value as "CASH" | "TRANSFER" | "QRIS")}>
-            <option value="CASH">Tunai</option><option value="TRANSFER">Transfer</option><option value="QRIS">QRIS</option>
-          </select>
-        </div>
-        <div><label className="text-xs text-muted mb-1 block">No. Referensi (opsional)</label><input className={inp} value={reference} onChange={(e) => setReference(e.target.value)} /></div>
-        <button disabled={busy || !(Number(amount) > 0)} onClick={submit}
-          className="w-full h-11 rounded-xl bg-status-green text-white text-sm font-bold hover:brightness-110 disabled:opacity-40">
-          Konfirmasi Pembayaran
-        </button>
+
+        {done ? (
+          <div className="space-y-3">
+            <div className="rounded-xl bg-status-green/10 border border-status-green/30 px-3 py-2.5 text-xs text-status-green">
+              {fmtRp(Number(amount))} tercatat.{" "}
+              {done.fullyPaid ? "Order LUNAS." : `Sisa tagihan ${fmtRp(done.balance)}.`}
+              {!done.fullyPaid && (done.dpMet ? " DP terpenuhi." : " DP belum terpenuhi.")}
+            </div>
+            <button
+              onClick={() => window.open(`/print/kwitansi/${done.paymentId}`, "_blank", "noopener")}
+              className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110"
+            >
+              Cetak Kwitansi
+            </button>
+            <button
+              onClick={() => window.open(`/print/nota/${order.id}`, "_blank", "noopener")}
+              className="w-full h-11 rounded-xl bg-elevated border border-border text-sm font-bold text-primary hover:bg-elevated/70"
+            >
+              Cetak Nota{done.fullyPaid ? "" : " / Bukti DP"}
+            </button>
+            <button onClick={onDone} className="w-full h-10 rounded-xl text-sm font-bold text-muted hover:text-primary">
+              Selesai
+            </button>
+          </div>
+        ) : (
+          <>
+            {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
+            <p className="text-xs text-muted">Sisa tagihan: <span className="font-bold text-status-yellow-text">{fmtRp(order.balance)}</span></p>
+            <div><label className="text-xs text-muted mb-1 block">Jumlah</label><input type="number" className={inp} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+            <div><label className="text-xs text-muted mb-1 block">Metode</label>
+              <select className={inp} value={method} onChange={(e) => setMethod(e.target.value as "CASH" | "TRANSFER" | "QRIS")}>
+                <option value="CASH">Tunai</option><option value="TRANSFER">Transfer</option><option value="QRIS">QRIS</option>
+              </select>
+            </div>
+            <div><label className="text-xs text-muted mb-1 block">No. Referensi (opsional)</label><input className={inp} value={reference} onChange={(e) => setReference(e.target.value)} /></div>
+            <button disabled={busy || !(Number(amount) > 0)} onClick={submit}
+              className="w-full h-11 rounded-xl bg-status-green text-white text-sm font-bold hover:brightness-110 disabled:opacity-40">
+              Konfirmasi Pembayaran
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

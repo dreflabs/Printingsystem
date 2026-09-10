@@ -245,6 +245,8 @@ export interface AddPaymentInput {
 }
 
 export interface AddPaymentResult {
+  /** id Payment yang baru dibuat — untuk cetak kwitansi */
+  paymentId: string;
   paidAmount: number;
   balance: number;
   status: string;
@@ -276,7 +278,7 @@ export async function addPayment(
       });
       if (!order) throw new Error("Order tidak ditemukan.");
 
-      await tx.payment.create({
+      const payment = await tx.payment.create({
         data: {
           tenant_id: tenant.id,
           order_id: order.id,
@@ -326,7 +328,7 @@ export async function addPayment(
           ? await autoReleaseToProduction(tx, tenant.id, order.id)
           : { released: false, jobCodes: [], missing: [] };
 
-      return { paidAmount, balance, status, dpMet, fullyPaid: balance <= 0, release };
+      return { paymentId: payment.id, paidAmount, balance, status, dpMet, fullyPaid: balance <= 0, release };
     });
 
     await logAction(actor.id, "PAYMENT_ADDED", "Order", orderId, null, {
@@ -345,6 +347,7 @@ export async function addPayment(
     revalidatePath("/admin");
     revalidatePath("/operator");
     return ok({
+      paymentId: result.paymentId,
       paidAmount: result.paidAmount,
       balance: result.balance,
       status: result.status,

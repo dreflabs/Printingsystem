@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X, Save, Image as ImageIcon, User, Shield, Lock, Building2, Copy, Check, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { copyText } from "@/lib/clipboard";
 import { updateProfile, changePassword } from "@/actions/profile";
 import { createAvatarUploadUrl } from "@/actions/avatar";
 
@@ -40,15 +41,12 @@ export function ProfileModal({
       ? `${window.location.origin}/login?workspace=${workspaceSlug}`
       : "";
 
-  const copy = (value: string, which: "slug" | "link") => {
+  const copy = async (value: string, which: "slug" | "link") => {
     if (!value) return;
-    navigator.clipboard?.writeText(value).then(
-      () => {
-        setCopied(which);
-        setTimeout(() => setCopied(""), 1500);
-      },
-      () => {},
-    );
+    if (await copyText(value)) {
+      setCopied(which);
+      setTimeout(() => setCopied(""), 1500);
+    }
   };
 
   // General Info State

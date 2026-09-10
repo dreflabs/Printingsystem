@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Clock, MapPin, Camera, Shield, Save, Loader2, Crosshair, Tablet, Trash2, Copy, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { copyText } from "@/lib/clipboard";
 import { useToast } from "@/components/ui";
 import {
   getAttendanceSettings,
@@ -306,7 +307,12 @@ function KioskPanel() {
           <div className="flex items-center gap-2">
             <code className="flex-1 text-xs font-mono bg-base border border-border rounded-lg px-2 py-1.5 break-all">{newToken.token}</code>
             <button
-              onClick={() => { navigator.clipboard?.writeText(newToken.token); toast({ type: "success", title: "Token disalin" }); }}
+              onClick={async () => {
+                const ok = await copyText(newToken.token);
+                toast(ok
+                  ? { type: "success", title: "Token disalin" }
+                  : { type: "error", title: "Gagal menyalin — salin manual dari kotak di sebelah kiri" });
+              }}
               className="shrink-0 h-9 px-3 rounded-lg border border-border text-xs font-bold text-muted inline-flex items-center gap-1"
             >
               <Copy className="h-3.5 w-3.5" /> Salin

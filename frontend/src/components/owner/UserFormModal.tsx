@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { X, Info, ShieldCheck, Copy, Check, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { copyText } from "@/lib/clipboard";
 
 export interface NewEmployeeInput {
   name: string;
@@ -282,22 +283,30 @@ export function CredentialRevealDialog({
   workspaceSlug?: string | null;
   onClose: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "ok" | "fail">("idle");
   const [ack, setAck] = useState(false);
+  const blockRef = useRef<HTMLDivElement>(null);
 
   const block =
     (workspaceSlug ? `Workspace: ${workspaceSlug}\n` : "") +
     `Username: ${cred.username}\n` +
     `Password sementara: ${cred.tempPassword}`;
 
-  const copy = () => {
-    navigator.clipboard?.writeText(block).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      },
-      () => {},
-    );
+  const copy = async () => {
+    const ok = await copyText(block);
+    setCopyState(ok ? "ok" : "fail");
+    if (!ok) {
+      // Fallback manual: seleksi blok teks supaya user tinggal tekan Ctrl/Cmd+C.
+      const el = blockRef.current;
+      if (el && typeof window !== "undefined") {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+    }
+    setTimeout(() => setCopyState("idle"), 2500);
   };
 
   return (
@@ -316,7 +325,10 @@ export function CredentialRevealDialog({
             {cred.reset && " Sesi lama pegawai langsung berhenti."}
           </div>
 
-          <div className="rounded-xl bg-elevated border border-border p-3 font-mono text-sm text-primary space-y-1.5">
+          <div
+            ref={blockRef}
+            className="rounded-xl bg-elevated border border-border p-3 font-mono text-sm text-primary space-y-1.5 select-all"
+          >
             {workspaceSlug && (
               <div>
                 <span className="text-muted">Workspace</span>: {workspaceSlug}
@@ -333,16 +345,21 @@ export function CredentialRevealDialog({
 
           <button
             onClick={copy}
-            className="w-full h-9 rounded-lg border border-border text-xs font-bold text-muted hover:text-primary inline-flex items-center justify-center gap-1.5"
+            className={cn(
+              "w-full h-9 rounded-lg border text-xs font-bold inline-flex items-center justify-center gap-1.5",
+              copyState === "ok"
+                ? "border-status-green/40 bg-status-green/10 text-status-green"
+                : copyState === "fail"
+                  ? "border-status-yellow/40 bg-status-yellow/10 text-status-yellow-text"
+                  : "border-border text-muted hover:text-primary"
+            )}
           >
-            {copied ? (
-              <>
-                <Check className="h-3.5 w-3.5" /> Tersalin
-              </>
+            {copyState === "ok" ? (
+              <><Check className="h-3.5 w-3.5" /> Tersalin</>
+            ) : copyState === "fail" ? (
+              <><Info className="h-3.5 w-3.5" /> Teks dipilih — tekan Ctrl/Cmd+C</>
             ) : (
-              <>
-                <Copy className="h-3.5 w-3.5" /> Salin kredensial
-              </>
+              <><Copy className="h-3.5 w-3.5" /> Salin kredensial</>
             )}
           </button>
 

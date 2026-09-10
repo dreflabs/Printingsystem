@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { ChevronLeft, X, Package, FileText, CreditCard, Grid2x2, Plus, Trash2 } from "lucide-react";
 import { Button, Input, Textarea, Select, Modal } from "@/components/ui";
+import { DeadlineField, defaultDeadline } from "@/components/ui/DeadlineField";
 import { LayoutCalculator } from "@/components/tools/LayoutCalculator";
 import { cn } from "@/lib/utils";
 import { getOrderFormData, createPrintingOrder, type CreatePrintingOrderInput } from "@/actions/orders";
@@ -21,7 +22,7 @@ interface ItemRow {
   /** total harga item (Rp, ter-format). Auto dari produk selama belum diubah manual. */
   price: string;
   priceTouched: boolean;
-  /** override deadline item (datetime-local). Kosong = ikut deadline order. */
+  /** override deadline item ("YYYY-MM-DDTHH:mm"). Kosong = ikut deadline order. */
   deadline: string;
 }
 
@@ -55,16 +56,6 @@ const INITIAL_FORM: OrderForm = {
   dpAmount: "", dpMethod: "", discountRp: 0, discountPct: 0, discountReason: "",
 };
 
-function getDefaultDeadline(): string {
-  const d = new Date();
-  d.setHours(d.getHours() + 24);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
-}
 
 type Opt = { value: string; label: string };
 type ProductOpt = Opt & { category: string; unit: string; basePrice: number | null };
@@ -217,7 +208,12 @@ function Step1({
         />
       </div>
 
-      <Input label="Deadline Order *" type="datetime-local" value={form.deadline} onChange={(e) => onChange("deadline", e.target.value)} />
+      <DeadlineField
+        label="Deadline Order *"
+        value={form.deadline}
+        onChange={(v) => onChange("deadline", v)}
+        hint="Kapan pesanan harus siap diambil. Prioritas produksi ikut deadline ini."
+      />
 
       <Textarea
         label="Catatan Tambahan"
@@ -320,21 +316,19 @@ function ItemsStep({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label="Harga item (Rp) *"
-              placeholder="mis. 450.000"
-              value={it.price}
-              onChange={(e) => updateItem(it.key, { price: formatRp(e.target.value), priceTouched: true })}
-              leftAddon={<span className="text-xs font-semibold">Rp</span>}
-            />
-            <Input
-              label="Deadline item (opsional)"
-              type="datetime-local"
-              value={it.deadline}
-              onChange={(e) => updateItem(it.key, { deadline: e.target.value })}
-            />
-          </div>
+          <Input
+            label="Harga item (Rp) *"
+            placeholder="mis. 450.000"
+            value={it.price}
+            onChange={(e) => updateItem(it.key, { price: formatRp(e.target.value), priceTouched: true })}
+            leftAddon={<span className="text-xs font-semibold">Rp</span>}
+          />
+          <DeadlineField
+            label="Deadline item (opsional)"
+            value={it.deadline}
+            onChange={(v) => updateItem(it.key, { deadline: v })}
+            optional
+          />
         </div>
       ))}
 
@@ -471,7 +465,7 @@ interface NewOrderModalProps {
 
 export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) {
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState<OrderForm>(() => ({ ...INITIAL_FORM, items: [blankItem()], deadline: getDefaultDeadline() }));
+  const [form, setForm] = useState<OrderForm>(() => ({ ...INITIAL_FORM, items: [blankItem()], deadline: defaultDeadline() }));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [role, setRole] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -602,7 +596,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
 
       onCreated?.(res.data.orderCode);
       rowSeq = 0;
-      setForm({ ...INITIAL_FORM, items: [blankItem()], deadline: getDefaultDeadline() });
+      setForm({ ...INITIAL_FORM, items: [blankItem()], deadline: defaultDeadline() });
       setStep(0);
       onClose();
     } finally {

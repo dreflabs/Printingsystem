@@ -3,186 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  LayoutDashboard,
-  Palette,
-  Settings2,
-  Package,
-  BarChart2,
-  ShoppingCart,
-  ScanLine,
-  X,
-  ChevronRight,
-  Tag,
-  LogOut,
-  Users,
-  ChevronDown,
-  Layers,
-  Clock,
-  Wallet,
-  BookOpen,
-} from "lucide-react";
+import { X, ChevronRight, ChevronDown, LogOut, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/actions/session";
 import { WORKSPACE_MODE_LABEL, type WorkspaceMode } from "@/lib/workspace-mode";
-
-// All possible roles in the system
-type UserRole = "admin" | "designer_sales" | "operator" | "gudang" | "owner";
-
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ReactNode;
-  roles: UserRole[];
-}
-
-const NAV_ITEMS: NavItem[] = [
-  {
-    label: "Dashboard",
-    href: "/owner",
-    icon: <LayoutDashboard className="h-5 w-5" />,
-    roles: ["owner"],
-  },
-  {
-    label: "Produksi & Laporan",
-    href: "/admin/production",
-    icon: <BarChart2 className="h-5 w-5" />,
-    roles: ["admin", "owner"],
-  },
-  {
-    label: "Pegawai & Akses",
-    href: "/owner/users",
-    icon: <Users className="h-5 w-5" />,
-    roles: ["owner"],
-  },
-  {
-    label: "Identitas Toko",
-    href: "/owner/toko",
-    icon: <Tag className="h-5 w-5" />,
-    roles: ["owner"],
-  },
-  {
-    label: "Laporan Bulanan",
-    href: "/owner/reports",
-    icon: <BarChart2 className="h-5 w-5" />,
-    roles: ["owner"],
-  },
-  {
-    label: "Pengaturan Absensi",
-    href: "/owner/attendance-settings",
-    icon: <Settings2 className="h-5 w-5" />,
-    roles: ["owner"],
-  },
-  {
-    label: "Absensi Pegawai",
-    href: "/admin/attendance",
-    icon: <Clock className="h-5 w-5" />,
-    roles: ["owner", "admin"],
-  },
-  {
-    label: "Gaji Pegawai",
-    href: "/admin/payroll",
-    icon: <Wallet className="h-5 w-5" />,
-    roles: ["owner", "admin"],
-  },
-  {
-    label: "Dashboard Admin",
-    href: "/admin",
-    icon: <LayoutDashboard className="h-5 w-5" />,
-    roles: ["admin"],
-  },
-  {
-    label: "Laporan",
-    href: "/admin/reports",
-    icon: <BarChart2 className="h-5 w-5" />,
-    roles: ["admin"],
-  },
-  {
-    label: "POS / Kasir",
-    href: "/pos",
-    icon: <ShoppingCart className="h-5 w-5" />,
-    roles: ["admin"],
-  },
-  {
-    label: "Katalog & Harga",
-    href: "/admin/products",
-    icon: <Tag className="h-5 w-5" />,
-    roles: ["admin"],
-  },
-  {
-    label: "Database Pelanggan",
-    href: "/admin/customers",
-    icon: <Users className="h-5 w-5" />,
-    roles: ["admin"],
-  },
-  {
-    label: "Dashboard Desainer",
-    href: "/designer",
-    icon: <Palette className="h-5 w-5" />,
-    roles: ["designer_sales"],
-  },
-  {
-    label: "Dashboard Operator",
-    href: "/operator",
-    icon: <Settings2 className="h-5 w-5" />,
-    roles: ["operator"],
-  },
-  {
-    label: "Finishing & QC",
-    href: "/finishing",
-    icon: <Package className="h-5 w-5" />,
-    roles: ["gudang"],
-  },
-  {
-    label: "Scan QR",
-    href: "/scan",
-    icon: <ScanLine className="h-5 w-5" />,
-    roles: ["admin", "operator", "gudang", "owner"],
-  },
-  {
-    label: "Bantuan",
-    href: "/bantuan",
-    icon: <BookOpen className="h-5 w-5" />,
-    roles: ["admin", "designer_sales", "operator", "gudang", "owner"],
-  },
-];
-
-/**
- * Navigasi mode SOLO (percetakan dijalankan 1 orang). Daftar rata & pendek —
- * tanpa dashboard per-peran, tanpa role switcher. Owner tetap punya semua
- * peran di baliknya; ini murni menyederhanakan tampilan. Alur order dipandu di
- * Beranda ("Langkah berikutnya"), jadi Scan QR sifatnya opsional.
- */
-const SOLO_NAV: NavItem[] = [
-  { label: "Beranda", href: "/beranda", icon: <LayoutDashboard className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Order", href: "/admin", icon: <ShoppingCart className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Produksi", href: "/admin/production", icon: <BarChart2 className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Kasir", href: "/pos", icon: <ShoppingCart className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Katalog & Harga", href: "/admin/products", icon: <Tag className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Scan QR", href: "/scan", icon: <ScanLine className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Pegawai & Akses", href: "/owner/users", icon: <Users className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Bantuan", href: "/bantuan", icon: <BookOpen className="h-5 w-5" />, roles: ["owner"] },
-];
-
-/**
- * Navigasi Owner di mode TIM (TEAM_SMALL / TEAM_FULL): fokus pengawasan —
- * setup, laporan, absensi, gaji, approval. TANPA dashboard per-divisi
- * (Admin/Desainer/Operator/Finishing) — itu punya pegawainya. Owner tetap
- * memegang perannya di balik layar; kalau perlu turun tangan, dashboard
- * divisi masih bisa dibuka lewat "Pindah Dashboard" di bawah header.
- */
-const TEAM_OWNER_NAV: NavItem[] = [
-  { label: "Dashboard", href: "/owner", icon: <LayoutDashboard className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Produksi & Laporan", href: "/admin/production", icon: <BarChart2 className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Pegawai & Akses", href: "/owner/users", icon: <Users className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Identitas Toko", href: "/owner/toko", icon: <Tag className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Laporan Bulanan", href: "/owner/reports", icon: <BarChart2 className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Pengaturan Absensi", href: "/owner/attendance-settings", icon: <Settings2 className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Absensi Pegawai", href: "/admin/attendance", icon: <Clock className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Gaji Pegawai", href: "/admin/payroll", icon: <Wallet className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Scan QR", href: "/scan", icon: <ScanLine className="h-5 w-5" />, roles: ["owner"] },
-  { label: "Bantuan", href: "/bantuan", icon: <BookOpen className="h-5 w-5" />, roles: ["owner"] },
-];
+import { SOLO_NAV, resolveNav, type UserRole, type ResolvedNav } from "@/lib/nav-config";
 
 // Role switcher config: what dashboards each role maps to
 const ROLE_SWITCHER_CONFIG: { role: UserRole; label: string; href: string; color: string }[] = [
@@ -193,6 +18,8 @@ const ROLE_SWITCHER_CONFIG: { role: UserRole; label: string; href: string; color
   { role: "gudang",         label: "Finishing & Gudang", href: "/finishing", color: "text-status-green" },
 ];
 
+const EXPANDED_KEY = "pp_nav_expanded";
+
 interface SidebarProps {
   role: UserRole;
   roles?: string[]; // All roles this user has (multi-role support)
@@ -201,45 +28,59 @@ interface SidebarProps {
   onClose: () => void;
 }
 
+function hrefActive(pathname: string, href: string): boolean {
+  const isExactRoot = ["/admin", "/owner", "/designer", "/operator", "/finishing"].includes(href);
+  return isExactRoot ? pathname === href : pathname === href || pathname.startsWith(href + "/");
+}
+
 export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
 
-  // Items visible to this user based on ALL their roles
   const userRoleSet = new Set(roles as UserRole[]);
-
-  // Navigasi ditentukan `workspace_mode`, BUKAN jumlah peran. Owner yang baru
-  // daftar TEAM_FULL tetap memegang semua peran operasional, tapi sidebar-nya
-  // tidak ikut membengkak jadi 18 item.
-  //  - SOLO  + Owner → SOLO_NAV (8 item, alur 1 orang)
-  //  - TIM   + Owner → TEAM_OWNER_NAV (pengawasan, tanpa dashboard divisi)
-  //  - selain itu (pegawai biasa) → navigasi per-peran seperti biasa
   const soloView = workspaceMode === "SOLO" && userRoleSet.has("owner");
   const teamOwnerView =
     (workspaceMode === "TEAM_SMALL" || workspaceMode === "TEAM_FULL") && userRoleSet.has("owner");
+  const roleKey = [...roles].sort().join(",");
 
-  const visibleItems = NAV_ITEMS.filter((item) =>
-    item.roles.some((r) => userRoleSet.has(r))
-  );
+  // Navigasi ditentukan workspace_mode + peran:
+  //  - SOLO + Owner        → SOLO_NAV (rata, alur 1 orang)
+  //  - TIM  + Owner        → GROUPED_NAV disaring ke peran "owner" (pengawasan)
+  //  - selain itu (pegawai) → GROUPED_NAV disaring ke peran user
+  const navItems: ResolvedNav[] = React.useMemo(() => {
+    if (soloView) {
+      return SOLO_NAV.map((n) => ({ kind: "link" as const, label: n.label, href: n.href, icon: n.icon }));
+    }
+    const scope: UserRole[] = teamOwnerView ? ["owner"] : (roleKey.split(",").filter(Boolean) as UserRole[]);
+    return resolveNav(scope);
+  }, [soloView, teamOwnerView, roleKey]);
 
-  // De-duplicate by href (owner sees all, so some hrefs might appear twice)
-  const uniqueItems = soloView
-    ? SOLO_NAV
-    : teamOwnerView
-      ? TEAM_OWNER_NAV
-      : visibleItems.filter(
-          (item, idx, arr) => arr.findIndex((i) => i.href === item.href) === idx
-        );
+  // Preferensi buka/tutup grup yang di-set manual viewer (localStorage). Grup yang
+  // memuat halaman aktif tetap terbuka otomatis kecuali viewer menutupnya sendiri.
+  // Sidebar hanya dirender di klien (layout return null sampai sesi siap), jadi
+  // aman membaca localStorage di initializer.
+  const [manual, setManual] = React.useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem(EXPANDED_KEY) || "{}"); } catch { return {}; }
+  });
 
-  // Role switcher: tetap tampil untuk Owner mode TIM yang masih pegang peran
-  // divisi (jalan pintas turun tangan). Menyusut sendiri saat peran dilepas.
+  const isGroupOpen = (label: string, hasActiveChild: boolean) =>
+    label in manual ? manual[label] : hasActiveChild;
+
+  const toggleGroup = (label: string, hasActiveChild: boolean) => {
+    setManual((prev) => {
+      const current = label in prev ? prev[label] : hasActiveChild;
+      const next = { ...prev, [label]: !current };
+      try { localStorage.setItem(EXPANDED_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
   const switcherRoles = ROLE_SWITCHER_CONFIG.filter((r) => userRoleSet.has(r.role));
   const hasMultipleRoles = !soloView && switcherRoles.length > 1;
 
   const currentRoleLabel =
     ROLE_SWITCHER_CONFIG.find((r) => {
-      // Match current dashboard section
       if (pathname.startsWith("/owner")) return r.role === "owner";
       if (pathname.startsWith("/admin")) return r.role === "admin";
       if (pathname.startsWith("/designer")) return r.role === "designer_sales";
@@ -250,15 +91,10 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
 
   return (
     <>
-      {/* Mobile Backdrop */}
       {isOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-base/70 backdrop-blur-sm lg:hidden"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 z-30 bg-base/70 backdrop-blur-sm lg:hidden" onClick={onClose} />
       )}
 
-      {/* Sidebar Panel */}
       <aside
         className={cn(
           "fixed top-0 left-0 z-40 h-full w-60 flex flex-col",
@@ -300,12 +136,9 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
                 <p className="text-[10px] text-muted leading-none mb-0.5">Mode Aktif</p>
                 <p className="text-xs font-bold text-primary truncate">{currentRoleLabel}</p>
               </div>
-              <ChevronDown
-                className={cn("h-3.5 w-3.5 text-muted transition-transform", switcherOpen && "rotate-180")}
-              />
+              <ChevronDown className={cn("h-3.5 w-3.5 text-muted transition-transform", switcherOpen && "rotate-180")} />
             </button>
 
-            {/* Dropdown */}
             {switcherOpen && (
               <div className="mt-1.5 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
                 <p className="text-[10px] text-muted font-bold px-3 pt-2.5 pb-1.5 uppercase tracking-wider border-b border-border">
@@ -333,29 +166,77 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          {uniqueItems.map((item) => {
-            const isExactRoot = ["/admin", "/owner", "/designer", "/operator", "/finishing"].includes(item.href);
-            const isActive = isExactRoot
-              ? pathname === item.href
-              : pathname === item.href || pathname.startsWith(item.href + "/");
+          {navItems.map((item) => {
+            if (item.kind === "link") {
+              const Icon = item.icon;
+              const active = hrefActive(pathname, item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
+                    active
+                      ? "bg-accent-teal/15 text-accent-teal border border-accent-teal/30"
+                      : "text-muted hover:text-primary hover:bg-elevated"
+                  )}
+                >
+                  <span className={cn("transition-colors", active ? "text-accent-teal" : "text-muted group-hover:text-primary")}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="flex-1">{item.label}</span>
+                  {active && <ChevronRight className="h-4 w-4 text-accent-teal" />}
+                </Link>
+              );
+            }
+
+            // group
+            const Icon = item.icon;
+            const hasActiveChild = item.children.some((c) => hrefActive(pathname, c.href));
+            const isOpenGroup = isGroupOpen(item.label, hasActiveChild);
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
-                  isActive
-                    ? "bg-accent-teal/15 text-accent-teal border border-accent-teal/30"
-                    : "text-muted hover:text-primary hover:bg-elevated"
+              <div key={item.label}>
+                <button
+                  onClick={() => toggleGroup(item.label, hasActiveChild)}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
+                    hasActiveChild && !isOpenGroup
+                      ? "text-accent-teal"
+                      : "text-muted hover:text-primary hover:bg-elevated"
+                  )}
+                  aria-expanded={isOpenGroup}
+                >
+                  <span className={cn("transition-colors", hasActiveChild ? "text-accent-teal" : "text-muted group-hover:text-primary")}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="flex-1 text-left">{item.label}</span>
+                  <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", isOpenGroup && "rotate-180")} />
+                </button>
+                {isOpenGroup && (
+                  <div className="mt-1 ml-4 pl-3 border-l border-border space-y-1">
+                    {item.children.map((c) => {
+                      const active = hrefActive(pathname, c.href);
+                      return (
+                        <Link
+                          key={c.href}
+                          href={c.href}
+                          onClick={onClose}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-all",
+                            active
+                              ? "bg-accent-teal/15 text-accent-teal"
+                              : "text-muted hover:text-primary hover:bg-elevated"
+                          )}
+                        >
+                          <span className="flex-1">{c.label}</span>
+                          {active && <ChevronRight className="h-3.5 w-3.5 text-accent-teal" />}
+                        </Link>
+                      );
+                    })}
+                  </div>
                 )}
-              >
-                <span className={cn("transition-colors", isActive ? "text-accent-teal" : "text-muted group-hover:text-primary")}>
-                  {item.icon}
-                </span>
-                <span className="flex-1">{item.label}</span>
-                {isActive && <ChevronRight className="h-4 w-4 text-accent-teal" />}
-              </Link>
+              </div>
             );
           })}
         </nav>

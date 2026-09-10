@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Printer, Loader2 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { getOrderReceipt } from "@/actions/queries";
 
 type Nota = Extract<Awaited<ReturnType<typeof getOrderReceipt>>, { success: true }>["data"];
@@ -137,7 +138,14 @@ export default function PrintNotaPage() {
               : "LUNAS"}
           </div>
           {isPrinting && (
-            <div className="text-[10px] mt-0.5">Simpan nota ini sebagai bukti pengambilan.</div>
+            <>
+              <div className="text-[10px] mt-0.5">Simpan nota ini sebagai bukti pengambilan.</div>
+              <div className="flex flex-col items-center mt-2">
+                <QRCodeSVG value={nota.order.code} size={110} level="M" marginSize={0} />
+                <div className="text-[9px] mt-1 tracking-wider">{nota.order.code}</div>
+                <div className="text-[9px] text-neutral-500">Tunjukkan QR ini saat pengambilan</div>
+              </div>
+            </>
           )}
           <div className="mt-1">Terima kasih 🙏</div>
           <div className="text-[9px] text-neutral-500 mt-1">

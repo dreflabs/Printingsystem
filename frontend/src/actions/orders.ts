@@ -512,7 +512,7 @@ export async function getOrderFormData() {
       prisma.material.findMany({
         where: { tenant_id: tenant.id, active: true },
         orderBy: { name: "asc" },
-        select: { id: true, name: true, material_code: true, type: true },
+        select: { id: true, name: true, material_code: true, type: true, unit_usage: true, unit_custom: true },
       }),
       prisma.user.findMany({
         where: { tenant_id: tenant.id, active: true, role: { name: "designer_sales" } },

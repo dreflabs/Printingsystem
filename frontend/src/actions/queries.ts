@@ -61,6 +61,7 @@ export async function getOperatorJobs() {
               quantity: true,
               size: true,
               finishing: true,
+              material_id: true,
               product: { select: { name: true, default_machine_id: true } },
               material: { select: { name: true } },
             },
@@ -107,7 +108,8 @@ export async function getOperatorJobs() {
       const ver = j.order.design_jobs.flatMap((d) => d.versions).find((v) => v.file_path) ?? null;
       // Item yang relevan ke mesin job ini; fallback ke semua item non-retail.
       const forMachine = j.order.items.filter((it) => it.product?.default_machine_id === j.machine_id);
-      const items = (forMachine.length ? forMachine : j.order.items).map((it) => ({
+      const relevant = forMachine.length ? forMachine : j.order.items;
+      const items = relevant.map((it) => ({
         product: it.product?.name ?? it.description?.trim() ?? "Item cetak",
         size: it.size ?? null,
         qty: it.quantity,
@@ -120,6 +122,7 @@ export async function getOperatorJobs() {
         customerName: j.order.customer?.name ?? "-",
         machine: j.machine.name,
         status: j.status,
+        suggestedMaterialId: relevant.find((it) => it.material_id)?.material_id ?? null,
         priority: j.priority,
         plannedQty: j.planned_qty,
         actualQty: j.actual_qty,

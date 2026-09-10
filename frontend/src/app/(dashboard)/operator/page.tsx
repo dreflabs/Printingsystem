@@ -26,16 +26,27 @@ type Job = {
   deadline: string | Date | null;
   startedAt: string | Date | null;
   items: JobItem[];
+  suggestedMaterialId: string | null;
   fileUrl: string | null;
   fileName: string | null;
 };
-type MaterialOpt = { id: string; name: string };
+type MaterialOpt = { id: string; name: string; type: string; unitUsage: string; unitCustom: string | null };
 
-const WASTE_REASONS = [
+/** Alasan potong reject (hasil cetak tidak terpakai). */
+const REJECT_REASONS = [
   "Tinta blobor / kotor",
-  "Bahan mampet / nyangkut",
-  "Salah setting warna / margin",
-  "Mesin error / mati listrik",
+  "Warna beda dari proof",
+  "Defect fisik (sobek / lipat / kotor)",
+  "Salah setting margin / warna",
+  "Lainnya",
+];
+
+/** Alasan sisa bahan terbuang (bukan hasil cetak — setup / offcut). */
+const OFFCUT_REASONS = [
+  "Leader / trailer roll",
+  "Kalibrasi / test warna",
+  "Sisa roll tak terpakai",
+  "Bahan macet / sobek saat proses",
   "Lainnya",
 ];
 
@@ -223,72 +234,186 @@ function ActiveCard({
   );
 }
 
+const USAGE_UNIT: Record<string, string> = { METER: "m", LEMBAR: "lembar", ML: "ml", GRAM: "g", PCS: "pcs", LITER: "L", KG: "kg" };
+function usageUnit(m: MaterialOpt | undefined): string {
+  if (!m) return "";
+  return USAGE_UNIT[m.unitUsage] ?? m.unitCustom ?? m.unitUsage.toLowerCase();
+}
+
+type MatRow = { key: number; materialId: string; usageQty: string; wasteQty: string; wasteReason: string };
+let rowSeq = 0;
+const newRow = (materialId = ""): MatRow => ({ key: ++rowSeq, materialId, usageQty: "", wasteQty: "", wasteReason: "" });
+
+const fInp = "w-full h-11 rounded-xl bg-elevated border border-border text-primary text-sm px-3 outline-none focus:border-accent-teal";
+const fLbl = "text-xs font-bold text-primary mb-1 block";
+const fSection = "text-[11px] font-black uppercase tracking-wider text-muted";
+
 function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialOpt[]; onDone: () => void }) {
   const [actualQty, setActualQty] = useState(String(job.plannedQty || ""));
-  const [waste, setWaste] = useState("");
-  const [wasteReason, setWasteReason] = useState("");
-  const [customReason, setCustomReason] = useState("");
-  const [materialId, setMaterialId] = useState("");
-  const [usageQty, setUsageQty] = useState("");
+  const [rows, setRows] = useState<MatRow[]>([newRow(job.suggestedMaterialId ?? "")]);
+  const [showWaste, setShowWaste] = useState(false);
+  const [rejectQty, setRejectQty] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectCustom, setRejectCustom] = useState("");
+  const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const wasteN = Number(waste) || 0;
-  const finalReason = wasteReason === "Lainnya" ? customReason : wasteReason;
-  const canSubmit = Number(actualQty) > 0 && !!materialId && Number(usageQty) > 0 && (wasteN === 0 || !!finalReason);
+  const setRow = (key: number, patch: Partial<MatRow>) =>
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const matById = (id: string) => materials.find((m) => m.id === id);
+
+  const rejectN = Number(rejectQty) || 0;
+  const rejectFinal = rejectReason === "Lainnya" ? rejectCustom.trim() : rejectReason;
+  const filledRows = rows.filter((r) => r.materialId && Number(r.usageQty) > 0);
+
+  const canSubmit =
+    Number(actualQty) > 0 &&
+    filledRows.length > 0 &&
+    filledRows.every((r) => Number(r.wasteQty) <= 0 || !!r.wasteReason) &&
+    (rejectN === 0 || !!rejectFinal);
 
   async function submit() {
     setBusy(true);
     setErr(null);
     const res = await finishProduction(job.jobCode, {
       actualQty: Number(actualQty),
-      wasteQty: wasteN,
-      wasteReason: finalReason || undefined,
-      materials: [{ materialId, usageQty: Number(usageQty) }],
+      wasteQty: rejectN > 0 ? rejectN : 0,
+      wasteReason: rejectN > 0 ? rejectFinal : undefined,
+      notes: notes.trim() || undefined,
+      materials: filledRows.map((r) => ({
+        materialId: r.materialId,
+        usageQty: Number(r.usageQty),
+        wasteQty: Number(r.wasteQty) > 0 ? Number(r.wasteQty) : undefined,
+        wasteReason: Number(r.wasteQty) > 0 ? r.wasteReason : undefined,
+      })),
     });
     setBusy(false);
     if (!res.success) { setErr(res.error); return; }
     onDone();
   }
 
-  const inp = "w-full h-11 rounded-xl bg-elevated border border-border text-primary text-sm px-4 outline-none focus:border-accent-teal";
-
   return (
-    <div className="space-y-3">
+    <div className="space-y-5">
       {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
-      <div>
-        <label className="text-xs font-bold text-primary mb-1 block">Actual Qty *</label>
-        <input type="number" className={inp} value={actualQty} onChange={(e) => setActualQty(e.target.value)} />
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+
+      {/* 1. Hasil */}
+      <div className="space-y-2">
+        <p className={fSection}>Hasil</p>
         <div>
-          <label className="text-xs font-bold text-primary mb-1 block">Material Dipakai *</label>
-          <select className={inp} value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
-            <option value="">Pilih…</option>
-            {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-bold text-primary mb-1 block">Jumlah Pemakaian *</label>
-          <input type="number" className={inp} value={usageQty} onChange={(e) => setUsageQty(e.target.value)} />
+          <label className={fLbl}>Jumlah jadi (pcs) *</label>
+          <input type="number" inputMode="numeric" className={fInp} value={actualQty} onChange={(e) => setActualQty(e.target.value)} />
+          <p className="mt-1 text-[11px] text-muted">Target: {job.plannedQty} pcs</p>
         </div>
       </div>
-      {materials.length === 0 && <p className="text-[11px] text-status-yellow-text">Belum ada master material — tambahkan di Katalog dulu.</p>}
+
+      {/* 2. Bahan */}
+      <div className="space-y-2">
+        <p className={fSection}>Bahan dipakai</p>
+        {materials.length === 0 && (
+          <p className="text-[11px] text-status-yellow-text">Belum ada master material — tambahkan di Katalog dulu.</p>
+        )}
+        {rows.map((r, i) => {
+          const mat = matById(r.materialId);
+          const unit = usageUnit(mat);
+          return (
+            <div key={r.key} className="rounded-xl border border-border bg-base p-3 space-y-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px]">
+                <select className={fInp} value={r.materialId} onChange={(e) => setRow(r.key, { materialId: e.target.value })}>
+                  <option value="">Pilih material…</option>
+                  {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                <div className="relative">
+                  <input
+                    type="number" inputMode="decimal" placeholder="Pakai"
+                    className={cn(fInp, unit && "pr-10")}
+                    value={r.usageQty} onChange={(e) => setRow(r.key, { usageQty: e.target.value })}
+                  />
+                  {unit && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-muted">{unit}</span>}
+                </div>
+              </div>
+              {showWaste && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[120px_1fr]">
+                  <div className="relative">
+                    <input
+                      type="number" inputMode="decimal" placeholder="Sisa" min="0"
+                      className={cn(fInp, unit && "pr-12")}
+                      value={r.wasteQty} onChange={(e) => setRow(r.key, { wasteQty: e.target.value })}
+                    />
+                    {unit && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-muted">{unit}</span>}
+                  </div>
+                  <select
+                    className={cn(fInp, Number(r.wasteQty) > 0 && !r.wasteReason && "border-status-yellow")}
+                    value={r.wasteReason} onChange={(e) => setRow(r.key, { wasteReason: e.target.value })}
+                    disabled={!(Number(r.wasteQty) > 0)}
+                  >
+                    <option value="">Alasan sisa bahan…</option>
+                    {OFFCUT_REASONS.map((x) => <option key={x} value={x}>{x}</option>)}
+                  </select>
+                </div>
+              )}
+              {rows.length > 1 && (
+                <button type="button" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))} className="text-[11px] font-bold text-status-red hover:underline">
+                  Hapus bahan {i + 1}
+                </button>
+              )}
+            </div>
+          );
+        })}
+        <button type="button" onClick={() => setRows((rs) => [...rs, newRow()])} className="text-[11px] font-bold text-accent-teal hover:underline">
+          + Tambah bahan
+        </button>
+      </div>
+
+      {/* 3. Gagal / sisa */}
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => setShowWaste((v) => !v)}
+          className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-muted hover:text-primary"
+        >
+          {showWaste ? "−" : "+"} Ada potong gagal / sisa bahan?
+        </button>
+        {showWaste && (
+          <div className="rounded-xl border border-status-yellow/30 bg-status-yellow/5 p-3 space-y-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[120px_1fr]">
+              <div className="relative">
+                <input
+                  type="number" inputMode="numeric" min="0" placeholder="0"
+                  className={cn(fInp, "pr-10")}
+                  value={rejectQty} onChange={(e) => setRejectQty(e.target.value)}
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-muted">pcs</span>
+              </div>
+              <select
+                className={cn(fInp, rejectN > 0 && !rejectReason && "border-status-yellow")}
+                value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
+                disabled={rejectN === 0}
+              >
+                <option value="">Alasan potong gagal…</option>
+                {REJECT_REASONS.map((x) => <option key={x} value={x}>{x}</option>)}
+              </select>
+            </div>
+            {rejectReason === "Lainnya" && (
+              <input className={fInp} placeholder="Ketik alasan…" value={rejectCustom} onChange={(e) => setRejectCustom(e.target.value)} />
+            )}
+            <p className="text-[11px] text-muted">
+              <b>Potong gagal</b> = hasil cetak tak terpakai. <b>Sisa bahan</b> (di tiap baris bahan) = leader/kalibrasi/offcut, bukan hasil cetak.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Catatan */}
       <div>
-        <label className="text-xs font-bold text-status-yellow-text mb-1 block">Jumlah Gagal / Waste</label>
-        <input type="number" min="0" className={inp} value={waste} onChange={(e) => setWaste(e.target.value)} placeholder="0" />
+        <label className={fLbl}>Catatan <span className="font-normal text-muted">(opsional)</span></label>
+        <textarea
+          className="w-full min-h-[56px] rounded-xl bg-elevated border border-border text-primary text-sm p-3 outline-none focus:border-accent-teal resize-none"
+          placeholder="Hal tak biasa: warna, bahan, gangguan…"
+          value={notes} onChange={(e) => setNotes(e.target.value)}
+        />
       </div>
-      {wasteN > 0 && (
-        <div className="p-3 bg-status-yellow/10 border border-status-yellow/30 rounded-xl space-y-2">
-          <select className={inp} value={wasteReason} onChange={(e) => setWasteReason(e.target.value)}>
-            <option value="">-- Pilih alasan waste --</option>
-            {WASTE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-          {wasteReason === "Lainnya" && (
-            <input className={inp} value={customReason} onChange={(e) => setCustomReason(e.target.value)} placeholder="Ketik alasan…" />
-          )}
-        </div>
-      )}
+
       <button
         disabled={!canSubmit || busy}
         onClick={submit}
@@ -331,7 +456,19 @@ export default function OperatorPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
-    getOrderFormData().then((r) => { if (r.success) setMaterials(r.data.materials); });
+    getOrderFormData().then((r) => {
+      if (r.success) {
+        setMaterials(
+          r.data.materials.map((m) => ({
+            id: m.id,
+            name: m.name,
+            type: m.type,
+            unitUsage: (m as { unit_usage?: string }).unit_usage ?? "",
+            unitCustom: (m as { unit_custom?: string | null }).unit_custom ?? null,
+          }))
+        );
+      }
+    });
   }, [load]);
 
   const pinned = mine.filter((j) => j.status === "PRODUCTION_ASSIGNED");

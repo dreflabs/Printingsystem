@@ -5,6 +5,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { DEADLINE_SETTLED } from "@/lib/order-status";
 import { checkProductionReadiness, coveredDesignItemIds, type ReadinessItem } from "@/lib/production-readiness";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 
 /**
@@ -214,7 +215,7 @@ export async function getOperatorJobs() {
     });
   } catch (e) {
     console.error("getOperatorJobs:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat job operator.");
+    return fail(safeError(e, "Gagal memuat job operator."));
   }
 }
 
@@ -257,7 +258,7 @@ export async function getGudangQueues() {
     });
   } catch (e) {
     console.error("getGudangQueues:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat antrian gudang.");
+    return fail(safeError(e, "Gagal memuat antrian gudang."));
   }
 }
 
@@ -367,7 +368,7 @@ export async function getDesignQueue() {
     );
   } catch (e) {
     console.error("getDesignQueue:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat antrian desain.");
+    return fail(safeError(e, "Gagal memuat antrian desain."));
   }
 }
 
@@ -562,7 +563,7 @@ export async function getOwnerDashboard() {
     });
   } catch (e) {
     console.error("getOwnerDashboard:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat dashboard owner.");
+    return fail(safeError(e, "Gagal memuat dashboard owner."));
   }
 }
 
@@ -705,7 +706,7 @@ export async function getProductionOverview() {
     });
   } catch (e) {
     console.error("getProductionOverview:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat data produksi.");
+    return fail(safeError(e, "Gagal memuat data produksi."));
   }
 }
 
@@ -773,7 +774,7 @@ export async function getOrders(params?: {
     );
   } catch (e) {
     console.error("getOrders:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat daftar order.");
+    return fail(safeError(e, "Gagal memuat daftar order."));
   }
 }
 
@@ -897,7 +898,7 @@ export async function getOrderDetail(orderId: string) {
     });
   } catch (e) {
     console.error("getOrderDetail:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat detail order.");
+    return fail(safeError(e, "Gagal memuat detail order."));
   }
 }
 
@@ -947,7 +948,7 @@ export async function getJobLabel(codeOrId: string) {
     });
   } catch (e) {
     console.error("getJobLabel:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat data label.");
+    return fail(safeError(e, "Gagal memuat data label."));
   }
 }
 
@@ -1026,7 +1027,7 @@ export async function getOrderReceipt(codeOrId: string) {
     });
   } catch (e) {
     console.error("getOrderReceipt:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat data nota.");
+    return fail(safeError(e, "Gagal memuat data nota."));
   }
 }
 

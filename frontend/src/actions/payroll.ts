@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor, impersonationNote } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 import { revalidatePath } from "next/cache";
 
@@ -126,7 +127,7 @@ export async function generatePayrollPeriod(year: number, month: number) {
     return ok({ periodId: period.id });
   } catch (e) {
     console.error("generatePayrollPeriod:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat periode payroll.");
+    return fail(safeError(e, "Gagal membuat periode payroll."));
   }
 }
 
@@ -153,7 +154,7 @@ export async function finalizePayrollPeriod(periodId: string) {
     return ok(null);
   } catch (e) {
     console.error("finalizePayrollPeriod:", e);
-    return fail(e instanceof Error ? e.message : "Gagal finalisasi payroll.");
+    return fail(safeError(e, "Gagal finalisasi payroll."));
   }
 }
 
@@ -176,7 +177,7 @@ export async function markPayrollRecordPaid(recordId: string) {
     return ok(null);
   } catch (e) {
     console.error("markPayrollRecordPaid:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menandai gaji.");
+    return fail(safeError(e, "Gagal menandai gaji."));
   }
 }
 
@@ -202,7 +203,7 @@ export async function setEmployeeBaseSalary(userId: string, amount: number) {
     return ok(null);
   } catch (e) {
     console.error("setEmployeeBaseSalary:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengubah gaji pokok.");
+    return fail(safeError(e, "Gagal mengubah gaji pokok."));
   }
 }
 
@@ -223,7 +224,7 @@ export async function updatePayrollLateDeductionRate(rupiahPerMinute: number) {
     return ok(null);
   } catch (e) {
     console.error("updatePayrollLateDeductionRate:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengubah pengaturan.");
+    return fail(safeError(e, "Gagal mengubah pengaturan."));
   }
 }
 
@@ -259,7 +260,7 @@ export async function getPayrollPeriods() {
     );
   } catch (e) {
     console.error("getPayrollPeriods:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat daftar payroll.");
+    return fail(safeError(e, "Gagal memuat daftar payroll."));
   }
 }
 
@@ -314,7 +315,7 @@ export async function getPayrollPeriodDetail(periodId: string) {
     });
   } catch (e) {
     console.error("getPayrollPeriodDetail:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat detail payroll.");
+    return fail(safeError(e, "Gagal memuat detail payroll."));
   }
 }
 
@@ -357,6 +358,6 @@ export async function getPayslip(recordId: string) {
     });
   } catch (e) {
     console.error("getPayslip:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat slip gaji.");
+    return fail(safeError(e, "Gagal memuat slip gaji."));
   }
 }

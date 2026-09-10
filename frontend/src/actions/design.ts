@@ -15,6 +15,7 @@ import {
 import { storageReady, presignPutUrl } from "@/lib/storage";
 import { randomUUID } from "crypto";
 import { autoReleaseToProduction } from "@/lib/auto-release";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 const isAdmin = (role: string[]) => role.includes("admin") || role.includes("owner");
@@ -45,7 +46,7 @@ export async function getDesignJob(orderId: string) {
     return ok(job);
   } catch (e) {
     console.error("getDesignJob:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat design job.");
+    return fail(safeError(e, "Gagal memuat design job."));
   }
 }
 
@@ -137,7 +138,7 @@ export async function createDesignUploadUrl(
     return ok({ uploadUrl, objectKey });
   } catch (e) {
     console.error("createDesignUploadUrl:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyiapkan upload.");
+    return fail(safeError(e, "Gagal menyiapkan upload."));
   }
 }
 
@@ -240,7 +241,7 @@ export async function uploadDesignVersion(
     return ok(result);
   } catch (e) {
     console.error("uploadDesignVersion:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengupload versi desain.");
+    return fail(safeError(e, "Gagal mengupload versi desain."));
   }
 }
 
@@ -367,7 +368,7 @@ export async function approveDesign(
     });
   } catch (e) {
     console.error("approveDesign:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyetujui desain.");
+    return fail(safeError(e, "Gagal menyetujui desain."));
   }
 }
 
@@ -430,7 +431,7 @@ export async function requestDesignRevision(
     return ok(result);
   } catch (e) {
     console.error("requestDesignRevision:", e);
-    return fail(e instanceof Error ? e.message : "Gagal meminta revisi.");
+    return fail(safeError(e, "Gagal meminta revisi."));
   }
 }
 
@@ -477,7 +478,7 @@ export async function getProductionAssignData(): Promise<
     });
   } catch (e) {
     console.error("getProductionAssignData:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat data assign produksi.");
+    return fail(safeError(e, "Gagal memuat data assign produksi."));
   }
 }
 
@@ -561,7 +562,7 @@ export async function assignProductionJob(
     return ok(result);
   } catch (e) {
     console.error("assignProductionJob:", e);
-    return fail(e instanceof Error ? e.message : "Gagal assign produksi.");
+    return fail(safeError(e, "Gagal assign produksi."));
   }
 }
 
@@ -599,6 +600,6 @@ export async function takeDesignJob(orderId: string): Promise<ActionResult<{ suc
     return ok(result);
   } catch (e) {
     console.error("takeDesignJob:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengambil tugas desain.");
+    return fail(safeError(e, "Gagal mengambil tugas desain."));
   }
 }

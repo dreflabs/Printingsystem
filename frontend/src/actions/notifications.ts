@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 /**
@@ -38,6 +39,6 @@ export async function retryNotification(id: string): Promise<ActionResult<null>>
     return ok(null);
   } catch (e) {
     console.error("retryNotification:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengulang notifikasi.");
+    return fail(safeError(e, "Gagal mengulang notifikasi."));
   }
 }

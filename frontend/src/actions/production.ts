@@ -8,6 +8,7 @@ import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { autoReleaseToProduction } from "@/lib/auto-release";
 import { advanceOrderWhenAllJobs } from "@/lib/order-progress";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 const isGudang = (r: string[]) => r.includes("gudang");
@@ -49,7 +50,7 @@ export async function releaseOrderToProduction(orderId: string): Promise<ActionR
     return ok({ jobCodes: result.jobCodes });
   } catch (e) {
     console.error("releaseOrderToProduction:", e);
-    return fail(e instanceof Error ? e.message : "Gagal merilis order ke produksi.");
+    return fail(safeError(e, "Gagal merilis order ke produksi."));
   }
 }
 
@@ -204,7 +205,7 @@ export async function getScanContext(code: string) {
     });
   } catch (e) {
     console.error("getScanContext:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat konteks scan.");
+    return fail(safeError(e, "Gagal memuat konteks scan."));
   }
 }
 
@@ -256,7 +257,7 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
     return ok({ jobStatus: result.jobStatus });
   } catch (e) {
     console.error("startProduction:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memulai produksi.");
+    return fail(safeError(e, "Gagal memulai produksi."));
   }
 }
 
@@ -278,7 +279,7 @@ export async function pauseProduction(jobCode: string, reason: string): Promise<
     return ok(null);
   } catch (e) {
     console.error("pauseProduction:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menjeda produksi.");
+    return fail(safeError(e, "Gagal menjeda produksi."));
   }
 }
 
@@ -296,7 +297,7 @@ export async function resumeProduction(jobCode: string): Promise<ActionResult<nu
     return ok(null);
   } catch (e) {
     console.error("resumeProduction:", e);
-    return fail(e instanceof Error ? e.message : "Gagal melanjutkan produksi.");
+    return fail(safeError(e, "Gagal melanjutkan produksi."));
   }
 }
 
@@ -377,7 +378,7 @@ export async function bounceDesignFromProduction(
     return ok({ orderCode: result.orderCode });
   } catch (e) {
     console.error("bounceDesignFromProduction:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengembalikan file ke desainer.");
+    return fail(safeError(e, "Gagal mengembalikan file ke desainer."));
   }
 }
 
@@ -454,7 +455,7 @@ export async function reassignProductionJob(
     return ok({ machineId: input.machineId, operatorId: input.operatorId });
   } catch (e) {
     console.error("reassignProductionJob:", e);
-    return fail(e instanceof Error ? e.message : "Gagal reassign job.");
+    return fail(safeError(e, "Gagal reassign job."));
   }
 }
 
@@ -597,7 +598,7 @@ export async function finishProduction(
     return ok({ jobStatus: result.jobStatus, lowStock: result.lowStock });
   } catch (e) {
     console.error("finishProduction:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyelesaikan produksi.");
+    return fail(safeError(e, "Gagal menyelesaikan produksi."));
   }
 }
 
@@ -676,7 +677,7 @@ export async function submitQC(
     return ok({ result: result.result, jobStatus: result.jobStatus });
   } catch (e) {
     console.error("submitQC:", e);
-    return fail(e instanceof Error ? e.message : "Gagal submit QC.");
+    return fail(safeError(e, "Gagal submit QC."));
   }
 }
 
@@ -696,7 +697,7 @@ export async function getQCHistory() {
     return ok(records);
   } catch (e) {
     console.error("getQCHistory:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat riwayat QC.");
+    return fail(safeError(e, "Gagal memuat riwayat QC."));
   }
 }
 
@@ -787,7 +788,7 @@ export async function decideRework(
     return ok(result);
   } catch (e) {
     console.error("decideRework:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memproses keputusan rework.");
+    return fail(safeError(e, "Gagal memproses keputusan rework."));
   }
 }
 
@@ -827,7 +828,7 @@ export async function startFinishing(jobCode: string): Promise<ActionResult<{ jo
     return ok({ jobStatus: result.jobStatus });
   } catch (e) {
     console.error("startFinishing:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memulai finishing.");
+    return fail(safeError(e, "Gagal memulai finishing."));
   }
 }
 
@@ -877,6 +878,6 @@ export async function finishFinishing(
     return ok({ jobStatus: result.jobStatus });
   } catch (e) {
     console.error("finishFinishing:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyelesaikan finishing.");
+    return fail(safeError(e, "Gagal menyelesaikan finishing."));
   }
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Palette, Clock, CheckCircle2, RefreshCw, Upload, Search, X, FileText, Paperclip } from "lucide-react";
-import { StatusPill } from "@/components/ui";
+import { StatusPill , ErrorState} from "@/components/ui";
 import { NewOrderModal } from "@/components/orders/NewOrderModal";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
@@ -413,11 +413,11 @@ export default function DesignerDashboardPage() {
         </button>
       </div>
 
-      <RoleGuide role="designer_sales" />
+      <RoleGuide role="designer_sales" defaultCollapsed />
 
       <AbsenCard />
 
-      {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
+      {error && <ErrorState message={error} onRetry={load} />}
 
       <div className="grid grid-cols-3 gap-4">
         {KPI.map((k) => (

@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { parseCsv } from "@/lib/csv";
 import { sendWhatsApp } from "@/lib/wa";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 
 // Batas jam masuk 09:15 WIB (ABSENSI-FINGERPRINT.md). Lewat ini = TERLAMBAT.
@@ -129,7 +130,7 @@ export async function previewAttendanceImport(csvText: string) {
     });
   } catch (e) {
     console.error("previewAttendanceImport:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membaca file.");
+    return fail(safeError(e, "Gagal membaca file."));
   }
 }
 
@@ -396,7 +397,7 @@ export async function commitAttendanceImport(input: {
     });
   } catch (e) {
     console.error("commitAttendanceImport:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengimpor absensi.");
+    return fail(safeError(e, "Gagal mengimpor absensi."));
   }
 }
 
@@ -458,7 +459,7 @@ export async function listAttendanceImports() {
     );
   } catch (e) {
     console.error("listAttendanceImports:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat riwayat impor.");
+    return fail(safeError(e, "Gagal memuat riwayat impor."));
   }
 }
 
@@ -577,7 +578,7 @@ export async function getAttendanceReport(params?: { from?: string; to?: string;
     });
   } catch (e) {
     console.error("getAttendanceReport:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat laporan absensi.");
+    return fail(safeError(e, "Gagal memuat laporan absensi."));
   }
 }
 
@@ -609,6 +610,6 @@ export async function addAttendanceOwnerNote(recordId: string, note: string) {
     return ok({ ownerNote: updated.owner_note });
   } catch (e) {
     console.error("addAttendanceOwnerNote:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyimpan catatan.");
+    return fail(safeError(e, "Gagal menyimpan catatan."));
   }
 }

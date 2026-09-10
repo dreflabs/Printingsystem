@@ -5,7 +5,7 @@ import {
   ScanLine, CheckCircle2, Timer, Layers, Pause, Play,
   ShieldAlert, FileWarning, FileDown, MoreVertical, Clock,
 } from "lucide-react";
-import { StatusPill, Modal, DropdownMenu, DropdownMenuItem, InfoTip } from "@/components/ui";
+import { StatusPill, Modal, DropdownMenu, DropdownMenuItem, InfoTip , ErrorState} from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
@@ -631,7 +631,7 @@ export default function OperatorPage() {
         </div>
       )}
 
-      {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
+      {error && <ErrorState message={error} onRetry={load} />}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Antrian */}

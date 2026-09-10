@@ -7,6 +7,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireMutableActor } from "@/lib/actor";
 import { retryOnUnique } from "@/lib/retry";
 import { logAction } from "@/lib/logger";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 /** Satu baris keranjang kasir. `retailProductId` null = item custom/manual. */
@@ -201,7 +202,7 @@ export async function processRetailOrder(
     return ok(result);
   } catch (e) {
     console.error("processRetailOrder:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memproses transaksi.");
+    return fail(safeError(e, "Gagal memproses transaksi."));
   }
 }
 
@@ -322,7 +323,7 @@ export async function voidRetailOrder(
     return ok(result);
   } catch (e) {
     console.error("voidRetailOrder:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membatalkan transaksi retail.");
+    return fail(safeError(e, "Gagal membatalkan transaksi retail."));
   }
 }
 
@@ -361,6 +362,6 @@ export async function getPosData() {
     });
   } catch (e) {
     console.error("getPosData:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat data kasir.");
+    return fail(safeError(e, "Gagal memuat data kasir."));
   }
 }

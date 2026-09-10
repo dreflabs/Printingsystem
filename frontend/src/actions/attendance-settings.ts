@@ -7,6 +7,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { hhmmToMinutes } from "@/lib/attendance";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 export interface AttendanceSettings {
@@ -43,7 +44,7 @@ export async function getAttendanceSettings(): Promise<ActionResult<AttendanceSe
     return ok(shape(row));
   } catch (e) {
     console.error("getAttendanceSettings:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat pengaturan absensi.");
+    return fail(safeError(e, "Gagal memuat pengaturan absensi."));
   }
 }
 
@@ -129,7 +130,7 @@ export async function updateAttendanceSettings(
     return ok(shape(updated));
   } catch (e) {
     console.error("updateAttendanceSettings:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyimpan pengaturan absensi.");
+    return fail(safeError(e, "Gagal menyimpan pengaturan absensi."));
   }
 }
 
@@ -158,7 +159,7 @@ export async function setEmployeePin(userId: string, pin: string): Promise<Actio
     return ok(null);
   } catch (e) {
     console.error("setEmployeePin:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyimpan PIN.");
+    return fail(safeError(e, "Gagal menyimpan PIN."));
   }
 }
 

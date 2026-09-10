@@ -6,6 +6,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { hashKioskToken, newKioskToken } from "@/lib/kiosk";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -48,7 +49,7 @@ export async function listKioskDevices(): Promise<ActionResult<KioskDeviceRow[]>
       }))
     );
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Gagal memuat perangkat kiosk.");
+    return fail(safeError(e, "Gagal memuat perangkat kiosk."));
   }
 }
 
@@ -67,7 +68,7 @@ export async function createKioskDevice(label: string): Promise<ActionResult<{ i
     revalidatePath("/owner/attendance-settings");
     return ok({ id: device.id, label: clean, token });
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Gagal membuat perangkat kiosk.");
+    return fail(safeError(e, "Gagal membuat perangkat kiosk."));
   }
 }
 
@@ -81,7 +82,7 @@ export async function revokeKioskDevice(id: string): Promise<ActionResult<null>>
     revalidatePath("/owner/attendance-settings");
     return ok(null);
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Gagal mencabut perangkat.");
+    return fail(safeError(e, "Gagal mencabut perangkat."));
   }
 }
 
@@ -110,6 +111,6 @@ export async function listEmployeesForKiosk(): Promise<ActionResult<KioskPinRow[
       }))
     );
   } catch (e) {
-    return fail(e instanceof Error ? e.message : "Gagal memuat daftar pegawai.");
+    return fail(safeError(e, "Gagal memuat daftar pegawai."));
   }
 }

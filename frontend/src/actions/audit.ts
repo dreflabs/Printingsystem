@@ -6,6 +6,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { DEAD_JOB_STATUS } from "@/lib/order-progress";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
@@ -38,7 +39,7 @@ export async function getFinalAuditChecks(
     return ok({ checks, hasCritical: checks.some((c) => c.severity === "CRIT") });
   } catch (e) {
     console.error("getFinalAuditChecks:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat pemeriksaan audit.");
+    return fail(safeError(e, "Gagal memuat pemeriksaan audit."));
   }
 }
 
@@ -259,7 +260,7 @@ export async function submitFinalAudit(
     return ok({ result: result.result, orderStatus: result.orderStatus });
   } catch (e) {
     console.error("submitFinalAudit:", e);
-    return fail(e instanceof Error ? e.message : "Gagal submit final audit.");
+    return fail(safeError(e, "Gagal submit final audit."));
   }
 }
 
@@ -305,7 +306,7 @@ export async function approveFinalAudit(
     return ok(result);
   } catch (e) {
     console.error("approveFinalAudit:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memproses persetujuan audit.");
+    return fail(safeError(e, "Gagal memproses persetujuan audit."));
   }
 }
 
@@ -372,7 +373,7 @@ export async function createCorrection(
     return ok({ correctionId: correction.id, needsApproval: !isOwner });
   } catch (e) {
     console.error("createCorrection:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat koreksi.");
+    return fail(safeError(e, "Gagal membuat koreksi."));
   }
 }
 
@@ -406,7 +407,7 @@ export async function approveCorrection(
     return ok(null);
   } catch (e) {
     console.error("approveCorrection:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memproses koreksi.");
+    return fail(safeError(e, "Gagal memproses koreksi."));
   }
 }
 
@@ -422,6 +423,6 @@ export async function listCorrections(orderId?: string) {
     return ok(corrections);
   } catch (e) {
     console.error("listCorrections:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat koreksi.");
+    return fail(safeError(e, "Gagal memuat koreksi."));
   }
 }

@@ -110,9 +110,15 @@ export function RoleGuide({
 }) {
   const soloFlow = role === "owner" && workspaceMode === "SOLO";
   const storageKey = `pp_guide_${soloFlow ? "solo_flow" : role}`;
+  // Setup checklist Owner yang belum selesai → panduan tetap terbuka default
+  // (nudge penyiapan). Selain itu: terlipat default supaya data kerja langsung
+  // terlihat di layar pertama.
+  const showChecklist = role === "owner" && checklist && !checklist.allDone;
+  const wantOpenByDefault = !!showChecklist || !defaultCollapsed;
+
   // Preferensi lipat per-peran. Server & render hidrasi pertama selalu `null`
   // (netral) supaya tidak ada mismatch; nilai asli dari localStorage dipasang
-  // setelahnya via ref + state di bawah.
+  // setelahnya via effect di bawah.
   const [open, setOpen] = React.useState<boolean | null>(null);
 
   React.useEffect(() => {
@@ -123,12 +129,10 @@ export function RoleGuide({
       /* private mode / blocked */
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOpen(stored != null ? stored !== "0" : !defaultCollapsed);
-  }, [storageKey, defaultCollapsed]);
+    setOpen(stored != null ? stored !== "0" : wantOpenByDefault);
+  }, [storageKey, wantOpenByDefault]);
 
-  // `null` (belum terhidrasi) diperlakukan sebagai terbuka — default untuk
-  // pengunjung baru, dan menghindari kedip collapse→expand saat mount.
-  const isOpen = open ?? !defaultCollapsed;
+  const isOpen = open ?? wantOpenByDefault;
 
   function toggle() {
     const next = !isOpen;
@@ -142,7 +146,8 @@ export function RoleGuide({
 
   const steps = soloFlow ? SOLO_FLOW_STEPS : GUIDE_STEPS[role];
   const guideTitle = soloFlow ? "Alur 1 Order" : ROLE_LABEL[role];
-  const showChecklist = role === "owner" && checklist && !checklist.allDone;
+  // Saat checklist penyiapan tampil, fokus ke situ — alur harian tetap di /bantuan.
+  const showDailyFlow = !showChecklist;
 
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -206,29 +211,29 @@ export function RoleGuide({
           )}
 
           <div>
-            {showChecklist && (
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted mt-3 mb-2">
-                {soloFlow ? "Alur 1 order (terima → serah)" : "Alur harian"}
-              </p>
+            {showDailyFlow && (
+              <ol className="space-y-2.5 mt-3">
+                {steps.map((s, i) => (
+                  <li key={i} className="flex gap-3">
+                    <span className="shrink-0 mt-0.5 h-5 w-5 rounded-full bg-elevated border border-border text-[11px] font-bold text-muted flex items-center justify-center">
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-primary">{s.title}</p>
+                      <p className="text-xs text-muted leading-relaxed">{s.body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
             )}
-            <ol className="space-y-2.5 mt-3">
-              {steps.map((s, i) => (
-                <li key={i} className="flex gap-3">
-                  <span className="shrink-0 mt-0.5 h-5 w-5 rounded-full bg-elevated border border-border text-[11px] font-bold text-muted flex items-center justify-center">
-                    {i + 1}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-primary">{s.title}</p>
-                    <p className="text-xs text-muted leading-relaxed">{s.body}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
             <Link
               href="/bantuan"
               className="inline-flex items-center gap-1 mt-3 text-xs font-bold text-accent-teal hover:underline"
             >
-              Panduan lengkap — menu, scan QR, arti status, istilah <ArrowRight className="h-3.5 w-3.5" />
+              {showDailyFlow
+                ? "Panduan lengkap — menu, scan QR, arti status, istilah"
+                : "Lihat alur kerja harian & panduan lengkap"}{" "}
+              <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
         </div>

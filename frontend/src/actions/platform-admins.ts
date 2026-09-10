@@ -11,6 +11,7 @@ import {
 } from "@/lib/platform";
 import { logPlatform, headerMeta, type PlatformAuditAction } from "@/lib/platform-audit";
 import { validateSuperAdminPassword } from "@/lib/super-admin-password";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 
 const BCRYPT_ROUNDS = 12;
@@ -66,7 +67,7 @@ export async function listSuperAdmins() {
     });
   } catch (e) {
     console.error("listSuperAdmins:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat daftar Super Admin.");
+    return fail(safeError(e, "Gagal memuat daftar Super Admin."));
   }
 }
 
@@ -103,7 +104,7 @@ export async function createSuperAdmin(input: {
     return ok({ id: created.id });
   } catch (e) {
     console.error("createSuperAdmin:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat akun Super Admin.");
+    return fail(safeError(e, "Gagal membuat akun Super Admin."));
   }
 }
 
@@ -133,7 +134,7 @@ export async function setSuperAdminActive(id: string, active: boolean) {
     return ok({ active });
   } catch (e) {
     console.error("setSuperAdminActive:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengubah status akun.");
+    return fail(safeError(e, "Gagal mengubah status akun."));
   }
 }
 
@@ -169,7 +170,7 @@ export async function resetSuperAdminPassword(id: string, newPassword: string) {
     return ok(null);
   } catch (e) {
     console.error("resetSuperAdminPassword:", e);
-    return fail(e instanceof Error ? e.message : "Gagal reset kata sandi.");
+    return fail(safeError(e, "Gagal reset kata sandi."));
   }
 }
 
@@ -189,7 +190,7 @@ export async function unlockSuperAdmin(id: string) {
     return ok(null);
   } catch (e) {
     console.error("unlockSuperAdmin:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuka kunci akun.");
+    return fail(safeError(e, "Gagal membuka kunci akun."));
   }
 }
 

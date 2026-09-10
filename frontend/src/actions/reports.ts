@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 
 const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
@@ -109,7 +110,7 @@ export async function getDailyRevenue(dateStr?: string) {
     });
   } catch (e) {
     console.error("getDailyRevenue:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat laporan harian.");
+    return fail(safeError(e, "Gagal memuat laporan harian."));
   }
 }
 
@@ -147,7 +148,7 @@ export async function getOutstandingReceivables(filter: "all" | "overdue" | "rea
     );
   } catch (e) {
     console.error("getOutstandingReceivables:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat laporan piutang.");
+    return fail(safeError(e, "Gagal memuat laporan piutang."));
   }
 }
 
@@ -192,7 +193,7 @@ export async function getOperatorPerformance(fromStr?: string, toStr?: string) {
     );
   } catch (e) {
     console.error("getOperatorPerformance:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat laporan produksi.");
+    return fail(safeError(e, "Gagal memuat laporan produksi."));
   }
 }
 
@@ -242,7 +243,7 @@ export async function getRevenueSeries(days = 7) {
     return ok(series);
   } catch (e) {
     console.error("getRevenueSeries:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat deret pendapatan.");
+    return fail(safeError(e, "Gagal memuat deret pendapatan."));
   }
 }
 
@@ -590,6 +591,6 @@ export async function getMonthlyReport(monthStr?: string) {
     });
   } catch (e) {
     console.error("getMonthlyReport:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat laporan bulanan.");
+    return fail(safeError(e, "Gagal memuat laporan bulanan."));
   }
 }

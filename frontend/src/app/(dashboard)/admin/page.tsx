@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { StatusPill } from "@/components/ui";
+import { StatusPill , ErrorState} from "@/components/ui";
 import { NewOrderModal } from "@/components/orders/NewOrderModal";
 import {
   ShoppingCart, Package, AlertTriangle, Plus, ArrowRight, ScanLine, TrendingUp,
@@ -677,9 +677,9 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      <RoleGuide role="admin" />
+      <RoleGuide role="admin" defaultCollapsed />
 
-      {error && <div className="rounded-2xl border border-status-red/30 bg-status-red/10 px-4 py-3 text-sm text-status-red">{error}</div>}
+      {error && <ErrorState message={error} onRetry={load} />}
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         {kpi.map((k) => (

@@ -7,6 +7,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { allLiveJobsReached, DEAD_JOB_STATUS } from "@/lib/order-progress";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 import { buildLocationCode, defaultLocationName, buildStorageLocations } from "@/lib/starter-data";
 
@@ -58,7 +59,7 @@ export async function getStorageLocations() {
     );
   } catch (e) {
     console.error("getStorageLocations:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat lokasi storage.");
+    return fail(safeError(e, "Gagal memuat lokasi storage."));
   }
 }
 
@@ -126,7 +127,7 @@ export async function createStorageLocation(data: {
     return ok(loc);
   } catch (e) {
     console.error("createStorageLocation:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat lokasi storage.");
+    return fail(safeError(e, "Gagal membuat lokasi storage."));
   }
 }
 
@@ -161,7 +162,7 @@ export async function updateStorageLocation(
     return ok(updated);
   } catch (e) {
     console.error("updateStorageLocation:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengubah lokasi storage.");
+    return fail(safeError(e, "Gagal mengubah lokasi storage."));
   }
 }
 
@@ -194,7 +195,7 @@ export async function seedDefaultStorageLayout() {
     return ok({ created: rows.length });
   } catch (e) {
     console.error("seedDefaultStorageLayout:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat layout rak.");
+    return fail(safeError(e, "Gagal membuat layout rak."));
   }
 }
 
@@ -299,7 +300,7 @@ export async function assignStorageLocation(
     return ok({ locationCode: result.locationCode, orderStatus: result.orderStatus, notified: result.notified });
   } catch (e) {
     console.error("assignStorageLocation:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyimpan ke storage.");
+    return fail(safeError(e, "Gagal menyimpan ke storage."));
   }
 }
 
@@ -339,7 +340,7 @@ export async function reportStorageIncident(
     return ok(null);
   } catch (e) {
     console.error("reportStorageIncident:", e);
-    return fail(e instanceof Error ? e.message : "Gagal melaporkan insiden.");
+    return fail(safeError(e, "Gagal melaporkan insiden."));
   }
 }
 
@@ -400,7 +401,7 @@ export async function confirmItemAtCounter(jobCode: string): Promise<ActionResul
     return ok({ orderStatus: result.orderStatus });
   } catch (e) {
     console.error("confirmItemAtCounter:", e);
-    return fail(e instanceof Error ? e.message : "Gagal konfirmasi barang di counter.");
+    return fail(safeError(e, "Gagal konfirmasi barang di counter."));
   }
 }
 
@@ -527,7 +528,7 @@ export async function releaseOrder(
     return ok({ orderStatus: result.orderStatus });
   } catch (e) {
     console.error("releaseOrder:", e);
-    return fail(e instanceof Error ? e.message : "Gagal melakukan release order.");
+    return fail(safeError(e, "Gagal melakukan release order."));
   }
 }
 
@@ -552,7 +553,7 @@ export async function getStorageLocationsWithItems() {
     return ok(locs);
   } catch (e) {
     console.error("getStorageLocationsWithItems:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat peta gudang.");
+    return fail(safeError(e, "Gagal memuat peta gudang."));
   }
 }
 
@@ -584,7 +585,7 @@ export async function searchStorageItems(query: string) {
     return ok(items);
   } catch (e) {
     console.error("searchStorageItems:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mencari barang.");
+    return fail(safeError(e, "Gagal mencari barang."));
   }
 }
 

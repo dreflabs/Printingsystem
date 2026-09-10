@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 // Terminal / special statuses that must not be frozen.
@@ -35,7 +36,7 @@ export async function freezeOrder(orderId: string, reason: string): Promise<Acti
     return ok(null);
   } catch (e) {
     console.error("freezeOrder:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membekukan order.");
+    return fail(safeError(e, "Gagal membekukan order."));
   }
 }
 
@@ -83,6 +84,6 @@ export async function unfreezeOrder(orderId: string, note?: string): Promise<Act
     return ok({ restoredTo });
   } catch (e) {
     console.error("unfreezeOrder:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mencairkan order.");
+    return fail(safeError(e, "Gagal mencairkan order."));
   }
 }

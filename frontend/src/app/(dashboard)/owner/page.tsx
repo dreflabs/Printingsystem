@@ -7,7 +7,7 @@ import {
   CheckCircle2, XCircle, Bell, ShieldAlert, Activity, ClipboardList, X, ClipboardCheck,
   MessageSquareX, Ban, Users, Wrench, ArrowRight,
 } from "lucide-react";
-import { StatusPill } from "@/components/ui";
+import { StatusPill , ErrorState} from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { orderStatusLabel } from "@/lib/order-status";
 import { getOwnerDashboard } from "@/actions/queries";
@@ -285,7 +285,7 @@ export default function OwnerPage() {
       </div>
 
       <WorkspaceModeNudge />
-      <RoleGuide role="owner" checklist={checklist} workspaceMode={workspaceMode} />
+      <RoleGuide role="owner" checklist={checklist} workspaceMode={workspaceMode} defaultCollapsed />
       <SoloNextSteps />
 
       {workspaceMode === "SOLO" && (
@@ -310,7 +310,7 @@ export default function OwnerPage() {
       )}
       {workspaceMode === "SOLO" && selfAttendance && <AbsenCard />}
 
-      {error && <div className="rounded-xl border border-status-red/20 bg-status-red/10 px-4 py-3 text-xs font-bold text-status-red">{error}</div>}
+      {error && <ErrorState message={error} onRetry={load} />}
 
       {/* KPI (spec: 4 card) — klik untuk buka daftar terkait */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">

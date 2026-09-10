@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSuperAdmin, requireSubLevel, IMPERSONATE_COOKIE, type PlatformActor } from "@/lib/platform";
 import { churnTenant, purgeTenant, PURGE_GRACE_DAYS } from "@/lib/tenant-lifecycle";
 import { logPlatform, headerMeta, type PlatformAuditAction } from "@/lib/platform-audit";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 
 const num = (v: unknown) => Number(v ?? 0);
@@ -83,7 +84,7 @@ export async function getPlatformMetrics() {
     });
   } catch (e) {
     console.error("getPlatformMetrics:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat metrics.");
+    return fail(safeError(e, "Gagal memuat metrics."));
   }
 }
 
@@ -122,7 +123,7 @@ export async function listTenants() {
     );
   } catch (e) {
     console.error("listTenants:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat tenant.");
+    return fail(safeError(e, "Gagal memuat tenant."));
   }
 }
 
@@ -150,7 +151,7 @@ export async function setTenantStatus(tenantId: string, action: "SUSPEND" | "ACT
     return ok({ status: nextStatus });
   } catch (e) {
     console.error("setTenantStatus:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengubah status tenant.");
+    return fail(safeError(e, "Gagal mengubah status tenant."));
   }
 }
 
@@ -198,7 +199,7 @@ export async function impersonateTenant(tenantId: string, reason: string) {
     return ok({ slug: tenant.slug });
   } catch (e) {
     console.error("impersonateTenant:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memulai impersonate.");
+    return fail(safeError(e, "Gagal memulai impersonate."));
   }
 }
 
@@ -216,7 +217,7 @@ export async function stopImpersonation() {
     return ok(null);
   } catch (e) {
     console.error("stopImpersonation:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menghentikan impersonate.");
+    return fail(safeError(e, "Gagal menghentikan impersonate."));
   }
 }
 
@@ -304,7 +305,7 @@ export async function getTenantDetail(tenantId: string) {
     });
   } catch (e) {
     console.error("getTenantDetail:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat detail tenant.");
+    return fail(safeError(e, "Gagal memuat detail tenant."));
   }
 }
 
@@ -379,7 +380,7 @@ export async function updateTenantPlan(
     if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002") {
       return fail("Perubahan paket tenant ini sedang diproses di tempat lain. Muat ulang halaman dan coba lagi.");
     }
-    return fail(e instanceof Error ? e.message : "Gagal mengubah paket.");
+    return fail(safeError(e, "Gagal mengubah paket."));
   }
 }
 
@@ -414,7 +415,7 @@ export async function markTenantChurned(tenantId: string, reason?: string) {
     return ok({ status: "CHURNED", releasedSlug });
   } catch (e) {
     console.error("markTenantChurned:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menandai tenant churned.");
+    return fail(safeError(e, "Gagal menandai tenant churned."));
   }
 }
 
@@ -464,7 +465,7 @@ export async function purgeTenantPermanently(tenantId: string, opts?: { force?: 
     return ok(result);
   } catch (e) {
     console.error("purgeTenantPermanently:", e);
-    return fail(e instanceof Error ? e.message : "Gagal purge tenant.");
+    return fail(safeError(e, "Gagal purge tenant."));
   }
 }
 
@@ -512,7 +513,7 @@ export async function deleteTenantNow(tenantId: string, confirmSlug: string, rea
     return ok(result);
   } catch (e) {
     console.error("deleteTenantNow:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menghapus tenant.");
+    return fail(safeError(e, "Gagal menghapus tenant."));
   }
 }
 
@@ -535,7 +536,7 @@ export async function listRetiredTenants() {
     );
   } catch (e) {
     console.error("listRetiredTenants:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat daftar nisan tenant.");
+    return fail(safeError(e, "Gagal memuat daftar nisan tenant."));
   }
 }
 
@@ -568,6 +569,6 @@ export async function listPlatformAuditLog(params?: { cursor?: string; action?: 
     });
   } catch (e) {
     console.error("listPlatformAuditLog:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat jejak audit platform.");
+    return fail(safeError(e, "Gagal memuat jejak audit platform."));
   }
 }

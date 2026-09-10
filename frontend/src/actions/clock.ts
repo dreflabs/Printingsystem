@@ -14,6 +14,7 @@ import {
   type ClockInResult,
   type ClockOutResult,
 } from "@/lib/attendance-punch";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 /**
@@ -88,7 +89,7 @@ export async function getMyBreakStatus(): Promise<ActionResult<BreakStatus>> {
     });
   } catch (e) {
     console.error("getMyBreakStatus:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat status istirahat.");
+    return fail(safeError(e, "Gagal memuat status istirahat."));
   }
 }
 
@@ -130,7 +131,7 @@ export async function startBreak(): Promise<ActionResult<{ recordId: string; bre
     return ok({ recordId: rec.id, breakStart: now });
   } catch (e) {
     console.error("startBreak:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memulai istirahat.");
+    return fail(safeError(e, "Gagal memulai istirahat."));
   }
 }
 
@@ -156,7 +157,7 @@ export async function endBreak(): Promise<ActionResult<{ durationMin: number; st
     return ok({ durationMin, status });
   } catch (e) {
     console.error("endBreak:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyelesaikan istirahat.");
+    return fail(safeError(e, "Gagal menyelesaikan istirahat."));
   }
 }
 
@@ -236,7 +237,7 @@ export async function getMyAttendanceToday(): Promise<ActionResult<AttendanceTod
     });
   } catch (e) {
     console.error("getMyAttendanceToday:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat status absensi.");
+    return fail(safeError(e, "Gagal memuat status absensi."));
   }
 }
 
@@ -265,7 +266,7 @@ export async function clockIn(input: ClockPunchInput = {}): Promise<ActionResult
   } catch (e) {
     if (e instanceof PunchError) return fail(e.message);
     console.error("clockIn:", e);
-    return fail(e instanceof Error ? e.message : "Gagal absen masuk.");
+    return fail(safeError(e, "Gagal absen masuk."));
   }
 }
 
@@ -294,6 +295,6 @@ export async function clockOut(input: ClockPunchInput = {}): Promise<ActionResul
   } catch (e) {
     if (e instanceof PunchError) return fail(e.message);
     console.error("clockOut:", e);
-    return fail(e instanceof Error ? e.message : "Gagal absen pulang.");
+    return fail(safeError(e, "Gagal absen pulang."));
   }
 }

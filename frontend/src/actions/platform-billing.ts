@@ -9,6 +9,7 @@ import {
   UNPAID_STATUSES,
   type InvoiceStatus,
 } from "@/lib/billing";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 
 const num = (v: unknown) => Number(v ?? 0);
@@ -74,7 +75,7 @@ export async function listSubscriptionPlans() {
     );
   } catch (e) {
     console.error("listSubscriptionPlans:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat paket.");
+    return fail(safeError(e, "Gagal memuat paket."));
   }
 }
 
@@ -133,7 +134,7 @@ export async function createSubscriptionPlan(input: PlanInput) {
     return ok({ id: created.id });
   } catch (e) {
     console.error("createSubscriptionPlan:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat paket.");
+    return fail(safeError(e, "Gagal membuat paket."));
   }
 }
 
@@ -172,7 +173,7 @@ export async function updateSubscriptionPlan(id: string, input: PlanInput) {
     return ok(null);
   } catch (e) {
     console.error("updateSubscriptionPlan:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyimpan paket.");
+    return fail(safeError(e, "Gagal menyimpan paket."));
   }
 }
 
@@ -218,7 +219,7 @@ export async function getBillingMetrics() {
     });
   } catch (e) {
     console.error("getBillingMetrics:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat ringkasan billing.");
+    return fail(safeError(e, "Gagal memuat ringkasan billing."));
   }
 }
 
@@ -278,7 +279,7 @@ export async function listInvoices(params?: {
     });
   } catch (e) {
     console.error("listInvoices:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat invoice.");
+    return fail(safeError(e, "Gagal memuat invoice."));
   }
 }
 
@@ -295,7 +296,7 @@ export async function generateInvoicesForPeriod(opts?: { period?: string; dueInD
     return ok(res);
   } catch (e) {
     console.error("generateInvoicesForPeriod:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat invoice.");
+    return fail(safeError(e, "Gagal membuat invoice."));
   }
 }
 
@@ -333,7 +334,7 @@ export async function markInvoicePaid(
     return ok(null);
   } catch (e) {
     console.error("markInvoicePaid:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menandai lunas.");
+    return fail(safeError(e, "Gagal menandai lunas."));
   }
 }
 
@@ -356,7 +357,7 @@ export async function waiveInvoice(id: string, reason: string) {
     return ok(null);
   } catch (e) {
     console.error("waiveInvoice:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membebaskan invoice.");
+    return fail(safeError(e, "Gagal membebaskan invoice."));
   }
 }
 
@@ -451,7 +452,7 @@ export async function getGrowthAnalytics(opts?: { months?: number }) {
     });
   } catch (e) {
     console.error("getGrowthAnalytics:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat analitik.");
+    return fail(safeError(e, "Gagal memuat analitik."));
   }
 }
 

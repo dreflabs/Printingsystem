@@ -29,7 +29,7 @@ export default function FinishingPage() {
         <p className="text-sm text-muted mt-0.5">Inspeksi QC, penyelesaian produk, dan pengaturan barang di rak & stok bahan baku</p>
       </div>
 
-      <RoleGuide role="gudang" />
+      <RoleGuide role="gudang" defaultCollapsed />
 
       <AbsenCard />
 

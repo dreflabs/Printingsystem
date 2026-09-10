@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { presignPut } from "@/lib/r2";
 import { isTenantKey } from "@/lib/storage";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 export interface ShopIdentity {
@@ -29,7 +30,7 @@ export async function getShopIdentity(): Promise<ActionResult<ShopIdentity>> {
     return ok({ name: t.name, phone: t.owner_phone ?? "", address: t.address ?? "", slug: t.slug, logo_url: t.logo_url });
   } catch (e) {
     console.error("getShopIdentity:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat identitas toko.");
+    return fail(safeError(e, "Gagal memuat identitas toko."));
   }
 }
 
@@ -70,7 +71,7 @@ export async function updateShopIdentity(input: {
     return ok({ name: updated.name, phone: updated.owner_phone ?? "", address: updated.address ?? "", slug: updated.slug, logo_url: updated.logo_url });
   } catch (e) {
     console.error("updateShopIdentity:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyimpan identitas toko.");
+    return fail(safeError(e, "Gagal menyimpan identitas toko."));
   }
 }
 
@@ -92,7 +93,7 @@ export async function getProductionPolicy(): Promise<
     });
   } catch (e) {
     console.error("getProductionPolicy:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat kebijakan produksi.");
+    return fail(safeError(e, "Gagal memuat kebijakan produksi."));
   }
 }
 
@@ -110,7 +111,7 @@ export async function setRequireAdminProductionRelease(value: boolean): Promise<
     return ok({ requireAdminRelease: value });
   } catch (e) {
     console.error("setRequireAdminProductionRelease:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyimpan kebijakan produksi.");
+    return fail(safeError(e, "Gagal menyimpan kebijakan produksi."));
   }
 }
 
@@ -128,7 +129,7 @@ export async function setRequireCounterConfirmation(value: boolean): Promise<Act
     return ok({ requireCounterConfirmation: value });
   } catch (e) {
     console.error("setRequireCounterConfirmation:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyimpan kebijakan serah terima.");
+    return fail(safeError(e, "Gagal menyimpan kebijakan serah terima."));
   }
 }
 

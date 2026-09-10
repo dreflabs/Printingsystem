@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 
 /**
@@ -56,6 +57,6 @@ export async function getSetupChecklist() {
     return ok({ items, doneCount, total: items.length, allDone: doneCount === items.length });
   } catch (e) {
     console.error("getSetupChecklist:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat status penyiapan.");
+    return fail(safeError(e, "Gagal memuat status penyiapan."));
   }
 }

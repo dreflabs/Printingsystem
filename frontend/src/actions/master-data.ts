@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES } from "@/lib/catalog-constants";
 
@@ -73,7 +74,7 @@ export async function getProductCategories() {
     });
   } catch (e) {
     console.error("getProductCategories:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat kategori.");
+    return fail(safeError(e, "Gagal memuat kategori."));
   }
 }
 
@@ -163,7 +164,7 @@ export async function updateRetailProduct(
     if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002") {
       return fail("SKU sudah dipakai produk lain.");
     }
-    return fail(e instanceof Error ? e.message : "Gagal memperbarui produk retail.");
+    return fail(safeError(e, "Gagal memperbarui produk retail."));
   }
 }
 
@@ -194,7 +195,7 @@ export async function deleteRetailProduct(id: string) {
     return ok({ mode: "deleted" as const });
   } catch (e) {
     console.error("deleteRetailProduct:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menghapus produk retail.");
+    return fail(safeError(e, "Gagal menghapus produk retail."));
   }
 }
 
@@ -252,7 +253,7 @@ export async function createPrintingProduct(data: {
     return ok(plainPrinting(product));
   } catch (e) {
     console.error("createPrintingProduct:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat produk cetak.");
+    return fail(safeError(e, "Gagal membuat produk cetak."));
   }
 }
 
@@ -293,7 +294,7 @@ export async function updatePrintingProduct(
     return ok(plainPrinting(product));
   } catch (e) {
     console.error("updatePrintingProduct:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memperbarui produk cetak.");
+    return fail(safeError(e, "Gagal memperbarui produk cetak."));
   }
 }
 
@@ -318,7 +319,7 @@ export async function deletePrintingProduct(id: string) {
     return ok({ mode: "deleted" as const });
   } catch (e) {
     console.error("deletePrintingProduct:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menghapus jasa cetak.");
+    return fail(safeError(e, "Gagal menghapus jasa cetak."));
   }
 }
 
@@ -350,7 +351,7 @@ export async function getCustomers() {
     );
   } catch (e) {
     console.error("getCustomers:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat customer.");
+    return fail(safeError(e, "Gagal memuat customer."));
   }
 }
 
@@ -390,7 +391,7 @@ export async function createCustomer(data: {
     return ok(customer);
   } catch (e) {
     console.error("createCustomer:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat customer.");
+    return fail(safeError(e, "Gagal membuat customer."));
   }
 }
 
@@ -425,7 +426,7 @@ export async function updateCustomer(
     return ok(customer);
   } catch (e) {
     console.error("updateCustomer:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memperbarui customer.");
+    return fail(safeError(e, "Gagal memperbarui customer."));
   }
 }
 
@@ -452,7 +453,7 @@ export async function getMaterials() {
     );
   } catch (e) {
     console.error("getMaterials:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat material.");
+    return fail(safeError(e, "Gagal memuat material."));
   }
 }
 
@@ -509,7 +510,7 @@ export async function createMaterial(data: {
     return ok(material);
   } catch (e) {
     console.error("createMaterial:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat material.");
+    return fail(safeError(e, "Gagal membuat material."));
   }
 }
 
@@ -552,7 +553,7 @@ export async function updateMaterial(
     return ok({ id });
   } catch (e) {
     console.error("updateMaterial:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memperbarui material.");
+    return fail(safeError(e, "Gagal memperbarui material."));
   }
 }
 
@@ -598,7 +599,7 @@ export async function adjustMaterialStock(
     return ok(result);
   } catch (e) {
     console.error("adjustMaterialStock:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menyesuaikan stok.");
+    return fail(safeError(e, "Gagal menyesuaikan stok."));
   }
 }
 
@@ -623,7 +624,7 @@ export async function getMachines() {
     })));
   } catch (e) {
     console.error("getMachines:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat mesin.");
+    return fail(safeError(e, "Gagal memuat mesin."));
   }
 }
 
@@ -680,7 +681,7 @@ export async function createMachine(data: { name: string; category: string; stat
     return ok(machine);
   } catch (e) {
     console.error("createMachine:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat mesin.");
+    return fail(safeError(e, "Gagal membuat mesin."));
   }
 }
 
@@ -708,7 +709,7 @@ export async function updateMachine(
     return ok(machine);
   } catch (e) {
     console.error("updateMachine:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memperbarui mesin.");
+    return fail(safeError(e, "Gagal memperbarui mesin."));
   }
 }
 
@@ -740,7 +741,7 @@ export async function deleteMachine(id: string) {
     return ok({ mode: "deleted" as const });
   } catch (e) {
     console.error("deleteMachine:", e);
-    return fail(e instanceof Error ? e.message : "Gagal menghapus mesin.");
+    return fail(safeError(e, "Gagal menghapus mesin."));
   }
 }
 

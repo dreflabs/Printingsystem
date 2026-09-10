@@ -8,6 +8,7 @@ import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { retryOnUnique } from "@/lib/retry";
 import { autoReleaseToProduction } from "@/lib/auto-release";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 type OrderTypeInput = "walkin" | "online" | "makloon";
@@ -237,7 +238,7 @@ export async function createPrintingOrder(
     return ok(result);
   } catch (e) {
     console.error("createPrintingOrder:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membuat order.");
+    return fail(safeError(e, "Gagal membuat order."));
   }
 }
 
@@ -361,7 +362,7 @@ export async function addPayment(
     });
   } catch (e) {
     console.error("addPayment:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mencatat pembayaran.");
+    return fail(safeError(e, "Gagal mencatat pembayaran."));
   }
 }
 
@@ -446,7 +447,7 @@ export async function decideDiscount(
     });
   } catch (e) {
     console.error("decideDiscount:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memproses keputusan diskon.");
+    return fail(safeError(e, "Gagal memproses keputusan diskon."));
   }
 }
 
@@ -494,7 +495,7 @@ export async function requestDiscount(
     return ok({ discount: amount });
   } catch (e) {
     console.error("requestDiscount:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengajukan diskon.");
+    return fail(safeError(e, "Gagal mengajukan diskon."));
   }
 }
 
@@ -555,6 +556,6 @@ export async function getOrderFormData() {
     });
   } catch (e) {
     console.error("getOrderFormData:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat data form order.");
+    return fail(safeError(e, "Gagal memuat data form order."));
   }
 }

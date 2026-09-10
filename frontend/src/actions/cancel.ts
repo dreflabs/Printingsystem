@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 /**
@@ -37,7 +38,7 @@ export async function requestOrderCancellation(
     return ok(null);
   } catch (e) {
     console.error("requestOrderCancellation:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengajukan pembatalan.");
+    return fail(safeError(e, "Gagal mengajukan pembatalan."));
   }
 }
 
@@ -71,7 +72,7 @@ export async function decideOrderCancellation(
     return ok({ decision: "APPROVED" });
   } catch (e) {
     console.error("decideOrderCancellation:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memproses keputusan pembatalan.");
+    return fail(safeError(e, "Gagal memproses keputusan pembatalan."));
   }
 }
 
@@ -208,6 +209,6 @@ export async function cancelOrder(
     return ok(result);
   } catch (e) {
     console.error("cancelOrder:", e);
-    return fail(e instanceof Error ? e.message : "Gagal membatalkan order.");
+    return fail(safeError(e, "Gagal membatalkan order."));
   }
 }

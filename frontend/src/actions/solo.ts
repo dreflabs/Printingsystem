@@ -7,6 +7,7 @@ import { requireUser, requireMutableActor, impersonationNote } from "@/lib/actor
 import { logAction } from "@/lib/logger";
 import { TERMINAL_STATUSES } from "@/lib/order-status";
 import { normalizeWorkspaceMode, WORKSPACE_MODES, type WorkspaceMode } from "@/lib/workspace-mode";
+import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 
 const OPERATIONAL_ROLES = ["admin", "designer_sales", "operator", "gudang"] as const;
@@ -161,7 +162,7 @@ export async function getNextSteps() {
     return ok({ solo, items });
   } catch (e) {
     console.error("getNextSteps:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat langkah berikutnya.");
+    return fail(safeError(e, "Gagal memuat langkah berikutnya."));
   }
 }
 
@@ -224,7 +225,7 @@ export async function getWorkspaceModeSuggestion() {
     return ok({ current, suggested, staffCount, ownerOps, sheddableRoles });
   } catch (e) {
     console.error("getWorkspaceModeSuggestion:", e);
-    return fail(e instanceof Error ? e.message : "Gagal memuat saran tampilan.");
+    return fail(safeError(e, "Gagal memuat saran tampilan."));
   }
 }
 
@@ -245,7 +246,7 @@ export async function setWorkspaceMode(mode: WorkspaceMode) {
     return ok(null);
   } catch (e) {
     console.error("setWorkspaceMode:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengubah tampilan workspace.");
+    return fail(safeError(e, "Gagal mengubah tampilan workspace."));
   }
 }
 
@@ -292,7 +293,7 @@ export async function setOwnerOperationalRoles(names: string[]) {
     return ok({ roles: target });
   } catch (e) {
     console.error("setOwnerOperationalRoles:", e);
-    return fail(e instanceof Error ? e.message : "Gagal mengubah peran akun Anda.");
+    return fail(safeError(e, "Gagal mengubah peran akun Anda."));
   }
 }
 

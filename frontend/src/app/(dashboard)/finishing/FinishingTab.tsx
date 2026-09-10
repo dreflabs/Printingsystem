@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Package, Wrench, CheckCircle2, Tag, ScanLine, QrCode } from "lucide-react";
-import { StatusPill } from "@/components/ui";
+import { StatusPill , ErrorState} from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { getGudangQueues } from "@/actions/queries";
 import { startFinishing, finishFinishing } from "@/actions/production";
@@ -85,9 +85,7 @@ export function FinishingTab() {
     <div className="space-y-6">
       <p className="text-sm text-muted">Produk cetak yang lolos QC dan siap proses finishing (mata itik, laminasi, potong, dll).</p>
 
-      {error && (
-        <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>
-      )}
+      {error && <ErrorState message={error} onRetry={load} />}
 
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
         {kpi.map((k) => (

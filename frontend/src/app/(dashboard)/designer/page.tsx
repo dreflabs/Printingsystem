@@ -53,6 +53,7 @@ type Row = {
   currentVersion: number;
   latestVersionStatus: string | null;
   latestVersionId: string | null;
+  latestRejectionReason: string | null;
   latestFileName: string | null;
   latestFileUrl: string | null;
   deadline: string | Date | null;
@@ -466,6 +467,11 @@ export default function DesignerDashboardPage() {
                         <FileText className="h-3 w-3 shrink-0" />
                         <span className="truncate max-w-[120px]">{r.latestFileName ?? "Lihat file"}</span>
                       </a>
+                    )}
+                    {r.latestVersionStatus === "REJECTED" && r.latestRejectionReason && (
+                      <p className="mt-1 text-[10px] text-status-red max-w-[180px]" title={r.latestRejectionReason}>
+                        {r.latestRejectionReason}
+                      </p>
                     )}
                   </td>
                   <td className="px-4 py-3"><StatusPill status={r.status} /></td>

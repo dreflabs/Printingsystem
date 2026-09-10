@@ -134,6 +134,9 @@ export async function getScanContext(code: string) {
       if (claimable || (mine && s === "PRODUCTION_ASSIGNED")) {
         actions.push({ action: "start_production", label: claimable ? "Ambil & Mulai (SCAN 1)" : "Mulai Produksi (SCAN 1)" });
       }
+      if (claimable || ((mine || job.operator_id == null) && PRE_START_JOB.includes(s))) {
+        actions.push({ action: "bounce_design", label: "Lapor File Bermasalah" });
+      }
       if (mine && s === "PRODUCTION_STARTED") {
         actions.push({ action: "finish_production", label: "Selesai Produksi (SCAN 2)" });
         actions.push({ action: "pause_production", label: "Jeda Produksi" });
@@ -271,6 +274,87 @@ export async function resumeProduction(jobCode: string): Promise<ActionResult<nu
   } catch (e) {
     console.error("resumeProduction:", e);
     return fail(e instanceof Error ? e.message : "Gagal melanjutkan produksi.");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// LAPOR FILE BERMASALAH — KEMBALIKAN KE DESAINER
+// ─────────────────────────────────────────────────────────────
+
+const PRE_START_JOB = ["PRODUCTION_QUEUED", "PRODUCTION_ASSIGNED"];
+
+/**
+ * Operator (atau Admin/Owner) melaporkan file desain bermasalah SEBELUM mulai
+ * cetak (resolusi pecah, salah ukuran, warna, dsb) → order balik ke antrean
+ * revisi desainer. Semua ProductionJob order itu (yang belum mulai) dihapus,
+ * versi desain terkini ditandai REJECTED, order & DesignJob kembali DESIGNING.
+ * Kalau produksi sudah berjalan, pakai jalur QC/rework, bukan ini.
+ */
+export async function bounceDesignFromProduction(
+  jobCode: string,
+  input: { reason: string }
+): Promise<ActionResult<{ orderCode: string }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    const isAdminOwner = actor.roles.includes("admin") || actor.roles.includes("owner");
+    if (!actor.roles.includes("operator") && !isAdminOwner) {
+      return fail("Hanya Operator/Admin/Owner yang boleh mengembalikan file ke desainer.");
+    }
+    const reason = input.reason?.trim() ?? "";
+    if (reason.length < 10) return fail("Alasan wajib diisi, minimal 10 karakter.");
+
+    const result = await prisma.$transaction(async (tx) => {
+      const job = await findJobByCode(tx, tenant.id, jobCode);
+      if (!job) throw new Error("Job tidak ditemukan.");
+
+      if (!isAdminOwner && job.operator_id != null && job.operator_id !== actor.id) {
+        throw new Error("Job ini sudah dipegang operator lain.");
+      }
+
+      const jobs = await tx.productionJob.findMany({ where: { order_id: job.order_id } });
+      const started = jobs.find((j) => !PRE_START_JOB.includes(j.status));
+      if (started) {
+        throw new Error(`Produksi sudah berjalan (${started.job_code} · ${started.status}) — gunakan jalur QC/rework.`);
+      }
+
+      const design = await tx.designJob.findFirst({ where: { order_id: job.order_id, tenant_id: tenant.id } });
+      if (!design) throw new Error("Job desain tidak ditemukan.");
+
+      // Hapus semua job produksi order ini (semua masih pra-mulai → aman dihapus).
+      await tx.productionJob.deleteMany({ where: { order_id: job.order_id } });
+
+      const version = await tx.designVersion.findFirst({
+        where: { design_job_id: design.id, version_no: design.current_version },
+      });
+      if (version) {
+        await tx.designVersion.update({
+          where: { id: version.id },
+          data: {
+            approval_status: "REJECTED",
+            rejection_reason: `[Dikembalikan Operator] ${reason}`,
+          },
+        });
+      }
+      await tx.designJob.update({ where: { id: design.id }, data: { status: "DESIGNING" } });
+      await tx.order.update({
+        where: { id: job.order_id },
+        data: { status: "DESIGNING", auto_release_blocked: null },
+      });
+
+      return { orderCode: job.order.order_code, orderId: job.order_id };
+    });
+
+    await logAction(actor.id, "DESIGN_BOUNCED_FROM_PRODUCTION", "Order", result.orderId, null, { reason, job_code: jobCode });
+    revalidatePath("/operator");
+    revalidatePath("/designer");
+    revalidatePath("/admin");
+    revalidatePath("/owner");
+    revalidatePath("/scan");
+    return ok({ orderCode: result.orderCode });
+  } catch (e) {
+    console.error("bounceDesignFromProduction:", e);
+    return fail(e instanceof Error ? e.message : "Gagal mengembalikan file ke desainer.");
   }
 }
 

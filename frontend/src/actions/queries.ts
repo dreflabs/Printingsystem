@@ -176,7 +176,7 @@ export async function getDesignQueue() {
             },
           },
         },
-        versions: { orderBy: { version_no: "desc" }, take: 1 },
+        versions: { orderBy: { version_no: "desc" }, take: 1, select: { id: true, approval_status: true, file_name: true, file_path: true, rejection_reason: true } },
       },
     });
 
@@ -196,6 +196,7 @@ export async function getDesignQueue() {
         currentVersion: d.current_version,
         latestVersionStatus: d.versions[0]?.approval_status ?? null,
         latestVersionId: d.versions[0]?.id ?? null,
+        latestRejectionReason: d.versions[0]?.rejection_reason ?? null,
         latestFileName: d.versions[0]?.file_name ?? null,
         latestFileUrl: d.versions[0]?.file_path ? `/api/design/${d.versions[0]!.id}` : null,
         deadline: d.order.deadline,

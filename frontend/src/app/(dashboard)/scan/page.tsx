@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { QRScanner } from "@/components/ui/QRScanner";
 import { getScanContext, startProduction, pauseProduction, resumeProduction, finishProduction, submitQC } from "@/actions/production";
 import { startFinishing, finishFinishing } from "@/actions/production";
-import { decideRework } from "@/actions/production";
+import { decideRework, bounceDesignFromProduction } from "@/actions/production";
 import { assignStorageLocation, confirmItemAtCounter, releaseOrder, reportStorageIncident } from "@/actions/storage";
 import { getOrderFormData } from "@/actions/orders";
 
@@ -136,6 +136,7 @@ export default function ScanPage() {
         case "assign_storage": res = await assignStorageLocation(jc, String(payload?.locationCode ?? "")); break;
         case "confirm_counter": res = await confirmItemAtCounter(jc); break;
         case "report_incident": res = await reportStorageIncident(jc, { notes: String(payload?.notes ?? "") }); break;
+        case "bounce_design": res = await bounceDesignFromProduction(jc, { reason: String(payload?.reason ?? "") }); break;
         case "decide_rework":
           res = await decideRework(jc, { decision: payload?.decision as "APPROVED" | "REJECTED" | "HOLD", reason: String(payload?.reason ?? "") });
           break;
@@ -410,6 +411,10 @@ function ActionForm({
   if (action === "report_incident")
     return wrap(<textarea className={cn(field, "h-20 py-2")} placeholder="Catatan insiden (last seen, dll)" value={f.notes ?? ""} onChange={(e) => set("notes", e.target.value)} />,
       () => ({ notes: f.notes }), !!f.notes?.trim());
+
+  if (action === "bounce_design")
+    return wrap(<textarea className={cn(field, "h-20 py-2")} placeholder="Masalah file (resolusi pecah / salah ukuran / warna). Min. 10 karakter — order balik ke desainer." value={f.reason ?? ""} onChange={(e) => set("reason", e.target.value)} />,
+      () => ({ reason: f.reason }), (f.reason?.trim().length ?? 0) >= 10);
 
   if (action === "decide_rework")
     return wrap(

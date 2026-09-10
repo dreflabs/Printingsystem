@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Settings2, ScanLine, CheckCircle2, AlertCircle, Timer, Layers, Pause, Play, ShieldAlert } from "lucide-react";
+import { Settings2, ScanLine, CheckCircle2, AlertCircle, Timer, Layers, Pause, Play, ShieldAlert, FileWarning } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
 import { getOperatorJobs } from "@/actions/queries";
 import { getOrderFormData } from "@/actions/orders";
-import { startProduction, pauseProduction, resumeProduction, finishProduction } from "@/actions/production";
+import { startProduction, pauseProduction, resumeProduction, finishProduction, bounceDesignFromProduction } from "@/actions/production";
 
 type Job = {
   jobCode: string;
@@ -121,6 +121,8 @@ export default function OperatorPage() {
   const [showFinish, setShowFinish] = useState(false);
   const [pausePrompt, setPausePrompt] = useState(false);
   const [pauseReason, setPauseReason] = useState("");
+  const [bounceFor, setBounceFor] = useState<Job | null>(null);
+  const [bounceReason, setBounceReason] = useState("");
 
   const load = useCallback(async () => {
     const res = await getOperatorJobs();
@@ -230,6 +232,13 @@ export default function OperatorPage() {
                       ? "AMBIL & MULAI (SCAN 1)"
                       : "MULAI PRODUKSI (SCAN 1)"}
                 </button>
+                <button
+                  disabled={busy}
+                  onClick={() => { setBounceReason(""); setBounceFor(j); }}
+                  className="mt-2 w-full h-8 rounded-lg border border-status-red/30 text-status-red text-[11px] font-bold hover:bg-status-red/10 disabled:opacity-40 flex items-center justify-center gap-1.5"
+                >
+                  <FileWarning className="h-3.5 w-3.5" /> Lapor file bermasalah
+                </button>
               </div>
             ))}
           </div>
@@ -311,6 +320,54 @@ export default function OperatorPage() {
           )}
         </div>
       </div>
+
+      {bounceFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={() => setBounceFor(null)} />
+          <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-primary flex items-center gap-2">
+                <FileWarning className="h-4 w-4 text-status-red" /> Lapor File Bermasalah
+              </h3>
+              <p className="text-xs text-muted font-mono mt-0.5">{bounceFor.jobCode} · {bounceFor.orderCode}</p>
+              <p className="text-[11px] text-muted mt-1">
+                Order kembali ke antrean desainer untuk revisi. Job produksi ini dibatalkan.
+                Hanya untuk file yang <b>belum</b> mulai dicetak.
+              </p>
+            </div>
+            <div>
+              <label className="text-xs text-muted font-medium mb-1 block">Masalahnya apa? (min. 10 karakter)</label>
+              <textarea
+                value={bounceReason}
+                onChange={(e) => setBounceReason(e.target.value)}
+                autoFocus
+                placeholder="mis. resolusi file pecah / ukuran tidak sesuai / warna beda dari brief"
+                className="w-full min-h-[90px] rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-status-red resize-none"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setBounceFor(null)}
+                className="flex-1 h-10 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary"
+              >
+                Batal
+              </button>
+              <button
+                disabled={busy || bounceReason.trim().length < 10}
+                onClick={() => {
+                  const code = bounceFor.jobCode;
+                  const reason = bounceReason.trim();
+                  setBounceFor(null);
+                  act(() => bounceDesignFromProduction(code, { reason }));
+                }}
+                className="flex-1 h-10 rounded-xl bg-status-red text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"
+              >
+                Kembalikan ke Desainer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pausePrompt && active && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

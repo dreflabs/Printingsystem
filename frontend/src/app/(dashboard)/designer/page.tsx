@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Palette, Clock, CheckCircle2, RefreshCw, Upload, Search, X, FileText, Paperclip } from "lucide-react";
-import { StatusPill , ErrorState} from "@/components/ui";
+import { Palette, Clock, CheckCircle2, RefreshCw, Upload, Search, X, FileText, Paperclip, MoreVertical } from "lucide-react";
+import { StatusPill, ErrorState, DropdownMenu, DropdownMenuItem, DropdownMenuDivider } from "@/components/ui";
 import { NewOrderModal } from "@/components/orders/NewOrderModal";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
@@ -80,6 +80,98 @@ type Row = {
 
 const fmtDeadline = (d: string | Date | null) =>
   d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—";
+
+/** Nama file layak tampil = punya ekstensi (bukan uuid / object key). */
+const looksLikeFilename = (s: string | null) => !!s && /\.[a-z0-9]{2,5}$/i.test(s.trim());
+
+/** Kolom Aksi: 1 tombol utama sesuai konteks + menu ⋯ untuk sisanya. */
+function DesignRowActions({
+  r, busy, onDetail, onUpload, onRevisi, onTake, onAcc,
+}: {
+  r: Row;
+  busy: boolean;
+  onDetail: () => void;
+  onUpload: () => void;
+  onRevisi: () => void;
+  onTake: () => void;
+  onAcc: () => void;
+}) {
+  const owned = r.isOwnedByMe;
+  const done = r.status === "APPROVED";
+  const hasAnyDesign = r.items.some((i) => !!i.design);
+  const canUpload = owned && !done;
+  const canAcc = owned && !done && r.method !== "ONLINE" && r.items.some((i) => i.design && i.design.status !== "APPROVED");
+  const canRevisi = owned && hasAnyDesign && !done;
+
+  const primaryCls = "px-2.5 py-1 rounded-lg text-xs font-bold transition-all disabled:opacity-40";
+  const ghost = "px-2.5 py-1 rounded-lg bg-elevated text-muted text-xs font-bold hover:text-primary transition-all inline-flex items-center gap-1";
+
+  // ── Belum diambil ──────────────────────────────────────────────
+  if (r.isUnassigned) {
+    return (
+      <div className="flex items-center justify-end gap-1.5">
+        <button onClick={onTake} disabled={busy} className={cn(primaryCls, "bg-accent-teal text-white hover:brightness-110")}>
+          Ambil Tugas
+        </button>
+        <button onClick={onDetail} className={ghost}><FileText className="h-3 w-3" /> Detail</button>
+      </div>
+    );
+  }
+
+  // ── Ditangani orang lain / tidak ada aksi ─────────────────────
+  if (!owned) {
+    return (
+      <div className="flex justify-end">
+        <button onClick={onDetail} className={ghost}><FileText className="h-3 w-3" /> Detail</button>
+      </div>
+    );
+  }
+
+  // ── Milik saya — tentukan tombol utama ───────────────────────
+  const primary = done ? (
+    <button onClick={onDetail} className={ghost}><FileText className="h-3 w-3" /> Detail</button>
+  ) : canAcc ? (
+    <button onClick={onAcc} disabled={busy} className={cn(primaryCls, "bg-status-green/15 text-status-green hover:bg-status-green/25")}>
+      ACC
+    </button>
+  ) : r.method === "ONLINE" && hasAnyDesign ? (
+    <span className="text-[10px] font-bold text-status-yellow-text">Tunggu ACC Admin</span>
+  ) : (
+    <button onClick={onUpload} disabled={busy} className={cn(primaryCls, "bg-accent-teal/15 text-accent-teal hover:bg-accent-teal/25 inline-flex items-center gap-1")}>
+      <Upload className="h-3 w-3" /> Upload
+    </button>
+  );
+
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      {primary}
+      <DropdownMenu
+        align="end"
+        width={168}
+        trigger={<MoreVertical className="h-4 w-4" />}
+        label="Aksi lain"
+        triggerClassName="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"
+      >
+        <DropdownMenuItem icon={<FileText className="h-4 w-4" />} onSelect={onDetail}>
+          Lihat detail
+        </DropdownMenuItem>
+        {canUpload && (canAcc || r.method === "ONLINE") && (
+          <DropdownMenuItem icon={<Upload className="h-4 w-4" />} onSelect={onUpload} disabled={busy}>
+            {r.items.length > 1 ? "Upload / ganti per item" : "Upload versi baru"}
+          </DropdownMenuItem>
+        )}
+        {(canRevisi || done) && (
+          <>
+            <DropdownMenuDivider />
+            <DropdownMenuItem icon={<RefreshCw className="h-4 w-4" />} onSelect={onRevisi} disabled={busy || !hasAnyDesign}>
+              Minta revisi
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenu>
+    </div>
+  );
+}
 
 function UploadModal({ row, onClose, onDone }: { row: Row; onClose: () => void; onDone: () => void }) {
   const multiItem = row.items.length > 1;
@@ -462,8 +554,7 @@ export default function DesignerDashboardPage() {
                 <th className="px-4 py-3">Konsumen</th>
                 <th className="px-4 py-3">PIC</th>
                 <th className="px-4 py-3">Metode</th>
-                <th className="px-4 py-3">Versi</th>
-                <th className="px-4 py-3">Status Desain</th>
+                <th className="px-4 py-3">Desain</th>
                 <th className="px-4 py-3">Deadline</th>
                 <th className="px-4 py-3 text-right">Aksi</th>
               </tr>
@@ -509,81 +600,47 @@ export default function DesignerDashboardPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-accent-teal/15 text-accent-teal border border-accent-teal/30">
-                      V{r.currentVersion}{r.latestVersionStatus ? ` · ${r.latestVersionStatus}` : ""}
-                    </span>
-                    {r.items.length > 1 && (
-                      <span className={cn(
-                        "ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold",
-                        r.pendingCount === 0 ? "bg-status-green/15 text-status-green" : "bg-status-yellow/15 text-status-yellow-text"
-                      )}>
-                        {r.items.length - r.pendingCount}/{r.items.length} desain
-                      </span>
-                    )}
-                    {r.latestFileUrl && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <StatusPill status={r.status} />
+                      <span className="text-[10px] font-mono text-muted">V{r.currentVersion}</span>
+                      {r.items.length > 1 && (
+                        <span className={cn(
+                          "px-1.5 py-0.5 rounded text-[10px] font-bold",
+                          r.pendingCount === 0 ? "bg-status-green/15 text-status-green" : "bg-status-yellow/15 text-status-yellow-text"
+                        )}>
+                          {r.items.length - r.pendingCount}/{r.items.length} item
+                        </span>
+                      )}
+                    </div>
+                    {looksLikeFilename(r.latestFileName) && r.latestFileUrl && (
                       <a
                         href={r.latestFileUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-1 flex items-center gap-1 text-[10px] text-muted hover:text-accent-teal"
-                        title={r.latestFileName ?? "Lihat file"}
+                        className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted hover:text-accent-teal max-w-[170px]"
+                        title={r.latestFileName ?? undefined}
                       >
                         <FileText className="h-3 w-3 shrink-0" />
-                        <span className="truncate max-w-[120px]">{r.latestFileName ?? "Lihat file"}</span>
+                        <span className="truncate">{r.latestFileName}</span>
                       </a>
                     )}
                     {r.latestVersionStatus === "REJECTED" && r.latestRejectionReason && (
-                      <p className="mt-1 text-[10px] text-status-red max-w-[180px]" title={r.latestRejectionReason}>
-                        {r.latestRejectionReason}
+                      <p className="mt-1 text-[10px] text-status-red max-w-[200px] truncate" title={r.latestRejectionReason}>
+                        ⚠ {r.latestRejectionReason}
                       </p>
                     )}
                   </td>
-                  <td className="px-4 py-3"><StatusPill status={r.status} /></td>
                   <td className="px-4 py-3 font-mono text-muted">{fmtDeadline(r.deadline)}</td>
                   <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => setDetailFor(r)}
-                        className="px-2.5 py-1 rounded-lg bg-elevated text-muted font-bold hover:text-primary transition-all flex items-center gap-1"
-                      >
-                        <FileText className="h-3 w-3" /> Detail
-                      </button>
-                      {r.isUnassigned ? (
-                        <button
-                          onClick={() => run(() => takeDesignJob(r.orderId))}
-                          disabled={busy}
-                          className="px-2.5 py-1 rounded-lg bg-accent-teal text-white font-bold hover:brightness-110 transition-all disabled:opacity-40"
-                        >
-                          Ambil Tugas
-                        </button>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => setUploadFor(r)}
-                            disabled={busy || !r.isOwnedByMe || r.status === "APPROVED"}
-                            title={r.items.length > 1 ? "Upload / ganti desain per item" : "Upload versi desain"}
-                            className="px-2.5 py-1 rounded-lg bg-accent-teal/10 text-accent-teal font-bold hover:bg-accent-teal/20 transition-all flex items-center gap-1 disabled:opacity-40 disabled:bg-elevated disabled:text-muted"
-                          >
-                            <Upload className="h-3 w-3" /> Upload
-                          </button>
-                          <button
-                            onClick={() => run(() => approveDesign(r.orderId, {}))}
-                            disabled={busy || !r.isOwnedByMe || r.status === "APPROVED" || r.items.every((i) => !i.design || i.design.status === "APPROVED") || r.method === "ONLINE"}
-                            className="px-2.5 py-1 rounded-lg bg-status-green/10 text-status-green font-bold hover:bg-status-green/20 transition-all disabled:opacity-40 disabled:bg-elevated disabled:text-muted"
-                            title={r.method === "ONLINE" ? "Tunggu Admin" : r.items.every((i) => !i.design) ? "Upload desain dulu" : r.items.length > 1 ? "Setujui semua desain yang menunggu" : "Setujui desain"}
-                          >
-                            {r.method === "ONLINE" ? "Tunggu Admin" : "ACC"}
-                          </button>
-                          <button
-                            onClick={() => setRevisionFor(r)}
-                            disabled={busy || !r.isOwnedByMe || r.items.every((i) => !i.design)}
-                            className="px-2.5 py-1 rounded-lg bg-status-yellow/10 text-status-yellow-text font-bold hover:bg-status-yellow/20 transition-all flex items-center gap-1 disabled:opacity-40"
-                          >
-                            <RefreshCw className="h-3 w-3" /> Revisi
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    <DesignRowActions
+                      r={r}
+                      busy={busy}
+                      onDetail={() => setDetailFor(r)}
+                      onUpload={() => setUploadFor(r)}
+                      onRevisi={() => setRevisionFor(r)}
+                      onTake={() => run(() => takeDesignJob(r.orderId))}
+                      onAcc={() => run(() => approveDesign(r.orderId, {}))}
+                    />
                   </td>
                 </tr>
               ))}

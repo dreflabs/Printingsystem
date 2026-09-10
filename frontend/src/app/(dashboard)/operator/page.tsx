@@ -32,6 +32,7 @@ type Job = {
   suggestedMaterialId: string | null;
   fileUrl: string | null;
   fileName: string | null;
+  files: { label: string; url: string; name: string | null }[];
 };
 type MaterialOpt = { id: string; name: string; type: string; unitUsage: string; unitCustom: string | null };
 type HistoryRow = {
@@ -144,20 +145,29 @@ function JobItems({ items, dense }: { items: JobItem[]; dense?: boolean }) {
   );
 }
 
-/** Tombol buka file cetak (dibuka di tab baru untuk di-RIP ke mesin). */
-function FileButton({ url, name }: { url: string | null; name: string | null }) {
-  if (!url) return null;
+/** Tombol buka file cetak (dibuka di tab baru untuk di-RIP ke mesin).
+ * Combo order: satu tombol per file desain item. */
+function FileButton({ files }: { files: { label: string; url: string; name: string | null }[] }) {
+  if (!files || files.length === 0) return null;
+  const single = files.length === 1;
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={name || "Buka file cetak"}
-      className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-accent-teal/40 bg-accent-teal/10 px-3 text-xs font-bold text-accent-teal hover:bg-accent-teal/20 transition-colors"
-    >
-      <FileDown className="h-4 w-4 shrink-0" />
-      <span className="hidden truncate sm:inline">File</span>
-    </a>
+    <div className="flex shrink-0 flex-wrap gap-1.5">
+      {files.map((f, i) => (
+        <a
+          key={f.url}
+          href={f.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={f.name || `Buka file cetak — ${f.label}`}
+          className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-accent-teal/40 bg-accent-teal/10 px-3 text-xs font-bold text-accent-teal hover:bg-accent-teal/20 transition-colors"
+        >
+          <FileDown className="h-4 w-4 shrink-0" />
+          <span className="hidden truncate sm:inline max-w-[120px]">
+            {single ? "File" : f.label || `File ${i + 1}`}
+          </span>
+        </a>
+      ))}
+    </div>
   );
 }
 
@@ -190,7 +200,7 @@ function QueueCard({
         >
           {job.status === "PRODUCTION_QUEUED" ? "AMBIL & MULAI" : "MULAI PRODUKSI"}
         </button>
-        <FileButton url={job.fileUrl} name={job.fileName} />
+        <FileButton files={job.files} />
         <DropdownMenu
           label={`Aksi lain untuk ${job.jobCode}`}
           trigger={<MoreVertical className="h-4 w-4" />}
@@ -240,7 +250,7 @@ function ActiveCard({
       </div>
 
       <div className="mt-3 flex items-stretch gap-2">
-        <FileButton url={job.fileUrl} name={job.fileName} />
+        <FileButton files={job.files} />
         {paused ? (
           <button
             disabled={busy}

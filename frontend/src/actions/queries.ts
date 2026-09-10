@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { DEADLINE_SETTLED } from "@/lib/order-status";
-import { checkProductionReadiness, type ReadinessItem } from "@/lib/production-readiness";
+import { checkProductionReadiness, coveredDesignItemIds, type ReadinessItem } from "@/lib/production-readiness";
 import { ok, fail } from "@/types";
 
 /**
@@ -57,6 +57,7 @@ export async function getOperatorJobs() {
           items: {
             where: { retail_product_id: null },
             select: {
+              id: true,
               description: true,
               quantity: true,
               size: true,
@@ -66,14 +67,13 @@ export async function getOperatorJobs() {
               material: { select: { name: true } },
             },
           },
-          // File cetak = versi desain yang sudah APPROVED (bukan draft/revisi pending).
+          // File cetak = versi desain APPROVED per item (order_item_id null = seluruh order).
           design_jobs: {
             select: {
               versions: {
-                where: { approval_status: "APPROVED" },
+                where: { approval_status: "APPROVED", NOT: { file_path: null } },
                 orderBy: { version_no: "desc" },
-                take: 1,
-                select: { id: true, file_name: true, file_path: true },
+                select: { id: true, order_item_id: true, file_name: true, file_path: true },
               },
             },
           },
@@ -125,7 +125,7 @@ export async function getOperatorJobs() {
     ]);
 
     const shape = (j: (typeof mineRows)[number]) => {
-      const ver = j.order.design_jobs.flatMap((d) => d.versions).find((v) => v.file_path) ?? null;
+      const allVers = j.order.design_jobs.flatMap((d) => d.versions);
       // Item yang relevan ke mesin job ini; fallback ke semua item non-retail.
       const forMachine = j.order.items.filter((it) => it.product?.default_machine_id === j.machine_id);
       const relevant = forMachine.length ? forMachine : j.order.items;
@@ -136,6 +136,21 @@ export async function getOperatorJobs() {
         material: it.material?.name ?? null,
         finishing: it.finishing?.trim() || null,
       }));
+      // File cetak: versi APPROVED milik item relevan + versi berlingkup seluruh order.
+      const relevantIds = new Set(relevant.map((it) => it.id));
+      const seenVer = new Set<string>();
+      const files: { label: string; url: string; name: string | null }[] = [];
+      for (const v of allVers) {
+        if (v.order_item_id != null && !relevantIds.has(v.order_item_id)) continue;
+        if (seenVer.has(v.id)) continue;
+        seenVer.add(v.id);
+        const it = relevant.find((x) => x.id === v.order_item_id);
+        files.push({
+          label: it ? it.product?.name ?? it.description?.trim() ?? "Item" : "Seluruh order",
+          url: `/api/design/${v.id}`,
+          name: v.file_name ?? null,
+        });
+      }
       return {
         jobCode: j.job_code,
         orderCode: j.order.order_code,
@@ -152,8 +167,10 @@ export async function getOperatorJobs() {
         deadline: j.deadline ?? j.order.deadline,
         startedAt: j.actual_start,
         items,
-        fileUrl: ver ? `/api/design/${ver.id}` : null,
-        fileName: ver?.file_name ?? null,
+        files,
+        // Kompat lama: file pertama sebagai fileUrl/fileName tunggal.
+        fileUrl: files[0]?.url ?? null,
+        fileName: files[0]?.name ?? null,
       };
     };
 
@@ -272,20 +289,56 @@ export async function getDesignQueue() {
             order_code: true, status: true, deadline: true, notes: true,
             customer: { select: { name: true, phone: true } },
             items: {
+              where: { retail_product_id: null },
               select: {
-                description: true, size: true, quantity: true, finishing: true,
+                id: true, description: true, size: true, quantity: true, finishing: true,
                 product: { select: { name: true } },
                 material: { select: { name: true } },
               },
             },
           },
         },
-        versions: { orderBy: { version_no: "desc" }, take: 1, select: { id: true, approval_status: true, file_name: true, file_path: true, rejection_reason: true } },
+        versions: {
+          orderBy: { version_no: "desc" },
+          select: { id: true, order_item_id: true, version_no: true, approval_status: true, file_name: true, file_path: true, rejection_reason: true },
+        },
       },
     });
 
     return ok(
-      djs.map((d) => ({
+      djs.map((d) => {
+        // Versi terbaru per slot (order_item_id; null = seluruh order).
+        const latestBySlot = new Map<string, (typeof d.versions)[number]>();
+        for (const v of d.versions) {
+          const k = v.order_item_id ?? "__order__";
+          if (!latestBySlot.has(k)) latestBySlot.set(k, v); // versions sudah desc
+        }
+        const orderSlot = latestBySlot.get("__order__") ?? null;
+        const wholeOrderApproved = !!orderSlot && orderSlot.approval_status === "APPROVED" && !!(orderSlot.file_path || orderSlot.file_name);
+        const designItems = d.order.items.map((it) => {
+          const v = latestBySlot.get(it.id) ?? null;
+          const eff = v ?? (wholeOrderApproved ? orderSlot : null);
+          return {
+            itemId: it.id,
+            product: it.product?.name ?? it.description ?? "Item",
+            description: it.description ?? null,
+            size: it.size ?? null,
+            quantity: it.quantity,
+            material: it.material?.name ?? null,
+            finishing: it.finishing ?? null,
+            design: eff
+              ? {
+                  status: eff.approval_status as string,
+                  fileName: eff.file_name ?? null,
+                  fileUrl: eff.file_path ? `/api/design/${eff.id}` : null,
+                  rejectionReason: eff.rejection_reason ?? null,
+                  wholeOrder: !v && wholeOrderApproved,
+                }
+              : null,
+          };
+        });
+        const pendingCount = designItems.filter((i) => !i.design || i.design.status !== "APPROVED").length;
+        return {
         orderId: d.order_id,
         isOwnedByMe: d.designer_id === actor.id,
         isUnassigned: d.designer_id === null,
@@ -306,15 +359,11 @@ export async function getDesignQueue() {
         deadline: d.order.deadline,
         // Brief & spesifikasi dari Admin — supaya Designer tahu yang harus dikerjakan.
         notes: d.order.notes ?? null,
-        items: d.order.items.map((it) => ({
-          product: it.product?.name ?? it.description ?? "Item",
-          description: it.description ?? null,
-          size: it.size ?? null,
-          quantity: it.quantity,
-          material: it.material?.name ?? null,
-          finishing: it.finishing ?? null,
-        })),
-      }))
+        // Item + status file desain masing-masing (untuk combo order beda desain).
+        items: designItems,
+        pendingCount,
+      };
+      })
     );
   } catch (e) {
     console.error("getDesignQueue:", e);
@@ -546,7 +595,7 @@ export async function getProductionOverview() {
         include: {
           customer: { select: { name: true, phone: true, email: true } },
           items: { include: { product: { select: { unit: true, default_machine_id: true } } } },
-          design_jobs: { select: { status: true, versions: { orderBy: { version_no: "desc" }, take: 1, select: { approval_status: true, file_path: true, file_name: true } } } },
+          design_jobs: { select: { status: true, versions: { select: { order_item_id: true, approval_status: true, file_path: true, file_name: true } } } },
         },
       }),
     ]);
@@ -559,12 +608,12 @@ export async function getProductionOverview() {
         // Hitung ulang alasan secara LIVE — supaya panel langsung update saat data
         // order dilengkapi, tanpa menunggu Admin menekan "Coba Rilis".
         const designApproved = o.design_jobs.some((d) => d.status === "APPROVED");
-        const designFilePresent = o.design_jobs.some((d) =>
-          d.versions.some((v) => v.approval_status === "APPROVED" && (v.file_path || v.file_name))
-        );
+        const nonRetailIds = o.items.filter((i) => !i.retail_product_id).map((i) => i.id);
+        const designReadyItemIds = coveredDesignItemIds(o.design_jobs.flatMap((d) => d.versions), nonRetailIds);
         const rItems: ReadinessItem[] = o.items
           .filter((i) => !i.retail_product_id)
           .map((i) => ({
+            id: i.id,
             label: i.description || "",
             productId: i.product_id,
             productUnit: i.product?.unit ?? null,
@@ -587,7 +636,7 @@ export async function getProductionOverview() {
           paidAmount: num(o.paid_amount),
           dpRequired: num(o.dp_required ?? Math.round(num(o.total) * 0.5)),
           designApproved,
-          designFilePresent,
+          designReadyItemIds,
           items: rItems,
         });
         reasons = r.missing;
@@ -751,12 +800,15 @@ export async function getOrderDetail(orderId: string) {
     // Kesiapan turun ke produksi — dipakai UI untuk menjelaskan kenapa order
     // belum jalan otomatis (bukan cuma cek design/diskon/DP).
     const designApproved = o.design_jobs.some((d) => d.status === "APPROVED");
-    const designFilePresent = o.design_jobs.some((d) =>
-      d.versions.some((v) => v.approval_status === "APPROVED" && (v.file_path || v.file_name))
+    const nonRetailItemIds = o.items.filter((i) => !i.retail_product_id).map((i) => i.id);
+    const designReadyItemIds = coveredDesignItemIds(
+      o.design_jobs.flatMap((d) => d.versions),
+      nonRetailItemIds
     );
     const readinessItems: ReadinessItem[] = o.items
       .filter((i) => !i.retail_product_id)
       .map((i) => ({
+        id: i.id,
         label: i.description || i.product?.name || "",
         productId: i.product_id,
         productUnit: i.product?.unit ?? null,
@@ -779,7 +831,7 @@ export async function getOrderDetail(orderId: string) {
       paidAmount: num(o.paid_amount),
       dpRequired: num(o.dp_required ?? Math.round(num(o.total) * 0.5)),
       designApproved,
-      designFilePresent,
+      designReadyItemIds,
       items: readinessItems,
     });
 

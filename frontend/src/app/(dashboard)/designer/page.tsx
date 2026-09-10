@@ -59,13 +59,22 @@ type Row = {
   deadline: string | Date | null;
   customerPhone: string | null;
   notes: string | null;
+  pendingCount: number;
   items: {
+    itemId: string;
     product: string;
     description: string | null;
     size: string | null;
     quantity: number;
     material: string | null;
     finishing: string | null;
+    design: {
+      status: string; // PENDING / APPROVED / REJECTED
+      fileName: string | null;
+      fileUrl: string | null;
+      rejectionReason: string | null;
+      wholeOrder: boolean; // dicakup file layout seluruh order
+    } | null;
   }[];
 };
 
@@ -73,8 +82,11 @@ const fmtDeadline = (d: string | Date | null) =>
   d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—";
 
 function UploadModal({ row, onClose, onDone }: { row: Row; onClose: () => void; onDone: () => void }) {
+  const multiItem = row.items.length > 1;
   const [file, setFile] = useState<File | null>(null);
   const [notes, setNotes] = useState("");
+  // "" = berlaku seluruh order (file layout gabungan). id item = desain khusus item itu.
+  const [itemId, setItemId] = useState<string>(multiItem ? (row.items.find((i) => !i.design || i.design.status !== "APPROVED")?.itemId ?? "") : "");
   const [phase, setPhase] = useState<"idle" | "preparing" | "uploading" | "saving">("idle");
   const [pct, setPct] = useState(0);
   const [err, setErr] = useState<string | null>(null);
@@ -118,6 +130,7 @@ function UploadModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
         fileSize: file.size,
         contentType: file.type || null,
         notes: notes.trim() || undefined,
+        orderItemId: itemId || null,
       });
       if (!saved.success) throw new Error(saved.error);
       onDone();
@@ -140,6 +153,29 @@ function UploadModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
         </div>
 
         {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
+
+        {multiItem && (
+          <div>
+            <label className="text-xs text-muted font-medium mb-1 block">Desain untuk *</label>
+            <select
+              value={itemId}
+              onChange={(e) => setItemId(e.target.value)}
+              disabled={busy}
+              className="w-full h-10 rounded-xl bg-elevated border border-border text-xs text-primary px-3 outline-none focus:border-accent-teal disabled:opacity-60"
+            >
+              {row.items.map((it) => (
+                <option key={it.itemId} value={it.itemId}>
+                  {it.product}{it.size ? ` · ${it.size}` : ""} · {it.quantity} pcs
+                  {it.design?.status === "APPROVED" ? "  ✓ ada" : it.design ? "  • revisi" : ""}
+                </option>
+              ))}
+              <option value="">— 1 file untuk SEMUA item (layout gabungan)</option>
+            </select>
+            <p className="text-[11px] text-muted mt-1">
+              {row.items.filter((i) => i.design?.status === "APPROVED").length}/{row.items.length} item sudah punya desain final.
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="text-xs text-muted font-medium mb-1 block">File Desain *</label>
@@ -258,9 +294,19 @@ function DesignDetailModal({ row, onClose }: { row: Row; onClose: () => void }) 
               <p className="text-sm text-muted italic">Tidak ada item tercatat.</p>
             ) : (
               <ul className="space-y-2">
-                {row.items.map((it, i) => (
+                {row.items.map((it, i) => {
+                  const d = it.design;
+                  const badge =
+                    d?.status === "APPROVED" ? { t: d.wholeOrder ? "Desain: file gabungan ✓" : "Desain: final ✓", c: "bg-status-green/15 text-status-green" }
+                    : d?.status === "REJECTED" ? { t: "Desain: perlu revisi", c: "bg-status-red/15 text-status-red" }
+                    : d ? { t: "Desain: menunggu ACC", c: "bg-status-yellow/15 text-status-yellow-text" }
+                    : { t: "Desain: belum ada", c: "bg-muted/15 text-muted" };
+                  return (
                   <li key={i} className="rounded-xl border border-border bg-elevated/40 p-3">
-                    <p className="text-sm font-semibold text-primary">{it.product}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold text-primary">{it.product}</p>
+                      <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold", badge.c)}>{badge.t}</span>
+                    </div>
                     {it.description && <p className="text-xs text-muted mt-0.5">{it.description}</p>}
                     <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
                       {it.size && <span>Ukuran: <span className="text-primary font-medium">{it.size}</span></span>}
@@ -268,8 +314,18 @@ function DesignDetailModal({ row, onClose }: { row: Row; onClose: () => void }) 
                       {it.material && <span>Bahan: <span className="text-primary font-medium">{it.material}</span></span>}
                       {it.finishing && <span>Finishing: <span className="text-primary font-medium">{it.finishing}</span></span>}
                     </div>
+                    {d?.fileUrl && (
+                      <a href={d.fileUrl} target="_blank" rel="noopener noreferrer"
+                        className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-accent-teal hover:underline">
+                        <Paperclip className="h-3 w-3" /> {d.fileName || "file desain"}
+                      </a>
+                    )}
+                    {d?.status === "REJECTED" && d.rejectionReason && (
+                      <p className="mt-1 text-[11px] text-status-red">Alasan: {d.rejectionReason}</p>
+                    )}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -456,6 +512,14 @@ export default function DesignerDashboardPage() {
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-accent-teal/15 text-accent-teal border border-accent-teal/30">
                       V{r.currentVersion}{r.latestVersionStatus ? ` · ${r.latestVersionStatus}` : ""}
                     </span>
+                    {r.items.length > 1 && (
+                      <span className={cn(
+                        "ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold",
+                        r.pendingCount === 0 ? "bg-status-green/15 text-status-green" : "bg-status-yellow/15 text-status-yellow-text"
+                      )}>
+                        {r.items.length - r.pendingCount}/{r.items.length} desain
+                      </span>
+                    )}
                     {r.latestFileUrl && (
                       <a
                         href={r.latestFileUrl}
@@ -496,22 +560,23 @@ export default function DesignerDashboardPage() {
                         <>
                           <button
                             onClick={() => setUploadFor(r)}
-                            disabled={busy || !r.isOwnedByMe || r.status === "APPROVED" || r.latestVersionStatus === "PENDING"}
+                            disabled={busy || !r.isOwnedByMe || r.status === "APPROVED"}
+                            title={r.items.length > 1 ? "Upload / ganti desain per item" : "Upload versi desain"}
                             className="px-2.5 py-1 rounded-lg bg-accent-teal/10 text-accent-teal font-bold hover:bg-accent-teal/20 transition-all flex items-center gap-1 disabled:opacity-40 disabled:bg-elevated disabled:text-muted"
                           >
                             <Upload className="h-3 w-3" /> Upload
                           </button>
                           <button
                             onClick={() => run(() => approveDesign(r.orderId, {}))}
-                            disabled={busy || !r.isOwnedByMe || r.status === "APPROVED" || r.latestVersionStatus == null || r.method === "ONLINE"}
+                            disabled={busy || !r.isOwnedByMe || r.status === "APPROVED" || r.items.every((i) => !i.design || i.design.status === "APPROVED") || r.method === "ONLINE"}
                             className="px-2.5 py-1 rounded-lg bg-status-green/10 text-status-green font-bold hover:bg-status-green/20 transition-all disabled:opacity-40 disabled:bg-elevated disabled:text-muted"
-                            title={r.method === "ONLINE" ? "Tunggu Admin" : r.latestVersionStatus == null ? "Upload versi dulu" : "Setujui desain"}
+                            title={r.method === "ONLINE" ? "Tunggu Admin" : r.items.every((i) => !i.design) ? "Upload desain dulu" : r.items.length > 1 ? "Setujui semua desain yang menunggu" : "Setujui desain"}
                           >
                             {r.method === "ONLINE" ? "Tunggu Admin" : "ACC"}
                           </button>
                           <button
                             onClick={() => setRevisionFor(r)}
-                            disabled={busy || !r.isOwnedByMe || r.latestVersionStatus == null}
+                            disabled={busy || !r.isOwnedByMe || r.items.every((i) => !i.design)}
                             className="px-2.5 py-1 rounded-lg bg-status-yellow/10 text-status-yellow-text font-bold hover:bg-status-yellow/20 transition-all flex items-center gap-1 disabled:opacity-40"
                           >
                             <RefreshCw className="h-3 w-3" /> Revisi

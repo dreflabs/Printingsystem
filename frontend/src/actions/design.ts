@@ -57,6 +57,42 @@ export interface UploadDesignVersionInput {
   contentType?: string | null;
   previewPath?: string | null;
   notes?: string | null;
+  /**
+   * Item sasaran file ini. null / kosong = berlaku seluruh order (order 1 item
+   * atau file layout gabungan). Untuk order multi-item, isi per item.
+   */
+  orderItemId?: string | null;
+}
+
+/**
+ * Set id item non-retail order yang SUDAH punya versi desain APPROVED ber-file
+ * (file item itu sendiri, atau file berlingkup seluruh order). Dipakai untuk
+ * menentukan DesignJob boleh APPROVED / order boleh maju.
+ */
+async function designCoverage(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  orderId: string
+): Promise<{ nonRetailItemIds: string[]; coveredItemIds: string[]; fullyCovered: boolean }> {
+  const items = await tx.orderItem.findMany({
+    where: { order_id: orderId, tenant_id: tenantId, retail_product_id: null },
+    select: { id: true },
+  });
+  const nonRetailItemIds = items.map((i) => i.id);
+  const approved = await tx.designVersion.findMany({
+    where: { design_job: { order_id: orderId }, tenant_id: tenantId, approval_status: "APPROVED" },
+    select: { order_item_id: true, file_path: true, file_name: true },
+  });
+  const wholeOrder = approved.some((v) => v.order_item_id == null && (v.file_path || v.file_name));
+  const per = new Set(
+    approved.filter((v) => v.order_item_id != null && (v.file_path || v.file_name)).map((v) => v.order_item_id as string)
+  );
+  const coveredItemIds = wholeOrder ? [...nonRetailItemIds] : nonRetailItemIds.filter((id) => per.has(id));
+  return {
+    nonRetailItemIds,
+    coveredItemIds,
+    fullyCovered: nonRetailItemIds.length > 0 && coveredItemIds.length === nonRetailItemIds.length,
+  };
 }
 
 /**
@@ -112,7 +148,7 @@ export async function createDesignUploadUrl(
 export async function uploadDesignVersion(
   orderId: string,
   input: UploadDesignVersionInput
-): Promise<ActionResult<{ versionNo: number; approvalStatus: string }>> {
+): Promise<ActionResult<{ versionNo: number; approvalStatus: string; itemId: string | null; fullyCovered: boolean }>> {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
@@ -127,8 +163,20 @@ export async function uploadDesignVersion(
       });
       if (!job) throw new Error("Job desain tidak ditemukan.");
 
+      // Validasi item sasaran (kalau ada).
+      const itemId = input.orderItemId?.trim() || null;
+      if (itemId) {
+        const it = await tx.orderItem.findFirst({
+          where: { id: itemId, order_id: orderId, tenant_id: tenant.id },
+          select: { id: true, retail_product_id: true },
+        });
+        if (!it) throw new Error("Item pesanan tidak ditemukan di order ini.");
+        if (it.retail_product_id) throw new Error("Item retail tidak butuh desain.");
+      }
+
+      // Deret versi per "slot" (job + item). Slot null = seluruh order.
       const last = await tx.designVersion.findFirst({
-        where: { design_job_id: job.id },
+        where: { design_job_id: job.id, order_item_id: itemId },
         orderBy: { version_no: "desc" },
       });
       const versionNo = (last?.version_no ?? 0) + 1;
@@ -140,6 +188,7 @@ export async function uploadDesignVersion(
         data: {
           tenant_id: tenant.id,
           design_job_id: job.id,
+          order_item_id: itemId,
           version_no: versionNo,
           file_path: input.filePath.trim(),
           file_name: input.fileName?.trim() || null,
@@ -155,12 +204,22 @@ export async function uploadDesignVersion(
         },
       });
 
-      await tx.designJob.update({
-        where: { id: job.id },
-        data: { current_version: versionNo, status: makloon ? "APPROVED" : "DESIGNING" },
+      // current_version = nomor versi tertinggi lintas slot (untuk tampilan "Vn").
+      const top = await tx.designVersion.findFirst({
+        where: { design_job_id: job.id },
+        orderBy: { version_no: "desc" },
+        select: { version_no: true },
       });
 
-      if (makloon) {
+      const cov = await designCoverage(tx, tenant.id, orderId);
+      // Job APPROVED hanya kalau SEMUA item non-retail sudah punya file approved.
+      const jobStatus = makloon && cov.fullyCovered ? "APPROVED" : "DESIGNING";
+      await tx.designJob.update({
+        where: { id: job.id },
+        data: { current_version: top?.version_no ?? versionNo, status: jobStatus },
+      });
+
+      if (makloon && cov.fullyCovered) {
         await tx.order.updateMany({
           where: { id: orderId, tenant_id: tenant.id, status: { in: ["DRAFT", "DESIGNING", "WAITING_APPROVAL"] } },
           data: { status: "WAITING_PAYMENT" },
@@ -172,7 +231,7 @@ export async function uploadDesignVersion(
         });
       }
 
-      return { versionNo, approvalStatus };
+      return { versionNo, approvalStatus, itemId, fullyCovered: cov.fullyCovered };
     });
 
     await logAction(actor.id, "DESIGN_VERSION_UPLOADED", "Order", orderId, null, result);
@@ -186,14 +245,19 @@ export async function uploadDesignVersion(
 }
 
 /**
- * Setujui versi desain terkini.
- * - ONLINE: hanya Admin/Owner (Designer tidak boleh approve desainnya sendiri).
- * - WALK_IN / MAKLOON: Designer pembuat atau Admin.
+ * Setujui desain.
+ * - Tanpa `itemId`: ACC versi PENDING terbaru DI SETIAP slot (tiap item + slot
+ *   seluruh-order). Untuk order multi-item, semua item yang sudah diupload
+ *   di-ACC sekaligus.
+ * - Dengan `itemId`: ACC hanya slot item itu.
+ * DesignJob baru jadi APPROVED (dan order maju) kalau SEMUA item non-retail
+ * sudah punya file approved.
+ * - ONLINE: hanya Admin/Owner. WALK_IN / MAKLOON: Designer pembuat atau Admin.
  */
 export async function approveDesign(
   orderId: string,
-  input: { notes?: string; approvalMethodOverride?: "WALK_IN" | "MAKLOON" | "ONLINE" }
-): Promise<ActionResult<{ versionNo: number }>> {
+  input: { notes?: string; approvalMethodOverride?: "WALK_IN" | "MAKLOON" | "ONLINE"; itemId?: string | null }
+): Promise<ActionResult<{ approvedCount: number; fullyApproved: boolean; pendingItems: string[] }>> {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
@@ -204,51 +268,87 @@ export async function approveDesign(
       });
       if (!job) throw new Error("Job desain tidak ditemukan.");
 
-      const version = await tx.designVersion.findFirst({
-        where: { design_job_id: job.id, version_no: job.current_version },
-      });
-      if (!version) throw new Error("Versi desain aktif tidak ditemukan.");
-      if (version.approval_status === "APPROVED") throw new Error("Versi ini sudah disetujui.");
-
       const method = input.approvalMethodOverride || job.approval_method;
       if (method === "ONLINE" && !isAdmin(actor.roles)) {
         throw new Error("Persetujuan desain ONLINE harus dilakukan oleh Admin.");
       }
-      if (method !== "ONLINE" && actor.roles.includes("designer_sales") && version.uploaded_by !== actor.id && !isAdmin(actor.roles)) {
-        throw new Error("Hanya designer pembuat atau Admin yang boleh menyetujui.");
-      }
 
-      await tx.designVersion.update({
-        where: { id: version.id },
-        data: {
-          approval_status: "APPROVED",
-          approved_at: new Date(),
-          approved_by: actor.id,
-          approval_method: method,
-          approval_notes: input.notes || version.approval_notes,
-        },
+      // Versi terbaru per slot (job + order_item_id).
+      const all = await tx.designVersion.findMany({
+        where: { design_job_id: job.id },
+        orderBy: { version_no: "desc" },
       });
-      await tx.designJob.update({ where: { id: job.id }, data: { status: "APPROVED" } });
+      const seen = new Set<string>();
+      const latestPerSlot = all.filter((v) => {
+        const k = v.order_item_id ?? "__order__";
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
 
-      // Desain ACC → WAITING_PAYMENT. Tapi kalau DP sudah lunas (mis. dibayar saat
-      // order dibuat), langsung CONFIRMED supaya order tidak nyangkut.
-      const ord = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
-      let release: Awaited<ReturnType<typeof autoReleaseToProduction>> = { released: false, jobCodes: [], missing: [] };
-      if (ord && ["DRAFT", "DESIGNING", "WAITING_APPROVAL", "CONFIRMED"].includes(ord.status)) {
-        const dpReq = Number(ord.dp_required ?? Math.round(Number(ord.total) * 0.5));
-        const dpMet = Number(ord.paid_amount) + 1e-6 >= dpReq;
-        await tx.order.update({
-          where: { id: ord.id },
-          data: { status: dpMet ? "CONFIRMED" : "WAITING_PAYMENT" },
+      const targets = latestPerSlot.filter((v) => {
+        if (v.approval_status === "APPROVED") return false;
+        if (input.itemId != null) return v.order_item_id === input.itemId;
+        return true;
+      });
+      if (targets.length === 0) throw new Error("Tidak ada versi desain yang menunggu persetujuan.");
+
+      for (const v of targets) {
+        if (
+          method !== "ONLINE" &&
+          actor.roles.includes("designer_sales") &&
+          v.uploaded_by !== actor.id &&
+          !isAdmin(actor.roles)
+        ) {
+          throw new Error("Hanya designer pembuat atau Admin yang boleh menyetujui.");
+        }
+        await tx.designVersion.update({
+          where: { id: v.id },
+          data: {
+            approval_status: "APPROVED",
+            approved_at: new Date(),
+            approved_by: actor.id,
+            approval_method: method,
+            approval_notes: input.notes || v.approval_notes,
+          },
         });
-        if (dpMet) release = await autoReleaseToProduction(tx, tenant.id, ord.id);
       }
 
-      return { versionNo: version.version_no, release };
+      const cov = await designCoverage(tx, tenant.id, orderId);
+      const pendingItemRows = cov.fullyCovered
+        ? []
+        : await tx.orderItem.findMany({
+            where: { id: { in: cov.nonRetailItemIds.filter((id) => !cov.coveredItemIds.includes(id)) } },
+            select: { description: true, product: { select: { name: true } } },
+          });
+      const pendingItems = pendingItemRows.map((i) => i.description || i.product?.name || "item");
+
+      await tx.designJob.update({
+        where: { id: job.id },
+        data: { status: cov.fullyCovered ? "APPROVED" : "DESIGNING" },
+      });
+
+      let release: Awaited<ReturnType<typeof autoReleaseToProduction>> = { released: false, jobCodes: [], missing: [] };
+      if (cov.fullyCovered) {
+        // Desain lengkap → WAITING_PAYMENT, atau CONFIRMED + auto-release kalau DP sudah lunas.
+        const ord = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
+        if (ord && ["DRAFT", "DESIGNING", "WAITING_APPROVAL", "CONFIRMED"].includes(ord.status)) {
+          const dpReq = Number(ord.dp_required ?? Math.round(Number(ord.total) * 0.5));
+          const dpMet = Number(ord.paid_amount) + 1e-6 >= dpReq;
+          await tx.order.update({
+            where: { id: ord.id },
+            data: { status: dpMet ? "CONFIRMED" : "WAITING_PAYMENT" },
+          });
+          if (dpMet) release = await autoReleaseToProduction(tx, tenant.id, ord.id);
+        }
+      }
+
+      return { approvedCount: targets.length, fullyApproved: cov.fullyCovered, pendingItems, release };
     });
 
     await logAction(actor.id, "DESIGN_APPROVED", "Order", orderId, null, {
-      version_no: result.versionNo,
+      approved_count: result.approvedCount,
+      fully_approved: result.fullyApproved,
       notes: input.notes,
     });
     if (result.release.released) {
@@ -260,18 +360,25 @@ export async function approveDesign(
     }
     revalidatePath("/designer");
     revalidatePath("/admin");
-    return ok({ versionNo: result.versionNo });
+    return ok({
+      approvedCount: result.approvedCount,
+      fullyApproved: result.fullyApproved,
+      pendingItems: result.pendingItems,
+    });
   } catch (e) {
     console.error("approveDesign:", e);
     return fail(e instanceof Error ? e.message : "Gagal menyetujui desain.");
   }
 }
 
-/** Minta revisi: versi terkini ditandai REJECTED, job kembali DESIGNING. */
+/**
+ * Minta revisi. Tanpa `itemId`: versi terbaru SETIAP slot ditandai REJECTED
+ * (revisi seluruh order). Dengan `itemId`: hanya slot item itu. Job → DESIGNING.
+ */
 export async function requestDesignRevision(
   orderId: string,
-  input: { reason: string }
-): Promise<ActionResult<{ versionNo: number }>> {
+  input: { reason: string; itemId?: string | null }
+): Promise<ActionResult<{ rejectedCount: number }>> {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
@@ -285,22 +392,37 @@ export async function requestDesignRevision(
         where: { order_id: orderId, tenant_id: tenant.id },
       });
       if (!job) throw new Error("Job desain tidak ditemukan.");
-      const version = await tx.designVersion.findFirst({
-        where: { design_job_id: job.id, version_no: job.current_version },
-      });
-      if (!version) throw new Error("Versi desain aktif tidak ditemukan.");
 
-      await tx.designVersion.update({
-        where: { id: version.id },
-        data: { approval_status: "REJECTED", rejection_reason: input.reason.trim() },
+      const all = await tx.designVersion.findMany({
+        where: { design_job_id: job.id },
+        orderBy: { version_no: "desc" },
       });
+      const seen = new Set<string>();
+      const latestPerSlot = all.filter((v) => {
+        const k = v.order_item_id ?? "__order__";
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      const targets = latestPerSlot.filter(
+        (v) => v.approval_status !== "REJECTED" && (input.itemId == null || v.order_item_id === input.itemId)
+      );
+      if (targets.length === 0) throw new Error("Tidak ada versi desain untuk direvisi.");
+
+      for (const v of targets) {
+        await tx.designVersion.update({
+          where: { id: v.id },
+          data: { approval_status: "REJECTED", rejection_reason: input.reason.trim() },
+        });
+      }
       await tx.designJob.update({ where: { id: job.id }, data: { status: "DESIGNING" } });
 
-      return { versionNo: version.version_no };
+      return { rejectedCount: targets.length };
     });
 
     await logAction(actor.id, "DESIGN_REVISION_REQUESTED", "Order", orderId, null, {
-      version_no: result.versionNo,
+      rejected_count: result.rejectedCount,
+      item_id: input.itemId ?? null,
       reason: input.reason,
     });
     revalidatePath("/designer");

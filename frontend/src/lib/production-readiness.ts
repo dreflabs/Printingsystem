@@ -7,6 +7,8 @@
  */
 
 export interface ReadinessItem {
+  /** id OrderItem — dipakai mencocokkan file desain per item */
+  id: string;
   label: string;
   productId: string | null;
   /** unit produk — kalau bukan PCS, ukuran wajib diisi */
@@ -34,9 +36,30 @@ export interface ReadinessInput {
   paidAmount: number;
   dpRequired: number;
   designApproved: boolean;
-  /** ada file final di versi desain yang APPROVED */
-  designFilePresent: boolean;
+  /**
+   * id item yang sudah punya file desain final APPROVED (file-nya sendiri, atau
+   * file layout gabungan berlingkup seluruh order). Item non-retail yang tidak
+   * ada di sini = desainnya belum lengkap.
+   */
+  designReadyItemIds: string[];
   items: ReadinessItem[];
+}
+
+/**
+ * Dari daftar DesignVersion → set id item yang desainnya sudah final & APPROVED.
+ * Versi `order_item_id == null` yang APPROVED dianggap menutup SEMUA item
+ * (kompat data lama + file layout gabungan).
+ */
+export function coveredDesignItemIds(
+  versions: { order_item_id: string | null; approval_status: string; file_path: string | null; file_name: string | null }[],
+  itemIds: string[]
+): string[] {
+  const hasFile = (v: { approval_status: string; file_path: string | null; file_name: string | null }) =>
+    v.approval_status === "APPROVED" && !!(v.file_path || v.file_name);
+  const wholeOrder = versions.some((v) => v.order_item_id == null && hasFile(v));
+  if (wholeOrder) return [...itemIds];
+  const per = new Set(versions.filter((v) => v.order_item_id != null && hasFile(v)).map((v) => v.order_item_id as string));
+  return itemIds.filter((id) => per.has(id));
 }
 
 export interface ReadinessResult {
@@ -58,12 +81,9 @@ export function checkProductionReadiness(input: ReadinessInput): ReadinessResult
     missing.push("DP belum terpenuhi");
   }
 
-  // 2. Desain disetujui
+  // 2. Desain disetujui (job-level)
   if (!input.designApproved) {
     missing.push("Desain belum disetujui");
-  } else if (!input.designFilePresent) {
-    // 3. File desain final
-    missing.push("File desain final belum terlampir");
   }
 
   // 4. Diskon menggantung
@@ -89,6 +109,7 @@ export function checkProductionReadiness(input: ReadinessInput): ReadinessResult
   }
 
   // 8. Kelengkapan tiap item
+  const designReady = new Set(input.designReadyItemIds);
   let allItemsRouted = input.items.length > 0;
   for (const it of input.items) {
     const gaps: string[] = [];
@@ -99,6 +120,12 @@ export function checkProductionReadiness(input: ReadinessInput): ReadinessResult
     if ((it.productUnit ?? "PCS") !== "PCS" && !it.size?.trim()) gaps.push("ukuran");
     if (gaps.length > 0) {
       missing.push(`Item "${it.label || "(tanpa nama)"}" belum lengkap: ${gaps.join(", ")}`);
+    }
+
+    // File desain per item (hanya cek kalau job desain sudah APPROVED — biar
+    // pesan "Desain belum disetujui" tidak dobel dengan yang di atas).
+    if (input.designApproved && !designReady.has(it.id)) {
+      missing.push(`Item "${it.label || "(tanpa nama)"}" — file desain final belum ada`);
     }
 
     if (!it.defaultMachineId) {

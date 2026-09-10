@@ -109,12 +109,43 @@ export async function getScanContext(code: string) {
     const actions: ScanAction[] = [];
     const s = job.status;
 
-    // File cetak (versi desain yang sudah APPROVED) untuk dibuka Operator.
-    const printVer = await prisma.designVersion.findFirst({
-      where: { tenant_id: tenant.id, design_job: { order_id: order.id }, approval_status: "APPROVED", NOT: { file_path: null } },
-      orderBy: { version_no: "desc" },
-      select: { id: true, file_name: true },
+    // Rincian item order (id + mesin default) — untuk memetakan file desain per
+    // item ke job ini, dan untuk verifikasi jumlah di form serah terima.
+    const orderItems = await prisma.orderItem.findMany({
+      where: { order_id: order.id, retail_product_id: null },
+      select: {
+        id: true, description: true, quantity: true, size: true,
+        product: { select: { name: true, default_machine_id: true } },
+      },
     });
+    // File cetak: versi APPROVED milik item pada mesin job ini + versi seluruh-order.
+    const approvedVers = await prisma.designVersion.findMany({
+      where: {
+        tenant_id: tenant.id,
+        design_job: { order_id: order.id },
+        approval_status: "APPROVED",
+        NOT: { file_path: null },
+      },
+      orderBy: { version_no: "desc" },
+      select: { id: true, order_item_id: true, file_name: true },
+    });
+    const jobItemIds = new Set(
+      orderItems.filter((it) => it.product?.default_machine_id === job.machine_id).map((it) => it.id)
+    );
+    const scopedItemIds = jobItemIds.size > 0 ? jobItemIds : new Set(orderItems.map((it) => it.id));
+    const seenVer = new Set<string>();
+    const files: { label: string; url: string; name: string | null }[] = [];
+    for (const v of approvedVers) {
+      if (v.order_item_id != null && !scopedItemIds.has(v.order_item_id)) continue;
+      if (seenVer.has(v.id)) continue;
+      seenVer.add(v.id);
+      const it = orderItems.find((x) => x.id === v.order_item_id);
+      files.push({
+        label: it ? it.product?.name ?? it.description?.trim() ?? "Item" : "Seluruh order",
+        url: `/api/design/${v.id}`,
+        name: v.file_name ?? null,
+      });
+    }
 
     if (actor.roles.includes("operator")) {
       const mine = job.operator_id === actor.id;
@@ -149,12 +180,6 @@ export async function getScanContext(code: string) {
     }
     actions.push({ action: "view", label: "Lihat Detail" });
 
-    // Rincian item order — dipakai form serah terima (SCAN 10) untuk verifikasi jumlah.
-    const orderItems = await prisma.orderItem.findMany({
-      where: { order_id: order.id },
-      select: { description: true, quantity: true, size: true },
-    });
-
     return ok({
       jobCode: job.job_code,
       orderCode: order.order_code,
@@ -166,8 +191,10 @@ export async function getScanContext(code: string) {
       isAssignedOperator: job.operator_id === actor.id,
       paidAmount: Number(order.paid_amount),
       balance: Number(order.balance),
-      fileUrl: printVer ? `/api/design/${printVer.id}` : null,
-      fileName: printVer?.file_name ?? null,
+      files,
+      // Kompat lama: file pertama sebagai tunggal.
+      fileUrl: files[0]?.url ?? null,
+      fileName: files[0]?.name ?? null,
       items: orderItems.map((i) => ({
         description: i.description ?? "Item",
         quantity: i.quantity,

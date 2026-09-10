@@ -528,6 +528,8 @@ model OrderItem {
   deadline          DateTime? // override deadline per item; kosong = ikut Order.deadline
   unit_price        Decimal        @db.Decimal(15, 2)
   total_price       Decimal        @db.Decimal(15, 2)
+
+  design_versions DesignVersion[]
 }
 
 // ─── RETAIL & POS ─────────────────────────────────────────────────────────────
@@ -591,12 +593,16 @@ model DesignJob {
 }
 
 model DesignVersion {
-  id               String    @id @default(uuid())
+  id               String     @id @default(uuid())
   tenant_id        String
-  tenant           Tenant    @relation(fields: [tenant_id], references: [id])
+  tenant           Tenant     @relation(fields: [tenant_id], references: [id])
   design_job_id    String
-  design_job       DesignJob @relation(fields: [design_job_id], references: [id])
-  version_no       Int
+  design_job       DesignJob  @relation(fields: [design_job_id], references: [id])
+  // Item yang jadi sasaran file ini. NULL = berlaku untuk seluruh order
+  // (order 1 item, file layout gabungan, atau data lama sebelum desain per-item).
+  order_item_id    String?
+  order_item       OrderItem? @relation(fields: [order_item_id], references: [id])
+  version_no       Int // deret per "slot" (design_job_id + order_item_id)
   file_path        String? // key objek R2 untuk upload baru; link/teks bebas untuk baris lama
   file_name        String? // nama asli file saat diupload
   file_size        Int? // ukuran byte

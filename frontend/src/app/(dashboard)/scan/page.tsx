@@ -27,6 +27,7 @@ type ScanCtx = {
   balance: number;
   fileUrl: string | null;
   fileName: string | null;
+  files: { label: string; url: string; name: string | null }[];
   items: { description: string; quantity: number; size: string | null }[];
   availableActions: { action: string; label: string }[];
 };
@@ -292,16 +293,24 @@ export default function ScanPage() {
               </div>
             </div>
 
-            {ctx.fileUrl && (
-              <a
-                href={ctx.fileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mx-5 mb-5 flex items-center gap-2 rounded-xl border border-accent-teal/30 bg-accent-teal/10 px-4 py-3 text-sm font-bold text-accent-teal hover:bg-accent-teal/20 transition-colors"
-              >
-                <FileDown className="h-4 w-4 shrink-0" />
-                <span className="truncate">{ctx.fileName || "Buka file cetak"}</span>
-              </a>
+            {ctx.files.length > 0 && (
+              <div className="mx-5 mb-5 space-y-2">
+                {ctx.files.map((f) => (
+                  <a
+                    key={f.url}
+                    href={f.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 rounded-xl border border-accent-teal/30 bg-accent-teal/10 px-4 py-3 text-sm font-bold text-accent-teal hover:bg-accent-teal/20 transition-colors"
+                  >
+                    <FileDown className="h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {ctx.files.length > 1 && <span className="text-muted">{f.label}: </span>}
+                      {f.name || "Buka file cetak"}
+                    </span>
+                  </a>
+                ))}
+              </div>
             )}
 
             {errorMsg && (

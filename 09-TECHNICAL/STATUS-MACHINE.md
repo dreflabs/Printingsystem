@@ -10,7 +10,7 @@ disimpan di `Order.status`, tapi di record anak:
 
 | Sub-proses | Di mana state-nya |
 |---|---|
-| Pengerjaan & approval desain | `DesignJob.status` + `DesignVersion.approval_status` (PENDING/DESIGNING/WAITING_APPROVAL/APPROVED/REJECTED) |
+| Pengerjaan & approval desain | `DesignJob.status` + `DesignVersion.approval_status` (PENDING/DESIGNING/WAITING_APPROVAL/APPROVED/REJECTED). **Desain per item**: `DesignVersion.order_item_id` (NULL = file layout berlingkup seluruh order). `DesignJob` baru `APPROVED` — dan order baru boleh maju — kalau SETIAP item non-retail sudah punya versi APPROVED ber-file (`coveredDesignItemIds`). Operator dapat file desain item yang jadi tanggungan job-nya. |
 | Produksi per item, jeda, rework | `ProductionJob.status` (PRODUCTION_QUEUED/ASSIGNED/STARTED/PAUSED/COMPLETE/QC_PASSED/FINISHING_STARTED/FINISHING_COMPLETE/STORED/IN_TRANSIT/PICKED_UP · FAILED_REWORK · SUPERSEDED = job rework yang sudah digantikan) |
 | Hasil QC | `QcRecord` (PASS/FAIL + kategori + rework_decision) |
 | Finishing per job | `FinishingJob.status` |

@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { checkProductionReadiness, type ReadinessItem } from "@/lib/production-readiness";
+import { checkProductionReadiness, coveredDesignItemIds, type ReadinessItem } from "@/lib/production-readiness";
 
 export interface AutoReleaseResult {
   released: boolean;
@@ -81,13 +81,12 @@ export async function autoReleaseToProduction(
   if (existing > 0) return { released: false, jobCodes: [], missing: [] };
 
   const designApproved = order.design_jobs.some((d) => d.status === "APPROVED");
-  const approvedVersion = designApproved
-    ? await tx.designVersion.findFirst({
-        where: { design_job: { order_id: orderId }, approval_status: "APPROVED" },
-        select: { file_path: true, file_name: true },
-        orderBy: { version_no: "desc" },
-      })
-    : null;
+  const approvedVersions = await tx.designVersion.findMany({
+    where: { design_job: { order_id: orderId }, approval_status: "APPROVED" },
+    select: { order_item_id: true, approval_status: true, file_path: true, file_name: true },
+  });
+  const nonRetailItemIds = order.items.filter((it) => !it.retail_product_id).map((it) => it.id);
+  const designReadyItemIds = coveredDesignItemIds(approvedVersions, nonRetailItemIds);
 
   const total = Number(order.total);
   const dpRequired = Number(order.dp_required ?? Math.round(total * 0.5));
@@ -95,6 +94,7 @@ export async function autoReleaseToProduction(
   const items: ReadinessItem[] = order.items
     .filter((it) => !it.retail_product_id) // item retail tidak lewat produksi
     .map((it) => ({
+      id: it.id,
       label: it.description || "",
       productId: it.product_id,
       productUnit: it.product?.unit ?? null,
@@ -119,7 +119,7 @@ export async function autoReleaseToProduction(
     paidAmount: Number(order.paid_amount),
     dpRequired,
     designApproved,
-    designFilePresent: Boolean(approvedVersion?.file_path || approvedVersion?.file_name),
+    designReadyItemIds,
     items,
   });
 

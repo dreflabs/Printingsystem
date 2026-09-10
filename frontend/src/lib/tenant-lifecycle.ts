@@ -27,7 +27,7 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { deleteR2Objects, r2Configured } from "@/lib/r2";
+import { deleteObjects } from "@/lib/storage";
 
 /** TRIAL yang lewat `trial_ends_at` lebih lama dari ini → otomatis CHURNED. */
 export const TRIAL_GRACE_DAYS = 14;
@@ -237,13 +237,14 @@ export async function purgeTenant(tenantId: string): Promise<PurgeResult> {
     { timeout: 120_000 },
   );
 
-  // Best-effort: hapus file desain tenant dari R2 (key objek, bukan URL lama).
-  // Kegagalan tidak membatalkan purge — daftarnya sudah tercatat di nisan.
-  if (r2Configured()) {
-    const r2Keys = files.filter((f) => !/^https?:\/\//i.test(f));
-    if (r2Keys.length) {
-      const res = await deleteR2Objects(r2Keys);
-      console.log(`[PURGE] R2 ${tenant.retired_slug ?? tenant.slug}: deleted=${res.deleted} failed=${res.failed}`);
+  // Best-effort: hapus file objek tenant (key, bukan URL lama) dari penyimpanan
+  // aktif — R2 di produksi, folder lokal saat dev. Kegagalan tidak membatalkan
+  // purge — daftarnya sudah tercatat di nisan.
+  {
+    const objKeys = files.filter((f) => !/^https?:\/\//i.test(f));
+    if (objKeys.length) {
+      const res = await deleteObjects(objKeys);
+      console.log(`[PURGE] storage ${tenant.retired_slug ?? tenant.slug}: deleted=${res.deleted} failed=${res.failed}`);
     }
   }
 

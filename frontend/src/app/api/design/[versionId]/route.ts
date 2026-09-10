@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/actor";
 import { getCurrentTenant } from "@/lib/tenant";
-import { presignGet } from "@/lib/r2";
+import { serveObject } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -40,12 +40,11 @@ export async function GET(
 
     const url = new URL(_req.url);
     const disposition = url.searchParams.get("download") === "1" ? "attachment" : "inline";
-    const signed = await presignGet(version.file_path, {
+    return serveObject(version.file_path, {
       fileName: version.file_name ?? "desain",
       disposition,
       expiresSec: 120,
     });
-    return NextResponse.redirect(signed);
   } catch (e) {
     console.error("GET /api/design/[versionId]:", e);
     const msg = e instanceof Error ? e.message : "Gagal memuat file.";

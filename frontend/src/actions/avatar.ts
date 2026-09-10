@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/lib/actor";
 import { getCurrentTenant } from "@/lib/tenant";
-import { presignPut } from "@/lib/r2";
+import { presignPutUrl } from "@/lib/storage";
 
 const MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -32,7 +32,7 @@ export async function createAvatarUploadUrl(fileName: string, fileSize: number, 
     }
     
     const objectKey = `avatars/${tenant.id}/${actor.id}-${Date.now()}${ext}`;
-    const uploadUrl = await presignPut(objectKey);
+    const uploadUrl = await presignPutUrl(objectKey);
 
     return { success: true, data: { uploadUrl, objectKey } };
   } catch (error) {

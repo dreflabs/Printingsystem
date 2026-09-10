@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/actor";
 import { getCurrentTenant } from "@/lib/tenant";
-import { presignGet } from "@/lib/r2";
+import { serveObject } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -18,12 +18,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Invalid key." }, { status: 400 });
     }
 
-    // Hanya presign, max-age 300 (5 menit)
-    const signed = await presignGet(key, {
-      expiresSec: 300,
-    });
-    
-    return NextResponse.redirect(signed);
+    return serveObject(key, { expiresSec: 300 });
   } catch (e) {
     console.error("GET /api/avatar:", e);
     const msg = e instanceof Error ? e.message : "Gagal memuat file.";

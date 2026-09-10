@@ -44,3 +44,6 @@ next-env.d.ts
 # dump database dari scripts/db-backup.sh — jangan pernah masuk git
 /backups
 *.dump
+
+# penyimpanan objek lokal (dev tanpa R2) — lihat src/lib/storage.ts
+/.local-storage

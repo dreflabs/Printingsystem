@@ -8,12 +8,11 @@ import { requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { retryOnUnique } from "@/lib/retry";
 import {
-  r2Configured,
-  presignPut,
   fileExt,
   DESIGN_ALLOWED_EXT,
   DESIGN_MAX_UPLOAD_BYTES,
 } from "@/lib/r2";
+import { storageReady, presignPutUrl } from "@/lib/storage";
 import { randomUUID } from "crypto";
 import { autoReleaseToProduction } from "@/lib/auto-release";
 import { ok, fail, type ActionResult } from "@/types";
@@ -75,8 +74,8 @@ export async function createDesignUploadUrl(
     if (!canDesign(actor.roles)) {
       return fail("Hanya Designer Sales/Admin/Owner yang boleh upload desain.");
     }
-    if (!r2Configured()) {
-      return fail("Penyimpanan file (R2) belum dikonfigurasi. Hubungi admin sistem.");
+    if (!storageReady()) {
+      return fail("Penyimpanan file belum dikonfigurasi (R2 / lokal). Hubungi admin sistem.");
     }
 
     const name = (input.fileName ?? "").trim();
@@ -97,7 +96,7 @@ export async function createDesignUploadUrl(
 
     const nextVer = job.current_version + 1;
     const objectKey = `tenants/${tenant.id}/design/${job.id}/v${nextVer}-${randomUUID().slice(0, 8)}.${ext}`;
-    const uploadUrl = await presignPut(objectKey);
+    const uploadUrl = await presignPutUrl(objectKey);
 
     return ok({ uploadUrl, objectKey });
   } catch (e) {

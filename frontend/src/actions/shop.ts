@@ -73,17 +73,22 @@ export async function updateShopIdentity(input: {
   }
 }
 
-/** Kebijakan rilis produksi tenant (gatekeeper auto-release). */
-export async function getProductionPolicy(): Promise<ActionResult<{ requireAdminRelease: boolean }>> {
+/** Kebijakan alur produksi & serah terima tenant. */
+export async function getProductionPolicy(): Promise<
+  ActionResult<{ requireAdminRelease: boolean; requireCounterConfirmation: boolean }>
+> {
   try {
     const tenant = await requireTenant();
     await requireUser();
     const t = await prisma.tenant.findUnique({
       where: { id: tenant.id },
-      select: { require_admin_production_release: true },
+      select: { require_admin_production_release: true, require_counter_confirmation: true },
     });
     if (!t) return fail("Data toko tidak ditemukan.");
-    return ok({ requireAdminRelease: t.require_admin_production_release });
+    return ok({
+      requireAdminRelease: t.require_admin_production_release,
+      requireCounterConfirmation: t.require_counter_confirmation,
+    });
   } catch (e) {
     console.error("getProductionPolicy:", e);
     return fail(e instanceof Error ? e.message : "Gagal memuat kebijakan produksi.");
@@ -105,6 +110,24 @@ export async function setRequireAdminProductionRelease(value: boolean): Promise<
   } catch (e) {
     console.error("setRequireAdminProductionRelease:", e);
     return fail(e instanceof Error ? e.message : "Gagal menyimpan kebijakan produksi.");
+  }
+}
+
+export async function setRequireCounterConfirmation(value: boolean): Promise<ActionResult<{ requireCounterConfirmation: boolean }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh mengubah kebijakan serah terima.");
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: { require_counter_confirmation: value },
+    });
+    await logAction(actor.id, "COUNTER_CONFIRMATION_POLICY_CHANGED", "Tenant", tenant.id, null, { require_counter_confirmation: value });
+    revalidatePath("/(dashboard)/owner/toko", "page");
+    return ok({ requireCounterConfirmation: value });
+  } catch (e) {
+    console.error("setRequireCounterConfirmation:", e);
+    return fail(e instanceof Error ? e.message : "Gagal menyimpan kebijakan serah terima.");
   }
 }
 

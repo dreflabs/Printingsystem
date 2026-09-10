@@ -149,6 +149,12 @@ export async function getScanContext(code: string) {
     }
     actions.push({ action: "view", label: "Lihat Detail" });
 
+    // Rincian item order — dipakai form serah terima (SCAN 10) untuk verifikasi jumlah.
+    const orderItems = await prisma.orderItem.findMany({
+      where: { order_id: order.id },
+      select: { description: true, quantity: true, size: true },
+    });
+
     return ok({
       jobCode: job.job_code,
       orderCode: order.order_code,
@@ -162,6 +168,11 @@ export async function getScanContext(code: string) {
       balance: Number(order.balance),
       fileUrl: printVer ? `/api/design/${printVer.id}` : null,
       fileName: printVer?.file_name ?? null,
+      items: orderItems.map((i) => ({
+        description: i.description ?? "Item",
+        quantity: i.quantity,
+        size: i.size ?? null,
+      })),
       availableActions: actions,
     });
   } catch (e) {

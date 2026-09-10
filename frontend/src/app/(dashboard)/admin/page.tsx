@@ -13,7 +13,7 @@ import { getOrders, getOrderDetail } from "@/actions/queries";
 import { addPayment } from "@/actions/orders";
 import { assignProductionJob, getProductionAssignData } from "@/actions/design";
 import { releaseOrderToProduction } from "@/actions/production";
-import { submitFinalAudit } from "@/actions/audit";
+import { submitFinalAudit, getFinalAuditChecks, type AuditCheck } from "@/actions/audit";
 import { getSessionUser } from "@/actions/session";
 import { freezeOrder, unfreezeOrder } from "@/actions/hold";
 
@@ -464,14 +464,45 @@ const AUDIT_ITEMS = [
   { id: "storage", label: "Penyimpanan & Pickup" },
 ] as const;
 
+const SEV_STYLE: Record<string, string> = {
+  OK: "bg-status-green/10 text-status-green border-status-green/30",
+  WARN: "bg-status-yellow/10 text-status-yellow-text border-status-yellow/30",
+  CRIT: "bg-status-red/10 text-status-red border-status-red/30",
+};
+const SEV_ICON: Record<string, string> = { OK: "✅", WARN: "⚠️", CRIT: "⛔" };
+
 function FinalAuditModal({ order, onClose, onDone }: { order: OrderRow; onClose: () => void; onDone: () => void }) {
+  const [checks, setChecks] = useState<AuditCheck[] | null>(null);
   const [r, setR] = useState<Record<string, "PASS" | "FAIL">>({});
   const [notes, setNotes] = useState("");
+  const [forceRed, setForceRed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getFinalAuditChecks(order.id).then((res) => {
+      if (!alive) return;
+      if (!res.success) { setErr(res.error); setChecks([]); return; }
+      setChecks(res.data.checks);
+      // Pra-isi PASS/FAIL dari hasil rekonsiliasi: OK → PASS, selain itu FAIL.
+      const init: Record<string, "PASS" | "FAIL"> = {};
+      for (const i of AUDIT_ITEMS) {
+        const worst = res.data.checks.filter((c) => c.area === i.id);
+        init[i.id] = worst.some((c) => c.severity !== "OK") ? "FAIL" : "PASS";
+      }
+      setR(init);
+    });
+    return () => { alive = false; };
+  }, [order.id]);
+
+  const hasCritical = (checks ?? []).some((c) => c.severity === "CRIT");
   const allChecked = AUDIT_ITEMS.every((i) => r[i.id]);
   const hasFail = Object.values(r).includes("FAIL");
-  const result: "GREEN" | "YELLOW" = hasFail ? "YELLOW" : "GREEN";
+  // CRIT di data → tidak boleh GREEN. RED kalau auditor menandai eksplisit.
+  const result: "GREEN" | "YELLOW" | "RED" = forceRed ? "RED" : hasCritical || hasFail ? "YELLOW" : "GREEN";
+  const needNotes = result !== "GREEN";
+  const notesOk = !needNotes || notes.trim().length >= 10;
 
   async function submit() {
     setBusy(true); setErr(null);
@@ -484,7 +515,16 @@ function FinalAuditModal({ order, onClose, onDone }: { order: OrderRow; onClose:
       productionStatus: s("production"),
       storageStatus: s("storage"),
       notes: notes.trim() || undefined,
-      items: AUDIT_ITEMS.filter((i) => r[i.id] === "FAIL").map((i) => ({ category: i.id.toUpperCase(), severity: "WARNING" as const, status: "FAIL" })),
+      items: (checks ?? [])
+        .filter((c) => c.severity !== "OK")
+        .map((c) => ({
+          category: c.area.toUpperCase(),
+          severity: c.severity === "CRIT" ? ("CRITICAL" as const) : ("WARNING" as const),
+          expectedValue: c.expected,
+          actualValue: c.actual,
+          status: "FAIL",
+          note: c.detail,
+        })),
     });
     setBusy(false);
     if (!res.success) { setErr(res.error); return; }
@@ -501,29 +541,61 @@ function FinalAuditModal({ order, onClose, onDone }: { order: OrderRow; onClose:
         </div>
         <div className="flex-1 overflow-y-auto p-5 space-y-2">
           {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
-          <p className="text-xs text-muted mb-2">Semua PASS → GREEN (CLOSED). Ada FAIL → YELLOW (approval Owner).</p>
-          {AUDIT_ITEMS.map((item) => (
-            <div key={item.id} className="p-3 bg-elevated rounded-xl border border-border">
-              <p className="text-xs font-semibold text-primary mb-2">{item.label}</p>
-              <div className="flex gap-2">
-                <button onClick={() => setR((p) => ({ ...p, [item.id]: "PASS" }))}
-                  className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold border", r[item.id] === "PASS" ? "bg-status-green text-white border-status-green" : "bg-card text-muted border-border")}>✅ PASS</button>
-                <button onClick={() => setR((p) => ({ ...p, [item.id]: "FAIL" }))}
-                  className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold border", r[item.id] === "FAIL" ? "bg-status-red text-white border-status-red" : "bg-card text-muted border-border")}>❌ FAIL</button>
-              </div>
-            </div>
-          ))}
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Catatan audit (opsional)"
-            className="w-full rounded-xl bg-elevated border border-border text-sm text-primary p-3 outline-none focus:border-accent-teal resize-none" />
-          {allChecked && (
-            <div className={cn("p-2 rounded-xl text-center text-sm font-bold border", result === "GREEN" ? "bg-status-green/10 text-status-green border-status-green/30" : "bg-status-yellow/10 text-status-yellow-text border-status-yellow/30")}>
-              {result === "GREEN" ? "🟢 GREEN — akan CLOSED" : "🟡 YELLOW — butuh approval Owner"}
-            </div>
+          {checks === null ? (
+            <p className="text-xs text-muted py-6 text-center">Memeriksa data order…</p>
+          ) : (
+            <>
+              <p className="text-xs text-muted mb-2">
+                Sistem sudah merekonsiliasi 5 area di bawah. Nilai bisa diubah manual;
+                {" "}<b>⛔ kritis di area mana pun → tidak bisa GREEN</b>.
+              </p>
+              {AUDIT_ITEMS.map((item) => {
+                const areaChecks = (checks ?? []).filter((c) => c.area === item.id);
+                return (
+                  <div key={item.id} className="p-3 bg-elevated rounded-xl border border-border space-y-2">
+                    <p className="text-xs font-semibold text-primary">{item.label}</p>
+                    {areaChecks.map((c, i) => (
+                      <div key={i} className={cn("rounded-lg border px-2 py-1.5 text-[11px]", SEV_STYLE[c.severity])}>
+                        <div className="font-bold">{SEV_ICON[c.severity]} {c.detail}</div>
+                        <div className="opacity-80">harusnya {c.expected} · aktual {c.actual}</div>
+                      </div>
+                    ))}
+                    <div className="flex gap-2">
+                      <button onClick={() => setR((p) => ({ ...p, [item.id]: "PASS" }))}
+                        className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold border", r[item.id] === "PASS" ? "bg-status-green text-white border-status-green" : "bg-card text-muted border-border")}>✅ PASS</button>
+                      <button onClick={() => setR((p) => ({ ...p, [item.id]: "FAIL" }))}
+                        className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold border", r[item.id] === "FAIL" ? "bg-status-red text-white border-status-red" : "bg-card text-muted border-border")}>❌ FAIL</button>
+                    </div>
+                  </div>
+                );
+              })}
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+                placeholder={needNotes ? "Catatan audit — wajib min. 10 karakter (jelaskan temuan / tindak lanjut)" : "Catatan audit (opsional)"}
+                className="w-full rounded-xl bg-elevated border border-border text-sm text-primary p-3 outline-none focus:border-accent-teal resize-none" />
+              <label className="flex items-center gap-2 text-[11px] text-muted">
+                <input type="checkbox" checked={forceRed} onChange={(e) => setForceRed(e.target.checked)} />
+                Tandai <b className="text-status-red">RED</b> — blokir penutupan, wajib investigasi Owner
+              </label>
+              {allChecked && (
+                <div className={cn("p-2 rounded-xl text-center text-sm font-bold border",
+                  result === "GREEN" ? "bg-status-green/10 text-status-green border-status-green/30"
+                  : result === "YELLOW" ? "bg-status-yellow/10 text-status-yellow-text border-status-yellow/30"
+                  : "bg-status-red/10 text-status-red border-status-red/30")}>
+                  {result === "GREEN" ? "🟢 GREEN — akan CLOSED"
+                    : result === "YELLOW" ? "🟡 YELLOW — butuh approval Owner"
+                    : "🔴 RED — order ditahan (ON_HOLD)"}
+                  {hasCritical && result !== "RED" && <div className="text-[10px] font-normal mt-0.5">GREEN dikunci karena ada temuan kritis.</div>}
+                </div>
+              )}
+            </>
           )}
         </div>
         <div className="flex gap-3 p-5 border-t border-border shrink-0">
           <button onClick={onClose} className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary">Batal</button>
-          <button disabled={!allChecked || busy} onClick={submit} className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40">Submit Audit</button>
+          <button disabled={!allChecked || busy || !notesOk || checks === null} onClick={submit}
+            className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40">
+            Submit Audit
+          </button>
         </div>
       </div>
     </div>

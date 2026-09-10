@@ -5,7 +5,7 @@ import { Store, Save, Loader2, Camera, Factory } from "lucide-react";
 import { useToast } from "@/components/ui";
 import {
   getShopIdentity, updateShopIdentity, createLogoUploadUrl, updateLogoUrl, type ShopIdentity,
-  getProductionPolicy, setRequireAdminProductionRelease,
+  getProductionPolicy, setRequireAdminProductionRelease, setRequireCounterConfirmation,
 } from "@/actions/shop";
 
 const field =
@@ -18,13 +18,17 @@ export default function ShopIdentityPage() {
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [requireRelease, setRequireRelease] = useState(false);
+  const [requireCounter, setRequireCounter] = useState(false);
   const [policyBusy, setPolicyBusy] = useState(false);
 
   const load = useCallback(async () => {
     const [res, pol] = await Promise.all([getShopIdentity(), getProductionPolicy()]);
     if (res.success) setS(res.data);
     else toast({ type: "error", title: "Gagal memuat", message: res.error });
-    if (pol.success) setRequireRelease(pol.data.requireAdminRelease);
+    if (pol.success) {
+      setRequireRelease(pol.data.requireAdminRelease);
+      setRequireCounter(pol.data.requireCounterConfirmation);
+    }
     setLoading(false);
   }, [toast]);
 
@@ -36,6 +40,19 @@ export default function ShopIdentityPage() {
     if (res.success) {
       setRequireRelease(next);
       toast({ type: "success", title: next ? "Rilis produksi kini perlu persetujuan Admin" : "Order kini otomatis turun ke produksi" });
+    } else {
+      toast({ type: "error", title: "Gagal menyimpan", message: res.error });
+    }
+  };
+
+  const toggleCounter = async () => {
+    const next = !requireCounter;
+    setPolicyBusy(true);
+    const res = await setRequireCounterConfirmation(next);
+    setPolicyBusy(false);
+    if (res.success) {
+      setRequireCounter(next);
+      toast({ type: "success", title: next ? "Serah terima kini wajib lewat konfirmasi counter (SCAN 9)" : "Serah terima bisa langsung dari status Siap Diambil" });
     } else {
       toast({ type: "error", title: "Gagal menyimpan", message: res.error });
     }
@@ -159,7 +176,7 @@ export default function ShopIdentityPage() {
 
       <section className="rounded-2xl border border-border bg-card/70 p-4 space-y-3">
         <h2 className="text-sm font-bold text-primary flex items-center gap-2">
-          <Factory className="h-4 w-4 text-accent-teal" /> Kebijakan Produksi
+          <Factory className="h-4 w-4 text-accent-teal" /> Kebijakan Produksi &amp; Serah Terima
         </h2>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -181,6 +198,29 @@ export default function ShopIdentityPage() {
             }
           >
             <span className={"absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all " + (requireRelease ? "left-[22px]" : "left-0.5")} />
+          </button>
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border pt-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-primary">Wajib konfirmasi barang di counter (SCAN 9) sebelum serah terima</p>
+            <p className="text-[11px] text-muted mt-1">
+              {requireCounter
+                ? "Admin hanya bisa \"Serahkan ke Konsumen\" setelah Gudang scan barang di counter. Cocok untuk toko dengan gudang & counter terpisah."
+                : "Admin bisa langsung serah terima begitu order Siap Diambil, tanpa langkah konfirmasi counter. Cocok untuk toko satu ruangan."}
+            </p>
+          </div>
+          <button
+            onClick={toggleCounter}
+            disabled={policyBusy}
+            role="switch"
+            aria-checked={requireCounter}
+            className={
+              "shrink-0 mt-0.5 h-6 w-11 rounded-full transition-colors relative disabled:opacity-50 " +
+              (requireCounter ? "bg-accent-teal" : "bg-border")
+            }
+          >
+            <span className={"absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all " + (requireCounter ? "left-[22px]" : "left-0.5")} />
           </button>
         </div>
       </section>

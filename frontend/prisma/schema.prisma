@@ -31,6 +31,7 @@ model Tenant {
   payroll_late_deduction_per_minute Decimal   @default(0) @db.Decimal(15, 2) // Rp potongan gaji per menit keterlambatan
   workspace_mode                    String    @default("SOLO") // SOLO / TEAM_SMALL / TEAM_FULL — hanya mengatur tampilan navigasi & beranda, BUKAN izin (izin tetap berbasis Role)
   require_admin_production_release   Boolean   @default(false) // true = order CONFIRMED tidak auto-release; Admin harus menekan "Rilis ke Produksi" dulu
+  require_counter_confirmation       Boolean   @default(false) // true = SCAN 10 (serah terima) hanya boleh setelah SCAN 9 (barang dikonfirmasi di counter); order harus IN_TRANSIT, bukan langsung dari READY_FOR_PICKUP
   // Siklus hidup churn → purge (lihat src/lib/tenant-lifecycle.ts)
   churned_at                        DateTime? // saat status jadi CHURNED
   retired_slug                      String? // slug asli sebelum diarsip; slug aktif di-rename saat churn agar namanya bebas dipakai pendaftar baru

@@ -438,6 +438,17 @@ export async function releaseOrder(
       if (order.status !== "IN_TRANSIT" && order.status !== "READY_FOR_PICKUP") {
         throw new Error(`Order tidak siap diserahkan (status: ${order.status}).`);
       }
+      // Kebijakan opsional: wajib SCAN 9 (barang dikonfirmasi di counter) sebelum
+      // serah terima — order harus sudah IN_TRANSIT, bukan langsung READY_FOR_PICKUP.
+      if (order.status === "READY_FOR_PICKUP") {
+        const t = await tx.tenant.findUnique({
+          where: { id: tenant.id },
+          select: { require_counter_confirmation: true },
+        });
+        if (t?.require_counter_confirmation) {
+          throw new Error("Barang belum dikonfirmasi di counter (SCAN 9). Gudang harus scan barang di counter dulu.");
+        }
+      }
       const already = await tx.pickupRecord.findFirst({ where: { order_id: order.id } });
       if (already) throw new Error("Order ini sudah pernah diserahkan.");
 

@@ -27,6 +27,7 @@ type ScanCtx = {
   balance: number;
   fileUrl: string | null;
   fileName: string | null;
+  items: { description: string; quantity: number; size: string | null }[];
   availableActions: { action: string; label: string }[];
 };
 type MaterialOpt = { id: string; name: string };
@@ -446,13 +447,28 @@ function ActionForm({
   if (action === "release")
     return wrap(
       <>
+        {ctx.items.length > 0 && (
+          <div className="rounded-lg border border-border bg-background p-2 text-xs">
+            <p className="font-semibold text-primary mb-1">Cek jumlah barang:</p>
+            {ctx.items.map((it, i) => (
+              <div key={i} className="flex justify-between text-muted">
+                <span className="truncate">{it.description}{it.size ? ` · ${it.size}` : ""}</span>
+                <span className="font-mono shrink-0">{it.quantity} pcs</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <label className="flex items-center gap-2 text-xs text-muted">
+          <input type="checkbox" checked={f.qtyChecked === "1"} onChange={(e) => set("qtyChecked", e.target.checked ? "1" : "")} />
+          Jumlah &amp; kondisi barang sudah dicek, sesuai
+        </label>
         <input className={field} placeholder="Nama penerima" value={f.receiverName ?? ""} onChange={(e) => set("receiverName", e.target.value)} />
         {ctx.balance > 0 && (
           <input className={field} placeholder="Alasan override Owner (sisa tagihan belum lunas)" value={f.ownerOverrideReason ?? ""} onChange={(e) => set("ownerOverrideReason", e.target.value)} />
         )}
       </>,
       () => ({ receiverName: f.receiverName, ownerOverrideReason: f.ownerOverrideReason }),
-      !!f.receiverName?.trim() && (ctx.balance <= 0 || !!f.ownerOverrideReason?.trim()),
+      !!f.receiverName?.trim() && f.qtyChecked === "1" && (ctx.balance <= 0 || !!f.ownerOverrideReason?.trim()),
     );
 
   return null;

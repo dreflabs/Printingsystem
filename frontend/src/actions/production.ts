@@ -206,15 +206,10 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
         }
       }
 
-      // 1 job aktif per operator (klaim job baru diblokir selama masih ada yang jalan/jeda)
-      const active = await tx.productionJob.findFirst({
-        where: {
-          tenant_id: tenant.id,
-          operator_id: actor.id,
-          status: { in: ["PRODUCTION_STARTED", "PRODUCTION_PAUSED"] },
-        },
-      });
-      if (active) throw new Error(`Selesaikan dulu job aktif Anda (${active.job_code}).`);
+      // Operator boleh menjalankan beberapa job sekaligus — tidak ada batas
+      // jumlah job aktif. Catatan: durasi tiap job dihitung dari actual_start
+      // sampai scan-selesai (dikurangi jeda), jadi job yang berjalan paralel
+      // akan tumpang-tindih di laporan durasi.
 
       await tx.productionJob.update({
         where: { id: job.id },

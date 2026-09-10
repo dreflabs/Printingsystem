@@ -61,8 +61,9 @@ transaksi caller tepat setelah order jadi `CONFIRMED`:
   `operator_id`-nya masih null (diurut prioritas → deadline → waktu buat).
 - **SCAN 1** (`startProduction`): kalau job `PRODUCTION_QUEUED` tanpa operator →
   operator yang scan otomatis jadi `operator_id`-nya, status → `PRODUCTION_STARTED`.
-- Batas **1 job aktif per operator** tetap berlaku — klaim job baru diblokir
-  selama masih ada job `PRODUCTION_STARTED`/`PRODUCTION_PAUSED` milik operator itu.
+- Operator **boleh punya beberapa job aktif sekaligus** — tidak ada batas jumlah
+  job `PRODUCTION_STARTED`/`PRODUCTION_PAUSED` per operator (lihat `05-PRODUCTION.md`
+  bagian "Multi-job per Operator", termasuk catatan overlap durasi di laporan).
 - Job `PRODUCTION_ASSIGNED` (di-pin Admin) tetap hanya bisa dimulai operator yang
   di-pin.
 

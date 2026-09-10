@@ -27,7 +27,9 @@ Dicatat per job:
 
 **Ambang batas waste anomali:** waste di atas **20% dari total pemakaian material** pada satu job otomatis ditandai sebagai anomali oleh sistem dan muncul di panel "Anomali & Kecurangan" dashboard Owner berlabel merah — bukan cuma tercatat sebagai angka biasa (aturan ini sudah ada di `07-REPORTS/MATERIAL-REPORT.md` §4, dicatat ulang di sini karena langsung relevan ke pekerjaan Operator sehari-hari).
 
-**Batas 1 job aktif per Operator:** sistem sengaja membatasi Operator hanya bisa punya **1 job berstatus `PRODUCTION_STARTED` pada satu waktu** — scan mulai job baru diblokir selama masih ada job aktif yang belum di-scan selesai. Ini keputusan desain yang disengaja demi akuntabilitas (jelas siapa bertanggung jawab atas mesin/waktu/material yang sedang terpakai), bukan keterbatasan teknis. Kalau operasional butuh 1 orang memantau beberapa mesin otomatis sekaligus, itu didaftarkan sebagai job-job terpisah yang dikerjakan **berurutan** (selesaikan satu, baru mulai berikutnya), bukan paralel dalam sistem.
+**Multi-job per Operator:** Operator **boleh menjalankan lebih dari satu job sekaligus** (mis. memantau beberapa mesin otomatis). Tidak ada batas jumlah job berstatus `PRODUCTION_STARTED`/`PRODUCTION_PAUSED` per operator. Dashboard Operator menampilkan semua job aktifnya sebagai daftar; tiap job punya tombol Jeda / Selesai / lapor sendiri, dan tiap `PRODUCTION_STARTED` tetap tercatat atas nama operator itu di audit log.
+
+> **Catatan laporan:** durasi tiap job dihitung dari `actual_start` sampai scan-selesai (dikurangi total jeda). Job yang berjalan paralel akan **tumpang-tindih** di laporan durasi — angka "jam kerja" per job bukan waktu operator eksklusif. Analisis produktivitas per operator harus memperhitungkan overlap ini.
 
 ---
 

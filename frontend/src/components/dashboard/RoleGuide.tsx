@@ -58,7 +58,7 @@ export const GUIDE_STEPS: Record<GuideRole, Step[]> = {
   operator: [
     { title: "Absen masuk", body: "Kartu Absensi di atas: tekan Absen Masuk (pakai lokasi + selfie). Tombol istirahat & Absen Pulang ada di kartu yang sama." },
     { title: "Scan QR job", body: <>Di <GuideLink href="/scan">Scan QR</GuideLink>, pindai kode job pada lembar kerja. Kartu menampilkan status, jumlah rencana, dan pembayaran.</> },
-    { title: "Mulai produksi (SCAN 1)", body: "Job antrian (PRODUCTION_QUEUED) bisa Anda klaim — begitu dimulai, job jadi tanggung jawab Anda. Hanya boleh 1 job aktif per operator." },
+    { title: "Mulai produksi (SCAN 1)", body: "Job antrian (PRODUCTION_QUEUED) bisa Anda klaim — begitu dimulai, job jadi tanggung jawab Anda. Boleh menjalankan beberapa job sekaligus." },
     { title: "Catat hasil (SCAN 2)", body: "Setelah selesai, isi jumlah aktual dan pemakaian bahan (wajib) + waste bila ada. Stok bahan otomatis berkurang." },
     { title: "Serahkan ke QC", body: "Job selesai otomatis masuk antrian QC di Gudang. Ambil job berikutnya." },
   ],

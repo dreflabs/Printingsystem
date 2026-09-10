@@ -118,8 +118,8 @@ export default function OperatorPage() {
   const [materials, setMaterials] = useState<MaterialOpt[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showFinish, setShowFinish] = useState(false);
-  const [pausePrompt, setPausePrompt] = useState(false);
+  const [finishFor, setFinishFor] = useState<string | null>(null);
+  const [pausePromptFor, setPausePromptFor] = useState<string | null>(null);
   const [pauseReason, setPauseReason] = useState("");
   const [bounceFor, setBounceFor] = useState<Job | null>(null);
   const [bounceReason, setBounceReason] = useState("");
@@ -140,7 +140,7 @@ export default function OperatorPage() {
   }, [load]);
 
   const pinned = mine.filter((j) => j.status === "PRODUCTION_ASSIGNED");
-  const active = mine.find((j) => j.status === "PRODUCTION_STARTED" || j.status === "PRODUCTION_PAUSED") ?? null;
+  const actives = mine.filter((j) => j.status === "PRODUCTION_STARTED" || j.status === "PRODUCTION_PAUSED");
   const queue = [...pinned, ...claimable];
   const jobs = mine;
 
@@ -150,21 +150,25 @@ export default function OperatorPage() {
     const res = await fn();
     setBusy(false);
     if (!res.success) { setError(res.error ?? "Aksi gagal."); return; }
-    setShowFinish(false);
+    setFinishFor(null);
     await load();
   }
 
   const kpi = [
-    { label: "Job Aktif", value: active ? 1 : 0, color: "text-status-blue", bg: "bg-status-blue/10", icon: Layers },
+    { label: "Job Aktif", value: actives.length, color: "text-status-blue", bg: "bg-status-blue/10", icon: Layers },
     { label: "Sisa Antrian", value: queue.length, color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Timer },
-    { label: "Status Mesin", value: active ? (active.status === "PRODUCTION_PAUSED" ? "Jeda" : "Jalan") : "Idle", color: "text-status-green", bg: "bg-status-green/10", icon: Settings2 },
+    {
+      label: "Status Mesin",
+      value: actives.some((j) => j.status === "PRODUCTION_STARTED") ? "Jalan" : actives.length ? "Jeda" : "Idle",
+      color: "text-status-green", bg: "bg-status-green/10", icon: Settings2,
+    },
   ];
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary">Mesin Produksi</h1>
-        <p className="text-sm text-muted mt-0.5">Ambil job dari antrian lalu mulai — maksimal 1 job aktif</p>
+        <p className="text-sm text-muted mt-0.5">Ambil job dari antrian lalu mulai — boleh menjalankan beberapa job sekaligus</p>
       </div>
 
       <RoleGuide role="operator" />
@@ -222,15 +226,13 @@ export default function OperatorPage() {
                   <p className="text-lg font-black text-primary">{j.plannedQty}<span className="text-[10px] font-medium text-muted"> pcs</span></p>
                 </div>
                 <button
-                  disabled={busy || !!active}
+                  disabled={busy}
                   onClick={() => act(() => startProduction(j.jobCode))}
                   className="mt-3 w-full h-10 rounded-xl bg-accent-teal text-white text-xs font-black hover:brightness-110 disabled:opacity-40 transition-all"
                 >
-                  {active
-                    ? "Selesaikan job aktif dulu"
-                    : j.status === "PRODUCTION_QUEUED"
-                      ? "AMBIL & MULAI (SCAN 1)"
-                      : "MULAI PRODUKSI (SCAN 1)"}
+                  {j.status === "PRODUCTION_QUEUED"
+                    ? "AMBIL & MULAI (SCAN 1)"
+                    : "MULAI PRODUKSI (SCAN 1)"}
                 </button>
                 <button
                   disabled={busy}
@@ -244,34 +246,35 @@ export default function OperatorPage() {
           </div>
         </div>
 
-        {/* Job aktif */}
+        {/* Job aktif — operator boleh punya lebih dari satu */}
         <div className="lg:col-span-2 space-y-6">
-          {active ? (
-            <div className="bg-card border-2 border-status-blue/30 rounded-3xl overflow-hidden shadow-lg shadow-status-blue/5">
+          {actives.length > 0 ? (
+            actives.map((job) => (
+            <div key={job.jobCode} className="bg-card border-2 border-status-blue/30 rounded-3xl overflow-hidden shadow-lg shadow-status-blue/5">
               <div className="bg-status-blue/10 px-6 py-4 border-b border-status-blue/20 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <span className="relative flex h-3 w-3">
-                    {active.status === "PRODUCTION_STARTED" && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-blue opacity-75" />}
+                    {job.status === "PRODUCTION_STARTED" && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-blue opacity-75" />}
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-status-blue" />
                   </span>
                   <span className="font-bold text-status-blue tracking-wide uppercase text-sm">Job Aktif</span>
-                  <StatusPill status={active.status} />
+                  <StatusPill status={job.status} />
                 </div>
-                <span className="px-3 py-1.5 rounded-lg bg-base text-xs font-bold text-primary border border-border">{active.machine}</span>
+                <span className="px-3 py-1.5 rounded-lg bg-base text-xs font-bold text-primary border border-border">{job.machine}</span>
               </div>
 
               <div className="p-6">
                 <div className="bg-base border border-border rounded-2xl p-4 mb-4">
-                  <p className="text-[10px] font-bold text-status-blue uppercase tracking-wider mb-0.5">{active.customerName}</p>
-                  <p className="font-mono text-sm text-primary">{active.jobCode} · {active.orderCode}</p>
-                  <p className="text-2xl font-black text-primary mt-2">{active.plannedQty} <span className="text-sm">pcs target</span></p>
+                  <p className="text-[10px] font-bold text-status-blue uppercase tracking-wider mb-0.5">{job.customerName}</p>
+                  <p className="font-mono text-sm text-primary">{job.jobCode} · {job.orderCode}</p>
+                  <p className="text-2xl font-black text-primary mt-2">{job.plannedQty} <span className="text-sm">pcs target</span></p>
                 </div>
 
                 <div className="flex gap-3">
-                  {active.status === "PRODUCTION_STARTED" ? (
+                  {job.status === "PRODUCTION_STARTED" ? (
                     <button
                       disabled={busy}
-                      onClick={() => { setPauseReason(""); setPausePrompt(true); }}
+                      onClick={() => { setPauseReason(""); setPausePromptFor(job.jobCode); }}
                       className="h-12 px-5 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary flex items-center gap-2 disabled:opacity-40"
                     >
                       <Pause className="h-4 w-4" /> Jeda
@@ -279,30 +282,31 @@ export default function OperatorPage() {
                   ) : (
                     <button
                       disabled={busy}
-                      onClick={() => act(() => resumeProduction(active.jobCode))}
+                      onClick={() => act(() => resumeProduction(job.jobCode))}
                       className="h-12 px-5 rounded-xl bg-status-blue/10 border border-status-blue/30 text-sm font-bold text-status-blue hover:bg-status-blue/20 flex items-center gap-2 disabled:opacity-40"
                     >
                       <Play className="h-4 w-4" /> Lanjutkan
                     </button>
                   )}
                   <button
-                    onClick={() => setShowFinish((v) => !v)}
+                    onClick={() => setFinishFor((c) => (c === job.jobCode ? null : job.jobCode))}
                     className="flex-1 h-12 rounded-xl bg-gradient-to-r from-status-green to-status-green/75 text-white text-sm font-black hover:brightness-110 transition-all flex items-center justify-center gap-2"
                   >
-                    <CheckCircle2 className="h-5 w-5" /> {showFinish ? "Tutup Form" : "SELESAI PRODUKSI"}
+                    <CheckCircle2 className="h-5 w-5" /> {finishFor === job.jobCode ? "Tutup Form" : "SELESAI PRODUKSI"}
                   </button>
                 </div>
 
-                {showFinish && <FinishForm job={active} materials={materials} onDone={() => act(async () => ({ success: true }))} />}
+                {finishFor === job.jobCode && <FinishForm job={job} materials={materials} onDone={() => act(async () => ({ success: true }))} />}
               </div>
             </div>
+            ))
           ) : (
             <div className="bg-card/70 backdrop-blur-xl border border-border rounded-3xl p-12 text-center flex flex-col items-center justify-center min-h-[360px]">
               <div className="w-20 h-20 bg-elevated rounded-full flex items-center justify-center mb-4 border border-dashed border-border">
                 <Layers className="h-10 w-10 text-muted/50" />
               </div>
               <h2 className="text-xl font-bold text-primary mb-2">Mesin Idle</h2>
-              <p className="text-muted max-w-sm">Pilih job dari antrian di kiri lalu klik <strong className="text-accent-teal">Mulai Produksi</strong>. Anda hanya bisa punya 1 job aktif.</p>
+              <p className="text-muted max-w-sm">Pilih job dari antrian di kiri lalu klik <strong className="text-accent-teal">Mulai Produksi</strong>. Anda boleh menjalankan beberapa job sekaligus.</p>
             </div>
           )}
 
@@ -369,13 +373,13 @@ export default function OperatorPage() {
         </div>
       )}
 
-      {pausePrompt && active && (
+      {pausePromptFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={() => setPausePrompt(false)} />
+          <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={() => setPausePromptFor(null)} />
           <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-4">
             <div>
               <h3 className="text-base font-bold text-primary">Jeda Produksi</h3>
-              <p className="text-xs text-muted font-mono">{active.jobCode}</p>
+              <p className="text-xs text-muted font-mono">{pausePromptFor}</p>
             </div>
             <div>
               <label className="text-xs text-muted font-medium mb-1 block">Alasan jeda</label>
@@ -388,7 +392,7 @@ export default function OperatorPage() {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setPausePrompt(false)}
+                onClick={() => setPausePromptFor(null)}
                 className="flex-1 h-10 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary"
               >
                 Batal
@@ -397,8 +401,8 @@ export default function OperatorPage() {
                 disabled={busy || !pauseReason.trim()}
                 onClick={() => {
                   const reason = pauseReason.trim();
-                  const code = active.jobCode;
-                  setPausePrompt(false);
+                  const code = pausePromptFor;
+                  setPausePromptFor(null);
                   act(() => pauseProduction(code, reason));
                 }}
                 className="flex-1 h-10 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"

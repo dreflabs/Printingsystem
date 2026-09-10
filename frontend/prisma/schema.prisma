@@ -30,6 +30,7 @@ model Tenant {
   max_users                         Int?
   payroll_late_deduction_per_minute Decimal   @default(0) @db.Decimal(15, 2) // Rp potongan gaji per menit keterlambatan
   workspace_mode                    String    @default("SOLO") // SOLO / TEAM_SMALL / TEAM_FULL — hanya mengatur tampilan navigasi & beranda, BUKAN izin (izin tetap berbasis Role)
+  require_admin_production_release   Boolean   @default(false) // true = order CONFIRMED tidak auto-release; Admin harus menekan "Rilis ke Produksi" dulu
   // Siklus hidup churn → purge (lihat src/lib/tenant-lifecycle.ts)
   churned_at                        DateTime? // saat status jadi CHURNED
   retired_slug                      String? // slug asli sebelum diarsip; slug aktif di-rename saat churn agar namanya bebas dipakai pendaftar baru
@@ -246,6 +247,9 @@ model User {
   // Operator-specific: machines they are assigned to
   user_machines UserMachine[]
 
+  // Mesin yang memakai user ini sebagai operator default (auto-release memilih dia)
+  default_for_machines Machine[] @relation("MachineDefaultOperator")
+
   // Relations (inverse side)
   created_customers      Customer[]
   added_materials        Material[]
@@ -366,6 +370,8 @@ model Machine {
   category     String // OUTDOOR/INDOOR/SUBLIMASI/A3/UV/DTF/BENDERA
   status       String // ACTIVE/MAINTENANCE/INACTIVE
   notes        String?
+  default_operator_id String? // operator default; auto-release memakai dia + pin job (PRODUCTION_ASSIGNED)
+  default_operator    User?    @relation("MachineDefaultOperator", fields: [default_operator_id], references: [id])
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 
@@ -473,6 +479,9 @@ model Order {
   balance                  Decimal   @db.Decimal(15, 2)
   deadline                 DateTime?
   notes                    String?
+  // Alasan order CONFIRMED belum turun ke produksi (JSON array string), atau
+  // "AWAITING_ADMIN_RELEASE" bila tertahan gatekeeper. null = tidak tertahan / sudah rilis.
+  auto_release_blocked     String?
   cancelled_at             DateTime?
   cancelled_by             String?
   canceller                User?     @relation("OrderCancelledBy", fields: [cancelled_by], references: [id])

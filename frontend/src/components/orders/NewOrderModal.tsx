@@ -253,7 +253,7 @@ function Step2({
           </datalist>
         </div>
       </div>
-      <Input label="Deadline" type="datetime-local" value={form.deadline} onChange={(e) => onChange("deadline", e.target.value)} />
+      <Input label="Deadline *" type="datetime-local" value={form.deadline} onChange={(e) => onChange("deadline", e.target.value)} />
       <Textarea
         label="Catatan Tambahan"
         placeholder="Instruksi khusus, warna pilihan, atau catatan penting lainnya..."
@@ -470,6 +470,10 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
 
   async function handleSubmit() {
     setError(null);
+    if (!form.deadline) {
+      setError("Deadline order wajib diisi.");
+      return;
+    }
     if (form.discountRp > 0 && !form.discountReason.trim()) {
       setError("Alasan diskon wajib diisi.");
       return;

@@ -152,6 +152,9 @@ export async function registerTenant(
           owner_phone: phone,
           max_users: plan.max_users,
           workspace_mode: workspaceMode,
+          // Tim per-divisi: default minta Admin merilis order ke produksi.
+          // SOLO / tim kecil: auto-release langsung (bisa diubah Owner di /owner/toko).
+          require_admin_production_release: workspaceMode === "TEAM_FULL",
         },
       });
 

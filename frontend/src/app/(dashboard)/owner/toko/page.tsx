@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Store, Save, Loader2, Camera } from "lucide-react";
+import { Store, Save, Loader2, Camera, Factory } from "lucide-react";
 import { useToast } from "@/components/ui";
-import { getShopIdentity, updateShopIdentity, createLogoUploadUrl, updateLogoUrl, type ShopIdentity } from "@/actions/shop";
+import {
+  getShopIdentity, updateShopIdentity, createLogoUploadUrl, updateLogoUrl, type ShopIdentity,
+  getProductionPolicy, setRequireAdminProductionRelease,
+} from "@/actions/shop";
 
 const field =
   "w-full px-3 py-2 bg-base border border-border rounded-xl focus:outline-none focus:border-accent-teal focus:ring-1 focus:ring-accent-teal text-primary text-sm";
@@ -14,13 +17,29 @@ export default function ShopIdentityPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [requireRelease, setRequireRelease] = useState(false);
+  const [policyBusy, setPolicyBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await getShopIdentity();
+    const [res, pol] = await Promise.all([getShopIdentity(), getProductionPolicy()]);
     if (res.success) setS(res.data);
     else toast({ type: "error", title: "Gagal memuat", message: res.error });
+    if (pol.success) setRequireRelease(pol.data.requireAdminRelease);
     setLoading(false);
   }, [toast]);
+
+  const togglePolicy = async () => {
+    const next = !requireRelease;
+    setPolicyBusy(true);
+    const res = await setRequireAdminProductionRelease(next);
+    setPolicyBusy(false);
+    if (res.success) {
+      setRequireRelease(next);
+      toast({ type: "success", title: next ? "Rilis produksi kini perlu persetujuan Admin" : "Order kini otomatis turun ke produksi" });
+    } else {
+      toast({ type: "error", title: "Gagal menyimpan", message: res.error });
+    }
+  };
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);
@@ -136,6 +155,34 @@ export default function ShopIdentityPage() {
         <p className="text-[11px] text-muted">
           Workspace (subdomain): <span className="font-mono">{s.slug}</span> — tidak bisa diubah di sini.
         </p>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card/70 p-4 space-y-3">
+        <h2 className="text-sm font-bold text-primary flex items-center gap-2">
+          <Factory className="h-4 w-4 text-accent-teal" /> Kebijakan Produksi
+        </h2>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-primary">Wajib persetujuan Admin sebelum order turun ke produksi</p>
+            <p className="text-[11px] text-muted mt-1">
+              {requireRelease
+                ? "Order yang sudah lunas DP + desain ACC berhenti di status Confirmed sampai Admin menekan \"Rilis ke Produksi\"."
+                : "Order yang sudah lunas DP + desain ACC otomatis masuk antrean operator (mesin & operator dari default katalog)."}
+            </p>
+          </div>
+          <button
+            onClick={togglePolicy}
+            disabled={policyBusy}
+            role="switch"
+            aria-checked={requireRelease}
+            className={
+              "shrink-0 mt-0.5 h-6 w-11 rounded-full transition-colors relative disabled:opacity-50 " +
+              (requireRelease ? "bg-accent-teal" : "bg-border")
+            }
+          >
+            <span className={"absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all " + (requireRelease ? "left-[22px]" : "left-0.5")} />
+          </button>
+        </div>
       </section>
 
       <div className="flex justify-end">

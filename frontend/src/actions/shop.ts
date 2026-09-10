@@ -73,6 +73,41 @@ export async function updateShopIdentity(input: {
   }
 }
 
+/** Kebijakan rilis produksi tenant (gatekeeper auto-release). */
+export async function getProductionPolicy(): Promise<ActionResult<{ requireAdminRelease: boolean }>> {
+  try {
+    const tenant = await requireTenant();
+    await requireUser();
+    const t = await prisma.tenant.findUnique({
+      where: { id: tenant.id },
+      select: { require_admin_production_release: true },
+    });
+    if (!t) return fail("Data toko tidak ditemukan.");
+    return ok({ requireAdminRelease: t.require_admin_production_release });
+  } catch (e) {
+    console.error("getProductionPolicy:", e);
+    return fail(e instanceof Error ? e.message : "Gagal memuat kebijakan produksi.");
+  }
+}
+
+export async function setRequireAdminProductionRelease(value: boolean): Promise<ActionResult<{ requireAdminRelease: boolean }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh mengubah kebijakan produksi.");
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: { require_admin_production_release: value },
+    });
+    await logAction(actor.id, "PRODUCTION_RELEASE_POLICY_CHANGED", "Tenant", tenant.id, null, { require_admin_release: value });
+    revalidatePath("/(dashboard)/owner/toko", "page");
+    return ok({ requireAdminRelease: value });
+  } catch (e) {
+    console.error("setRequireAdminProductionRelease:", e);
+    return fail(e instanceof Error ? e.message : "Gagal menyimpan kebijakan produksi.");
+  }
+}
+
 export async function createLogoUploadUrl(fileType: string): Promise<ActionResult<{ url: string; key: string }>> {
   try {
     const tenant = await requireTenant();

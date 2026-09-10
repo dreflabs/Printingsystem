@@ -6,9 +6,51 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
+import { autoReleaseToProduction } from "@/lib/auto-release";
 import { ok, fail, type ActionResult } from "@/types";
 
 const isGudang = (r: string[]) => r.includes("gudang");
+
+/**
+ * Admin/Owner menekan "Rilis ke Produksi" untuk order yang tertahan gatekeeper
+ * (`require_admin_production_release`). Menjalankan auto-release dengan
+ * `bypassGatekeeper` — mesin & operator diambil dari default katalog, Admin tidak
+ * perlu memilih manual. Kalau data order belum lengkap, alasannya dikembalikan.
+ */
+export async function releaseOrderToProduction(orderId: string): Promise<ActionResult<{ jobCodes: string[] }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) {
+      return fail("Hanya Admin/Owner yang boleh merilis order ke produksi.");
+    }
+
+    const result = await prisma.$transaction((tx) =>
+      autoReleaseToProduction(tx, tenant.id, orderId, { bypassGatekeeper: true })
+    );
+
+    if (!result.released) {
+      return fail(
+        result.missing.length
+          ? `Order belum bisa turun ke produksi: ${result.missing.join("; ")}`
+          : "Order tidak dalam kondisi untuk dirilis (mungkin sudah punya job atau belum CONFIRMED)."
+      );
+    }
+
+    await logAction(actor.id, "ORDER_AUTO_RELEASED", "Order", orderId, null, {
+      job_codes: result.jobCodes,
+      trigger: "ADMIN_RELEASE",
+    });
+    revalidatePath("/admin");
+    revalidatePath("/admin/production");
+    revalidatePath("/operator");
+    revalidatePath("/owner");
+    return ok({ jobCodes: result.jobCodes });
+  } catch (e) {
+    console.error("releaseOrderToProduction:", e);
+    return fail(e instanceof Error ? e.message : "Gagal merilis order ke produksi.");
+  }
+}
 
 /** Cari ProductionJob (aktif) berdasarkan job_code atau order_code. */
 async function findJobByCode(tx: Prisma.TransactionClient, tenantId: string, code: string) {

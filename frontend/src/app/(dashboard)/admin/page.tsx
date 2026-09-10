@@ -12,6 +12,7 @@ import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { getOrders, getOrderDetail } from "@/actions/queries";
 import { addPayment } from "@/actions/orders";
 import { assignProductionJob, getProductionAssignData } from "@/actions/design";
+import { releaseOrderToProduction } from "@/actions/production";
 import { submitFinalAudit } from "@/actions/audit";
 import { getSessionUser } from "@/actions/session";
 import { freezeOrder, unfreezeOrder } from "@/actions/hold";
@@ -40,6 +41,7 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
   const [freezeReason, setFreezeReason] = useState("");
   const [holdBusy, setHoldBusy] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [releaseBusy, setReleaseBusy] = useState(false);
   const reload = () => getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
   useEffect(() => {
     getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
@@ -49,14 +51,25 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
   const dpMet = !!d && d.paidAmount + 1e-6 >= d.dpRequired;
   const discountOk = !!d && (d.discount <= 0 || d.discountApproved);
   const canAssign = !!d && d.productionJobs.length === 0 && !ASSIGN_BLOCKED.includes(d.status);
+  // Tertahan gatekeeper "wajib rilis Admin" — data sudah lengkap, tinggal dilepas.
+  const awaitingRelease = !!d && d.autoReleaseBlocked === "AWAITING_ADMIN_RELEASE";
   const assignBlockedReason = !designApproved
     ? "Desain belum disetujui."
     : !discountOk
       ? "Diskon masih menunggu keputusan Owner."
       : !dpMet
         ? "DP belum terpenuhi."
-        : null;
+        : (d?.readyMissing?.length ? d.readyMissing.join(" · ") : null);
   const defaultQty = d ? d.items.reduce((s, it) => s + (it.quantity || 0), 0) : 0;
+
+  async function doRelease() {
+    setReleaseBusy(true);
+    const res = await releaseOrderToProduction(orderId);
+    setReleaseBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    await reload();
+    onChanged();
+  }
 
   async function doFreeze() {
     setHoldBusy(true); setErr(null);
@@ -171,7 +184,20 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
           {d && d.balance > 0 && (
             <button onClick={onBayar} className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-yellow text-black text-sm font-bold hover:brightness-105">Catat Pembayaran</button>
           )}
-          {canAssign && !freezeMode && (
+          {canAssign && !freezeMode && awaitingRelease && (
+            <div className="flex-1 min-w-[160px]">
+              <button
+                onClick={doRelease}
+                disabled={releaseBusy}
+                title="Lepas order ini ke antrean operator (mesin & operator dari default katalog)"
+                className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"
+              >
+                {releaseBusy ? "Merilis…" : "Rilis ke Produksi"}
+              </button>
+              <p className="text-[10px] text-muted mt-1 text-center">Data lengkap — menunggu rilis Admin.</p>
+            </div>
+          )}
+          {canAssign && !freezeMode && !awaitingRelease && (
             <div className="flex-1 min-w-[160px]">
               <button
                 onClick={() => setAssignOpen(true)}

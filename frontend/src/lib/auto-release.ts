@@ -6,7 +6,12 @@ export interface AutoReleaseResult {
   jobCodes: string[];
   /** alasan order belum bisa turun ke produksi (kosong kalau released) */
   missing: string[];
+  /** true = tertahan gatekeeper "wajib rilis Admin", bukan karena data kurang */
+  awaitingAdminRelease?: boolean;
 }
+
+/** Sentinel yang disimpan di Order.auto_release_blocked saat gatekeeper aktif. */
+export const AWAITING_ADMIN_RELEASE = "AWAITING_ADMIN_RELEASE";
 
 async function nextJobCode(tx: Prisma.TransactionClient, tenantId: string): Promise<string> {
   const now = new Date();
@@ -19,22 +24,47 @@ async function nextJobCode(tx: Prisma.TransactionClient, tenantId: string): Prom
 }
 
 /**
+ * Prioritas job dari deadline order:
+ *   3 = mendesak  (deadline < 24 jam atau sudah lewat)
+ *   2 = segera    (deadline < 3 hari)
+ *   1 = normal    (deadline lebih jauh / tidak ada)
+ * Dipakai untuk sort antrian operator (priority desc → deadline asc).
+ */
+export function priorityFromDeadline(deadline: Date | string | null): number {
+  if (!deadline) return 1;
+  const ms = new Date(deadline).getTime() - Date.now();
+  if (ms < 24 * 3600 * 1000) return 3;
+  if (ms < 3 * 24 * 3600 * 1000) return 2;
+  return 1;
+}
+
+function blockedPayload(missing: string[]): string {
+  return JSON.stringify(missing);
+}
+
+/**
  * Coba turunkan order ke produksi tanpa aksi Admin. Dipanggil di dalam transaksi
  * caller, tepat setelah order menjadi CONFIRMED.
  *
  * - Idempotent: kalau order sudah punya ProductionJob, tidak melakukan apa-apa.
  * - Hanya bekerja saat `order.status === "CONFIRMED"`.
- * - Membuat 1 ProductionJob per item (status PRODUCTION_QUEUED, tanpa operator —
- *   operator mengklaim sendiri lewat SCAN 1). Mesin diambil dari
- *   `product.default_machine_id`.
- * - Kalau Completeness Gate gagal atau ada item tanpa mesin default yang ACTIVE,
- *   order dibiarkan CONFIRMED dan alasannya dikembalikan di `missing` (Admin bisa
- *   assign manual lewat form lama).
+ * - Satu ProductionJob per MESIN (item dengan mesin default sama digabung, qty
+ *   dijumlah). Mesin diambil dari `product.default_machine_id`.
+ * - Kalau mesin punya `default_operator_id` yang masih aktif → job di-pin ke dia
+ *   (status PRODUCTION_ASSIGNED). Kalau tidak → PRODUCTION_QUEUED tanpa operator
+ *   (operator klaim sendiri lewat SCAN 1).
+ * - `priority` diturunkan dari deadline order.
+ * - Kalau tenant mengaktifkan `require_admin_production_release`, order dibiarkan
+ *   CONFIRMED + ditandai AWAITING_ADMIN_RELEASE (kecuali `opts.bypassGatekeeper`).
+ * - Kalau Completeness Gate gagal / mesin default tidak ACTIVE, order dibiarkan
+ *   CONFIRMED dan `Order.auto_release_blocked` diisi daftar alasannya (dipakai
+ *   panel "Order Tertahan" di dashboard Admin). Sukses → kolom itu dikosongkan.
  */
 export async function autoReleaseToProduction(
   tx: Prisma.TransactionClient,
   tenantId: string,
-  orderId: string
+  orderId: string,
+  opts?: { bypassGatekeeper?: boolean }
 ): Promise<AutoReleaseResult> {
   const order = await tx.order.findFirst({
     where: { id: orderId, tenant_id: tenantId },
@@ -93,6 +123,10 @@ export async function autoReleaseToProduction(
   });
 
   if (!gate.autoRoutable) {
+    await tx.order.update({
+      where: { id: orderId },
+      data: { auto_release_blocked: blockedPayload(gate.missing) },
+    });
     return { released: false, jobCodes: [], missing: gate.missing };
   }
 
@@ -101,31 +135,85 @@ export async function autoReleaseToProduction(
   const machineIds = [...new Set(items.map((it) => it.defaultMachineId as string).filter(Boolean))];
   const machines = await tx.machine.findMany({
     where: { id: { in: machineIds }, tenant_id: tenantId },
-    select: { id: true, name: true, status: true },
+    select: { id: true, name: true, status: true, default_operator_id: true },
   });
   const down = machines.find((m) => m.status !== "ACTIVE");
   if (down) {
-    return { released: false, jobCodes: [], missing: [`Mesin default ${down.name} sedang ${down.status}`] };
+    const missing = [`Mesin default ${down.name} sedang ${down.status}`];
+    await tx.order.update({
+      where: { id: orderId },
+      data: { auto_release_blocked: blockedPayload(missing) },
+    });
+    return { released: false, jobCodes: [], missing };
   }
 
-  const jobCodes: string[] = [];
+  // Gatekeeper: order lengkap & routable, tapi tenant minta Admin menekan
+  // "Rilis ke Produksi" dulu. Simpan sentinel, jangan buat job.
+  if (!opts?.bypassGatekeeper) {
+    const tenant = await tx.tenant.findUnique({
+      where: { id: tenantId },
+      select: { require_admin_production_release: true },
+    });
+    if (tenant?.require_admin_production_release) {
+      await tx.order.update({
+        where: { id: orderId },
+        data: { auto_release_blocked: AWAITING_ADMIN_RELEASE },
+      });
+      return {
+        released: false,
+        jobCodes: [],
+        missing: ["Menunggu Admin menekan \"Rilis ke Produksi\""],
+        awaitingAdminRelease: true,
+      };
+    }
+  }
+
+  // Operator default per mesin (hanya yang masih aktif).
+  const defaultOpIds = [
+    ...new Set(machines.map((m) => m.default_operator_id).filter((v): v is string => !!v)),
+  ];
+  const activeOps = defaultOpIds.length
+    ? await tx.user.findMany({
+        where: { id: { in: defaultOpIds }, tenant_id: tenantId, active: true },
+        select: { id: true },
+      })
+    : [];
+  const activeOpSet = new Set(activeOps.map((u) => u.id));
+
+  // Gabungkan item per mesin default → 1 job per mesin, qty dijumlah.
+  const qtyByMachine = new Map<string, number>();
   for (const it of items) {
+    const mid = it.defaultMachineId as string;
+    qtyByMachine.set(mid, (qtyByMachine.get(mid) ?? 0) + it.quantity);
+  }
+
+  const priority = priorityFromDeadline(order.deadline);
+  const machineById = new Map(machines.map((m) => [m.id, m]));
+
+  const jobCodes: string[] = [];
+  for (const [machineId, plannedQty] of qtyByMachine) {
+    const machine = machineById.get(machineId);
+    const defOp = machine?.default_operator_id ?? null;
+    const pinned = defOp && activeOpSet.has(defOp);
     const code = await nextJobCode(tx, tenantId);
     await tx.productionJob.create({
       data: {
         tenant_id: tenantId,
         order_id: orderId,
         job_code: code,
-        machine_id: it.defaultMachineId as string,
-        operator_id: null,
-        status: "PRODUCTION_QUEUED",
-        priority: 1,
-        planned_qty: it.quantity,
+        machine_id: machineId,
+        operator_id: pinned ? defOp : null,
+        status: pinned ? "PRODUCTION_ASSIGNED" : "PRODUCTION_QUEUED",
+        priority,
+        planned_qty: plannedQty,
       },
     });
     jobCodes.push(code);
   }
 
-  await tx.order.update({ where: { id: orderId }, data: { status: "PRODUCTION_ASSIGNED" } });
+  await tx.order.update({
+    where: { id: orderId },
+    data: { status: "PRODUCTION_ASSIGNED", auto_release_blocked: null },
+  });
   return { released: true, jobCodes, missing: [] };
 }

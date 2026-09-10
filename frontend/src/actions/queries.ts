@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { DEADLINE_SETTLED } from "@/lib/order-status";
+import { checkProductionReadiness, type ReadinessItem } from "@/lib/production-readiness";
 import { ok, fail } from "@/types";
 
 /**
@@ -419,7 +420,7 @@ export async function getProductionOverview() {
     if (!actor.roles.includes("owner") && !actor.roles.includes("admin")) return fail("Hanya Owner/Admin yang boleh melihat data ini.");
     const T = { tenant_id: tenant.id };
 
-    const [jobs, machines, materials, operators] = await Promise.all([
+    const [jobs, machines, materials, operators, stuckRows] = await Promise.all([
       prisma.productionJob.findMany({
         where: T,
         orderBy: { created_at: "desc" },
@@ -433,7 +434,34 @@ export async function getProductionOverview() {
       prisma.machine.findMany({ where: T, orderBy: { name: "asc" } }),
       prisma.material.findMany({ where: { ...T, active: true }, select: { id: true, name: true, current_stock: true, min_stock: true, unit_stock: true } }),
       prisma.user.findMany({ where: { ...T, active: true, ...OPERATOR_ROLE }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      // Order CONFIRMED yang gagal auto-release (data kurang) atau tertahan gatekeeper.
+      prisma.order.findMany({
+        where: { ...T, status: "CONFIRMED", auto_release_blocked: { not: null } },
+        orderBy: { deadline: "asc" },
+        select: { id: true, order_code: true, deadline: true, auto_release_blocked: true, customer: { select: { name: true } } },
+      }),
     ]);
+
+    const stuckOrders = stuckRows.map((o) => {
+      const awaitingRelease = o.auto_release_blocked === "AWAITING_ADMIN_RELEASE";
+      let reasons: string[] = [];
+      if (!awaitingRelease && o.auto_release_blocked) {
+        try {
+          const parsed = JSON.parse(o.auto_release_blocked);
+          reasons = Array.isArray(parsed) ? parsed.map(String) : [String(o.auto_release_blocked)];
+        } catch {
+          reasons = [o.auto_release_blocked];
+        }
+      }
+      return {
+        orderId: o.id,
+        orderCode: o.order_code,
+        customerName: o.customer?.name ?? "-",
+        deadline: o.deadline,
+        awaitingRelease,
+        reasons,
+      };
+    });
 
     const activeByMachine = new Map<string, { jobCode: string; qty: number; product: string }>();
     for (const j of jobs) {
@@ -475,6 +503,7 @@ export async function getProductionOverview() {
         activeJob: activeByMachine.get(m.id) ?? null,
       })),
       jobs: shaped,
+      stuckOrders,
       reassignOptions: {
         machines: machines.filter((m) => m.status === "ACTIVE").map((m) => ({ id: m.id, name: m.name })),
         operators,
@@ -568,7 +597,7 @@ export async function getOrderDetail(orderId: string) {
         customer: true,
         creator: { select: { name: true } },
         designer: { select: { name: true } },
-        items: { include: { product: { select: { name: true } }, retail_product: { select: { name: true } }, material: { select: { name: true } } } },
+        items: { include: { product: { select: { name: true, unit: true, default_machine_id: true } }, retail_product: { select: { name: true } }, material: { select: { name: true } } } },
         payments: { orderBy: { paid_at: "asc" }, include: { receiver: { select: { name: true } } } },
         design_jobs: { include: { versions: { orderBy: { version_no: "asc" } } } },
         production_jobs: { include: { machine: { select: { name: true } }, operator: { select: { name: true } } } },
@@ -577,11 +606,49 @@ export async function getOrderDetail(orderId: string) {
     });
     if (!o) return fail("Order tidak ditemukan.");
 
+    // Kesiapan turun ke produksi — dipakai UI untuk menjelaskan kenapa order
+    // belum jalan otomatis (bukan cuma cek design/diskon/DP).
+    const designApproved = o.design_jobs.some((d) => d.status === "APPROVED");
+    const designFilePresent = o.design_jobs.some((d) =>
+      d.versions.some((v) => v.approval_status === "APPROVED" && (v.file_path || v.file_name))
+    );
+    const readinessItems: ReadinessItem[] = o.items
+      .filter((i) => !i.retail_product_id)
+      .map((i) => ({
+        label: i.description || i.product?.name || "",
+        productId: i.product_id,
+        productUnit: i.product?.unit ?? null,
+        defaultMachineId: i.product?.default_machine_id ?? null,
+        quantity: i.quantity,
+        size: i.size,
+        materialId: i.material_id,
+        unitPrice: num(i.unit_price),
+        totalPrice: num(i.total_price),
+      }));
+    const readiness = checkProductionReadiness({
+      status: o.status,
+      orderType: o.order_type,
+      customerId: o.customer_id,
+      customerName: o.customer?.name ?? null,
+      customerContact: o.customer?.phone || o.customer?.email || null,
+      deadline: o.deadline,
+      discount: num(o.discount),
+      discountApprovedBy: o.discount_approved_by,
+      paidAmount: num(o.paid_amount),
+      dpRequired: num(o.dp_required ?? Math.round(num(o.total) * 0.5)),
+      designApproved,
+      designFilePresent,
+      items: readinessItems,
+    });
+
     return ok({
       id: o.id,
       orderCode: o.order_code,
       type: o.order_type,
       status: o.status,
+      autoReleaseBlocked: o.auto_release_blocked,
+      readyMissing: readiness.missing,
+      readyAutoRoutable: readiness.autoRoutable,
       customer: o.customer ? { name: o.customer.name, phone: o.customer.phone, type: o.customer.type } : null,
       createdBy: o.creator.name,
       designer: o.designer?.name ?? null,

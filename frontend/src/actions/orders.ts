@@ -93,6 +93,11 @@ export async function createPrintingOrder(
     if (items.length === 0) return fail("Order harus punya minimal 1 item.");
     if (items.some((i) => i.unitPrice < 0)) return fail("Harga item tidak valid.");
 
+    // Deadline wajib untuk order cetak — dipakai gate auto-release + prioritas antrian operator.
+    if (!input.deadline) return fail("Deadline order wajib diisi.");
+    const deadlineDate = new Date(input.deadline);
+    if (Number.isNaN(deadlineDate.getTime())) return fail("Format deadline tidak valid.");
+
     const dpPct = input.dpOverridePct ?? 50;
     if (dpPct < 0 || dpPct > 100) return fail("Persen DP tidak valid.");
     if (input.dpOverridePct != null && input.dpOverridePct < 50) {
@@ -170,7 +175,7 @@ export async function createPrintingOrder(
           dp_override_reason: input.dpOverrideReason || null,
           paid_amount: 0,
           balance: total,
-          deadline: input.deadline ? new Date(input.deadline) : null,
+          deadline: deadlineDate,
           notes: input.notes || null,
         },
       });

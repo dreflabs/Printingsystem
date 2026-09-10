@@ -5,7 +5,7 @@ import { Package, Wrench, AlertTriangle, Clock, Play, RotateCcw, ShieldAlert, Re
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { getProductionOverview } from "@/actions/queries";
-import { reassignProductionJob } from "@/actions/production";
+import { reassignProductionJob, releaseOrderToProduction } from "@/actions/production";
 
 type Data = Extract<Awaited<ReturnType<typeof getProductionOverview>>, { success: true }>["data"];
 type JobRow = Data["jobs"][number];
@@ -63,6 +63,7 @@ export default function ProductionPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [reassignJob, setReassignJob] = useState<JobRow | null>(null);
+  const [releasingId, setReleasingId] = useState<string | null>(null);
   const jobTableRef = useRef<HTMLDivElement>(null);
   const materialRef = useRef<HTMLDivElement>(null);
 
@@ -72,6 +73,15 @@ export default function ProductionPage() {
     setError(null);
     setD(res.data);
   }, []);
+
+  async function handleRelease(orderId: string) {
+    setReleasingId(orderId);
+    setError(null);
+    const res = await releaseOrderToProduction(orderId);
+    setReleasingId(null);
+    if (!res.success) { setError(res.error); return; }
+    await load();
+  }
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
@@ -113,6 +123,50 @@ export default function ProductionPage() {
       </div>
 
       {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
+
+      {d && d.stuckOrders.length > 0 && (
+        <div className="bg-card border border-status-yellow/40 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle className="h-5 w-5 text-status-yellow-text" />
+            <h2 className="text-base font-bold text-primary">Order Tertahan — Belum Turun Produksi</h2>
+            <span className="ml-auto text-xs font-bold text-status-yellow-text bg-status-yellow/10 px-2 py-0.5 rounded-full border border-status-yellow/30">{d.stuckOrders.length}</span>
+          </div>
+          <p className="text-xs text-muted mb-3">Order sudah CONFIRMED (DP + desain beres) tapi tidak otomatis masuk antrean operator.</p>
+          <div className="space-y-2">
+            {d.stuckOrders.map((s) => (
+              <div key={s.orderId} className="flex flex-wrap items-center gap-3 rounded-xl bg-elevated border border-border px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-mono font-bold text-primary">{s.orderCode} <span className="text-muted font-sans">· {s.customerName}</span></p>
+                  {s.awaitingRelease ? (
+                    <p className="text-[11px] text-status-yellow-text mt-0.5">Menunggu rilis Admin (data lengkap, tinggal dilepas).</p>
+                  ) : (
+                    <p className="text-[11px] text-status-red mt-0.5">{s.reasons.join(" · ") || "Data order belum lengkap."}</p>
+                  )}
+                </div>
+                <span className="text-[10px] text-muted whitespace-nowrap">deadline {fmtDate(s.deadline)}</span>
+                {s.awaitingRelease ? (
+                  <button
+                    onClick={() => handleRelease(s.orderId)}
+                    disabled={releasingId === s.orderId}
+                    className="text-xs font-bold px-3 py-1.5 rounded-lg bg-accent-teal text-white hover:brightness-110 disabled:opacity-40 whitespace-nowrap"
+                  >
+                    {releasingId === s.orderId ? "Merilis…" : "Rilis ke Produksi"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleRelease(s.orderId)}
+                    disabled={releasingId === s.orderId}
+                    title="Coba rilis lagi setelah data order dilengkapi"
+                    className="text-xs font-bold px-3 py-1.5 rounded-lg bg-elevated border border-border text-muted hover:text-primary disabled:opacity-40 whitespace-nowrap"
+                  >
+                    {releasingId === s.orderId ? "Mencoba…" : "Coba Rilis"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         {kpis.map((k) => (

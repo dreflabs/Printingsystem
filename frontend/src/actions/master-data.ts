@@ -611,9 +611,16 @@ export async function getMachines() {
     const machines = await prisma.machine.findMany({
       where: { tenant_id: tenant.id },
       orderBy: { name: "asc" },
-      include: { materials: { select: { material_id: true } } },
+      include: {
+        materials: { select: { material_id: true } },
+        default_operator: { select: { id: true, name: true } },
+      },
     });
-    return ok(machines.map((m) => ({ ...m, material_ids: m.materials.map((x) => x.material_id) })));
+    return ok(machines.map((m) => ({
+      ...m,
+      material_ids: m.materials.map((x) => x.material_id),
+      default_operator_name: m.default_operator?.name ?? null,
+    })));
   } catch (e) {
     console.error("getMachines:", e);
     return fail(e instanceof Error ? e.message : "Gagal memuat mesin.");
@@ -633,12 +640,30 @@ const normCat = (v?: string) => {
 const normStatus = (v?: string) =>
   (MACHINE_STATUSES as readonly string[]).includes(v ?? "") ? (v as string) : "ACTIVE";
 
-export async function createMachine(data: { name: string; category: string; status?: string; notes?: string | null }) {
+/** Validasi operator default: harus user tenant ini, aktif, & punya peran operator. */
+async function resolveDefaultOperator(tenantId: string, operatorId: string | null | undefined) {
+  const id = (operatorId ?? "").trim();
+  if (!id) return null;
+  const u = await prisma.user.findFirst({
+    where: {
+      id,
+      tenant_id: tenantId,
+      active: true,
+      OR: [{ role: { name: "operator" } }, { extra_roles: { some: { role: { name: "operator" } } } }],
+    },
+    select: { id: true },
+  });
+  if (!u) throw new Error("Operator default tidak valid (harus pegawai aktif berperan Operator).");
+  return u.id;
+}
+
+export async function createMachine(data: { name: string; category: string; status?: string; notes?: string | null; default_operator_id?: string | null }) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengelola data mesin.");
     if (!data.name?.trim()) return fail("Nama mesin wajib diisi.");
+    const defaultOperatorId = await resolveDefaultOperator(tenant.id, data.default_operator_id);
     const machine = await prisma.machine.create({
       data: {
         tenant_id: tenant.id,
@@ -647,6 +672,7 @@ export async function createMachine(data: { name: string; category: string; stat
         category: normCat(data.category),
         status: normStatus(data.status),
         notes: data.notes?.trim() || null,
+        default_operator_id: defaultOperatorId,
       },
     });
     revalidatePath("/admin");
@@ -660,7 +686,7 @@ export async function createMachine(data: { name: string; category: string; stat
 
 export async function updateMachine(
   id: string,
-  data: { name?: string; category?: string; status?: string; notes?: string | null }
+  data: { name?: string; category?: string; status?: string; notes?: string | null; default_operator_id?: string | null }
 ) {
   try {
     const tenant = await requireTenant();
@@ -673,6 +699,9 @@ export async function updateMachine(
     if (data.category != null) patch.category = normCat(data.category);
     if (data.status != null) patch.status = normStatus(data.status);
     if (data.notes !== undefined) patch.notes = data.notes?.trim() || null;
+    if (data.default_operator_id !== undefined) {
+      patch.default_operator_id = await resolveDefaultOperator(tenant.id, data.default_operator_id);
+    }
     const machine = await prisma.machine.update({ where: { id }, data: patch });
     revalidatePath("/admin");
     revalidatePath("/admin/products");

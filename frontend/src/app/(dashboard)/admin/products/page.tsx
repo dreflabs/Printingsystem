@@ -9,6 +9,7 @@ import {
   getMachines, createMachine, updateMachine, deleteMachine,
   getMaterials, getProductCategories,
 } from "@/actions/master-data";
+import { getProductionAssignData } from "@/actions/design";
 import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES } from "@/lib/catalog-constants";
 
 type Tab = "retail" | "printing" | "machine";
@@ -20,7 +21,7 @@ type Printing = {
   id: string; name: string; category: string; unit: string;
   base_price: number | null; default_material_id: string | null; default_machine_id: string | null; active: boolean;
 };
-type Machine = { id: string; machine_code: string; name: string; category: string; status: string; notes: string | null };
+type Machine = { id: string; machine_code: string; name: string; category: string; status: string; notes: string | null; default_operator_id: string | null; default_operator_name: string | null };
 type MatOpt = { id: string; name: string };
 
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
@@ -179,13 +180,19 @@ function MachineModal({
   const [category, setCategory] = useState(editing?.category ?? "");
   const [status, setStatus] = useState(editing?.status ?? "ACTIVE");
   const [notes, setNotes] = useState(editing?.notes ?? "");
+  const [defaultOperatorId, setDefaultOperatorId] = useState(editing?.default_operator_id ?? "");
+  const [operators, setOperators] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    getProductionAssignData().then((r) => { if (r.success) setOperators(r.data.operators); });
+  }, []);
 
   async function save() {
     if (!name.trim()) { setErr("Nama mesin wajib diisi."); return; }
     setBusy(true); setErr(null);
-    const payload = { name: name.trim(), category: category.trim(), status, notes: notes.trim() || null };
+    const payload = { name: name.trim(), category: category.trim(), status, notes: notes.trim() || null, default_operator_id: defaultOperatorId || null };
     const res = editing ? await updateMachine(editing.id, payload) : await createMachine(payload);
     setBusy(false);
     if (!res.success) { setErr(res.error ?? "Gagal."); return; }
@@ -212,6 +219,13 @@ function MachineModal({
         </Field>
       </Grid2>
       <p className="text-[10px] text-muted -mt-2">Jenis hanya untuk pengelompokan Anda sendiri — isi apa pun, atau biarkan kosong.</p>
+      <Field label="Operator Default (opsional)">
+        <select className={inp} value={defaultOperatorId} onChange={(e) => setDefaultOperatorId(e.target.value)}>
+          <option value="">— tidak ada (job masuk antrean rebutan) —</option>
+          {operators.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+      </Field>
+      <p className="text-[10px] text-muted -mt-2">Kalau diisi, order yang auto-release langsung di-pin ke operator ini (status Ditugaskan), tanpa perlu Admin assign manual.</p>
       <Field label="Catatan (opsional)">
         <textarea className={cn(inp, "h-16 py-2")} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="mis. print head no.2 lemah" />
       </Field>
@@ -383,7 +397,7 @@ export default function AdminProductsPage() {
                 <tr><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Harga Dasar</th><th className="px-5 py-4">Material Default</th><th className="px-5 py-4">Mesin Default</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
               )}
               {tab === "machine" && (
-                <tr><th className="px-5 py-4">Kode</th><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
+                <tr><th className="px-5 py-4">Kode</th><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Operator Default</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
               )}
             </thead>
             <tbody className="divide-y divide-border">
@@ -423,6 +437,7 @@ export default function AdminProductsPage() {
                   <td className="px-5 py-4 font-mono text-xs text-muted">{p.machine_code}</td>
                   <td className="px-5 py-4 font-semibold text-primary">{p.name}</td>
                   <td className="px-5 py-4 text-muted text-xs">{p.category}</td>
+                  <td className="px-5 py-4 text-xs">{p.default_operator_name ?? <span className="text-muted">— rebutan —</span>}</td>
                   <td className="px-5 py-4">
                     <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border",
                       p.status === "ACTIVE" ? "bg-status-green/10 text-status-green border-status-green/30"

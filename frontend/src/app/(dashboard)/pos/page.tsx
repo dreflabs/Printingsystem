@@ -5,11 +5,20 @@ import { Search, ShoppingCart, User, PlusCircle, LayoutGrid, Receipt, ClipboardL
 import { PosProductCard, Product } from "@/components/pos/PosProductCard";
 import { PosCartItem, CartItemType } from "@/components/pos/PosCartItem";
 import { cn } from "@/lib/utils";
-import { useWorkflowStore } from "@/store/useWorkflowStore";
+import { ConfirmDialog, useToast } from "@/components/ui";
+import { getPosData, processRetailOrder, voidRetailOrder, type RetailCartLine } from "@/actions/pos";
+import { getRetailHistory } from "@/actions/queries";
 
-const CATEGORIES = ["Semua", "Kertas", "Tinta", "Alat Tulis", "Merchandise", "Lainnya"];
+export interface ReceiptDataType {
+  total: number;
+  method: string;
+  cashGiven: number;
+  change: number;
+  orderCode: string;
+}
 
-function ReceiptModal({ open, transactionData, onClose }: { open: boolean, transactionData: any, onClose: () => void }) {
+function ReceiptModal({ open, transactionData, onClose }: { open: boolean, transactionData: ReceiptDataType | null, onClose: () => void }) {
+  const { toast } = useToast();
   if (!open || !transactionData) return null;
   const formatRupiah = (amount: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
   
@@ -35,7 +44,18 @@ function ReceiptModal({ open, transactionData, onClose }: { open: boolean, trans
 
         <div className="flex gap-3 w-full">
           <button onClick={onClose} className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary cursor-pointer transition-colors">Tutup Kasir</button>
-          <button onClick={() => { alert("Mencetak 2 Struk:\n1. Struk Bukti Bayar Konsumen\n2. Struk Kerja (Berisi QR Code untuk ditempel oleh QC & Finishing)\n\nHarap berikan Struk Kerja (2) ke Operator Mesin!"); onClose(); }} className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold flex justify-center items-center gap-2 cursor-pointer hover:brightness-110"><Printer className="h-4 w-4" /> Cetak 2 Struk</button>
+          <button
+            onClick={() => {
+              if (transactionData.orderCode) {
+                window.open(`/print/nota/${encodeURIComponent(transactionData.orderCode)}`, "_blank", "noopener");
+              } else {
+                toast({ type: "error", title: "Nota tidak tersedia", message: "Kode order tidak ditemukan." });
+              }
+            }}
+            className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold flex justify-center items-center gap-2 cursor-pointer hover:brightness-110"
+          >
+            <Printer className="h-4 w-4" /> Cetak Nota
+          </button>
         </div>
       </div>
     </div>
@@ -65,9 +85,11 @@ function PosPaymentModal({
   // Set default discount when modal opens
   useEffect(() => {
     if (open) {
-      setDiscountInput(defaultDiscount > 0 ? defaultDiscount.toString() : "");
-      setCashInput("");
-      setMethod("TUNAI");
+      setTimeout(() => {
+        setDiscountInput(defaultDiscount > 0 ? defaultDiscount.toString() : "");
+        setCashInput("");
+        setMethod("TUNAI");
+      }, 0);
     }
   }, [open, defaultDiscount]);
 
@@ -85,7 +107,7 @@ function PosPaymentModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-5">
+      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-5 max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-bold text-primary">Pembayaran POS Kasir</h3>
 
         {/* Total Summary */}
@@ -96,7 +118,7 @@ function PosPaymentModal({
             {discount > 0 && <p className="text-xs text-status-red font-bold">Diskon: -{formatRupiah(discount)}</p>}
             <p className="text-sm font-bold text-primary mt-2">Total Akhir</p>
           </div>
-          <p className="text-3xl font-mono font-bold text-status-yellow">{formatRupiah(finalAmount)}</p>
+          <p className="text-3xl font-mono font-bold text-status-yellow-text">{formatRupiah(finalAmount)}</p>
         </div>
 
         {/* Discount Input */}
@@ -194,20 +216,64 @@ export default function PosPage() {
   const [cart, setCart] = useState<CartItemType[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [receiptData, setReceiptData] = useState<any>(null);
+  const [receiptData, setReceiptData] = useState<ReceiptDataType | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const { toast } = useToast();
 
-  const retailProducts = useWorkflowStore((s) => s.retailProducts);
-  const deductRetailStock = useWorkflowStore((s) => s.deductRetailStock);
-  const customers = useWorkflowStore((s) => s.customers);
+  type RetailProductRow = { id: string; name: string; sku: string; category: string; price: number; stock: number };
+  type CustomerRow = { id: string; name: string; type: string; defaultDiscountPct: number };
+  type RetailHistoryRow = { id: string; createdAt: Date; orderCode: string; customerName: string; method: string; total: number };
+  const [retailProducts, setRetailProducts] = useState<RetailProductRow[]>([]);
+  const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [history, setHistory] = useState<RetailHistoryRow[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  
+  const [voidOrder, setVoidOrder] = useState<RetailHistoryRow | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [voidSubmitting, setVoidSubmitting] = useState(false);
+
+  async function loadPosData() {
+    const res = await getPosData();
+    if (res.success) {
+      setRetailProducts(res.data.products);
+      setCustomers(res.data.customers);
+      setLoadError(null);
+    } else {
+      setLoadError(res.error);
+    }
+  }
+
+  useEffect(() => {
+    // fetch awal; setState terjadi setelah await, bukan sinkron
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadPosData();
+  }, []);
+
+  async function fetchHistory() {
+    setLoadingHistory(true);
+    const res = await getRetailHistory(50);
+    if (res.success) setHistory(res.data);
+    setLoadingHistory(false);
+  }
+
+  useEffect(() => {
+    if (activeTab === "HISTORY") {
+      setTimeout(() => fetchHistory(), 0);
+    }
+  }, [activeTab]);
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
   const displayCustomerName = selectedCustomer ? selectedCustomer.name : "Umum";
-  const defaultDiscount = selectedCustomer ? selectedCustomer.defaultDiscountRp : 0;
+  const defaultDiscountPct = selectedCustomer ? selectedCustomer.defaultDiscountPct : 0;
 
-  // Map store products to Product interface
+  // Map DB rows to Product interface
   const allProducts: Product[] = retailProducts.map(p => ({
     id: p.id, name: p.name, price: p.price, stock: p.stock, category: p.category
   }));
+
+  const dynamicCategories = ["Semua", ...Array.from(new Set(allProducts.map(p => p.category).filter(Boolean)))];
 
   const filteredProducts = allProducts.filter(p => {
     const matchCategory = activeCategory === "Semua" || p.category === activeCategory;
@@ -265,7 +331,8 @@ export default function PosPage() {
   };
 
   const clearCart = () => {
-    if(confirm("Kosongkan keranjang?")) setCart([]);
+    if (cart.length === 0) return;
+    setConfirmClear(true);
   };
 
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -276,31 +343,56 @@ export default function PosPage() {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
   };
 
-  const handleCheckoutSuccess = (method: "TUNAI" | "QRIS", cashGiven: number) => {
-    cart.forEach(item => {
-      if (!item.isCustom) {
-        deductRetailStock(item.productId, item.qty);
+  const handleCheckoutSuccess = async (method: "TUNAI" | "QRIS", cashGiven: number) => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const lines: RetailCartLine[] = cart.map(item => ({
+        retailProductId: item.isCustom ? null : item.productId,
+        name: item.name,
+        unitPrice: item.price,
+        quantity: item.qty,
+        notes: item.notes || undefined,
+      }));
+      const amountPaid = method === "TUNAI" ? cashGiven : total;
+
+      const res = await processRetailOrder({
+        items: lines,
+        customerId: selectedCustomerId || null,
+        tax,
+        payment: { method: method === "TUNAI" ? "CASH" : "QRIS", amountPaid },
+      });
+
+      if (!res.success) {
+        toast({ type: "error", title: "Transaksi gagal", message: res.error });
+        return;
       }
-    });
-    const totalVal = total;
-    const changeVal = method === "TUNAI" ? Math.max(0, cashGiven - totalVal) : 0;
-    
-    setShowPaymentModal(false);
-    setReceiptData({ total: totalVal, method, cashGiven, change: changeVal });
-    
-    setCart([]);
-    setSelectedCustomerId("");
+
+      setShowPaymentModal(false);
+      setReceiptData({
+        total: res.data.total,
+        method,
+        cashGiven,
+        change: res.data.change,
+        orderCode: res.data.orderCode,
+      });
+      setCart([]);
+      setSelectedCustomerId("");
+      loadPosData();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="flex flex-col h-[calc(100vh-2rem)] bg-base gap-4 pb-4">
       
       {/* TABS */}
-      <div className="flex gap-2 p-1 bg-card border border-border rounded-xl w-fit shadow-sm shrink-0">
+      <div className="flex gap-2 p-1 bg-card border border-border rounded-xl w-fit max-w-full shadow-sm shrink-0 overflow-x-auto no-scrollbar">
         {[
           { id: "KASIR", label: "Kasir POS", icon: Receipt },
           { id: "HISTORY", label: "Riwayat Transaksi", icon: ClipboardList },
-          { id: "STOCK", label: "Manajemen Stok", icon: Package },
+          { id: "STOCK", label: "Informasi Stok", icon: Package },
         ].map(tab => (
           <button
             key={tab.id}
@@ -315,19 +407,81 @@ export default function PosPage() {
       </div>
 
       <ReceiptModal open={!!receiptData} transactionData={receiptData} onClose={() => setReceiptData(null)} />
+      <ConfirmDialog
+        open={confirmClear}
+        onClose={() => setConfirmClear(false)}
+        onConfirm={() => { setCart([]); setConfirmClear(false); }}
+        title="Kosongkan Keranjang"
+        message="Semua item di keranjang akan dihapus. Lanjutkan?"
+        confirmLabel="Ya, Kosongkan"
+      />
       <PosPaymentModal
         open={showPaymentModal}
         totalAmount={total}
         customerName={displayCustomerName}
-        defaultDiscount={defaultDiscount}
+        defaultDiscount={defaultDiscountPct > 0 && subtotal > 0 ? Math.round((subtotal * defaultDiscountPct) / 100) : 0}
         onClose={() => setShowPaymentModal(false)}
         onSuccess={handleCheckoutSuccess}
       />
 
+      {/* Void Modal */}
+      {voidOrder && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={() => setVoidOrder(null)} />
+          <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
+            <h3 className="text-lg font-bold text-status-red flex items-center gap-2">
+              ⚠️ Batalkan Transaksi
+            </h3>
+            <p className="text-sm text-muted">
+              Anda yakin ingin membatalkan transaksi <strong className="text-primary">{voidOrder.orderCode}</strong>? Stok akan dikembalikan dan pembayaran akan direfund. Tindakan ini tidak bisa dibatalkan.
+            </p>
+            <div>
+              <label className="text-xs text-muted font-bold block mb-1">Alasan Pembatalan (Wajib)</label>
+              <textarea
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+                placeholder="Ketikan alasan minimal 5 karakter..."
+                className="w-full rounded-xl bg-background border border-border p-3 text-sm outline-none focus:border-status-red"
+                rows={3}
+              />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button disabled={voidSubmitting} onClick={() => setVoidOrder(null)} className="flex-1 py-2 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary transition-colors cursor-pointer disabled:opacity-50">Batal</button>
+              <button 
+                disabled={voidSubmitting || voidReason.trim().length < 5} 
+                onClick={async () => {
+                  setVoidSubmitting(true);
+                  const res = await voidRetailOrder(voidOrder.id, { reason: voidReason });
+                  setVoidSubmitting(false);
+                  if (!res.success) {
+                    toast({ type: "error", title: "Gagal", message: res.error });
+                  } else {
+                    toast({ type: "success", title: "Transaksi Dibatalkan", message: "Stok telah dikembalikan." });
+                    setVoidOrder(null);
+                    setVoidReason("");
+                    fetchHistory();
+                    loadPosData();
+                  }
+                }} 
+                className="flex-[2] py-2 rounded-xl bg-status-red hover:brightness-110 text-white text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {voidSubmitting ? "Memproses..." : "Ya, Batalkan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loadError && (
+        <div className="shrink-0 rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-3 text-sm text-status-red">
+          Gagal memuat data kasir: {loadError}
+        </div>
+      )}
+
       {activeTab === "KASIR" && (
-        <div className="flex-1 flex overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
+        <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
           {/* LEFT PANEL - PRODUCTS */}
-          <div className="flex-1 flex flex-col min-w-0 border-r border-border">
+          <div className="flex-none lg:flex-1 h-[60vh] lg:h-auto flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-border">
         {/* Top Bar */}
         <div className="p-4 border-b border-border bg-card flex gap-4 items-center shrink-0">
           <div className="relative flex-1">
@@ -351,7 +505,7 @@ export default function PosPage() {
 
         {/* Categories */}
         <div className="px-4 py-3 bg-elevated border-b border-border overflow-x-auto shrink-0 flex gap-2 no-scrollbar">
-          {CATEGORIES.map(cat => (
+          {dynamicCategories.map(cat => (
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
@@ -388,12 +542,12 @@ export default function PosPage() {
       </div>
 
       {/* RIGHT PANEL - CART */}
-      <div className="w-[380px] shrink-0 flex flex-col bg-card shadow-[-4px_0_24px_rgba(0,0,0,0.02)] z-10">
+      <div className="w-full lg:w-[380px] flex-none shrink-0 flex flex-col bg-card shadow-[0_-4px_24px_rgba(0,0,0,0.05)] lg:shadow-[-4px_0_24px_rgba(0,0,0,0.02)] z-10 min-h-[50vh] lg:min-h-0">
         {/* Customer Info */}
         <div className="p-4 border-b border-border shrink-0">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-bold text-lg flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5 text-status-yellow" />
+              <ShoppingCart className="h-5 w-5 text-status-yellow-text" />
               Keranjang
             </h2>
             <button 
@@ -459,16 +613,16 @@ export default function PosPage() {
             </div>
             <div className="flex justify-between items-end mt-2 pt-2 border-t border-border border-dashed">
               <span className="font-bold">Total</span>
-              <span className="font-mono text-2xl font-bold text-status-yellow">{formatRupiah(total)}</span>
+              <span className="font-mono text-2xl font-bold text-status-yellow-text">{formatRupiah(total)}</span>
             </div>
           </div>
           
-          <button 
-            disabled={cart.length === 0}
+          <button
+            disabled={cart.length === 0 || submitting}
             onClick={() => setShowPaymentModal(true)}
             className="w-full h-14 bg-accent-teal hover:brightness-110 text-white rounded-xl font-bold text-lg shadow-lg shadow-accent-teal/20 transition-all disabled:opacity-50 disabled:grayscale-[0.5] disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
           >
-            Bayar <span className="opacity-80">({cart.length} item)</span>
+            {submitting ? "Memproses..." : <>Bayar <span className="opacity-80">({cart.length} item)</span></>}
           </button>
         </div>
         </div>
@@ -478,24 +632,47 @@ export default function PosPage() {
       {activeTab === "HISTORY" && (
         <div className="flex-1 bg-card border border-border rounded-2xl p-6 shadow-lg overflow-y-auto">
           <h2 className="text-xl font-bold text-primary mb-4 flex items-center gap-2"><ClipboardList className="h-5 w-5 text-accent-teal"/> Riwayat Transaksi Retail</h2>
-          <div className="bg-elevated rounded-xl border border-border overflow-hidden">
-             <div className="grid grid-cols-5 text-xs font-bold text-muted p-4 border-b border-border bg-background">
+          <div className="bg-elevated rounded-xl border border-border overflow-x-auto">
+             <div className="grid grid-cols-6 min-w-[700px] text-xs font-bold text-muted p-4 border-b border-border bg-background">
                <div>WAKTU</div>
                <div>NO. REF</div>
                <div>PELANGGAN</div>
                <div>METODE</div>
                <div className="text-right">TOTAL</div>
+               <div className="text-right pr-2">AKSI</div>
              </div>
-             <div className="p-8 text-center text-muted text-sm">
-                Riwayat transaksi sedang kosong.
-             </div>
+             {loadingHistory ? (
+               <div className="p-8 text-center text-muted text-sm">Memuat riwayat...</div>
+             ) : history.length === 0 ? (
+               <div className="p-8 text-center text-muted text-sm">Riwayat transaksi sedang kosong.</div>
+             ) : (
+               <div className="divide-y divide-border min-w-[700px]">
+                 {history.map((h) => (
+                   <div key={h.id} className="grid grid-cols-6 text-sm p-4 hover:bg-elevated transition-colors items-center group">
+                     <div className="text-muted">{new Date(h.createdAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}</div>
+                     <div className="font-mono text-primary font-bold">{h.orderCode}</div>
+                     <div className="truncate pr-4">{h.customerName}</div>
+                     <div><span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-muted/10">{h.method}</span></div>
+                     <div className="text-right font-mono font-bold text-status-yellow-text">{formatRupiah(h.total)}</div>
+                     <div className="text-right flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                       <button onClick={() => window.open(`/print/nota/${encodeURIComponent(h.orderCode)}`, "_blank")} className="px-2 py-1 bg-accent-teal/10 text-accent-teal rounded hover:bg-accent-teal hover:text-white transition-colors cursor-pointer text-xs font-bold" title="Cetak Nota">
+                         Cetak
+                       </button>
+                       <button onClick={() => setVoidOrder(h)} className="px-2 py-1 bg-status-red/10 text-status-red rounded hover:bg-status-red hover:text-white transition-colors cursor-pointer text-xs font-bold" title="Batalkan Transaksi">
+                         Void
+                       </button>
+                     </div>
+                   </div>
+                 ))}
+               </div>
+             )}
           </div>
         </div>
       )}
 
       {activeTab === "STOCK" && (
         <div className="flex-1 bg-card border border-border rounded-2xl p-6 shadow-lg overflow-y-auto">
-          <h2 className="text-xl font-bold text-primary mb-4 flex items-center gap-2"><Package className="h-5 w-5 text-status-yellow"/> Manajemen Stok Retail</h2>
+          <h2 className="text-xl font-bold text-primary mb-4 flex items-center gap-2"><Package className="h-5 w-5 text-status-yellow-text"/> Informasi Stok Retail</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {retailProducts.map(p => (
               <div key={p.id} className="bg-elevated p-4 rounded-xl border border-border flex items-center justify-between">

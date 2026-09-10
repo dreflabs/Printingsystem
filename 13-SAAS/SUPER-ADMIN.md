@@ -7,7 +7,7 @@ Aplikasi Print Pilot akan memiliki dua sisi yang terpisah secara logika dan doma
 2. Sisi Super Admin (`printpilot.id/superadmin` atau `admin.printpilot.id`) — Digunakan oleh kita (pembuat/pengelola SaaS).
 
 ## 1. Akses Super Admin
-- Super Admin login di domain utama, wajib MFA (lihat `03-ROLES/SUPER-ADMIN.md`).
+- Super Admin login di domain utama dengan email + password (tanpa MFA/OTP — lihat `03-ROLES/SUPER-ADMIN.md`).
 - Akun mereka tersimpan di tabel khusus `super_admins` yang terpisah dari tabel `users` milik tenant. Tujuannya untuk mencegah eskalasi *privilege* jika ada celah keamanan di sisi tenant.
 - Setiap akun punya sub-level (`SUPER_ADMIN` / `SUPPORT` / `FINANCE`) yang membatasi fitur mana saja di bawah ini yang bisa diakses — lihat `03-ROLES/SUPER-ADMIN.md` untuk matriks lengkapnya. Fitur-fitur di bawah ini ditulis dari sudut pandang sub-level `SUPER_ADMIN` (akses penuh); sub-level lain punya batasan.
 

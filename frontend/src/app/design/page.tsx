@@ -40,7 +40,7 @@ export default function DesignSystemPage() {
 
         {/* Header */}
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-teal to-blue-500">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-accent-teal to-accent-teal/70">
             <Printer className="h-6 w-6 text-white" />
           </div>
           <div>

@@ -30,3 +30,6 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Generated doc bundle (regenerate with: python3 combine_docs.py)
+ALL_DOCS_COMBINED.md

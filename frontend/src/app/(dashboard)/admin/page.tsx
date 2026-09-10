@@ -1,660 +1,848 @@
 "use client";
 
-import { useState } from "react";
-import { StatusPill } from "@/components/ui";
+import { useState, useEffect, useCallback } from "react";
+import { StatusPill , ErrorState} from "@/components/ui";
 import { NewOrderModal } from "@/components/orders/NewOrderModal";
-import { OrderDetailModal } from "@/components/orders/OrderDetailModal";
-import { PaymentModal } from "@/components/orders/PaymentModal";
-import { useWorkflowStore, Order, OrderStatus } from "@/store/useWorkflowStore";
 import {
-  ShoppingCart, Clock, Package, AlertTriangle, MessageSquareX,
-  BadgePercent, Plus, ArrowRight, ScanLine, TrendingUp,
-  MessageCircleCheck, CheckCircle2, XCircle, ClipboardCheck, X,
-  Settings
+  ShoppingCart, Package, AlertTriangle, Plus, ArrowRight, ScanLine, TrendingUp,
+  CheckCircle2, ClipboardCheck, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RoleGuide } from "@/components/dashboard/RoleGuide";
+import { PageHeader } from "@/components/dashboard/PageHeader";
+import { getOrders, getOrderDetail } from "@/actions/queries";
+import { addPayment } from "@/actions/orders";
+import { assignProductionJob, getProductionAssignData } from "@/actions/design";
+import { releaseOrderToProduction } from "@/actions/production";
+import { submitFinalAudit, getFinalAuditChecks, type AuditCheck } from "@/actions/audit";
+import { getSessionUser } from "@/actions/session";
+import { freezeOrder, unfreezeOrder } from "@/actions/hold";
 
-function deadlineClass(deadline: string, overdue: boolean) {
-  if (overdue) return "text-status-red font-bold";
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const d = new Date(deadline);
-  if (d.toDateString() === tomorrow.toDateString()) return "text-status-yellow font-semibold";
-  return "text-muted";
-}
+const FREEZE_BLOCKED = ["CLOSED", "CANCELLED", "PICKED_UP", "ON_HOLD"];
+// Status di mana order sudah tidak perlu / tidak bisa di-assign ke produksi.
+const ASSIGN_BLOCKED = ["DRAFT", "CANCELLED", "CLOSED", "PICKED_UP", "ON_HOLD"];
 
-function payStatusLabel(o: Order) {
-  const total = Number(o.totalPrice);
-  const dp = Number(o.dpAmount);
-  if (dp >= total) return { label: "Lunas", color: "text-status-green font-medium" };
-  if (dp > 0) return { label: "DP Terpenuhi", color: "text-status-yellow font-medium" };
-  return { label: "Belum DP", color: "text-status-yellow font-medium" };
-}
+type OrderRow = {
+  id: string; orderCode: string; type: string; customerName: string; status: string;
+  total: number; paidAmount: number; balance: number; deadline: string | Date | null;
+  createdAt: string | Date; overdue: boolean; itemCount: number;
+};
+type Detail = Extract<Awaited<ReturnType<typeof getOrderDetail>>, { success: true }>["data"];
 
-const fmt = (n: number) => n.toLocaleString("id-ID");
 const fmtRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—");
 
-// ── Final Audit Checklist Modal ────────────────────────────────────────────────
+/** Progres mini per job produksi (antri → cetak → selesai → diambil). */
+function JobProgress({ status }: { status: string }) {
+  const step =
+    ["PRODUCTION_QUEUED", "PRODUCTION_ASSIGNED"].includes(status) ? 1 :
+    ["PRODUCTION_STARTED", "PRODUCTION_PAUSED"].includes(status) ? 2 :
+    status === "PRODUCTION_COMPLETE" ? 3 :
+    status === "PICKED_UP" ? 4 : 0;
+  if (status === "FAILED_REWORK") return <div className="h-1 rounded-full bg-status-red/50" />;
+  return (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4].map((n) => (
+        <div key={n} className={cn("h-1 flex-1 rounded-full", n <= step ? "bg-accent-teal" : "bg-border")} />
+      ))}
+    </div>
+  );
+}
+
+// ── Detail Modal ─────────────────────────────────────────────────────────────
+function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
+  orderId: string; isOwner: boolean; onClose: () => void; onBayar: () => void; onChanged: () => void;
+}) {
+  const [d, setD] = useState<Detail | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [freezeMode, setFreezeMode] = useState(false);
+  const [freezeReason, setFreezeReason] = useState("");
+  const [holdBusy, setHoldBusy] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [releaseBusy, setReleaseBusy] = useState(false);
+  const reload = () => getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
+  useEffect(() => {
+    getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
+  }, [orderId]);
+
+  const designApproved = !!d?.designJobs.some((j) => j.status === "APPROVED");
+  const dpMet = !!d && d.paidAmount + 1e-6 >= d.dpRequired;
+  const discountOk = !!d && (d.discount <= 0 || d.discountApproved);
+  const canAssign = !!d && d.productionJobs.length === 0 && !ASSIGN_BLOCKED.includes(d.status);
+  // Tertahan gatekeeper "wajib rilis Admin" — data sudah lengkap, tinggal dilepas.
+  const awaitingRelease = !!d && d.autoReleaseBlocked === "AWAITING_ADMIN_RELEASE";
+  const assignBlockedReason = !designApproved
+    ? "Desain belum disetujui."
+    : !discountOk
+      ? "Diskon masih menunggu keputusan Owner."
+      : !dpMet
+        ? "DP belum terpenuhi."
+        : (d?.readyMissing?.length ? d.readyMissing.join(" · ") : null);
+  const defaultQty = d ? d.items.reduce((s, it) => s + (it.quantity || 0), 0) : 0;
+
+  async function doRelease() {
+    setReleaseBusy(true);
+    const res = await releaseOrderToProduction(orderId);
+    setReleaseBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    await reload();
+    onChanged();
+  }
+
+  async function doFreeze() {
+    setHoldBusy(true); setErr(null);
+    const res = await freezeOrder(orderId, freezeReason);
+    setHoldBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    onChanged(); onClose();
+  }
+  async function doUnfreeze() {
+    setHoldBusy(true); setErr(null);
+    const res = await unfreezeOrder(orderId);
+    setHoldBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    onChanged(); onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-5 border-b border-border shrink-0">
+          <h3 className="text-base font-bold text-primary">Detail Order {d?.orderCode ?? ""}</h3>
+          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 text-sm">
+          {err && <p className="text-status-red text-xs">{err}</p>}
+          {!d && !err && <p className="text-muted text-xs">Memuat…</p>}
+          {d && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-elevated/50 p-4 rounded-xl text-xs">
+                <div><p className="text-muted text-[10px] uppercase">Konsumen</p><p className="font-semibold text-primary">{d.customer?.name ?? "-"}</p></div>
+                <div><p className="text-muted text-[10px] uppercase">Tipe</p><p className="font-semibold text-primary">{d.type}</p></div>
+                <div><p className="text-muted text-[10px] uppercase">Status</p><StatusPill status={d.status} /></div>
+                <div><p className="text-muted text-[10px] uppercase">Deadline</p><p className="font-semibold text-primary">{fmtDate(d.deadline)}</p></div>
+                <div><p className="text-muted text-[10px] uppercase">Dibuat oleh</p><p className="font-semibold text-primary">{d.createdBy}</p></div>
+                <div><p className="text-muted text-[10px] uppercase">Designer</p><p className="font-semibold text-primary">{d.designer ?? "-"}</p></div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-primary mb-2">Item ({d.items.length})</p>
+                <div className="border border-border rounded-xl divide-y divide-border/60 text-xs">
+                  {d.items.map((it, i) => (
+                    <div key={i} className="flex justify-between px-3 py-2">
+                      <span className="text-primary">
+                        {it.name} · {it.quantity} pcs {it.size ? `· ${it.size}` : ""}
+                        {it.deadline && (
+                          <span className="ml-1 text-[10px] font-bold text-status-yellow-text">· ⏱ {fmtDate(it.deadline)}</span>
+                        )}
+                      </span>
+                      <span className="font-mono text-muted">{fmtRp(it.totalPrice)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="bg-elevated/50 p-3 rounded-xl">
+                  <p className="text-muted text-[10px] uppercase">Total / DP wajib</p>
+                  <p className="font-mono font-bold text-primary">{fmtRp(d.total)} / {fmtRp(d.dpRequired)}</p>
+                </div>
+                <div className="bg-elevated/50 p-3 rounded-xl">
+                  <p className="text-muted text-[10px] uppercase">Dibayar / Sisa</p>
+                  <p className={cn("font-mono font-bold", d.balance > 0 ? "text-status-yellow-text" : "text-status-green")}>
+                    {fmtRp(d.paidAmount)} / {d.balance > 0 ? fmtRp(d.balance) : "Lunas"}
+                  </p>
+                </div>
+              </div>
+
+              {d.payments.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-primary mb-2">Pembayaran</p>
+                  <div className="border border-border rounded-xl divide-y divide-border/60 text-xs">
+                    {d.payments.map((p, i) => (
+                      <div key={p.id ?? i} className="flex items-center justify-between px-3 py-2 gap-2">
+                        <span className="text-muted truncate">{p.method} · {p.status} · {p.receivedBy}</span>
+                        <span className="font-mono text-primary shrink-0">{fmtRp(p.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {d.productionJobs.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-primary mb-2">Progres Produksi per Item</p>
+                  <div className="border border-border rounded-xl divide-y divide-border/60">
+                    {d.productionJobs.map((j) => (
+                      <div key={j.jobCode} className="px-3 py-2.5 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-xs text-accent-teal">{j.jobCode}</span>
+                          <StatusPill status={j.status} />
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-muted">
+                          <span>{j.machine} · {j.operator}</span>
+                          <span>
+                            {j.actualQty}/{j.plannedQty} pcs
+                            {j.deadline && <span className="font-bold text-status-yellow-text"> · ⏱ {fmtDate(j.deadline)}</span>}
+                          </span>
+                        </div>
+                        <JobProgress status={j.status} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        {isOwner && d && freezeMode && (
+          <div className="px-5 pb-3 pt-4 border-t border-border shrink-0 space-y-2">
+            <label className="text-[11px] font-bold text-primary uppercase">Alasan pembekuan</label>
+            <textarea value={freezeReason} onChange={(e) => setFreezeReason(e.target.value)} rows={2} autoFocus
+              placeholder="mis. sengketa pembayaran / menunggu revisi brief dari konsumen"
+              className="w-full rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none" />
+          </div>
+        )}
+        <div className="flex flex-wrap gap-3 p-5 border-t border-border shrink-0">
+          <button onClick={onClose} className="flex-1 min-w-[120px] h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary">Tutup</button>
+          {d && (
+            <button
+              onClick={() => window.open(`/print/nota/${orderId}`, "_blank", "noopener")}
+              className="flex-1 min-w-[130px] h-11 rounded-xl bg-elevated border border-border text-sm font-bold text-primary hover:bg-elevated/70"
+            >
+              Cetak Nota
+            </button>
+          )}
+          {d && d.balance > 0 && (
+            <button onClick={onBayar} className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-yellow text-black text-sm font-bold hover:brightness-105">Catat Pembayaran</button>
+          )}
+          {canAssign && !freezeMode && awaitingRelease && (
+            <div className="flex-1 min-w-[160px]">
+              <button
+                onClick={doRelease}
+                disabled={releaseBusy}
+                title="Lepas order ini ke antrean operator (mesin & operator dari default katalog)"
+                className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"
+              >
+                {releaseBusy ? "Merilis…" : "Rilis ke Produksi"}
+              </button>
+              <p className="text-[10px] text-muted mt-1 text-center">Data lengkap — menunggu rilis Admin.</p>
+            </div>
+          )}
+          {canAssign && !freezeMode && !awaitingRelease && (
+            <div className="flex-1 min-w-[160px]">
+              <button
+                onClick={() => setAssignOpen(true)}
+                disabled={!!assignBlockedReason}
+                title={assignBlockedReason ?? "Kirim order ini ke antrian produksi"}
+                className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"
+              >
+                Assign ke Produksi
+              </button>
+              {assignBlockedReason && <p className="text-[10px] text-muted mt-1 text-center">{assignBlockedReason}</p>}
+            </div>
+          )}
+          {isOwner && d && d.status === "ON_HOLD" && (
+            <button onClick={doUnfreeze} disabled={holdBusy}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-green text-white text-sm font-bold hover:brightness-110 disabled:opacity-50">
+              {holdBusy ? "Memproses…" : "Cairkan Order"}
+            </button>
+          )}
+          {isOwner && d && !FREEZE_BLOCKED.includes(d.status) && !freezeMode && (
+            <button onClick={() => setFreezeMode(true)}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-red/10 border border-status-red/30 text-status-red text-sm font-bold hover:bg-status-red/20">
+              Bekukan Order
+            </button>
+          )}
+          {isOwner && d && freezeMode && (
+            <button onClick={doFreeze} disabled={holdBusy || !freezeReason.trim()}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-red text-white text-sm font-bold hover:brightness-110 disabled:opacity-50">
+              {holdBusy ? "Memproses…" : "Konfirmasi Bekukan"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {assignOpen && d && (
+        <AssignProductionModal
+          orderId={orderId}
+          orderCode={d.orderCode}
+          defaultQty={defaultQty}
+          onClose={() => setAssignOpen(false)}
+          onDone={async () => { setAssignOpen(false); await reload(); onChanged(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Assign ke Produksi ───────────────────────────────────────────────────────
+function AssignProductionModal({
+  orderId, orderCode, defaultQty, onClose, onDone,
+}: {
+  orderId: string; orderCode: string; defaultQty: number; onClose: () => void; onDone: () => void;
+}) {
+  const [machines, setMachines] = useState<{ id: string; name: string; category: string }[]>([]);
+  const [operators, setOperators] = useState<{ id: string; name: string }[]>([]);
+  const [machineId, setMachineId] = useState("");
+  const [operatorId, setOperatorId] = useState("");
+  const [qty, setQty] = useState(String(defaultQty || ""));
+  const [priority, setPriority] = useState("1");
+  const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    getProductionAssignData().then((r) => {
+      setLoading(false);
+      if (!r.success) { setErr(r.error); return; }
+      setMachines(r.data.machines);
+      setOperators(r.data.operators);
+    });
+  }, []);
+
+  async function submit() {
+    setBusy(true); setErr(null);
+    const res = await assignProductionJob(orderId, {
+      assignments: [{
+        machineId,
+        operatorId,
+        plannedQty: Math.max(1, Number(qty) || 0),
+        priority: Number(priority) || 1,
+        notes: notes.trim() || undefined,
+      }],
+    });
+    setBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    onDone();
+  }
+
+  const inp = "w-full h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal";
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="flex justify-between items-center border-b border-border pb-3">
+          <div>
+            <h3 className="text-base font-bold text-primary">Assign ke Produksi</h3>
+            <p className="text-xs text-muted font-mono">{orderCode}</p>
+          </div>
+          <button onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary disabled:opacity-40"><X className="h-5 w-5" /></button>
+        </div>
+
+        {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
+
+        {loading ? (
+          <p className="text-xs text-muted">Memuat mesin & operator…</p>
+        ) : machines.length === 0 || operators.length === 0 ? (
+          <p className="text-xs text-status-red">
+            {machines.length === 0 ? "Belum ada mesin ACTIVE." : "Belum ada pegawai dengan role Operator."} Tambahkan dulu di Katalog / Akun Pegawai.
+          </p>
+        ) : (
+          <>
+            <div>
+              <label className="text-xs text-muted font-medium mb-1 block">Mesin *</label>
+              <select value={machineId} onChange={(e) => setMachineId(e.target.value)} className={inp}>
+                <option value="">— pilih mesin —</option>
+                {machines.map((m) => <option key={m.id} value={m.id}>{m.name} · {m.category}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted font-medium mb-1 block">Operator *</label>
+              <select value={operatorId} onChange={(e) => setOperatorId(e.target.value)} className={inp}>
+                <option value="">— pilih operator —</option>
+                {operators.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted font-medium mb-1 block">Qty rencana</label>
+                <input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs text-muted font-medium mb-1 block">Prioritas</label>
+                <select value={priority} onChange={(e) => setPriority(e.target.value)} className={inp}>
+                  <option value="1">Normal</option>
+                  <option value="2">Tinggi</option>
+                  <option value="3">Mendesak</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted font-medium mb-1 block">Catatan (opsional)</label>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+                className="w-full rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none" />
+            </div>
+            <button
+              onClick={submit}
+              disabled={busy || !machineId || !operatorId || Number(qty) < 1}
+              className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"
+            >
+              {busy ? "Memproses…" : "Kirim ke Produksi"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Payment Modal ────────────────────────────────────────────────────────────
+function PaymentModal({ order, onClose, onDone }: { order: OrderRow; onClose: () => void; onDone: () => void }) {
+  const [amount, setAmount] = useState(String(order.balance));
+  const [method, setMethod] = useState<"CASH" | "TRANSFER" | "QRIS">("TRANSFER");
+  const [reference, setReference] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<{ balance: number; dpMet: boolean; fullyPaid: boolean } | null>(null);
+
+  async function submit() {
+    setBusy(true); setErr(null);
+    const res = await addPayment(order.id, { amount: Number(amount), method, reference: reference.trim() || undefined });
+    setBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    setDone({ balance: res.data.balance, dpMet: res.data.dpMet, fullyPaid: res.data.fullyPaid });
+  }
+  const inp = "w-full h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={done ? onDone : onClose} />
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="flex justify-between items-center border-b border-border pb-3">
+          <div><h3 className="text-base font-bold text-primary">{done ? "Pembayaran Tercatat" : "Catat Pembayaran"}</h3><p className="text-xs text-muted font-mono">{order.orderCode}</p></div>
+          <button onClick={done ? onDone : onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
+        </div>
+
+        {done ? (
+          <div className="space-y-3">
+            <div className="rounded-xl bg-status-green/10 border border-status-green/30 px-3 py-2.5 text-xs text-status-green">
+              {fmtRp(Number(amount))} tercatat.{" "}
+              {done.fullyPaid ? "Order LUNAS." : `Sisa tagihan ${fmtRp(done.balance)}.`}
+              {!done.fullyPaid && (done.dpMet ? " DP terpenuhi." : " DP belum terpenuhi.")}
+            </div>
+            <button
+              onClick={() => window.open(`/print/nota/${order.id}`, "_blank", "noopener")}
+              className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110"
+            >
+              Cetak Nota{done.fullyPaid ? "" : " / Bukti DP"}
+            </button>
+            <button onClick={onDone} className="w-full h-10 rounded-xl text-sm font-bold text-muted hover:text-primary">
+              Selesai
+            </button>
+          </div>
+        ) : (
+          <>
+            {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
+            <p className="text-xs text-muted">Sisa tagihan: <span className="font-bold text-status-yellow-text">{fmtRp(order.balance)}</span></p>
+            <div><label className="text-xs text-muted mb-1 block">Jumlah</label><input type="number" className={inp} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+            <div><label className="text-xs text-muted mb-1 block">Metode</label>
+              <select className={inp} value={method} onChange={(e) => setMethod(e.target.value as "CASH" | "TRANSFER" | "QRIS")}>
+                <option value="CASH">Tunai</option><option value="TRANSFER">Transfer</option><option value="QRIS">QRIS</option>
+              </select>
+            </div>
+            <div><label className="text-xs text-muted mb-1 block">No. Referensi (opsional)</label><input className={inp} value={reference} onChange={(e) => setReference(e.target.value)} /></div>
+            <button disabled={busy || !(Number(amount) > 0)} onClick={submit}
+              className="w-full h-11 rounded-xl bg-status-green text-white text-sm font-bold hover:brightness-110 disabled:opacity-40">
+              Konfirmasi Pembayaran
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Final Audit Modal ────────────────────────────────────────────────────────
 const AUDIT_ITEMS = [
-  { id: "FINANCE", label: "Keuangan (DP & Pelunasan)" },
-  { id: "MATERIAL", label: "Material (Pemakaian sesuai order)" },
-  { id: "QUANTITY", label: "Jumlah (Qty aktual vs planned)" },
-  { id: "PRODUCTION", label: "Produksi (Semua job selesai)" },
-  { id: "QC", label: "QC (Hasil PASS tanpa defect terbuka)" },
-  { id: "FINISHING", label: "Finishing (Laminasi / Potong / dst. selesai)" },
-  { id: "STORAGE", label: "Penyimpanan (Barang di lokasi storage)" },
-  { id: "PICKUP", label: "Pickup (Identitas & payment terverifikasi)" },
-];
+  { id: "financial", label: "Keuangan (DP & Pelunasan)" },
+  { id: "material", label: "Material (Pemakaian sesuai order)" },
+  { id: "quantity", label: "Jumlah (aktual vs rencana)" },
+  { id: "production", label: "Produksi (Semua job selesai)" },
+  { id: "storage", label: "Penyimpanan & Pickup" },
+] as const;
 
-function FinalAuditModal({ orderId, onClose }: { orderId: string; onClose: () => void }) {
-  const [auditResult, setAuditResult] = useState<Record<string, "PASS" | "FAIL" | "">>({});
-  const [submitted, setSubmitted] = useState(false);
+const SEV_STYLE: Record<string, string> = {
+  OK: "bg-status-green/10 text-status-green border-status-green/30",
+  WARN: "bg-status-yellow/10 text-status-yellow-text border-status-yellow/30",
+  CRIT: "bg-status-red/10 text-status-red border-status-red/30",
+};
+const SEV_ICON: Record<string, string> = { OK: "✅", WARN: "⚠️", CRIT: "⛔" };
 
-  const setItem = (id: string, val: "PASS" | "FAIL") =>
-    setAuditResult((prev) => ({ ...prev, [id]: val }));
+function FinalAuditModal({ order, onClose, onDone }: { order: OrderRow; onClose: () => void; onDone: () => void }) {
+  const [checks, setChecks] = useState<AuditCheck[] | null>(null);
+  const [r, setR] = useState<Record<string, "PASS" | "FAIL">>({});
+  const [notes, setNotes] = useState("");
+  const [forceRed, setForceRed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
-  const allChecked = AUDIT_ITEMS.every((item) => auditResult[item.id]);
-  const hasFail = Object.values(auditResult).includes("FAIL");
+  useEffect(() => {
+    let alive = true;
+    getFinalAuditChecks(order.id).then((res) => {
+      if (!alive) return;
+      if (!res.success) { setErr(res.error); setChecks([]); return; }
+      setChecks(res.data.checks);
+      // Pra-isi PASS/FAIL dari hasil rekonsiliasi: OK → PASS, selain itu FAIL.
+      const init: Record<string, "PASS" | "FAIL"> = {};
+      for (const i of AUDIT_ITEMS) {
+        const worst = res.data.checks.filter((c) => c.area === i.id);
+        init[i.id] = worst.some((c) => c.severity !== "OK") ? "FAIL" : "PASS";
+      }
+      setR(init);
+    });
+    return () => { alive = false; };
+  }, [order.id]);
 
-  const finalResult = !allChecked ? null : hasFail ? "YELLOW" : "GREEN";
+  const hasCritical = (checks ?? []).some((c) => c.severity === "CRIT");
+  const allChecked = AUDIT_ITEMS.every((i) => r[i.id]);
+  const hasFail = Object.values(r).includes("FAIL");
+  // CRIT di data → tidak boleh GREEN. RED kalau auditor menandai eksplisit.
+  const result: "GREEN" | "YELLOW" | "RED" = forceRed ? "RED" : hasCritical || hasFail ? "YELLOW" : "GREEN";
+  const needNotes = result !== "GREEN";
+  const notesOk = !needNotes || notes.trim().length >= 10;
 
-  const handleSubmit = () => setSubmitted(true);
+  async function submit() {
+    setBusy(true); setErr(null);
+    const s = (k: string) => (r[k] === "FAIL" ? "WARNING" : "OK");
+    const res = await submitFinalAudit(order.id, {
+      result,
+      financialStatus: s("financial"),
+      materialStatus: s("material"),
+      quantityStatus: s("quantity"),
+      productionStatus: s("production"),
+      storageStatus: s("storage"),
+      notes: notes.trim() || undefined,
+      items: (checks ?? [])
+        .filter((c) => c.severity !== "OK")
+        .map((c) => ({
+          category: c.area.toUpperCase(),
+          severity: c.severity === "CRIT" ? ("CRITICAL" as const) : ("WARNING" as const),
+          expectedValue: c.expected,
+          actualValue: c.actual,
+          status: "FAIL",
+          note: c.detail,
+        })),
+    });
+    setBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    onDone();
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-md bg-card border border-border rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-5 border-b border-border shrink-0">
-          <div>
-            <h3 className="text-base font-bold text-primary flex items-center gap-2">
-              <ClipboardCheck className="h-5 w-5 text-accent-teal" /> Final Audit Order
-            </h3>
-            <p className="text-xs text-muted mt-0.5 font-mono">{orderId}</p>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated cursor-pointer">
-            <X className="h-5 w-5" />
+          <h3 className="text-base font-bold text-primary flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-accent-teal" /> Final Audit · {order.orderCode}</h3>
+          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-2">
+          {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
+          {checks === null ? (
+            <p className="text-xs text-muted py-6 text-center">Memeriksa data order…</p>
+          ) : (
+            <>
+              <p className="text-xs text-muted mb-2">
+                Sistem sudah merekonsiliasi 5 area di bawah. Nilai bisa diubah manual;
+                {" "}<b>⛔ kritis di area mana pun → tidak bisa GREEN</b>.
+              </p>
+              {AUDIT_ITEMS.map((item) => {
+                const areaChecks = (checks ?? []).filter((c) => c.area === item.id);
+                return (
+                  <div key={item.id} className="p-3 bg-elevated rounded-xl border border-border space-y-2">
+                    <p className="text-xs font-semibold text-primary">{item.label}</p>
+                    {areaChecks.map((c, i) => (
+                      <div key={i} className={cn("rounded-lg border px-2 py-1.5 text-[11px]", SEV_STYLE[c.severity])}>
+                        <div className="font-bold">{SEV_ICON[c.severity]} {c.detail}</div>
+                        <div className="opacity-80">harusnya {c.expected} · aktual {c.actual}</div>
+                      </div>
+                    ))}
+                    <div className="flex gap-2">
+                      <button onClick={() => setR((p) => ({ ...p, [item.id]: "PASS" }))}
+                        className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold border", r[item.id] === "PASS" ? "bg-status-green text-white border-status-green" : "bg-card text-muted border-border")}>✅ PASS</button>
+                      <button onClick={() => setR((p) => ({ ...p, [item.id]: "FAIL" }))}
+                        className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold border", r[item.id] === "FAIL" ? "bg-status-red text-white border-status-red" : "bg-card text-muted border-border")}>❌ FAIL</button>
+                    </div>
+                  </div>
+                );
+              })}
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+                placeholder={needNotes ? "Catatan audit — wajib min. 10 karakter (jelaskan temuan / tindak lanjut)" : "Catatan audit (opsional)"}
+                className="w-full rounded-xl bg-elevated border border-border text-sm text-primary p-3 outline-none focus:border-accent-teal resize-none" />
+              <label className="flex items-center gap-2 text-[11px] text-muted">
+                <input type="checkbox" checked={forceRed} onChange={(e) => setForceRed(e.target.checked)} />
+                Tandai <b className="text-status-red">RED</b> — blokir penutupan, wajib investigasi Owner
+              </label>
+              {allChecked && (
+                <div className={cn("p-2 rounded-xl text-center text-sm font-bold border",
+                  result === "GREEN" ? "bg-status-green/10 text-status-green border-status-green/30"
+                  : result === "YELLOW" ? "bg-status-yellow/10 text-status-yellow-text border-status-yellow/30"
+                  : "bg-status-red/10 text-status-red border-status-red/30")}>
+                  {result === "GREEN" ? "🟢 GREEN — akan CLOSED"
+                    : result === "YELLOW" ? "🟡 YELLOW — butuh approval Owner"
+                    : "🔴 RED — order ditahan (ON_HOLD)"}
+                  {hasCritical && result !== "RED" && <div className="text-[10px] font-normal mt-0.5">GREEN dikunci karena ada temuan kritis.</div>}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <div className="flex gap-3 p-5 border-t border-border shrink-0">
+          <button onClick={onClose} className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary">Batal</button>
+          <button disabled={!allChecked || busy || !notesOk || checks === null} onClick={submit}
+            className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40">
+            Submit Audit
           </button>
         </div>
-
-        {!submitted ? (
-          <>
-            <div className="flex-1 overflow-y-auto p-5 space-y-2">
-              <p className="text-xs text-muted font-medium mb-3">
-                Nilai setiap aspek. Jika semua PASS → GREEN (CLOSED). Ada FAIL → YELLOW (butuh approval Owner). RED = anomali kritis.
-              </p>
-              {AUDIT_ITEMS.map((item) => (
-                <div key={item.id} className="p-3 bg-elevated rounded-xl border border-border">
-                  <p className="text-xs font-semibold text-primary mb-2">{item.id}: {item.label}</p>
-                  <div className="flex gap-2">
-                    <button onClick={() => setItem(item.id, "PASS")}
-                      className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border",
-                        auditResult[item.id] === "PASS" ? "bg-status-green text-white border-status-green" : "bg-card text-muted border-border hover:text-primary"
-                      )}>✅ PASS</button>
-                    <button onClick={() => setItem(item.id, "FAIL")}
-                      className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border",
-                        auditResult[item.id] === "FAIL" ? "bg-status-red text-white border-status-red" : "bg-card text-muted border-border hover:text-primary"
-                      )}>❌ FAIL</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {finalResult && (
-              <div className={cn("mx-5 mb-2 p-3 rounded-xl text-center text-sm font-bold border",
-                finalResult === "GREEN"
-                  ? "bg-status-green/10 text-status-green border-status-green/30"
-                  : "bg-status-yellow/10 text-status-yellow border-status-yellow/30"
-              )}>
-                {finalResult === "GREEN" ? "🟢 Hasil: GREEN — Siap CLOSED" : "🟡 Hasil: YELLOW — Butuh Approval Owner"}
-              </div>
-            )}
-
-            <div className="flex gap-3 p-5 border-t border-border shrink-0">
-              <button onClick={onClose} className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary cursor-pointer">
-                Batal
-              </button>
-              <button
-                disabled={!allChecked}
-                onClick={handleSubmit}
-                className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:bg-blue-700 transition-all cursor-pointer disabled:opacity-40"
-              >
-                Submit Audit
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="p-8 text-center space-y-4">
-            <div className={cn("h-16 w-16 rounded-full flex items-center justify-center mx-auto text-2xl",
-              finalResult === "GREEN" ? "bg-status-green/10 text-status-green" : "bg-status-yellow/10 text-status-yellow"
-            )}>
-              {finalResult === "GREEN" ? "🟢" : "🟡"}
-            </div>
-            <p className="text-lg font-bold text-primary">Audit Selesai</p>
-            <p className="text-sm text-muted">
-              {finalResult === "GREEN"
-                ? "Semua aspek PASS. Order dapat di-CLOSE."
-                : "Ada item FAIL. Menunggu approval Owner."}
-            </p>
-            <button onClick={onClose} className="w-full h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:bg-blue-700 cursor-pointer">
-              Selesai
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
-// ── WA Approval Modal ──────────────────────────────────────────────────────────
-function WAApprovalModal({ onClose }: { onClose: () => void }) {
-  const [confirmed, setConfirmed] = useState<"yes" | "no" | null>(null);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-xl space-y-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <h3 className="text-base font-bold text-primary flex items-center gap-2">
-              <MessageCircleCheck className="h-5 w-5 text-accent-teal" /> Konfirmasi Approval Desain Online
-            </h3>
-            <p className="text-xs text-muted mt-0.5">ORD-20260820-0023 · Budi Santoso · Online</p>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary cursor-pointer"><X className="h-4 w-4" /></button>
-        </div>
-        <div className="bg-elevated border border-border rounded-xl p-4 space-y-2 text-xs">
-          <p className="font-semibold text-primary">Preview Desain V2 telah dikirim ke konsumen via WhatsApp</p>
-          <p className="text-muted">Dikirim: Sabtu, 22 Agt 2026 · 14:30 WIB</p>
-          <p className="text-muted">Konfirmasi persetujuan dilakukan secara manual oleh Admin berdasarkan percakapan WA.</p>
-        </div>
-        {!confirmed ? (
-          <div className="space-y-3">
-            <p className="text-xs text-muted font-medium">Apakah konsumen sudah menyetujui desain ini via WhatsApp?</p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmed("no")}
-                className="flex-1 h-11 rounded-xl bg-status-yellow/10 text-status-yellow border border-status-yellow/30 text-sm font-semibold hover:bg-status-yellow/20 cursor-pointer flex items-center justify-center gap-1.5">
-                <XCircle className="h-4 w-4" /> Belum / Revisi
-              </button>
-              <button onClick={() => setConfirmed("yes")}
-                className="flex-1 h-11 rounded-xl bg-accent-teal text-white text-sm font-semibold hover:bg-blue-700 cursor-pointer flex items-center justify-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4" /> Sudah ACC
-              </button>
-            </div>
-          </div>
-        ) : confirmed === "yes" ? (
-          <div className="p-4 bg-status-green/10 border border-status-green/30 rounded-xl text-center space-y-2">
-            <CheckCircle2 className="h-8 w-8 text-status-green mx-auto" />
-            <p className="text-sm font-bold text-status-green">Desain disetujui! Order lanjut ke produksi.</p>
-            <button onClick={onClose} className="w-full h-10 rounded-xl bg-accent-teal text-white text-sm font-bold hover:bg-blue-700 cursor-pointer">
-              Tutup
-            </button>
-          </div>
-        ) : (
-          <div className="p-4 bg-status-yellow/10 border border-status-yellow/30 rounded-xl text-center space-y-2">
-            <p className="text-sm font-bold text-status-yellow">Desain dikembalikan ke Designer untuk revisi.</p>
-            <button onClick={onClose} className="w-full h-10 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary cursor-pointer">
-              Tutup
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Main Dashboard ─────────────────────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminDashboardPage() {
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [showDetail, setShowDetail] = useState(false);
-  const [showPayment, setShowPayment] = useState(false);
-  const [showFinalAudit, setShowFinalAudit] = useState(false);
-  const [auditOrderId, setAuditOrderId] = useState("");
-  const [showWAApproval, setShowWAApproval] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | "">("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [payFilter, setPayFilter] = useState("");
-  const [waAccepted, setWaAccepted] = useState(false);
+  const [detailFor, setDetailFor] = useState<OrderRow | null>(null);
+  const [payFor, setPayFor] = useState<OrderRow | null>(null);
+  const [auditFor, setAuditFor] = useState<OrderRow | null>(null);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"" | "PRINTING" | "RETAIL">("");
+  const [search, setSearch] = useState("");
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
 
-  const orders = useWorkflowStore((s) => s.orders);
-  const jobs = useWorkflowStore((s) => s.jobs);
-  const updateJobStatus = useWorkflowStore((s) => s.updateJobStatus);
-  const updateOrderStatus = useWorkflowStore((s) => s.updateOrderStatus);
-  const processPayment = useWorkflowStore((s) => s.processPayment);
+  useEffect(() => {
+    getSessionUser().then((r) => {
+      if (r.ok) setIsOwner(r.user.role === "owner" || r.user.roles.includes("owner"));
+    });
+  }, []);
+
+  // Seed filter dari query param — deep-link dari Dashboard Owner
+  // (`/admin?status=…`, `/admin?type=…`, `/admin?overdue=1`).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const s = p.get("status");
+    const t = p.get("type");
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (s) setStatusFilter(s);
+    if (t === "PRINTING" || t === "RETAIL") setTypeFilter(t);
+    if (p.get("overdue") === "1") setOverdueOnly(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
+  const load = useCallback(async () => {
+    const res = await getOrders({ limit: 200, ...(statusFilter ? { status: statusFilter } : {}), ...(typeFilter ? { type: typeFilter } : {}), ...(search ? { search } : {}) });
+    if (!res.success) { setError(res.error); return; }
+    setError(null);
+    setOrders(res.data);
+  }, [statusFilter, typeFilter, search]);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
 
   const today = new Date().toDateString();
-  const newOrdersToday = orders.filter((o) => new Date(o.createdAt).toDateString() === today).length;
-  const waitingPayment = orders.filter((o) => o.paymentStatus !== "PAID").length;
-  const readyPickup = orders.filter((o) => o.status === "READY_FOR_PICKUP").length;
-  const overdue = orders.filter((o) => o.overdue).length;
-
-  const readyJobs = jobs.filter((j) => j.status === "STORED");
-
-  const KPI_DATA = [
-    { label: "Order Baru Hari Ini", value: newOrdersToday.toString(), dot: "bg-blue-600", isUrgent: false, filter: "" as const },
-    { label: "Menunggu Bayar", value: waitingPayment.toString(), dot: "bg-amber-500", isUrgent: false, filter: "WAITING_PAYMENT" as const },
-    { label: "Siap Diambil", value: readyPickup.toString(), dot: "bg-emerald-500", isUrgent: false, filter: "READY_FOR_PICKUP" as const },
-    { label: "Overdue", value: overdue.toString(), dot: "bg-red-600 animate-pulse", isUrgent: true, filter: "OVERDUE" as const },
-    { label: "Notif WA Gagal", value: "2", dot: "bg-red-600 animate-pulse", isUrgent: true, filter: "" as const },
-    { label: "Menunggu Diskon", value: "1", dot: "bg-amber-500", isUrgent: false, filter: "" as const },
+  const kpi = [
+    { label: "Order Baru Hari Ini", value: orders.filter((o) => new Date(o.createdAt).toDateString() === today).length, filter: "", dot: "bg-status-blue" },
+    { label: "Ada Sisa Tagihan", value: orders.filter((o) => o.balance > 0 && !["CANCELLED"].includes(o.status)).length, filter: "", dot: "bg-status-yellow" },
+    { label: "Siap Diambil", value: orders.filter((o) => o.status === "READY_FOR_PICKUP").length, filter: "READY_FOR_PICKUP", dot: "bg-status-green" },
+    { label: "Overdue", value: orders.filter((o) => o.overdue).length, filter: "", dot: "bg-status-red", urgent: true },
+    { label: "Menunggu Audit", value: orders.filter((o) => o.status === "FINAL_AUDIT_PENDING").length, filter: "FINAL_AUDIT_PENDING", dot: "bg-status-yellow" },
   ];
 
-  // Filter dengan multi-parameter
-  const filteredOrders = orders.filter((o) => {
-    const matchStatus = statusFilter === "" || o.status === statusFilter;
-    const matchType = typeFilter === "" || o.orderType === typeFilter;
-    const matchPay = payFilter === "" ||
-      (payFilter === "UNPAID" && o.paymentStatus === "UNPAID") ||
-      (payFilter === "DP" && o.paymentStatus === "DP_PAID") ||
-      (payFilter === "PAID" && o.paymentStatus === "PAID");
-    const matchSearch = o.customerName.toLowerCase().includes(searchQuery.toLowerCase())
-      || o.id.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchOverdue = statusFilter === "OVERDUE" ? o.overdue : true;
-    return matchStatus && matchType && matchPay && matchSearch && matchOverdue;
-  });
-
-  const openDetail = (order: Order) => { setSelectedOrder(order); setShowDetail(true); };
-  const openPayment = (order: Order) => { setSelectedOrder(order); setShowPayment(true); };
-
-  const handlePaymentSuccess = (amount: number, method: string) => {
-    if (selectedOrder) processPayment(selectedOrder.id, amount, method);
-    setShowPayment(false);
-  };
-
-  const openFinalAudit = (orderId: string) => {
-    setAuditOrderId(orderId);
-    setShowFinalAudit(true);
-  };
-
-  const hasUrgentItems = overdue > 0 || true; // 2 WA fail mock
+  const readyPickup = orders.filter((o) => o.status === "READY_FOR_PICKUP");
+  const awaitingAudit = orders.filter((o) => o.status === "FINAL_AUDIT_PENDING");
+  const shownOrders = overdueOnly ? orders.filter((o) => o.overdue) : orders;
 
   return (
     <div className="space-y-6">
-      {/* Modals */}
-      <NewOrderModal open={showOrderModal} onClose={() => setShowOrderModal(false)} />
-      {showFinalAudit && <FinalAuditModal orderId={auditOrderId} onClose={() => setShowFinalAudit(false)} />}
-      {showWAApproval && <WAApprovalModal onClose={() => setShowWAApproval(false)} />}
-      {selectedOrder && (
-        <>
-          <OrderDetailModal
-            open={showDetail}
-            onClose={() => setShowDetail(false)}
-            order={{
-              id: selectedOrder.id,
-              customerName: selectedOrder.customerName,
-              totalPrice: selectedOrder.totalPrice,
-              dpAmount: selectedOrder.dpAmount,
-              deadline: selectedOrder.deadline,
-              status: selectedOrder.status,
-            }}
-            onBayar={() => { setShowDetail(false); setShowPayment(true); }}
-          />
-          <PaymentModal
-            open={showPayment}
-            onClose={() => setShowPayment(false)}
-            orderId={selectedOrder.id}
-            sisaTagihan={Math.max(0, Number(selectedOrder.totalPrice) - Number(selectedOrder.dpAmount))}
-            onSuccess={handlePaymentSuccess}
-          />
-        </>
-      )}
+      <NewOrderModal open={showOrderModal} onClose={() => setShowOrderModal(false)} onCreated={() => load()} />
+      {detailFor && <DetailModal orderId={detailFor.id} isOwner={isOwner} onClose={() => setDetailFor(null)} onBayar={() => { setPayFor(detailFor); setDetailFor(null); }} onChanged={load} />}
+      {payFor && <PaymentModal order={payFor} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); load(); }} />}
+      {auditFor && <FinalAuditModal order={auditFor} onClose={() => setAuditFor(null)} onDone={() => { setAuditFor(null); load(); }} />}
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">Dashboard Admin</h1>
-          <p className="text-sm text-muted mt-0.5">
-            {new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <a href="/scan" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-border text-sm text-primary hover:bg-elevated hover:border-accent-teal/40 transition-all shadow-sm">
-            <ScanLine className="h-4 w-4 text-accent-teal" /> Scan QR
-          </a>
-          <a href="/pos" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-border text-sm text-primary hover:bg-elevated hover:border-accent-teal/40 transition-all shadow-sm">
-            <ShoppingCart className="h-4 w-4 text-accent-teal" /> Kasir POS
-          </a>
-          <button
-            id="btn-order-baru"
-            onClick={() => setShowOrderModal(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent-teal text-white text-sm font-semibold shadow-sm hover:bg-blue-700 hover:shadow-md transition-all cursor-pointer"
-          >
-            <Plus className="h-4 w-4" /> Order Baru
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard Admin"
+        subtitle={new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+        actions={
+          <>
+            <a href="/scan" aria-label="Scan QR" className="flex items-center gap-2 px-3 sm:px-4 h-10 rounded-xl bg-card border border-border text-sm text-primary hover:bg-elevated"><ScanLine className="h-4 w-4 text-accent-teal" /><span className="hidden sm:inline">Scan QR</span></a>
+            <a href="/pos" aria-label="Kasir POS" className="flex items-center gap-2 px-3 sm:px-4 h-10 rounded-xl bg-card border border-border text-sm text-primary hover:bg-elevated"><ShoppingCart className="h-4 w-4 text-accent-teal" /><span className="hidden sm:inline">Kasir POS</span></a>
+            <button onClick={() => setShowOrderModal(true)} className="flex items-center gap-2 px-4 sm:px-5 h-10 rounded-xl bg-accent-teal text-white text-sm font-semibold hover:brightness-110"><Plus className="h-4 w-4" /> Order Baru</button>
+          </>
+        }
+      />
 
-      {/* 🚨 1. BANNER PRIORITAS URGENT (OVERDUE + WA GAGAL) */}
-      {hasUrgentItems && (
-        <div className="bg-red-50/70 border border-red-200 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-status-red/10 text-status-red flex items-center justify-center shrink-0">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-primary flex items-center gap-2">
-                Item Urgent Memerlukan Tindakan Segera
-              </h2>
-              <p className="text-xs text-muted mt-0.5">
-                {overdue > 0 ? `${overdue} order telah melewati batas deadline.` : "Semua order masih dalam batas waktu."} 2 notifikasi status pelanggan gagal terkirim via WhatsApp.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2.5 shrink-0 w-full md:w-auto">
-            {overdue > 0 && (
-              <button
-                onClick={() => setStatusFilter("OVERDUE")}
-                className="flex-1 md:flex-initial px-3.5 py-1.5 rounded-lg bg-status-red text-white text-xs font-bold hover:bg-red-700 transition-all cursor-pointer"
-              >
-                Lihat Overdue ({overdue})
-              </button>
-            )}
-            <a
-              href="#panel-wa-gagal"
-              className="flex-1 md:flex-initial text-center px-3.5 py-1.5 rounded-lg bg-white border border-red-200 text-status-red text-xs font-bold hover:bg-red-50 transition-all shadow-2xs"
-            >
-              Tinjau WA Gagal (2)
-            </a>
-          </div>
-        </div>
-      )}
+      <RoleGuide role="admin" defaultCollapsed />
 
-      {/* 📊 2. 6 CARD STATISTIK NETRAL (DENGAN STATUS DOT & BORDER MERAH TIPIS UNTUK URGENT) */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-        {KPI_DATA.map((kpi) => (
-          <button
-            key={kpi.label}
-            onClick={() => setStatusFilter((prev) => prev === kpi.filter ? "" : (kpi.filter as OrderStatus | ""))}
-            className={cn(
-              "bg-card border rounded-2xl p-4 shadow-sm transition-all text-left cursor-pointer",
-              kpi.isUrgent ? "border-red-300 hover:border-red-400 bg-red-50/15" : "border-border hover:border-accent-teal/40",
-              statusFilter === kpi.filter && kpi.filter !== "" && "ring-2 ring-accent-teal/30 border-accent-teal"
-            )}
-          >
+      {error && <ErrorState message={error} onRetry={load} />}
+
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+        {kpi.map((k) => (
+          <button key={k.label} onClick={() => setStatusFilter((p) => (p === k.filter ? "" : k.filter))}
+            className={cn("bg-card border rounded-2xl p-4 shadow-sm text-left transition-all",
+              k.urgent ? "border-status-red/30 bg-status-red/5" : "border-border hover:border-accent-teal/40",
+              statusFilter === k.filter && k.filter !== "" && "ring-2 ring-accent-teal/30 border-accent-teal")}>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-muted font-medium truncate">{kpi.label}</span>
-              <span className={cn("h-2 w-2 rounded-full shrink-0", kpi.dot)} />
+              <span className="text-xs text-muted font-medium truncate">{k.label}</span>
+              <span className={cn("h-2 w-2 rounded-full shrink-0", k.dot)} />
             </div>
-            <p className={cn("text-2xl md:text-3xl font-bold tracking-tight", kpi.isUrgent ? "text-status-red" : "text-primary")}>
-              {kpi.value}
-            </p>
+            <p className={cn("text-2xl md:text-3xl font-bold", k.urgent ? "text-status-red" : "text-primary")}>{k.value}</p>
           </button>
         ))}
       </div>
 
-      {/* 📋 3. PRIORITY PANELS (WA GAGAL & ANTRIAN DISKON DIPISAH MENJADI PANEL SENDIRI) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Panel 1: Order Siap Diambil */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Package className="h-5 w-5 text-status-green" />
-              <h2 className="text-base font-semibold text-primary">Siap Diambil</h2>
-              <span className="text-xs text-muted font-medium">({readyJobs.length})</span>
-            </div>
-            <button onClick={() => setStatusFilter("READY_FOR_PICKUP")} className="text-xs text-accent-teal hover:underline flex items-center gap-1 cursor-pointer font-medium">
-              Lihat Semua <ArrowRight className="h-3 w-3" />
-            </button>
-          </div>
-          <div className="space-y-2">
-            {readyJobs.map((j) => {
-              const o = orders.find((ord) => ord.id === j.orderId);
-              if (!o) return null;
-              return (
-                <div key={j.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-elevated hover:bg-elevated/80 transition-colors cursor-pointer border border-border/60" onClick={() => openDetail(o)}>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-primary truncate">{o.customerName}</p>
-                    <p className="text-xs text-muted truncate">{o.id}</p>
-                  </div>
-                  <button
-                    id={`btn-pickup-${j.id}`}
-                    onClick={(e) => { e.stopPropagation(); updateJobStatus(j.id, "PICKED_UP"); updateOrderStatus(o.id, "PICKED_UP"); }}
-                    className="text-xs text-accent-teal hover:underline shrink-0 cursor-pointer font-semibold"
-                  >
-                    Proses Pickup
-                  </button>
-                </div>
-              );
-            })}
-            {readyJobs.length === 0 && <p className="text-xs text-muted p-4 text-center">Belum ada order siap diambil.</p>}
-          </div>
-        </div>
-
-        {/* Panel 2: Notifikasi WA Gagal (Panel Mandiri) */}
-        <div id="panel-wa-gagal" className="bg-card border border-red-200 rounded-2xl p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MessageSquareX className="h-5 w-5 text-status-red" />
-              <h2 className="text-base font-semibold text-primary">Notifikasi WA Gagal</h2>
-              <span className="text-xs text-status-red font-bold">(2 Gagal)</span>
-            </div>
-          </div>
-          <div className="space-y-2.5">
-            {[
-              { id: "ORD-20260820-0018", name: "Siti Rahayu", type: "Siap Diambil", time: "10:15 WIB" },
-              { id: "ORD-20260819-0044", name: "Ahmad Fauzi", type: "Desain ACC", time: "09:30 WIB" }
-            ].map((msg) => (
-              <div key={msg.id} className="flex items-center justify-between gap-2 p-3 rounded-xl bg-elevated border border-border/60">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-primary truncate">{msg.id} · {msg.name}</p>
-                  <p className="text-[11px] text-muted truncate">{msg.type} · Gagal dikirim {msg.time}</p>
-                </div>
-                <button className="text-xs text-accent-teal hover:underline shrink-0 cursor-pointer font-semibold px-2 py-1 bg-card rounded-lg border border-border shadow-2xs">
-                  Kirim Ulang
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Panel 3: Antrian Persetujuan Diskon (Panel Mandiri) */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <BadgePercent className="h-5 w-5 text-status-yellow" />
-              <h2 className="text-base font-semibold text-primary">Antrian Persetujuan Diskon</h2>
-              <span className="text-xs text-muted font-medium">(1 Order)</span>
-            </div>
-          </div>
-          <div className="space-y-2.5">
-            <div className="p-3 rounded-xl bg-elevated border border-border/60 space-y-2">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-xs font-semibold text-primary">ORD-20260820-0021 · PT Abadi Makmur</p>
-                  <p className="text-[11px] text-muted">Pengajuan Diskon 10% · Nilai Potongan Rp 350.000</p>
-                </div>
-                <span className="text-[11px] text-status-yellow bg-status-yellow/10 border border-status-yellow/30 px-2 py-0.5 rounded-full shrink-0 font-semibold">
-                  Menunggu Owner
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Panel 4: Approval Desain via WA */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <MessageCircleCheck className="h-5 w-5 text-status-yellow" />
-            <h2 className="text-base font-semibold text-primary">Approval Desain via WA</h2>
-            <span className="text-xs text-muted font-medium">(1 Pending)</span>
+            <Package className="h-5 w-5 text-status-green" />
+            <h2 className="text-base font-semibold text-primary">Siap Diambil</h2>
+            <span className="text-xs text-muted">({readyPickup.length})</span>
           </div>
-          {!waAccepted ? (
-            <div className="p-3 bg-elevated border border-border/60 rounded-xl space-y-3">
-              <div>
-                <p className="text-xs font-bold text-primary">ORD-20260820-0023 · Budi Santoso</p>
-                <p className="text-[11px] text-muted">Brosur A5 · 1000pcs · Tipe: Online</p>
+          <div className="space-y-2">
+            {readyPickup.slice(0, 5).map((o) => (
+              <div key={o.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-elevated border border-border/60 cursor-pointer" onClick={() => setDetailFor(o)}>
+                <div className="min-w-0"><p className="text-sm font-medium text-primary truncate">{o.customerName}</p><p className="text-xs text-muted truncate">{o.orderCode}</p></div>
+                <ArrowRight className="h-4 w-4 text-muted shrink-0" />
               </div>
-              <p className="text-[11px] text-muted">
-                Preview V2 terkirim 14:30 · Menunggu konfirmasi ACC dari Admin
-              </p>
-              <button
-                onClick={() => setShowWAApproval(true)}
-                className="w-full py-2 rounded-xl bg-accent-teal text-white text-xs font-bold hover:bg-blue-700 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
-              >
-                <CheckCircle2 className="h-3.5 w-3.5" /> Konfirmasi ACC WA
-              </button>
-            </div>
-          ) : (
-            <div className="p-4 bg-status-green/10 border border-status-green/30 rounded-xl text-center">
-              <p className="text-xs font-bold text-status-green">✅ Desain ACC! Order lanjut ke produksi.</p>
-            </div>
-          )}
+            ))}
+            {readyPickup.length === 0 && <p className="text-xs text-muted p-4 text-center">Belum ada order siap diambil.</p>}
+          </div>
         </div>
 
-        {/* Panel 5: Final Audit Shortcut */}
         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <ClipboardCheck className="h-5 w-5 text-accent-teal" />
-            <h2 className="text-base font-semibold text-primary">Final Audit Siap Close</h2>
+            <h2 className="text-base font-semibold text-primary">Menunggu Final Audit</h2>
+            <span className="text-xs text-muted">({awaitingAudit.length})</span>
           </div>
-          <p className="text-xs text-muted mb-3">Submit hasil checklist audit sebelum status order di-CLOSE.</p>
           <div className="space-y-2">
-            {orders.filter((o) => o.status === "READY_FOR_PICKUP").slice(0, 2).map((o) => (
+            {awaitingAudit.slice(0, 5).map((o) => (
               <div key={o.id} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-elevated border border-border/60">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-primary truncate">{o.id}</p>
-                  <p className="text-[10px] text-muted truncate">{o.customerName}</p>
-                </div>
-                <button
-                  id={`btn-audit-${o.id}`}
-                  onClick={() => openFinalAudit(o.id)}
-                  className="text-xs text-accent-teal hover:underline shrink-0 cursor-pointer font-semibold whitespace-nowrap px-2.5 py-1 bg-card rounded-lg border border-border shadow-2xs"
-                >
-                  Audit →
-                </button>
+                <div className="min-w-0"><p className="text-xs font-medium text-primary truncate">{o.orderCode}</p><p className="text-[10px] text-muted truncate">{o.customerName}</p></div>
+                <button onClick={() => setAuditFor(o)} className="text-xs text-accent-teal hover:underline shrink-0 font-semibold px-2.5 py-1 bg-card rounded-lg border border-border">Audit →</button>
               </div>
             ))}
-            {orders.filter((o) => o.status === "READY_FOR_PICKUP").length === 0 && (
-              <p className="text-xs text-muted p-2 text-center">Tidak ada order menunggu audit.</p>
-            )}
-          </div>
-        </div>
-
-        {/* Panel 6: Supervisor Panel (Reassignment) */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <Settings className="h-5 w-5 text-status-yellow" />
-            <h2 className="text-base font-semibold text-primary">Reassignment Mesin</h2>
-          </div>
-          <div className="p-3 rounded-xl bg-elevated border border-border/60 space-y-2">
-            <div>
-              <p className="text-xs font-bold text-primary">JOB-0042 · Brosur A5</p>
-              <p className="text-[11px] text-muted mt-0.5">Operator (Budi) absen · Mesin Roland A idle</p>
-            </div>
-            <button className="w-full h-8 rounded-lg bg-accent-teal text-white text-xs font-bold hover:bg-blue-700 cursor-pointer shadow-2xs">
-              Reassign Job
-            </button>
+            {awaitingAudit.length === 0 && <p className="text-xs text-muted p-2 text-center">Tidak ada order menunggu audit.</p>}
           </div>
         </div>
       </div>
 
-      {/* Tabel Daftar Order */}
       <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5 border-b border-border">
           <div className="flex items-center gap-2 flex-wrap">
             <TrendingUp className="h-5 w-5 text-accent-teal" />
             <h2 className="text-base font-semibold text-primary">Daftar Order</h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent-teal/10 text-accent-teal border border-accent-teal/30">
-              {filteredOrders.length}
-            </span>
-            {(statusFilter || typeFilter || payFilter) && (
-              <button onClick={() => { setStatusFilter(""); setTypeFilter(""); setPayFilter(""); }}
-                className="text-xs text-status-red hover:underline cursor-pointer">✕ Hapus Filter</button>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent-teal/10 text-accent-teal border border-accent-teal/30">{shownOrders.length}</span>
+            {overdueOnly && (
+              <button
+                onClick={() => setOverdueOnly(false)}
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-status-red/10 text-status-red border border-status-red/30 hover:bg-status-red/20"
+              >
+                Overdue saja ✕
+              </button>
+            )}
+            {(statusFilter || typeFilter) && (
+              <button onClick={() => { setStatusFilter(""); setTypeFilter(""); }} className="text-xs text-status-red hover:underline">✕ Hapus Filter</button>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <input
-              placeholder="Cari nama / kode order..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-9 w-48 rounded-lg bg-elevated border border-border text-sm text-primary px-3 outline-none placeholder:text-muted focus:border-accent-teal transition-colors"
-            />
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "")}
-              className="h-9 rounded-lg bg-elevated border border-border text-sm text-muted px-3 outline-none focus:border-accent-teal appearance-none cursor-pointer">
+            <input placeholder="Cari nama / kode..." value={search} onChange={(e) => setSearch(e.target.value)}
+              className="h-9 w-48 rounded-lg bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal" />
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-9 rounded-lg bg-elevated border border-border text-sm text-muted px-3 outline-none focus:border-accent-teal cursor-pointer">
               <option value="">Semua Status</option>
+              <option value="DRAFT">Draft</option>
               <option value="WAITING_PAYMENT">Menunggu Bayar</option>
-              <option value="DESIGNING">Desain</option>
+              <option value="CONFIRMED">Confirmed</option>
               <option value="PRODUCTION_STARTED">Produksi</option>
               <option value="READY_FOR_PICKUP">Siap Diambil</option>
-              <option value="OVERDUE">Overdue</option>
-              <option value="PICKED_UP">Selesai</option>
+              <option value="FINAL_AUDIT_PENDING">Menunggu Audit</option>
+              <option value="CLOSED">Closed</option>
             </select>
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
-              className="h-9 rounded-lg bg-elevated border border-border text-sm text-muted px-3 outline-none focus:border-accent-teal appearance-none cursor-pointer">
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as "" | "PRINTING" | "RETAIL")}
+              className="h-9 rounded-lg bg-elevated border border-border text-sm text-muted px-3 outline-none focus:border-accent-teal cursor-pointer">
               <option value="">Semua Tipe</option>
-              <option value="Walk-in">Walk-in</option>
-              <option value="Online">Online</option>
-              <option value="Makloon">Makloon</option>
-              <option value="RETAIL">RETAIL</option>
-            </select>
-            <select value={payFilter} onChange={(e) => setPayFilter(e.target.value)}
-              className="h-9 rounded-lg bg-elevated border border-border text-sm text-muted px-3 outline-none focus:border-accent-teal appearance-none cursor-pointer">
-              <option value="">Semua Bayar</option>
-              <option value="UNPAID">Belum DP</option>
-              <option value="DP">DP Terpenuhi</option>
-              <option value="PAID">Lunas</option>
+              <option value="PRINTING">Printing</option>
+              <option value="RETAIL">Retail</option>
             </select>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile: kartu. Desktop: tabel. */}
+        <div className="md:hidden divide-y divide-border/60">
+          {shownOrders.map((o) => (
+            <div key={o.id} className="py-3 flex items-start gap-3" onClick={() => setDetailFor(o)}>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-primary truncate">{o.customerName}</p>
+                <p className="text-[11px] text-muted truncate">
+                  <span className="font-mono text-accent-teal">#{o.orderCode.slice(-4)}</span> · {o.type}
+                  {" · "}
+                  <span className={o.balance > 0 ? "text-status-yellow-text" : "text-status-green"}>
+                    {o.balance > 0 ? `sisa ${fmtRp(o.balance)}` : "Lunas"}
+                  </span>
+                </p>
+                <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                  <StatusPill status={o.status} />
+                  <span className={cn("text-[11px]", o.overdue ? "text-status-red font-bold" : "text-muted")}>
+                    ⏱ {fmtDate(o.deadline)}
+                  </span>
+                </div>
+              </div>
+              <div className="shrink-0 flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => setDetailFor(o)} className="text-xs font-bold text-accent-teal">Detail</button>
+                {o.balance > 0 && o.type === "PRINTING" && (
+                  <button onClick={() => setPayFor(o)} className="text-xs font-bold text-status-yellow-text">Bayar</button>
+                )}
+                {o.status === "FINAL_AUDIT_PENDING" && (
+                  <button onClick={() => setAuditFor(o)} className="text-xs font-bold text-accent-teal">Audit</button>
+                )}
+              </div>
+            </div>
+          ))}
+          {orders.length === 0 && <p className="py-8 text-center text-muted text-sm">Tidak ada order.</p>}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-elevated/50">
-                {["Kode Order", "Konsumen", "Tipe", "Status", "Pembayaran", "Total", "Sisa", "Deadline", "Dibuat Oleh", "Aksi"].map((h) => (
+                {["Kode Order", "Konsumen", "Tipe", "Status", "Total", "Sisa", "Deadline", "Aksi"].map((h) => (
                   <th key={h} className="text-left text-xs font-semibold text-muted px-4 py-3 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map((o, i) => {
-                const total = Number(o.totalPrice);
-                const dp = Number(o.dpAmount);
-                const sisa = Math.max(0, total - dp);
-                const isLunas = sisa <= 0;
-                const pay = payStatusLabel(o);
-                const isReadyForAudit = o.status === "READY_FOR_PICKUP";
-                return (
-                  <tr key={o.id} className="border-b border-border/50 hover:bg-elevated/30 transition-colors cursor-pointer" onClick={() => openDetail(o)}>
-                    <td className="px-4 py-3 font-mono text-xs text-accent-teal whitespace-nowrap">{o.id}</td>
-                    <td className="px-4 py-3 font-medium text-primary whitespace-nowrap">{o.customerName}</td>
-                    <td className="px-4 py-3 text-muted whitespace-nowrap text-xs">{o.orderType}</td>
-                    <td className="px-4 py-3"><StatusPill status={o.status as any} /></td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={cn("text-xs font-medium", pay.color)}>{pay.label}</span>
-                    </td>
-                    <td className="px-4 py-3 text-primary whitespace-nowrap font-mono text-xs">Rp {fmt(total)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={cn("text-xs font-mono", isLunas ? "text-status-green" : "text-status-yellow")}>
-                        {isLunas ? "Lunas" : `Rp ${fmt(sisa)}`}
-                      </span>
-                    </td>
-                    <td className={cn("px-4 py-3 whitespace-nowrap text-xs", deadlineClass(o.deadline, o.overdue))}>{o.deadline}</td>
-                    <td className="px-4 py-3 text-muted text-xs whitespace-nowrap">{o.createdBy}</td>
-                    <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1">
-                        <button id={`btn-detail-${i}`} onClick={() => openDetail(o)} className="text-xs text-accent-teal hover:underline cursor-pointer">Detail</button>
-                        {!isLunas && (
-                          <>
-                            <span className="text-border">·</span>
-                            <button id={`btn-bayar-${i}`} onClick={() => openPayment(o)} className="text-xs text-status-yellow hover:underline cursor-pointer">Bayar</button>
-                          </>
-                        )}
-                        {isReadyForAudit && (
-                          <>
-                            <span className="text-border">·</span>
-                            <button onClick={() => openFinalAudit(o.id)} className="text-xs text-accent-teal hover:underline cursor-pointer font-semibold">Audit</button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredOrders.length === 0 && (
-                <tr><td colSpan={10} className="text-center py-8 text-muted text-sm">Tidak ada order yang ditemukan.</td></tr>
-              )}
+              {shownOrders.map((o) => (
+                <tr key={o.id} className="border-b border-border/50 hover:bg-elevated/30 transition-colors cursor-pointer" onClick={() => setDetailFor(o)}>
+                  <td className="px-4 py-3 font-mono text-xs text-accent-teal whitespace-nowrap">{o.orderCode}</td>
+                  <td className="px-4 py-3 font-medium text-primary whitespace-nowrap">{o.customerName}</td>
+                  <td className="px-4 py-3 text-muted text-xs whitespace-nowrap">{o.type}</td>
+                  <td className="px-4 py-3"><StatusPill status={o.status} /></td>
+                  <td className="px-4 py-3 font-mono text-xs text-primary whitespace-nowrap">{fmtRp(o.total)}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className={cn("text-xs font-mono", o.balance > 0 ? "text-status-yellow-text" : "text-status-green")}>{o.balance > 0 ? fmtRp(o.balance) : "Lunas"}</span>
+                  </td>
+                  <td className={cn("px-4 py-3 whitespace-nowrap text-xs", o.overdue ? "text-status-red font-bold" : "text-muted")}>{fmtDate(o.deadline)}</td>
+                  <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setDetailFor(o)} className="text-xs text-accent-teal hover:underline">Detail</button>
+                      {o.balance > 0 && o.type === "PRINTING" && (
+                        <><span className="text-border">·</span><button onClick={() => setPayFor(o)} className="text-xs text-status-yellow-text hover:underline">Bayar</button></>
+                      )}
+                      {o.status === "FINAL_AUDIT_PENDING" && (
+                        <><span className="text-border">·</span><button onClick={() => setAuditFor(o)} className="text-xs text-accent-teal hover:underline font-semibold">Audit</button></>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {orders.length === 0 && <tr><td colSpan={8} className="text-center py-8 text-muted text-sm">Tidak ada order.</td></tr>}
             </tbody>
           </table>
         </div>

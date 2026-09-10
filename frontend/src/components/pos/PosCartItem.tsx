@@ -1,4 +1,3 @@
-import { cn } from "@/lib/utils";
 import { Minus, Plus, Trash2 } from "lucide-react";
 
 export interface CartItemType {
@@ -68,9 +67,25 @@ export function PosCartItem({ item, onUpdateQty, onRemove, onUpdatePrice, onUpda
             >
               {item.qty === 1 ? <Trash2 className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
             </button>
-            <div className="w-8 h-full flex items-center justify-center font-semibold text-sm text-primary border-x border-border">
-              {item.qty}
-            </div>
+            <input
+              type="number"
+              min="1"
+              value={item.qty || ""}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val) && val > 0) {
+                  onUpdateQty(item.id, val);
+                } else if (e.target.value === "") {
+                  onUpdateQty(item.id, 0);
+                }
+              }}
+              onBlur={() => {
+                if (!item.qty || item.qty <= 0) {
+                  onUpdateQty(item.id, 1);
+                }
+              }}
+              className="w-12 h-full text-center font-semibold text-sm text-primary border-x border-border bg-transparent outline-none focus:bg-elevated transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none m-0"
+            />
             <button 
               onClick={() => onUpdateQty(item.id, item.qty + 1)}
               className="w-8 h-full flex items-center justify-center hover:bg-elevated text-muted hover:text-status-green transition-colors"

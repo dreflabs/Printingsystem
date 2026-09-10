@@ -1,0 +1,561 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import type { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { requireTenant } from "@/lib/tenant";
+import { requireUser, requireMutableActor } from "@/lib/actor";
+import { logAction } from "@/lib/logger";
+import { retryOnUnique } from "@/lib/retry";
+import { autoReleaseToProduction } from "@/lib/auto-release";
+import { safeError } from "@/lib/safe-error";
+import { ok, fail, type ActionResult } from "@/types";
+
+type OrderTypeInput = "walkin" | "online" | "makloon";
+
+const APPROVAL_METHOD: Record<OrderTypeInput, string> = {
+  walkin: "WALK_IN",
+  online: "ONLINE",
+  makloon: "MAKLOON",
+};
+
+export interface PrintingOrderItemInput {
+  productId?: string | null;
+  description?: string;
+  width?: number;
+  height?: number;
+  quantity: number;
+  materialId?: string | null;
+  finishing?: string | null;
+  unitPrice: number;
+  /** override deadline item (ISO / datetime-local). Kosong = ikut deadline order. */
+  deadline?: string | null;
+}
+
+export interface CreatePrintingOrderInput {
+  /** id customer lama, atau data untuk buat customer baru */
+  customer: { id: string } | { name: string; phone?: string; type?: string };
+  orderType: OrderTypeInput;
+  designerId?: string | null;
+  deadline?: string | null;
+  notes?: string | null;
+  items: PrintingOrderItemInput[];
+  /** nominal diskon (Rp) — butuh approval Owner kalau > 0 */
+  discount?: number;
+  discountReason?: string;
+  /** override persen DP (admin ≥30, owner bebas); default 50 */
+  dpOverridePct?: number | null;
+  dpOverrideReason?: string | null;
+}
+
+export interface CreatePrintingOrderResult {
+  orderId: string;
+  orderCode: string;
+  subtotal: number;
+  total: number;
+  dpRequired: number;
+  discountPending: boolean;
+}
+
+/** ORD-YYYYMMDD-XXXX — urutan harian per tenant. */
+async function nextOrderCode(tx: Prisma.TransactionClient, tenantId: string): Promise<string> {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const startOfDay = new Date(y, now.getMonth(), now.getDate());
+  const countToday = await tx.order.count({
+    where: { tenant_id: tenantId, created_at: { gte: startOfDay } },
+  });
+  return `ORD-${y}${m}${d}-${String(countToday + 1).padStart(4, "0")}`;
+}
+
+async function nextCustomerCode(tx: Prisma.TransactionClient, tenantId: string): Promise<string> {
+  const count = await tx.customer.count({ where: { tenant_id: tenantId } });
+  return `CST-${String(count + 1).padStart(5, "0")}`;
+}
+
+/**
+ * Buat order PRINTING (status DRAFT).
+ * - hitung otomatis dp_required = total × 50% (atau × dpOverridePct)
+ * - buat baris DesignJob kosong (status PENDING) untuk orkestrasi desain
+ * - kalau ada diskon: order dibuat dengan diskon "menggantung" sampai
+ *   Owner memanggil decideDiscount()
+ */
+export async function createPrintingOrder(
+  input: CreatePrintingOrderInput
+): Promise<ActionResult<CreatePrintingOrderResult>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (!["owner", "admin", "designer_sales"].some((r) => actor.roles.includes(r))) {
+      return fail("Hanya Owner/Admin/Designer Sales yang boleh membuat order.");
+    }
+
+    const items = (input.items ?? []).filter((i) => i.quantity > 0);
+    if (items.length === 0) return fail("Order harus punya minimal 1 item.");
+    if (items.some((i) => i.unitPrice < 0)) return fail("Harga item tidak valid.");
+
+    // Deadline wajib untuk order cetak — dipakai gate auto-release + prioritas antrian operator.
+    if (!input.deadline) return fail("Deadline order wajib diisi.");
+    const deadlineDate = new Date(input.deadline);
+    if (Number.isNaN(deadlineDate.getTime())) return fail("Format deadline tidak valid.");
+
+    const dpPct = input.dpOverridePct ?? 50;
+    if (dpPct < 0 || dpPct > 100) return fail("Persen DP tidak valid.");
+    if (input.dpOverridePct != null && input.dpOverridePct < 50) {
+      // Aturan 13 / 04-PAYMENT.md:
+      //  - walk-in: override <50% HANYA Owner (Admin dilarang).
+      //  - online/makloon: Admin boleh sampai min 30%, Owner bebas.
+      const isWalkin = input.orderType === "walkin";
+      if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) {
+        return fail("Hanya Owner/Admin yang boleh override DP di bawah 50%.");
+      }
+      if (isWalkin && !actor.roles.includes("owner")) {
+        return fail("Override DP di bawah 50% untuk order walk-in hanya boleh oleh Owner.");
+      }
+      // Batasan 30% hanya untuk yang bertindak sebagai Admin — Owner (walau juga
+      // punya peran Admin di Solo Mode) tetap bebas.
+      if (!actor.roles.includes("owner") && input.dpOverridePct < 30) {
+        return fail("Admin hanya boleh override DP sampai minimal 30% (order online/makloon).");
+      }
+      if (!input.dpOverrideReason) return fail("Override DP wajib menyertakan alasan.");
+    }
+
+    const discount = Math.max(0, Math.round(input.discount ?? 0));
+    if (discount > 0 && !input.discountReason) {
+      return fail("Diskon wajib menyertakan alasan.");
+    }
+
+    const result = await retryOnUnique(() => prisma.$transaction(async (tx) => {
+      // 1. Customer
+      let customerId: string | null = null;
+      if ("id" in input.customer) {
+        const c = await tx.customer.findFirst({
+          where: { id: input.customer.id, tenant_id: tenant.id },
+        });
+        if (!c) throw new Error("Customer tidak ditemukan.");
+        customerId = c.id;
+      } else if (input.customer.name?.trim()) {
+        const created = await tx.customer.create({
+          data: {
+            tenant_id: tenant.id,
+            customer_code: await nextCustomerCode(tx, tenant.id),
+            name: input.customer.name.trim(),
+            phone: input.customer.phone || null,
+            type: input.customer.type || "Umum",
+            created_by: actor.id,
+          },
+        });
+        customerId = created.id;
+      }
+
+      // 2. Totals — diskon TIDAK dipotong sebelum di-approve Owner (aturan 14).
+      //    `discount` disimpan sebagai permintaan; total/dp/balance tetap harga penuh
+      //    sampai decideDiscount(approve) dipanggil.
+      let subtotal = 0;
+      for (const i of items) subtotal += i.unitPrice * i.quantity;
+      const total = subtotal;
+      const dpRequired = Math.round((total * dpPct) / 100);
+
+      // 3. Order (DRAFT)
+      const order = await tx.order.create({
+        data: {
+          tenant_id: tenant.id,
+          order_code: await nextOrderCode(tx, tenant.id),
+          order_type: "PRINTING",
+          customer_id: customerId,
+          created_by: actor.id,
+          designer_id: input.designerId || null,
+          status: "DRAFT",
+          subtotal,
+          discount, // permintaan diskon — belum dipotong; discount_approved_by null = menggantung
+          discount_reason: discount > 0 ? input.discountReason : null,
+          total,
+          dp_required: dpRequired,
+          dp_override_pct: input.dpOverridePct ?? null,
+          dp_override_by: input.dpOverridePct != null ? actor.id : null,
+          dp_override_reason: input.dpOverrideReason || null,
+          paid_amount: 0,
+          balance: total,
+          deadline: deadlineDate,
+          notes: input.notes || null,
+        },
+      });
+
+      // 4. Items
+      for (const i of items) {
+        const size =
+          i.width && i.height ? `${i.width}x${i.height}` : i.width ? `${i.width}` : null;
+        const itemDeadline = i.deadline ? new Date(i.deadline) : null;
+        await tx.orderItem.create({
+          data: {
+            tenant_id: tenant.id,
+            order_id: order.id,
+            product_id: i.productId || null,
+            description: i.description || null,
+            quantity: i.quantity,
+            size,
+            material_id: i.materialId || null,
+            finishing: i.finishing || null,
+            deadline: itemDeadline && !Number.isNaN(itemDeadline.getTime()) ? itemDeadline : null,
+            unit_price: i.unitPrice,
+            total_price: i.unitPrice * i.quantity,
+          },
+        });
+      }
+
+      // 5. DesignJob kosong
+      await tx.designJob.create({
+        data: {
+          tenant_id: tenant.id,
+          order_id: order.id,
+          designer_id: input.designerId || null,
+          status: "PENDING",
+          current_version: 1,
+          approval_method: APPROVAL_METHOD[input.orderType],
+        },
+      });
+
+      return {
+        orderId: order.id,
+        orderCode: order.order_code,
+        subtotal,
+        total,
+        dpRequired,
+        discountPending: discount > 0,
+      };
+    }));
+
+    await logAction(actor.id, "ORDER_CREATED", "Order", result.orderId, null, {
+      order_code: result.orderCode,
+      total: result.total,
+      dp_required: result.dpRequired,
+    });
+
+    revalidatePath("/admin");
+    revalidatePath("/designer");
+    return ok(result);
+  } catch (e) {
+    console.error("createPrintingOrder:", e);
+    return fail(safeError(e, "Gagal membuat order."));
+  }
+}
+
+export interface AddPaymentInput {
+  amount: number;
+  method: "CASH" | "TRANSFER" | "QRIS";
+  reference?: string;
+  notes?: string;
+}
+
+export interface AddPaymentResult {
+  /** id Payment yang baru dibuat */
+  paymentId: string;
+  paidAmount: number;
+  balance: number;
+  status: string;
+  dpMet: boolean;
+  fullyPaid: boolean;
+  /** job produksi yang otomatis dibuat saat pembayaran ini memicu CONFIRMED */
+  autoReleasedJobs?: string[];
+}
+
+/**
+ * Catat pembayaran (hanya Admin/Owner). Hitung ulang paid_amount & balance,
+ * naikkan status order kalau DP sudah terpenuhi.
+ */
+export async function addPayment(
+  orderId: string,
+  input: AddPaymentInput
+): Promise<ActionResult<AddPaymentResult>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) {
+      return fail("Hanya Admin/Owner yang boleh mengkonfirmasi pembayaran.");
+    }
+    if (!(input.amount > 0)) return fail("Nominal pembayaran harus lebih dari 0.");
+
+    const result = await prisma.$transaction(async (tx) => {
+      const order = await tx.order.findFirst({
+        where: { id: orderId, tenant_id: tenant.id },
+      });
+      if (!order) throw new Error("Order tidak ditemukan.");
+
+      const payment = await tx.payment.create({
+        data: {
+          tenant_id: tenant.id,
+          order_id: order.id,
+          amount: input.amount,
+          method: input.method,
+          reference: input.reference || null,
+          status: "CONFIRMED",
+          received_by: actor.id,
+          notes: input.notes || null,
+        },
+      });
+
+      const agg = await tx.payment.aggregate({
+        where: { order_id: order.id, status: "CONFIRMED" },
+        _sum: { amount: true },
+      });
+      const paidAmount = Number(agg._sum.amount ?? 0);
+      const total = Number(order.total);
+      const balance = Math.max(0, total - paidAmount);
+      const dpRequired = Number(order.dp_required ?? Math.round(total * 0.5));
+      const dpMet = paidAmount + 1e-6 >= dpRequired;
+
+      let status = order.status;
+      // Naikkan status saat DP terpenuhi, dari state manapun yang relevan:
+      // - DRAFT: order baru dibuat & DP dibayar sekaligus
+      // - WAITING_PAYMENT: DP dibayar belakangan
+      // - DESIGNING: DP dilunasi saat desainer sedang mengerjakan
+      const promotable = ["DRAFT", "WAITING_PAYMENT", "DESIGNING"];
+      if (dpMet && promotable.includes(order.status)) {
+        const orderWithDesign = await tx.order.findFirst({
+          where: { id: order.id, tenant_id: tenant.id },
+          include: { design_jobs: { select: { status: true } } },
+        });
+        const designApproved = orderWithDesign?.design_jobs.some(d => d.status === "APPROVED");
+        // Kalau desain sudah ACC → langsung CONFIRMED lalu coba auto-release.
+        // Kalau belum → DESIGNING (menunggu desainer).
+        status = designApproved ? "CONFIRMED" : "DESIGNING";
+      }
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: { paid_amount: paidAmount, balance, status },
+      });
+
+      const release =
+        status === "CONFIRMED"
+          ? await autoReleaseToProduction(tx, tenant.id, order.id)
+          : { released: false, jobCodes: [], missing: [] };
+
+      return { paymentId: payment.id, paidAmount, balance, status, dpMet, fullyPaid: balance <= 0, release };
+    });
+
+    await logAction(actor.id, "PAYMENT_ADDED", "Order", orderId, null, {
+      amount: input.amount,
+      method: input.method,
+      paid_amount: result.paidAmount,
+      balance: result.balance,
+    });
+    if (result.release.released) {
+      await logAction(actor.id, "ORDER_AUTO_RELEASED", "Order", orderId, null, {
+        job_codes: result.release.jobCodes,
+        trigger: "PAYMENT_ADDED",
+      });
+    }
+
+    revalidatePath("/admin");
+    revalidatePath("/operator");
+    return ok({
+      paymentId: result.paymentId,
+      paidAmount: result.paidAmount,
+      balance: result.balance,
+      status: result.status,
+      dpMet: result.dpMet,
+      fullyPaid: result.fullyPaid,
+      autoReleasedJobs: result.release.jobCodes,
+    });
+  } catch (e) {
+    console.error("addPayment:", e);
+    return fail(safeError(e, "Gagal mencatat pembayaran."));
+  }
+}
+
+/** Owner/Admin menyetujui atau menolak diskon yang menggantung. */
+export async function decideDiscount(
+  orderId: string,
+  decision: { approve: boolean; note?: string }
+): Promise<ActionResult<{ discount: number; total: number; dpRequired: number; approved: boolean }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    // Aturan 14: keputusan diskon HANYA Owner (Admin cuma mengajukan).
+    if (!actor.roles.includes("owner")) {
+      return fail("Hanya Owner yang boleh memutuskan diskon.");
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const order = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
+      if (!order) throw new Error("Order tidak ditemukan.");
+      if (Number(order.discount) <= 0) throw new Error("Order ini tidak punya diskon.");
+      if (order.discount_approved_by) throw new Error("Diskon sudah diputuskan.");
+
+      const subtotal = Number(order.subtotal);
+      let discount = Number(order.discount);
+      if (!decision.approve) discount = 0;
+
+      const total = Math.max(0, subtotal - discount);
+      const dpPct = Number(order.dp_override_pct ?? 50);
+      const dpRequired = Math.round((total * dpPct) / 100);
+      const paid = Number(order.paid_amount);
+
+      // Diskon di-approve bisa membuat DP jadi terpenuhi → majukan status.
+      let status = order.status;
+      if (order.status === "WAITING_PAYMENT" && paid + 1e-6 >= dpRequired) status = "CONFIRMED";
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          discount,
+          total,
+          dp_required: dpRequired,
+          balance: Math.max(0, total - paid),
+          status,
+          discount_approved_by: decision.approve ? actor.id : null,
+          discount_approved_at: decision.approve ? new Date() : null,
+          discount_reason: decision.note || order.discount_reason,
+        },
+      });
+
+      const release =
+        status === "CONFIRMED"
+          ? await autoReleaseToProduction(tx, tenant.id, order.id)
+          : { released: false, jobCodes: [], missing: [] };
+
+      return { discount, total, dpRequired, approved: decision.approve, release };
+    });
+
+    if (result.release.released) {
+      await logAction(actor.id, "ORDER_AUTO_RELEASED", "Order", orderId, null, {
+        job_codes: result.release.jobCodes,
+        trigger: "DISCOUNT_APPROVED",
+      });
+      revalidatePath("/operator");
+    }
+
+    await logAction(
+      actor.id,
+      decision.approve ? "DISCOUNT_APPROVED" : "DISCOUNT_REJECTED",
+      "Order",
+      orderId,
+      null,
+      { discount: result.discount, total: result.total, note: decision.note }
+    );
+
+    revalidatePath("/admin");
+    revalidatePath("/owner");
+    return ok({
+      discount: result.discount,
+      total: result.total,
+      dpRequired: result.dpRequired,
+      approved: result.approved,
+    });
+  } catch (e) {
+    console.error("decideDiscount:", e);
+    return fail(safeError(e, "Gagal memproses keputusan diskon."));
+  }
+}
+
+/**
+ * Ajukan diskon pada order yang sudah ada (tombol "Ajukan Diskon").
+ * Admin & Owner boleh mengajukan; keputusan tetap lewat decideDiscount() (Owner).
+ * Diskon tidak bisa diajukan setelah order CLOSED (DEADLINE-DISCOUNT.md).
+ */
+export async function requestDiscount(
+  orderId: string,
+  input: { amount: number; reason: string }
+): Promise<ActionResult<{ discount: number }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (!actor.roles.includes("owner") && !actor.roles.includes("admin")) {
+      return fail("Hanya Owner atau Admin yang boleh mengajukan diskon.");
+    }
+
+    const amount = Math.max(0, Math.round(input.amount ?? 0));
+    if (amount <= 0) return fail("Nominal diskon harus lebih dari 0.");
+    if (!input.reason || input.reason.trim().length < 5) return fail("Alasan diskon wajib diisi (min. 5 karakter).");
+
+    const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
+    if (!order) return fail("Order tidak ditemukan.");
+    if (["CLOSED", "CANCELLED"].includes(order.status)) return fail("Diskon tidak bisa diajukan pada order yang sudah selesai/batal.");
+    if (Number(order.discount) > 0 && order.discount_approved_by) {
+      return fail("Order ini sudah punya diskon yang disetujui. Buat koreksi untuk mengubahnya.");
+    }
+    if (amount >= Number(order.subtotal)) return fail("Diskon tidak boleh melebihi subtotal order.");
+
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        discount: amount,
+        discount_reason: input.reason.trim(),
+        discount_approved_by: null,
+        discount_approved_at: null,
+      },
+    });
+
+    await logAction(actor.id, "DISCOUNT_REQUESTED", "Order", orderId, { discount: Number(order.discount) }, { discount: amount, reason: input.reason.trim() });
+    revalidatePath("/admin");
+    revalidatePath("/owner");
+    return ok({ discount: amount });
+  } catch (e) {
+    console.error("requestDiscount:", e);
+    return fail(safeError(e, "Gagal mengajukan diskon."));
+  }
+}
+
+/** Data pendukung form order baru. */
+export async function getOrderFormData() {
+  try {
+    const tenant = await requireTenant();
+    const [customers, products, materials, designers, finishingRows] = await Promise.all([
+      prisma.customer.findMany({
+        where: { tenant_id: tenant.id },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, phone: true, type: true, default_discount_pct: true },
+      }),
+      prisma.product.findMany({
+        where: { tenant_id: tenant.id, active: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, category: true, unit: true, base_price: true, default_material_id: true },
+      }),
+      prisma.material.findMany({
+        where: { tenant_id: tenant.id, active: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, material_code: true, type: true, unit_usage: true, unit_custom: true },
+      }),
+      prisma.user.findMany({
+        where: { tenant_id: tenant.id, active: true, role: { name: "designer_sales" } },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      }),
+      prisma.orderItem.findMany({
+        where: { tenant_id: tenant.id, finishing: { not: null } },
+        select: { finishing: true },
+        distinct: ["finishing"],
+        take: 100,
+      }),
+    ]);
+
+    return ok({
+      customers: customers.map((c) => ({
+        id: c.id,
+        name: c.name,
+        phone: c.phone,
+        type: c.type,
+        defaultDiscountPct: c.default_discount_pct == null ? 0 : Number(c.default_discount_pct),
+      })),
+      products: products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        unit: p.unit,
+        basePrice: p.base_price == null ? null : Number(p.base_price),
+        default_material_id: p.default_material_id,
+      })),
+      materials,
+      designers,
+      finishings: Array.from(
+        new Set(finishingRows.map((f) => f.finishing?.trim()).filter((s): s is string => !!s))
+      ).sort((a, b) => a.localeCompare(b, "id")),
+    });
+  } catch (e) {
+    console.error("getOrderFormData:", e);
+    return fail(safeError(e, "Gagal memuat data form order."));
+  }
+}

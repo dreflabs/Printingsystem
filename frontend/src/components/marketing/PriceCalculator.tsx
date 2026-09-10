@@ -84,7 +84,7 @@ export function PriceCalculator() {
           <p className="text-2xl font-extrabold font-mono text-primary">{fmt(total)}</p>
         </div>
         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent-teal">
-          <Zap className="h-3.5 w-3.5" /> Live
+          <Zap className="h-3.5 w-3.5" /> Real-time
         </span>
       </div>
 

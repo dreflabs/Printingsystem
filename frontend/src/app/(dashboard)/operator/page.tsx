@@ -1,485 +1,852 @@
 "use client";
 
-import { useState } from "react";
-import { Settings2, ScanLine, CheckCircle2, AlertCircle, Timer, ChevronRight, Image as ImageIcon, Scissors, Layers } from "lucide-react";
-import { StatusPill } from "@/components/ui";
-import { useWorkflowStore, Job, InventoryItem } from "@/store/useWorkflowStore";
+import { useState, useEffect, useCallback } from "react";
+import {
+  ScanLine, CheckCircle2, Timer, Layers, Pause, Play,
+  ShieldAlert, FileWarning, FileDown, MoreVertical, Clock,
+} from "lucide-react";
+import { StatusPill, Modal, DropdownMenu, DropdownMenuItem, InfoTip , ErrorState} from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { RoleGuide } from "@/components/dashboard/RoleGuide";
+import { AbsenCard } from "@/components/dashboard/AbsenCard";
+import { getOperatorJobs } from "@/actions/queries";
+import { getOrderFormData } from "@/actions/orders";
+import { startProduction, pauseProduction, resumeProduction, finishProduction, bounceDesignFromProduction } from "@/actions/production";
 
-const WASTE_REASONS = [
+type JobItem = { product: string; size: string | null; qty: number; material: string | null; finishing: string | null };
+type Job = {
+  jobCode: string;
+  orderCode: string;
+  customerName: string;
+  machine: string;
+  status: string;
+  priority: number;
+  plannedQty: number;
+  actualQty: number;
+  deadline: string | Date | null;
+  startedAt: string | Date | null;
+  items: JobItem[];
+  productUnit: string;
+  firstItemSize: string | null;
+  firstItemQty: number;
+  suggestedMaterialId: string | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  files: { label: string; url: string; name: string | null }[];
+};
+type MaterialOpt = { id: string; name: string; type: string; unitUsage: string; unitCustom: string | null };
+type HistoryRow = {
+  jobCode: string;
+  orderCode: string;
+  customerName: string;
+  machine: string;
+  status: string;
+  plannedQty: number;
+  actualQty: number;
+  wasteQty: number;
+  reprintQty: number;
+  startedAt: string | Date | null;
+  endedAt: string | Date | null;
+  durationMin: number | null;
+  isToday: boolean;
+};
+type HistorySummary = { todayCount: number; todayQty: number; todayWaste: number; weekCount: number };
+
+/** Alasan potong reject (hasil cetak tidak terpakai). */
+const REJECT_REASONS = [
   "Tinta blobor / kotor",
-  "Bahan mampet / nyangkut",
-  "Salah setting warna / margin",
-  "Mesin error / mati listrik",
-  "Lainnya"
+  "Warna beda dari proof",
+  "Defect fisik (sobek / lipat / kotor)",
+  "Salah setting margin / warna",
+  "Lainnya",
 ];
 
-function SplitRollModal({ onClose }: { onClose: () => void }) {
-  const inventory = useWorkflowStore(s => s.inventory);
-  const splitRollMaterial = useWorkflowStore(s => s.splitRollMaterial);
-  const addLog = useWorkflowStore(s => s.addLog);
-  
-  // Filter only items that are tracked in 'roll'
-  const rollInventory = inventory.filter(i => i.unit === "roll");
-  
-  const [sourceId, setSourceId] = useState("");
-  const [cutSize, setCutSize] = useState("");
-  
-  const sourceItem = inventory.find(i => i.id === sourceId);
-  // Asumsi dasar untuk prototipe: Bahan 3m = 300cm
-  const sourceWidth = sourceItem?.name.includes("3m") ? 300 : (sourceItem?.name.includes("1.5m") ? 150 : 0);
-  const cutW = parseInt(cutSize) || 0;
-  const remainW = sourceWidth - cutW;
-  
-  const isValidCut = sourceWidth > 0 && cutW > 0 && remainW > 0;
-  
-  // Cari ID target bahan di inventory (simulasi pencarian sederhana)
-  // Di sistem asli, jika bahan tidak ada, akan otomatis terbuat Master Data baru
-  const findTargetId = (widthCm: number) => {
-    if (widthCm === 150) return inventory.find(i => i.name.includes("1.5m"))?.id || "";
-    if (widthCm === 300) return inventory.find(i => i.name.includes("3m"))?.id || "";
-    // Fallback sementara jika tidak ada di master data
-    return "custom";
-  };
-  
-  const handleSubmit = () => {
-    if (isValidCut) {
-      const target1Id = findTargetId(cutW);
-      const target2Id = findTargetId(remainW);
-      
-      // Jika hasil potong identik (misal 300 dipotong 150 = 150 dan 150)
-      if (cutW === remainW && target1Id !== "custom") {
-        splitRollMaterial(sourceId, target1Id, 1, 2);
-      } else {
-        // Jika beda (misal 100 dan 200), kita eksekusi split terpisah atau abaikan sementara karena butuh logic addInventory baru
-        // Untuk prototipe MVP, kita pakai addLog saja agar tercatat.
-      }
-      
-      addLog({
-        type: "MATERIAL_CUT",
-        title: "Potong Bahan Lebar (Roll)",
-        description: `Memotong 1 roll ${sourceItem?.name} pada ukuran ${cutW}cm. Hasil: 1 roll ${cutW}cm dan 1 roll ${remainW}cm.`,
-        operator: "Operator (Aktif)"
-      });
-      
-      onClose();
-    }
-  };
+/** Alasan sisa bahan terbuang (bukan hasil cetak — setup / offcut). */
+const OFFCUT_REASONS = [
+  "Leader / trailer roll",
+  "Kalibrasi / test warna",
+  "Sisa roll tak terpakai",
+  "Bahan macet / sobek saat proses",
+  "Lainnya",
+];
 
+/** Waktu selesai job untuk riwayat: "Hari ini 14:20" / "9 Sep 14:20". */
+function fmtDoneAt(d: string | Date | null, isToday: boolean): string {
+  if (!d) return "—";
+  const dt = new Date(d);
+  const time = dt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  if (isToday) return `Hari ini ${time}`;
+  return `${dt.toLocaleDateString("id-ID", { day: "numeric", month: "short" })} ${time}`;
+}
+
+/** Durasi menit → "1j 20m" / "45m". */
+function fmtDur(min: number | null): string {
+  if (min == null) return "—";
+  if (min < 60) return `${min}m`;
+  return `${Math.floor(min / 60)}j ${min % 60}m`;
+}
+
+/** Prioritas job → badge. Prioritas 1 (normal) tidak diberi badge. */
+function priorityBadge(p: number): { label: string; text: string; bar: string } | null {
+  if (p >= 3) return { label: "MENDESAK", text: "text-status-red", bar: "border-l-status-red" };
+  if (p === 2) return { label: "SEGERA", text: "text-status-yellow-text", bar: "border-l-status-yellow" };
+  return null;
+}
+
+/** Deadline relatif + nada warna. */
+function deadlineInfo(d: string | Date | null): { label: string; tone: "red" | "amber" | "muted" } | null {
+  if (!d) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(d);
+  target.setHours(0, 0, 0, 0);
+  const days = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return { label: `Terlambat ${-days} hr`, tone: "red" };
+  if (days === 0) return { label: "Deadline hari ini", tone: "red" };
+  if (days === 1) return { label: "Deadline besok", tone: "amber" };
+  if (days <= 3) return { label: `${days} hari lagi`, tone: "amber" };
+  return { label: `${days} hari lagi`, tone: "muted" };
+}
+
+const TONE_CLS = {
+  red: "text-status-red",
+  amber: "text-status-yellow-text",
+  muted: "text-muted",
+} as const;
+
+/** Durasi sejak `from` → "1j 20m" / "45m". */
+function fmtElapsed(from: string | Date | null): string {
+  if (!from) return "—";
+  const mins = Math.max(0, Math.floor((Date.now() - new Date(from).getTime()) / 60_000));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}j ${m}m` : `${m}m`;
+}
+
+function JobItems({ items, dense }: { items: JobItem[]; dense?: boolean }) {
+  if (items.length === 0) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-card border border-border rounded-3xl p-6 sm:p-8 shadow-2xl">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-3 rounded-xl bg-accent-teal/10 text-accent-teal">
-            <Scissors className="h-6 w-6" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-primary">Potong Lebar Roll</h3>
-            <p className="text-sm text-muted">Kalkulasi otomatis hasil potongan</p>
-          </div>
-        </div>
-        
-        <div className="space-y-5">
-          <div className="p-4 bg-elevated border border-border rounded-2xl">
-            <label className="text-xs text-muted font-bold mb-2 block uppercase tracking-wider">Sumber Bahan (Dipotong 1 Roll)</label>
-            <select 
-              value={sourceId} onChange={(e) => setSourceId(e.target.value)}
-              className="w-full h-12 rounded-xl bg-base border border-border text-primary text-sm px-4 outline-none focus:border-accent-teal mb-3"
-            >
-              <option value="" disabled>-- Pilih Gulungan Utuh --</option>
-              {rollInventory.map(i => (
-                <option key={i.id} value={i.id} disabled={i.stock <= 0}>
-                  {i.name} (Sisa: {i.stock} roll)
-                </option>
-              ))}
-            </select>
-          </div>
-          
-          {sourceWidth > 0 && (
-            <div className="p-4 bg-elevated border border-border rounded-2xl">
-              <label className="text-xs text-muted font-bold mb-2 block uppercase tracking-wider">Potong Di Ukuran (cm)</label>
-              <div className="flex items-center gap-3">
-                <input 
-                  type="number" min="1" max={sourceWidth - 1} value={cutSize} onChange={(e) => setCutSize(e.target.value)}
-                  placeholder="Misal: 150"
-                  className="flex-1 h-12 rounded-xl bg-base border border-border text-primary text-lg font-bold px-4 outline-none focus:border-accent-teal"
-                />
-                <span className="text-sm font-medium text-muted">cm dari {sourceWidth}cm</span>
-              </div>
-            </div>
-          )}
-
-          {isValidCut && (
-            <div className="p-4 bg-status-blue/5 border border-status-blue/20 rounded-2xl">
-              <label className="text-xs text-status-blue font-bold mb-2 block uppercase tracking-wider">Estimasi Hasil Sistem</label>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center bg-base p-2 rounded-lg border border-status-blue/10">
-                  <span className="text-sm text-primary font-medium">Potongan A</span>
-                  <span className="text-sm font-bold text-status-blue">{cutW} cm (1 Roll)</span>
-                </div>
-                <div className="flex justify-between items-center bg-base p-2 rounded-lg border border-status-blue/10">
-                  <span className="text-sm text-primary font-medium">Potongan B (Sisa)</span>
-                  <span className="text-sm font-bold text-status-blue">{remainW} cm (1 Roll)</span>
-                </div>
-              </div>
-            </div>
+    <div className={dense ? "space-y-0.5" : "space-y-1"}>
+      {items.map((it, i) => (
+        <div key={i}>
+          <p className="font-bold text-primary leading-tight">
+            {it.product}
+            {it.size ? <span className="font-semibold text-muted"> · {it.size}</span> : null}
+            <span className="text-accent-teal"> · {it.qty} pcs</span>
+          </p>
+          {(it.material || it.finishing) && (
+            <p className="text-[11px] text-muted leading-tight">
+              {[it.material, it.finishing].filter(Boolean).join(" · ")}
+            </p>
           )}
         </div>
-
-        <div className="flex gap-3 mt-8">
-          <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary transition-colors">Batal</button>
-          <button
-            onClick={handleSubmit}
-            disabled={!isValidCut}
-            className="flex-1 h-12 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 transition-all disabled:opacity-40"
-          >
-            Simpan Potongan
-          </button>
-        </div>
-      </div>
+      ))}
     </div>
   );
 }
 
-function DoneBatchModal({ jobs, onClose }: { jobs: Job[]; onClose: () => void }) {
-  const updateJobStatus = useWorkflowStore(s => s.updateJobStatus);
-  const updateOrderStatus = useWorkflowStore(s => s.updateOrderStatus);
-  const inventory = useWorkflowStore(s => s.inventory);
-  const addLog = useWorkflowStore(s => s.addLog);
-  
-  const [waste, setWaste] = useState("");
-  const [wasteReason, setWasteReason] = useState("");
-  const [customReason, setCustomReason] = useState("");
-  const [usedMaterialId, setUsedMaterialId] = useState("");
-  
-  const needReason = parseInt(waste) > 0;
-  const finalReason = wasteReason === "Lainnya" ? customReason : wasteReason;
-
-  const totalTarget = jobs.reduce((sum, j) => sum + j.qty, 0);
-
-  const isSubmitDisabled = (needReason && !finalReason);
-
+/** Tombol buka file cetak (dibuka di tab baru untuk di-RIP ke mesin).
+ * Combo order: satu tombol per file desain item. */
+function FileButton({ files }: { files: { label: string; url: string; name: string | null }[] }) {
+  if (!files || files.length === 0) return null;
+  const single = files.length === 1;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-card border border-border rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-        <h3 className="text-2xl font-black text-primary mb-2">Selesai Gabung Cetak</h3>
-        <p className="text-sm text-muted mb-6">Mengkonfirmasi penyelesaian {jobs.length} pesanan sekaligus.</p>
-        
-        <div className="space-y-6">
-          <div className="bg-elevated rounded-2xl p-4 border border-border">
-            <h4 className="text-xs font-bold text-muted uppercase tracking-wide mb-3">Pesanan dalam Batch Ini</h4>
-            <div className="space-y-2 max-h-32 overflow-y-auto pr-2">
-              {jobs.map(j => (
-                <div key={j.id} className="flex justify-between items-center bg-base p-2 rounded-lg border border-border/50">
-                  <span className="text-sm font-medium text-primary truncate max-w-[200px]">{j.product}</span>
-                  <span className="text-xs font-bold text-accent-teal">{j.qty} pcs</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 pt-3 border-t border-border flex justify-between items-center">
-              <span className="text-sm font-bold text-primary">Total Target Qty:</span>
-              <span className="text-lg font-black text-primary">{totalTarget} pcs</span>
-            </div>
-          </div>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm text-primary font-bold mb-1.5 block">Bahan Aktual yang Dipakai (Opsional)</label>
-              <select 
-                value={usedMaterialId} onChange={(e) => setUsedMaterialId(e.target.value)}
-                className="w-full h-12 rounded-xl bg-base border border-border text-primary text-sm px-4 outline-none focus:border-accent-teal"
-              >
-                <option value="">-- Pilih Jika Perlu Dicatat --</option>
-                {inventory.map(i => (
-                  <option key={i.id} value={i.id}>{i.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm text-status-yellow font-bold mb-1.5 block">Total Jumlah Gagal / Reject</label>
-              <input type="number" min="0" value={waste} onChange={(e) => setWaste(e.target.value)}
-                placeholder="0"
-                className="w-full h-12 rounded-xl bg-elevated border border-border text-primary text-lg font-bold px-4 outline-none focus:border-status-yellow transition-all" />
-            </div>
-
-            {needReason && (
-              <div className="p-4 bg-status-yellow/10 border border-status-yellow/30 rounded-xl space-y-3">
-                <div>
-                  <label className="text-xs text-status-yellow font-bold mb-1.5 block">Pilih Alasan Gagal *</label>
-                  <select 
-                    value={wasteReason} onChange={(e) => setWasteReason(e.target.value)}
-                    className="w-full h-11 rounded-xl bg-elevated border border-status-yellow text-primary text-sm px-4 outline-none focus:ring-2 focus:ring-status-yellow/20"
-                  >
-                    <option value="" disabled>-- Pilih Penyebab --</option>
-                    {WASTE_REASONS.map(r => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
-                </div>
-                {wasteReason === "Lainnya" && (
-                  <div>
-                    <label className="text-xs text-status-yellow font-bold mb-1.5 block">Ketik Alasan Lainnya *</label>
-                    <input type="text" value={customReason} onChange={(e) => setCustomReason(e.target.value)}
-                      className="w-full h-11 rounded-xl bg-elevated border border-status-yellow text-primary text-sm px-4 outline-none focus:ring-2 focus:ring-status-yellow/20" />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="flex gap-3 mt-8">
-          <button onClick={onClose} className="flex-1 h-14 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary transition-colors">Batal</button>
-          <button
-            onClick={() => {
-              jobs.forEach(j => {
-                updateJobStatus(j.id, "WAITING_QC");
-                updateOrderStatus(j.orderId, "PRODUCTION_DONE");
-              });
-              
-              if (parseInt(waste) > 0) {
-                 addLog({
-                    type: "PRODUCTION_WASTE",
-                    title: "Laporan Waste / Bahan Gagal",
-                    description: `Ditemukan reject sebanyak ${waste} pcs. Alasan: ${finalReason}. (Batch Job ID: ${jobs[0].id}, dkk)`,
-                    operator: "Operator (Aktif)"
-                 });
-              }
-              
-              onClose();
-            }}
-            disabled={isSubmitDisabled}
-            className="flex-[2] h-14 rounded-xl bg-gradient-to-r from-status-green to-emerald-500 text-white text-base font-black hover:brightness-110 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-          >
-            <CheckCircle2 className="h-5 w-5" /> Selesaikan Batch
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function OperatorPage() {
-  const jobs = useWorkflowStore(s => s.jobs);
-  const orders = useWorkflowStore(s => s.orders);
-  const updateJobStatus = useWorkflowStore(s => s.updateJobStatus);
-  
-  const printingJobs = jobs.filter(j => j.status === "PRINTING");
-  const queueJobs = jobs.filter(j => j.status === "WAITING_PRINT");
-  
-  const [selectedQueueIds, setSelectedQueueIds] = useState<string[]>([]);
-  const [showSplitModal, setShowSplitModal] = useState(false);
-  const [showDoneModal, setShowDoneModal] = useState(false);
-  const [queueFilter, setQueueFilter] = useState<"SEMUA" | "HARI_INI" | "OVERDUE">("SEMUA");
-  
-  const completedJobsCount = jobs.filter(j => 
-    j.status === "WAITING_QC" || j.status === "QC_PASSED" || j.status === "FINISHING" || j.status === "STORED" || j.status === "PICKED_UP"
-  ).length;
-
-  const dynamicKPI = [
-    { label: "Job Dikerjakan", value: printingJobs.length.toString(), color: "text-status-blue", bg: "bg-status-blue/10", icon: Layers },
-    { label: "Sisa Antrian", value: queueJobs.length.toString(), color: "text-status-yellow", bg: "bg-status-yellow/10", icon: Timer },
-    { label: "Selesai Hari Ini", value: completedJobsCount.toString(), color: "text-status-green", bg: "bg-status-green/10", icon: CheckCircle2 },
-    { label: "Kendala Mesin", value: "0", color: "text-status-red", bg: "bg-status-red/10", icon: AlertCircle },
-  ];
-
-  const handleStartBatch = () => {
-    selectedQueueIds.forEach(id => {
-      updateJobStatus(id, "PRINTING");
-    });
-    setSelectedQueueIds([]);
-  };
-
-  const toggleSelect = (id: string) => {
-    setSelectedQueueIds(prev => 
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-  };
-
-  return (
-    <div className="space-y-6">
-      {showSplitModal && <SplitRollModal onClose={() => setShowSplitModal(false)} />}
-      {showDoneModal && printingJobs.length > 0 && <DoneBatchModal jobs={printingJobs} onClose={() => setShowDoneModal(false)} />}
-
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">Mesin Produksi</h1>
-          <p className="text-sm text-muted mt-0.5">Kelola antrian cetak dan potong bahan</p>
-        </div>
-        <button 
-          onClick={() => setShowSplitModal(true)}
-          className="h-11 px-5 rounded-xl bg-elevated border border-border text-primary font-bold text-sm flex items-center justify-center gap-2 hover:border-accent-teal hover:text-accent-teal transition-all shadow-sm"
+    <div className="flex shrink-0 flex-wrap gap-1.5">
+      {files.map((f, i) => (
+        <a
+          key={f.url}
+          href={f.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={f.name || `Buka file cetak — ${f.label}`}
+          className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-accent-teal/40 bg-accent-teal/10 px-3 text-xs font-bold text-accent-teal hover:bg-accent-teal/20 transition-colors"
         >
-          <Scissors className="h-4 w-4" /> Lapor Potong Lebar Roll
+          <FileDown className="h-4 w-4 shrink-0" />
+          <span className="hidden truncate sm:inline max-w-[120px]">
+            {single ? "File" : f.label || `File ${i + 1}`}
+          </span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function QueueCard({
+  job, busy, onStart, onBounce,
+}: {
+  job: Job;
+  busy: boolean;
+  onStart: () => void;
+  onBounce: () => void;
+}) {
+  const pr = priorityBadge(job.priority);
+  const dl = deadlineInfo(job.deadline);
+  return (
+    <div className={cn("rounded-2xl border border-border bg-base p-4", pr && `border-l-4 ${pr.bar}`)}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className={cn("text-[11px] font-black tracking-wide", pr?.text)}>{pr?.label ?? ""}</span>
+        {dl && <span className={cn("text-[11px] font-bold", TONE_CLS[dl.tone])}>{dl.label}</span>}
+      </div>
+
+      <JobItems items={job.items} />
+
+      <p className="mt-2 font-mono text-[11px] text-muted">{job.jobCode} · {job.machine}</p>
+
+      <div className="mt-3 flex items-stretch gap-2">
+        <button
+          disabled={busy}
+          onClick={onStart}
+          className="h-11 flex-1 rounded-xl bg-accent-teal text-sm font-black text-white transition-all hover:brightness-110 disabled:opacity-40"
+        >
+          {job.status === "PRODUCTION_QUEUED" ? "AMBIL & MULAI" : "MULAI PRODUKSI"}
+        </button>
+        <FileButton files={job.files} />
+        <DropdownMenu
+          label={`Aksi lain untuk ${job.jobCode}`}
+          trigger={<MoreVertical className="h-4 w-4" />}
+          triggerClassName="h-11 w-11 flex items-center justify-center rounded-xl border border-border bg-card"
+        >
+          <DropdownMenuItem danger icon={<FileWarning className="h-4 w-4" />} onSelect={onBounce}>
+            Lapor file bermasalah
+          </DropdownMenuItem>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+}
+
+function ActiveCard({
+  job, busy, onPause, onResume, onFinish,
+}: {
+  job: Job;
+  busy: boolean;
+  onPause: () => void;
+  onResume: () => void;
+  onFinish: () => void;
+}) {
+  const paused = job.status === "PRODUCTION_PAUSED";
+  const dl = deadlineInfo(job.deadline);
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border-2 bg-card p-4 shadow-sm",
+        paused ? "border-status-yellow/40" : "border-status-blue/40"
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <JobItems items={job.items} dense />
+          <p className="mt-1 font-mono text-[11px] text-muted">
+            {job.jobCode} · {job.machine}
+            {dl && <span className={cn("ml-1.5 font-sans font-bold", TONE_CLS[dl.tone])}>· {dl.label}</span>}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <StatusPill status={job.status} />
+          <p className={cn("mt-1.5 flex items-center justify-end gap-1 text-xs font-semibold", paused ? "text-status-yellow-text" : "text-muted")}>
+            <Clock className="h-3.5 w-3.5" /> {paused ? "dijeda" : fmtElapsed(job.startedAt)}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-stretch gap-2">
+        <FileButton files={job.files} />
+        {paused ? (
+          <button
+            disabled={busy}
+            onClick={onResume}
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-status-blue/30 bg-status-blue/10 px-4 text-sm font-bold text-status-blue hover:bg-status-blue/20 disabled:opacity-40"
+          >
+            <Play className="h-4 w-4" /> Lanjutkan
+          </button>
+        ) : (
+          <button
+            disabled={busy}
+            onClick={onPause}
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-border bg-elevated px-4 text-sm font-bold text-muted hover:text-primary disabled:opacity-40"
+          >
+            <Pause className="h-4 w-4" /> Jeda
+          </button>
+        )}
+        <button
+          onClick={onFinish}
+          className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-status-green text-sm font-black text-white transition-all hover:brightness-110"
+        >
+          <CheckCircle2 className="h-5 w-5" /> SELESAI
         </button>
       </div>
+    </div>
+  );
+}
 
-      {/* KPI */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {dynamicKPI.map((k) => (
-          <div key={k.label} className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-4 shadow-sm flex items-center gap-4">
-            <div className={cn("inline-flex p-3 rounded-xl", k.bg)}>
-              <k.icon className={cn("h-6 w-6", k.color)} />
-            </div>
-            <div>
-              <p className={cn("text-2xl font-bold", k.color)}>{k.value}</p>
-              <p className="text-xs text-muted font-medium">{k.label}</p>
-            </div>
+const USAGE_UNIT: Record<string, string> = { METER: "m", LEMBAR: "lembar", ML: "ml", GRAM: "g", PCS: "pcs", LITER: "L", KG: "kg" };
+function usageUnit(m: MaterialOpt | undefined): string {
+  if (!m) return "";
+  return USAGE_UNIT[m.unitUsage] ?? m.unitCustom ?? m.unitUsage.toLowerCase();
+}
+
+type MatRow = { key: number; materialId: string; usageQty: string; wasteQty: string; wasteReason: string };
+let rowSeq = 0;
+const newRow = (materialId = ""): MatRow => ({ key: ++rowSeq, materialId, usageQty: "", wasteQty: "", wasteReason: "" });
+
+/** Parse "300x100" (cm dari form order) atau "3x1 m" → luas m² & panjang m. */
+function parseDims(size: string | null): { areaM2: number; lenM: number } | null {
+  const m = size?.match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/i);
+  if (!m) return null;
+  let w = parseFloat(m[1].replace(",", "."));
+  let h = parseFloat(m[2].replace(",", "."));
+  const inMeters = /(^|[^a-z])m([^a-z]|$)/i.test(size!) && !/mm|cm/i.test(size!);
+  if (!inMeters) { w /= 100; h /= 100; }
+  if (!(w > 0 && h > 0)) return null;
+  return { areaM2: w * h, lenM: Math.max(w, h) };
+}
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+const fInp = "w-full h-11 rounded-xl bg-elevated border border-border text-primary text-sm px-3 outline-none focus:border-accent-teal";
+const fLbl = "text-xs font-bold text-primary mb-1 block";
+const fSection = "text-[11px] font-black uppercase tracking-wider text-muted";
+
+function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialOpt[]; onDone: () => void }) {
+  const areaUnit = job.productUnit === "M2" ? "m²" : job.productUnit === "METER" ? "m" : null;
+  const dims = parseDims(job.firstItemSize);
+  const areaPrefill =
+    areaUnit && dims
+      ? round2((job.productUnit === "M2" ? dims.areaM2 : dims.lenM) * (job.firstItemQty || 1))
+      : null;
+
+  const [actualQty, setActualQty] = useState(String(job.plannedQty || ""));
+  const [area, setArea] = useState(areaPrefill != null ? String(areaPrefill) : "");
+  const [reprint, setReprint] = useState("");
+  const [rows, setRows] = useState<MatRow[]>([newRow(job.suggestedMaterialId ?? "")]);
+  const [showWaste, setShowWaste] = useState(false);
+  const [rejectQty, setRejectQty] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectCustom, setRejectCustom] = useState("");
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const setRow = (key: number, patch: Partial<MatRow>) =>
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const matById = (id: string) => materials.find((m) => m.id === id);
+
+  const rejectN = Number(rejectQty) || 0;
+  const rejectFinal = rejectReason === "Lainnya" ? rejectCustom.trim() : rejectReason;
+  const filledRows = rows.filter((r) => r.materialId && Number(r.usageQty) > 0);
+
+  const canSubmit =
+    Number(actualQty) > 0 &&
+    (!areaUnit || Number(area) > 0) &&
+    filledRows.length > 0 &&
+    filledRows.every((r) => Number(r.wasteQty) <= 0 || !!r.wasteReason) &&
+    (rejectN === 0 || !!rejectFinal);
+
+  async function submit() {
+    setBusy(true);
+    setErr(null);
+    const res = await finishProduction(job.jobCode, {
+      actualQty: Number(actualQty),
+      actualArea: areaUnit && Number(area) > 0 ? Number(area) : undefined,
+      reprintQty: Number(reprint) > 0 ? Number(reprint) : undefined,
+      wasteQty: rejectN > 0 ? rejectN : 0,
+      wasteReason: rejectN > 0 ? rejectFinal : undefined,
+      notes: notes.trim() || undefined,
+      materials: filledRows.map((r) => ({
+        materialId: r.materialId,
+        usageQty: Number(r.usageQty),
+        wasteQty: Number(r.wasteQty) > 0 ? Number(r.wasteQty) : undefined,
+        wasteReason: Number(r.wasteQty) > 0 ? r.wasteReason : undefined,
+      })),
+    });
+    setBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    onDone();
+  }
+
+  return (
+    <div className="space-y-5">
+      {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
+
+      {/* 1. Hasil */}
+      <div className="space-y-2">
+        <p className={fSection}>Hasil</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className={fLbl}>
+              Jumlah jadi (pcs) *
+              <InfoTip text="Potong bagus yang keluar dari mesin. Sudah diisi angka target — ubah kalau kenyataannya beda (mis. ada yang rusak)." />
+            </label>
+            <input type="number" inputMode="numeric" className={fInp} value={actualQty} onChange={(e) => setActualQty(e.target.value)} />
+            <p className="mt-1 text-[11px] text-muted">Target: {job.plannedQty} pcs</p>
           </div>
-        ))}
+          {areaUnit && (
+            <div>
+              <label className={fLbl}>
+                Total {areaUnit} tercetak *
+                <InfoTip text="Luas media yang benar-benar tercetak. Dihitung otomatis dari ukuran × jumlah — biasanya biarkan, ubah kalau ada tambahan area (mis. cetak ulang sebagian)." />
+              </label>
+              <div className="relative">
+                <input
+                  type="number" inputMode="decimal"
+                  className={cn(fInp, "pr-10")}
+                  value={area} onChange={(e) => setArea(e.target.value)}
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-muted">{areaUnit}</span>
+              </div>
+              {areaPrefill != null && job.firstItemSize && (
+                <p className="mt-1 text-[11px] text-muted">otomatis dari {job.firstItemSize} × {job.firstItemQty}</p>
+              )}
+            </div>
+          )}
+        </div>
+        <div>
+          <label className={fLbl}>
+            Reprint saat proses <span className="font-normal text-muted">(pcs, opsional)</span>
+            <InfoTip text="Potong yang dicetak ulang di tengah job. Hasil akhirnya tetap sama, tapi pemakaian bahan jadi lebih besar. Kosongkan / 0 kalau tidak ada." />
+          </label>
+          <input type="number" inputMode="numeric" min="0" placeholder="0" className={fInp} value={reprint} onChange={(e) => setReprint(e.target.value)} />
+          <p className="mt-1 text-[11px] text-muted">potong yang dicetak ulang di tengah job</p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Kolom Kiri: Antrian */}
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-3xl shadow-sm flex flex-col h-full max-h-[800px] overflow-hidden">
-          <div className="p-5 border-b border-border bg-card/50">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Timer className="h-5 w-5 text-status-yellow" />
-                <h2 className="text-lg font-bold text-primary">Antrian Masuk</h2>
-                <span className="px-2.5 py-1 rounded-full text-xs font-black bg-status-yellow text-black">{queueJobs.length}</span>
+      {/* 2. Bahan */}
+      <div className="space-y-2">
+        <p className={cn(fSection, "flex items-center gap-1.5")}>
+          Bahan dipakai
+          <InfoTip text="Berapa banyak bahan HABIS untuk job ini (satuan di kanan kotak). ⚠️ Angka ini langsung memotong stok — isi sejujurnya, jangan asal." />
+        </p>
+        {materials.length === 0 && (
+          <p className="text-[11px] text-status-yellow-text">Belum ada master material — tambahkan di Katalog dulu.</p>
+        )}
+        {rows.map((r, i) => {
+          const mat = matById(r.materialId);
+          const unit = usageUnit(mat);
+          return (
+            <div key={r.key} className="rounded-xl border border-border bg-base p-3 space-y-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px]">
+                <select className={fInp} value={r.materialId} onChange={(e) => setRow(r.key, { materialId: e.target.value })}>
+                  <option value="">Pilih material…</option>
+                  {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                <div className="relative">
+                  <input
+                    type="number" inputMode="decimal" placeholder="Pakai"
+                    className={cn(fInp, unit && "pr-10")}
+                    value={r.usageQty} onChange={(e) => setRow(r.key, { usageQty: e.target.value })}
+                  />
+                  {unit && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-muted">{unit}</span>}
+                </div>
               </div>
-            </div>
-            
-            <div className="flex gap-2">
-              <select 
-                value={queueFilter} onChange={(e) => setQueueFilter(e.target.value as any)}
-                className="flex-1 h-10 bg-elevated border border-border rounded-xl text-xs font-bold text-primary px-3 outline-none focus:border-accent-teal cursor-pointer"
-              >
-                <option value="SEMUA">Semua Antrian</option>
-                <option value="HARI_INI">Deadline Hari Ini</option>
-              </select>
-              
-              {selectedQueueIds.length > 0 && (
-                <button 
-                  onClick={handleStartBatch}
-                  disabled={printingJobs.length > 0} // Can only start if machine is empty
-                  className="px-4 bg-accent-teal text-white rounded-xl text-xs font-black hover:brightness-110 disabled:opacity-40 disabled:grayscale transition-all flex items-center gap-1 cursor-pointer"
-                >
-                  GABUNG ({selectedQueueIds.length})
+              {showWaste && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[120px_1fr]">
+                  <div className="relative">
+                    <input
+                      type="number" inputMode="decimal" placeholder="Sisa" min="0"
+                      className={cn(fInp, unit && "pr-12")}
+                      value={r.wasteQty} onChange={(e) => setRow(r.key, { wasteQty: e.target.value })}
+                    />
+                    {unit && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-muted">{unit}</span>}
+                  </div>
+                  <select
+                    className={cn(fInp, Number(r.wasteQty) > 0 && !r.wasteReason && "border-status-yellow")}
+                    value={r.wasteReason} onChange={(e) => setRow(r.key, { wasteReason: e.target.value })}
+                    disabled={!(Number(r.wasteQty) > 0)}
+                  >
+                    <option value="">Alasan sisa bahan…</option>
+                    {OFFCUT_REASONS.map((x) => <option key={x} value={x}>{x}</option>)}
+                  </select>
+                </div>
+              )}
+              {rows.length > 1 && (
+                <button type="button" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))} className="text-[11px] font-bold text-status-red hover:underline">
+                  Hapus bahan {i + 1}
                 </button>
               )}
             </div>
-            {printingJobs.length > 0 && selectedQueueIds.length > 0 && (
-               <p className="text-[10px] text-status-red mt-2 font-medium">* Selesaikan batch aktif terlebih dahulu sebelum memulai yang baru.</p>
-            )}
-          </div>
-          
-          <div className="overflow-y-auto flex-1 p-2 space-y-2 custom-scrollbar">
-            {queueJobs.filter(j => {
-              if (queueFilter === "HARI_INI") {
-                const order = orders.find(o => o.id === j.orderId);
-                const today = new Date().toISOString().split("T")[0];
-                return order?.deadline === today;
-              }
-              return true;
-            }).map((j) => {
-              const isSelected = selectedQueueIds.includes(j.id);
-              const order = orders.find(o => o.id === j.orderId);
-              return (
-              <div 
-                key={j.id} 
-                onClick={() => toggleSelect(j.id)}
-                className={cn(
-                  "bg-base border rounded-2xl p-4 flex items-start gap-4 cursor-pointer transition-all",
-                  isSelected ? "border-accent-teal bg-accent-teal/5" : "border-border/50 hover:border-accent-teal/50"
-                )}
+          );
+        })}
+        <button type="button" onClick={() => setRows((rs) => [...rs, newRow()])} className="text-[11px] font-bold text-accent-teal hover:underline">
+          + Tambah bahan
+        </button>
+      </div>
+
+      {/* 3. Gagal / sisa */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowWaste((v) => !v)}
+            className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-muted hover:text-primary"
+          >
+            {showWaste ? "−" : "+"} Ada potong gagal / sisa bahan?
+          </button>
+          <InfoTip text={<><b>Potong reject</b> = hasil cetak rusak, hitung per pcs. <b>Sisa bahan</b> (di baris bahan) = ujung roll / strip tes warna / sisa roll kependekan, hitung meter. Jangan tertukar.</>} />
+        </div>
+        {showWaste && (
+          <div className="rounded-xl border border-status-yellow/30 bg-status-yellow/5 p-3 space-y-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[120px_1fr]">
+              <div className="relative">
+                <input
+                  type="number" inputMode="numeric" min="0" placeholder="0"
+                  className={cn(fInp, "pr-10")}
+                  value={rejectQty} onChange={(e) => setRejectQty(e.target.value)}
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-muted">pcs</span>
+              </div>
+              <select
+                className={cn(fInp, rejectN > 0 && !rejectReason && "border-status-yellow")}
+                value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
+                disabled={rejectN === 0}
               >
-                <div className={cn(
-                  "h-6 w-6 mt-1 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors",
-                  isSelected ? "border-accent-teal bg-accent-teal text-white" : "border-muted/50 bg-base text-transparent"
-                )}>
-                  <CheckCircle2 className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-bold text-muted uppercase tracking-wider mb-0.5">{order?.customerName || "Tanpa Nama"}</p>
-                  <p className={cn("font-bold text-base truncate leading-tight mb-1", isSelected ? "text-accent-teal" : "text-primary")}>{j.product}</p>
-                  <p className="text-xs font-medium text-muted truncate">{j.material} • {j.width}x{j.height}cm</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xl font-black text-primary">{j.qty} <span className="text-[10px] font-medium text-muted">pcs</span></p>
-                </div>
+                <option value="">Alasan potong gagal…</option>
+                {REJECT_REASONS.map((x) => <option key={x} value={x}>{x}</option>)}
+              </select>
+            </div>
+            {rejectReason === "Lainnya" && (
+              <input className={fInp} placeholder="Ketik alasan…" value={rejectCustom} onChange={(e) => setRejectCustom(e.target.value)} />
+            )}
+            <p className="text-[11px] text-muted">
+              <b>Potong gagal</b> = hasil cetak tak terpakai. <b>Sisa bahan</b> (di tiap baris bahan) = leader/kalibrasi/offcut, bukan hasil cetak.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Catatan */}
+      <div>
+        <label className={fLbl}>Catatan <span className="font-normal text-muted">(opsional)</span></label>
+        <textarea
+          className="w-full min-h-[56px] rounded-xl bg-elevated border border-border text-primary text-sm p-3 outline-none focus:border-accent-teal resize-none"
+          placeholder="Hal tak biasa: warna, bahan, gangguan…"
+          value={notes} onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
+
+      <button
+        disabled={!canSubmit || busy}
+        onClick={submit}
+        className="w-full h-12 rounded-xl bg-status-green text-white text-sm font-black hover:brightness-110 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+      >
+        <CheckCircle2 className="h-5 w-5" /> {busy ? "Menyimpan…" : "Selesai Produksi (SCAN 2)"}
+      </button>
+    </div>
+  );
+}
+
+function CardSkeleton() {
+  return <div className="h-40 rounded-2xl border border-border bg-elevated/40 animate-pulse" />;
+}
+
+export default function OperatorPage() {
+  const [mine, setMine] = useState<Job[]>([]);
+  const [claimable, setClaimable] = useState<Job[]>([]);
+  const [hasMachines, setHasMachines] = useState(true); // default true biar ga flash
+  const [materials, setMaterials] = useState<MaterialOpt[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [finishFor, setFinishFor] = useState<string | null>(null);
+  const [pausePromptFor, setPausePromptFor] = useState<string | null>(null);
+  const [pauseReason, setPauseReason] = useState("");
+  const [bounceFor, setBounceFor] = useState<Job | null>(null);
+  const [bounceReason, setBounceReason] = useState("");
+  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [historySummary, setHistorySummary] = useState<HistorySummary | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    const res = await getOperatorJobs();
+    setIsLoading(false);
+    if (!res.success) { setError(res.error); return; }
+    setError(null);
+    setMine(res.data.mine);
+    setClaimable(res.data.queue);
+    setHistory(res.data.history);
+    setHistorySummary(res.data.historySummary);
+    setHasMachines(res.data.hasMachines);
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+    getOrderFormData().then((r) => {
+      if (r.success) {
+        setMaterials(
+          r.data.materials.map((m) => ({
+            id: m.id,
+            name: m.name,
+            type: m.type,
+            unitUsage: (m as { unit_usage?: string }).unit_usage ?? "",
+            unitCustom: (m as { unit_custom?: string | null }).unit_custom ?? null,
+          }))
+        );
+      }
+    });
+  }, [load]);
+
+  const pinned = mine.filter((j) => j.status === "PRODUCTION_ASSIGNED");
+  const actives = mine.filter((j) => j.status === "PRODUCTION_STARTED" || j.status === "PRODUCTION_PAUSED");
+  const queue = [...pinned, ...claimable];
+
+  async function act(fn: () => Promise<{ success: boolean; error?: string }>) {
+    setBusy(true);
+    setError(null);
+    const res = await fn();
+    setBusy(false);
+    if (!res.success) { setError(res.error ?? "Aksi gagal."); return; }
+    setFinishFor(null);
+    await load();
+  }
+
+  const finishJob = actives.find((j) => j.jobCode === finishFor) ?? null;
+
+  return (
+    <div className="space-y-5">
+      {/* Header ringkas + Scan selalu terjangkau */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-primary">Mesin Produksi</h1>
+          <p className="mt-0.5 text-sm text-muted">
+            {actives.length} job jalan · {queue.length} antrian
+          </p>
+        </div>
+        <a
+          href="/scan"
+          className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent-teal px-5 text-sm font-bold text-white hover:brightness-110 transition-all"
+        >
+          <ScanLine className="h-5 w-5" /> Scan QR Job
+        </a>
+      </div>
+
+      {!hasMachines && (
+        <div className="bg-status-red/10 border border-status-red/30 p-5 rounded-2xl flex items-start gap-4">
+          <ShieldAlert className="h-6 w-6 text-status-red shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-bold text-status-red">Anda belum punya akses mesin</h3>
+            <p className="text-sm text-status-red mt-1">
+              Belum ditugaskan ke mesin cetak apa pun, jadi antrian job tidak akan muncul.
+              Hubungi Owner untuk mengatur penugasan mesin lewat Manajemen Pegawai.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {error && <ErrorState message={error} onRetry={load} />}
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {/* Antrian */}
+        <div className="flex max-h-[75vh] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="flex items-center gap-2 border-b border-border p-4">
+            <Timer className="h-5 w-5 text-status-yellow-text" />
+            <h2 className="text-base font-bold text-primary">Antrian Masuk</h2>
+            <span className="rounded-full bg-status-yellow px-2 py-0.5 text-xs font-black text-primary">{queue.length}</span>
+          </div>
+          <div className="flex-1 space-y-2 overflow-y-auto p-2">
+            {isLoading ? (
+              <><CardSkeleton /><CardSkeleton /></>
+            ) : queue.length === 0 ? (
+              <div className="flex flex-col items-center p-10 text-center text-sm text-muted">
+                <Timer className="mb-2 h-9 w-9 opacity-20" /> Tidak ada job di antrian.
               </div>
-              );
-            })}
-            
-            {queueJobs.length === 0 && (
-              <div className="p-8 text-center text-muted text-sm flex flex-col items-center">
-                <Timer className="h-10 w-10 opacity-20 mb-2" />
-                Tidak ada antrian lain.
-              </div>
+            ) : (
+              queue.map((j) => (
+                <QueueCard
+                  key={j.jobCode}
+                  job={j}
+                  busy={busy}
+                  onStart={() => act(() => startProduction(j.jobCode))}
+                  onBounce={() => { setBounceReason(""); setBounceFor(j); }}
+                />
+              ))
             )}
           </div>
         </div>
 
-        {/* Kolom Kanan: Active Jobs (Batch) */}
-        <div className="lg:col-span-2 space-y-6">
-          {printingJobs.length > 0 ? (
-            <div className="bg-card border-2 border-status-blue/30 rounded-3xl overflow-hidden shadow-lg shadow-status-blue/5">
-              <div className="bg-status-blue/10 px-6 py-4 border-b border-status-blue/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-blue opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-status-blue"></span>
-                  </span>
-                  <span className="font-bold text-status-blue tracking-wide uppercase text-sm">BATCH AKTIF ({printingJobs.length} JOB)</span>
-                </div>
-                <div className="px-3 py-1.5 rounded-lg bg-base text-xs font-bold text-primary flex items-center gap-2 border border-border self-start sm:self-auto">
-                  <Settings2 className="h-4 w-4 text-muted" />
-                  MESIN ROLAND A
-                </div>
-              </div>
-              
-              <div className="p-6">
-                <div className="space-y-3 mb-8">
-                  {printingJobs.map(job => {
-                    const order = orders.find(o => o.id === job.orderId);
-                    return (
-                    <div key={job.id} className="bg-base border border-border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-4 hover:border-status-blue/30 transition-colors">
-                      <div className="h-12 w-12 rounded-xl bg-elevated flex items-center justify-center shrink-0 border border-border">
-                        <ImageIcon className="h-5 w-5 text-muted" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-bold text-status-blue uppercase tracking-wider mb-0.5">{order?.customerName || "Tanpa Nama"}</p>
-                        <p className="font-bold text-primary text-base truncate">{job.product}</p>
-                        <p className="text-xs font-medium text-muted mt-1">{job.id} · {job.material} · {job.finishing}</p>
-                      </div>
-                      <div className="text-left sm:text-right shrink-0 bg-elevated p-3 rounded-xl border border-border">
-                        <p className="text-[10px] font-bold text-muted uppercase">Target Qty</p>
-                        <p className="text-2xl font-black text-primary">{job.qty} <span className="text-sm">pcs</span></p>
-                      </div>
-                    </div>
-                  )})}
-                </div>
-
-                <button
-                  onClick={() => setShowDoneModal(true)}
-                  className="w-full h-16 rounded-2xl bg-gradient-to-r from-status-green to-emerald-500 text-white text-lg font-black shadow-lg shadow-status-green/20 hover:brightness-110 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="h-6 w-6" />
-                  SELESAI CETAK BATCH INI
-                </button>
-              </div>
-            </div>
+        {/* Job aktif */}
+        <div className="space-y-4 lg:col-span-2">
+          {isLoading ? (
+            <CardSkeleton />
+          ) : actives.length > 0 ? (
+            actives.map((job) => (
+              <ActiveCard
+                key={job.jobCode}
+                job={job}
+                busy={busy}
+                onPause={() => { setPauseReason(""); setPausePromptFor(job.jobCode); }}
+                onResume={() => act(() => resumeProduction(job.jobCode))}
+                onFinish={() => setFinishFor(job.jobCode)}
+              />
+            ))
           ) : (
-            <div className="bg-card/70 backdrop-blur-xl border border-border rounded-3xl p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
-              <div className="w-20 h-20 bg-elevated rounded-full flex items-center justify-center mb-4 border border-dashed border-border">
-                <Layers className="h-10 w-10 text-muted/50" />
+            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-border bg-card p-12 text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-border bg-elevated">
+                <Layers className="h-8 w-8 text-muted/50" />
               </div>
-              <h2 className="text-xl font-bold text-primary mb-2">Mesin Sedang Berhenti</h2>
-              <p className="text-muted max-w-sm">Pilih pesanan dari antrian di sebelah kiri lalu klik tombol <strong className="text-accent-teal">Gabung</strong> untuk mulai bekerja.</p>
+              <h2 className="mb-1 text-lg font-bold text-primary">Belum ada job berjalan</h2>
+              <p className="max-w-sm text-sm text-muted">
+                Ambil job dari <strong className="text-accent-teal">Antrian Masuk</strong>. Boleh menjalankan beberapa job sekaligus.
+              </p>
             </div>
           )}
-
-          {/* Scan CTA */}
-          <button className="w-full h-16 rounded-2xl bg-elevated border-2 border-dashed border-accent-teal/40 text-accent-teal font-bold text-lg flex items-center justify-center gap-3 hover:bg-accent-teal/10 hover:border-accent-teal transition-all cursor-pointer shadow-sm">
-            <ScanLine className="h-6 w-6" /> SCAN TIKET SPK MANUAL
-          </button>
         </div>
       </div>
+
+      {/* Riwayat pekerjaan saya (7 hari terakhir) */}
+      <div className="rounded-2xl border border-border bg-card shadow-sm">
+        <button
+          onClick={() => setHistoryOpen((v) => !v)}
+          className="flex w-full items-center gap-2 p-4 text-left"
+        >
+          <CheckCircle2 className="h-5 w-5 text-status-green" />
+          <h2 className="text-base font-bold text-primary">Riwayat Pekerjaan Saya</h2>
+          {historySummary && (
+            <span className="ml-1 text-xs text-muted">
+              hari ini {historySummary.todayCount} job · {historySummary.todayQty} pcs
+              {historySummary.todayWaste > 0 && ` · ${historySummary.todayWaste} waste`}
+            </span>
+          )}
+          <span className="ml-auto text-xs font-bold text-muted">
+            {historyOpen ? "Tutup" : `Lihat (${history.length})`}
+          </span>
+        </button>
+
+        {historyOpen && (
+          <div className="border-t border-border">
+            {history.length === 0 ? (
+              <p className="p-6 text-center text-sm text-muted">Belum ada job selesai dalam 7 hari terakhir.</p>
+            ) : (
+              <div className="max-h-[60vh] divide-y divide-border/60 overflow-y-auto">
+                {history.map((h) => (
+                  <div key={h.jobCode} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-xs">
+                    <span className="font-mono font-bold text-accent-teal">{h.jobCode}</span>
+                    <StatusPill status={h.status} />
+                    <span className="text-muted">{h.orderCode} · {h.customerName}</span>
+                    <span className="ml-auto flex items-center gap-1 text-muted">
+                      <Clock className="h-3 w-3" /> {fmtDoneAt(h.endedAt, h.isToday)}
+                    </span>
+                    <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+                      <span>{h.machine}</span>
+                      <span className="font-semibold text-primary">{h.actualQty}/{h.plannedQty} pcs</span>
+                      {h.wasteQty > 0 && (
+                        <span className="rounded bg-status-red/10 px-1.5 py-0.5 font-bold text-status-red">waste {h.wasteQty}</span>
+                      )}
+                      {h.reprintQty > 0 && (
+                        <span className="rounded bg-status-yellow/15 px-1.5 py-0.5 font-bold text-status-yellow-text">reprint {h.reprintQty}</span>
+                      )}
+                      <span>· durasi ± {fmtDur(h.durationMin)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <RoleGuide role="operator" defaultCollapsed />
+
+      <AbsenCard />
+
+      {/* Modal: Selesai Produksi */}
+      <Modal
+        open={!!finishJob}
+        onClose={() => setFinishFor(null)}
+        title="Selesai Produksi (SCAN 2)"
+        description={finishJob ? `${finishJob.jobCode} · ${finishJob.orderCode}` : undefined}
+        size="md"
+      >
+        {finishJob && (
+          <FinishForm
+            job={finishJob}
+            materials={materials}
+            onDone={() => act(async () => ({ success: true }))}
+          />
+        )}
+      </Modal>
+
+      {/* Modal: Jeda Produksi */}
+      <Modal
+        open={!!pausePromptFor}
+        onClose={() => setPausePromptFor(null)}
+        title="Jeda Produksi"
+        description={pausePromptFor ?? undefined}
+        size="sm"
+        footer={
+          <div className="flex w-full gap-2">
+            <button
+              onClick={() => setPausePromptFor(null)}
+              className="flex-1 h-10 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary"
+            >
+              Batal
+            </button>
+            <button
+              disabled={busy || pauseReason.trim().length < 5}
+              onClick={() => {
+                const reason = pauseReason.trim();
+                const code = pausePromptFor!;
+                setPausePromptFor(null);
+                act(() => pauseProduction(code, reason));
+              }}
+              className="flex-1 h-10 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"
+            >
+              Jeda
+            </button>
+          </div>
+        }
+      >
+        <label className="text-xs text-muted font-medium mb-1 block">Alasan jeda (min. 5 karakter)</label>
+        <textarea
+          value={pauseReason}
+          onChange={(e) => setPauseReason(e.target.value)}
+          autoFocus
+          placeholder="mis. mesin macet / nunggu bahan / listrik padam"
+          className="w-full min-h-[80px] rounded-xl bg-elevated border border-border text-sm text-primary p-3 outline-none focus:border-accent-teal resize-none"
+        />
+      </Modal>
+
+      {/* Modal: Lapor File Bermasalah */}
+      <Modal
+        open={!!bounceFor}
+        onClose={() => setBounceFor(null)}
+        title="Lapor File Bermasalah"
+        description={bounceFor ? `${bounceFor.jobCode} · ${bounceFor.orderCode}` : undefined}
+        size="sm"
+        footer={
+          <div className="flex w-full gap-2">
+            <button
+              onClick={() => setBounceFor(null)}
+              className="flex-1 h-10 rounded-xl bg-elevated border border-border text-sm font-bold text-muted hover:text-primary"
+            >
+              Batal
+            </button>
+            <button
+              disabled={busy || bounceReason.trim().length < 10}
+              onClick={() => {
+                const code = bounceFor!.jobCode;
+                const reason = bounceReason.trim();
+                setBounceFor(null);
+                act(() => bounceDesignFromProduction(code, { reason }));
+              }}
+              className="flex-1 h-10 rounded-xl bg-status-red text-white text-sm font-bold hover:brightness-110 disabled:opacity-40"
+            >
+              Kembalikan ke Desainer
+            </button>
+          </div>
+        }
+      >
+        <p className="mb-2 text-[11px] text-muted">
+          Order kembali ke antrean desainer untuk revisi. Job produksi ini dibatalkan.
+          Hanya untuk file yang <b>belum</b> mulai dicetak.
+        </p>
+        <label className="text-xs text-muted font-medium mb-1 block">Masalahnya apa? (min. 10 karakter)</label>
+        <textarea
+          value={bounceReason}
+          onChange={(e) => setBounceReason(e.target.value)}
+          autoFocus
+          placeholder="mis. resolusi file pecah / ukuran tidak sesuai / warna beda dari brief"
+          className="w-full min-h-[90px] rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-status-red resize-none"
+        />
+      </Modal>
     </div>
   );
 }

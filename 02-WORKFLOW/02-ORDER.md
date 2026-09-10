@@ -59,12 +59,22 @@ Status order berubah ke WAITING_PAYMENT setelah desain APPROVED.
 
 ---
 
-## Langkah 5 — Konfirmasi Order
+## Langkah 5 — Konfirmasi Order → Auto-Release ke Produksi
 
 Setelah DP diterima dan dikonfirmasi Admin:
 - Status berubah ke CONFIRMED
-- Order masuk antrian produksi
-- Admin bisa assign job ke mesin dan operator
+- Sistem langsung menjalankan **Completeness Gate**. Kalau semua syarat wajib
+  terpenuhi (DP, desain APPROVED + file final, diskon tidak menggantung, identitas
+  pemesan, deadline, tiap item lengkap, tiap produk punya mesin default) → sistem
+  **otomatis** membuat Production Job per item (status `PRODUCTION_QUEUED`) tanpa
+  approval Admin.
+- **Admin tidak perlu menekan tombol apa pun** untuk meneruskan order ke Operator.
+- Kalau gate belum lolos, order tetap CONFIRMED dan alasannya tampil di dashboard
+  Admin; tombol **"Assign ke Produksi"** manual tetap tersedia sebagai jalur
+  fallback (mis. item custom tanpa mesin default, atau mesin default MAINTENANCE).
+- Operator mengambil job dari antrian mesinnya sendiri (scan SCAN 1 = klaim + mulai).
+
+Detail: `02-WORKFLOW/17-AUTO-RELEASE-PRODUKSI.md`.
 
 ---
 

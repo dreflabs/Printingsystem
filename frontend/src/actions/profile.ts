@@ -1,43 +1,43 @@
 "use server";
 
+import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { PrismaClient } from "@prisma/client";
+import { requireUser } from "@/lib/actor";
+import { isTenantKey } from "@/lib/storage";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
+/** Password bawaan sistem untuk pegawai baru (lihat createEmployee). Dilarang dipakai sebagai password permanen. */
+const DEFAULT_EMPLOYEE_PASSWORD = "printpilot123!";
 
-/**
- * Gets a user from the DB based on the selected role in the UI.
- */
-export async function getCurrentUserProfile(role: string) {
+/** Slug + nama workspace milik user yang sedang login — dipakai untuk menampilkan alamat login pegawai. */
+export async function getMyWorkspace(): Promise<{ slug: string; name: string } | null> {
   try {
     const tenant = await requireTenant();
-    
-    const dbRole = await prisma.role.findUnique({
-      where: { name: role }
+    await requireUser();
+    const row = await prisma.tenant.findUnique({
+      where: { id: tenant.id },
+      select: { slug: true, name: true },
     });
-    if (!dbRole) return null;
-
-    const user = await prisma.user.findFirst({
-      where: { 
-        tenant_id: tenant.id,
-        role_id: dbRole.id,
-      },
-      select: {
-        id: true,
-        name: true,
-        username: true,
-        email: true,
-        phone: true,
-        avatar_url: true,
-        role: true
-      }
-    });
-
-    return user;
+    return row ? { slug: row.slug, name: row.name } : null;
   } catch (error) {
-    console.error("Error getting user profile:", error);
+    console.error("getMyWorkspace:", error);
+    return null;
+  }
+}
+
+/** Profil user berdasarkan ID (dipakai Header untuk user yang sedang login) — hanya profil milik sendiri. */
+export async function getUserProfileById(userId: string) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (userId !== actor.id) return null;
+    return await prisma.user.findFirst({
+      where: { id: userId, tenant_id: tenant.id },
+      select: { id: true, name: true, username: true, email: true, phone: true, avatar_url: true },
+    });
+  } catch (error) {
+    console.error("getUserProfileById:", error);
     return null;
   }
 }
@@ -45,25 +45,43 @@ export async function getCurrentUserProfile(role: string) {
 export async function updateProfile(userId: string, data: { name: string; username: string; email: string; phone: string; avatar_url: string }) {
   try {
     const tenant = await requireTenant();
-    
+    const actor = await requireUser();
+    if (userId !== actor.id) throw new Error("Tidak bisa mengubah profil pengguna lain.");
+
     // Check if user exists and belongs to tenant
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id }
     });
-    
+
     if (!user) throw new Error("User not found or access denied");
 
-    // Validate uniqueness of username and email
+    // avatar_url = "/api/avatar?key=avatars/<tenant ini>/…" atau kosong.
+    // Tolak referensi ke key milik tenant lain (cegah tanam foto lintas-tenant).
+    const rawAvatar = (data.avatar_url ?? "").trim();
+    let safeAvatarUrl: string | null = null;
+    if (rawAvatar) {
+      const m = /^\/api\/avatar\?key=(.+)$/.exec(rawAvatar);
+      const key = m ? decodeURIComponent(m[1]) : "";
+      if (!key || !isTenantKey(key, tenant.id, ["avatars"])) {
+        throw new Error("Foto profil tidak valid.");
+      }
+      safeAvatarUrl = `/api/avatar?key=${key}`;
+    }
+
+    // Username & email hanya unik PER TENANT, jadi pemeriksaannya dibatasi ke
+    // percetakan ini. Tanpa `tenant_id`, pengguna ditolak hanya karena percetakan
+    // lain memakai nama yang sama — dan pesan galatnya bisa dipakai menebak akun
+    // di percetakan lain.
     if (data.username !== user.username) {
       const existingUsername = await prisma.user.findFirst({
-        where: { username: data.username, id: { not: userId } }
+        where: { tenant_id: tenant.id, username: data.username, id: { not: userId } }
       });
       if (existingUsername) throw new Error("Username sudah digunakan oleh akun lain.");
     }
 
     if (data.email !== user.email) {
       const existingEmail = await prisma.user.findFirst({
-        where: { email: data.email, id: { not: userId } }
+        where: { tenant_id: tenant.id, email: data.email, id: { not: userId } }
       });
       if (existingEmail) throw new Error("Email sudah digunakan oleh akun lain.");
     }
@@ -75,7 +93,7 @@ export async function updateProfile(userId: string, data: { name: string; userna
         username: data.username,
         email: data.email,
         phone: data.phone || null,
-        avatar_url: data.avatar_url || null
+        avatar_url: safeAvatarUrl
       },
       select: {
         id: true,
@@ -91,16 +109,18 @@ export async function updateProfile(userId: string, data: { name: string; userna
     revalidatePath("/", "layout");
     
     return { success: true, user: updatedUser };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating profile:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }
 
 export async function changePassword(userId: string, oldPassword: string, newPassword: string) {
   try {
     const tenant = await requireTenant();
-    
+    const actor = await requireUser();
+    if (userId !== actor.id) throw new Error("Tidak bisa mengubah password pengguna lain.");
+
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id }
     });
@@ -112,16 +132,63 @@ export async function changePassword(userId: string, oldPassword: string, newPas
       throw new Error("Password lama yang Anda masukkan salah.");
     }
 
-    const newHash = await bcrypt.hash(newPassword, 10);
-    
+    const newHash = await bcrypt.hash(newPassword, 12);
+
     await prisma.user.update({
       where: { id: userId },
-      data: { password_hash: newHash }
+      data: { password_hash: newHash, password_changed_at: new Date(), must_change_password: false }
     });
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error changing password:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
+  }
+}
+
+/**
+ * Ganti password wajib pada login pertama. Tidak meminta password lama karena
+ * sesi sudah membuktikan identitas; sebagai gantinya password baru harus benar-
+ * benar berbeda dari bawaan sistem. Setelah sukses `must_change_password` dimatikan
+ * dan `password_changed_at` di-bump — sesi lama otomatis tidak berlaku, klien
+ * harus login ulang.
+ */
+export async function forcePasswordChange(newPassword: string) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+
+    if (newPassword.length < 8) {
+      return { success: false, error: "Kata sandi baru minimal 8 karakter." };
+    }
+    if (!/[a-zA-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      return { success: false, error: "Kata sandi harus mengandung huruf dan angka." };
+    }
+    if (newPassword === DEFAULT_EMPLOYEE_PASSWORD) {
+      return { success: false, error: "Gunakan kata sandi baru, bukan password bawaan sistem." };
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: actor.id } });
+    if (!user) return { success: false, error: "Akun tidak ditemukan." };
+
+    const sameAsOld = await bcrypt.compare(newPassword, user.password_hash);
+    if (sameAsOld) {
+      return { success: false, error: "Kata sandi baru tidak boleh sama dengan yang lama." };
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({
+      where: { id: actor.id },
+      data: { password_hash: newHash, password_changed_at: new Date(), must_change_password: false },
+    });
+
+    // Kembalikan slug workspace supaya form login berikutnya bisa prefill —
+    // tanpa subdomain per-tenant, field Workspace di /login kosong dan pegawai
+    // sering tidak tahu harus mengisi apa → login "gagal" padahal password benar.
+    const ws = await prisma.tenant.findUnique({ where: { id: tenant.id }, select: { slug: true } });
+    return { success: true, workspace: ws?.slug ?? null };
+  } catch (error: unknown) {
+    console.error("Error forcing password change:", error);
+    return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }
 }

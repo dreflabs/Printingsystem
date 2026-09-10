@@ -63,7 +63,7 @@ const typeConfig: Record<ToastType, { icon: React.ReactNode; color: string; bord
   },
   warning: {
     icon: <AlertCircle className="h-5 w-5 shrink-0" />,
-    color: "text-status-yellow",
+    color: "text-status-yellow-text",
     border: "border-l-4 border-status-yellow",
   },
   info: {

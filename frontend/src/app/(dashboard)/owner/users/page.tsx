@@ -1,10 +1,29 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, UserPlus, KeyRound, Ban, CheckCircle2, ShieldAlert, Search } from "lucide-react";
+import { Users, UserPlus, KeyRound, UserX, UserCheck, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Trash2, X, Pencil, MoreVertical, Eye, EyeOff, ClipboardList, Cpu, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { UserFormModal } from "@/components/owner/UserFormModal";
-import { getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword } from "@/actions/user-management";
+import { UserFormModal, CredentialRevealDialog } from "@/components/owner/UserFormModal";
+import { MachineAssignmentModal } from "@/components/owner/MachineAssignmentModal";
+import { ConfirmDialog, DropdownMenu, DropdownMenuItem, DropdownMenuDivider, RoleBadge, ROLE_META, roleLabel } from "@/components/ui";
+import {
+  getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword,
+  unlockEmployeeAccount, getEmployeeDeleteImpact, deleteEmployee, updateUserRoles,
+} from "@/actions/user-management";
+import { getMyWorkspace } from "@/actions/profile";
+import { setEmployeeBaseSalary } from "@/actions/payroll";
+
+const formatRp = (n: number) => "Rp " + n.toLocaleString("id-ID");
+
+type PendingConfirm = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  variant: "danger" | "primary";
+  run: () => Promise<void>;
+};
+
+const isLocked = (user: any) => !!user.locked_until && new Date(user.locked_until) > new Date();
 
 export default function OwnerUsersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -13,9 +32,31 @@ export default function OwnerUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [actionMessage, setActionMessage] = useState<{type: "success" | "error", text: string} | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
+  const [savingSalaryId, setSavingSalaryId] = useState<string | null>(null);
+  const [hideSalary, setHideSalary] = useState(false);
+  const [roleFilter, setRoleFilter] = useState("ALL");
+  const [workspaceSlug, setWorkspaceSlug] = useState<string | null>(null);
+  const [createdCred, setCreatedCred] = useState<
+    { name: string; username: string; tempPassword: string; reset?: boolean } | null
+  >(null);
+  const [deleteFor, setDeleteFor] = useState<{ id: string; name: string } | null>(null);
+  const [roleEditFor, setRoleEditFor] = useState<{ id: string; name: string; primary: string; roles: string[] } | null>(null);
+  const [machineEditFor, setMachineEditFor] = useState<{ id: string; name: string; user_machines: any[] } | null>(null);
+
+  const runPendingConfirm = async () => {
+    if (!pendingConfirm) return;
+    setConfirmBusy(true);
+    await pendingConfirm.run();
+    setConfirmBusy(false);
+    setPendingConfirm(null);
+  };
 
   useEffect(() => {
     loadUsers();
+    getMyWorkspace().then((w) => setWorkspaceSlug(w?.slug ?? null));
   }, []);
 
   const loadUsers = async () => {
@@ -33,10 +74,16 @@ export default function OwnerUsersPage() {
     setIsSaving(true);
     setActionMessage(null);
     const result = await createEmployee(formData);
-    
+
     if (result.success) {
       setIsModalOpen(false);
-      setActionMessage({ type: "success", text: `Pegawai ${formData.name} berhasil ditambahkan.` });
+      setActionMessage(null);
+      // Tampilkan kredensial sekali — password sementara acak, tidak bisa dilihat lagi.
+      setCreatedCred({
+        name: formData.name,
+        username: formData.username,
+        tempPassword: result.tempPassword!,
+      });
       loadUsers();
     } else {
       setActionMessage({ type: "error", text: result.error || "Gagal menambah pegawai." });
@@ -44,58 +91,108 @@ export default function OwnerUsersPage() {
     setIsSaving(false);
   };
 
-  const handleToggleStatus = async (userId: string, currentStatus: boolean, roleName: string) => {
+  const handleToggleStatus = (userId: string, currentStatus: boolean, roleName: string) => {
     if (roleName === "owner") {
-      alert("Akun owner tidak bisa dinonaktifkan.");
+      setActionMessage({ type: "error", text: "Akun Owner tidak bisa dinonaktifkan." });
       return;
     }
-    
-    const confirmMsg = currentStatus 
-      ? "Apakah Anda yakin ingin MENONAKTIFKAN pegawai ini? Mereka tidak akan bisa login lagi."
-      : "Apakah Anda yakin ingin MENGAKTIFKAN kembali pegawai ini?";
-      
-    if (!confirm(confirmMsg)) return;
+    setActionMessage(null);
+    setPendingConfirm({
+      title: currentStatus ? "Nonaktifkan Pegawai" : "Aktifkan Pegawai",
+      message: currentStatus
+        ? "Pegawai ini tidak akan bisa login lagi sampai diaktifkan kembali. Lanjutkan?"
+        : "Pegawai ini akan bisa login kembali. Lanjutkan?",
+      confirmLabel: currentStatus ? "Ya, Nonaktifkan" : "Ya, Aktifkan",
+      variant: currentStatus ? "danger" : "primary",
+      run: async () => {
+        const result = await toggleEmployeeStatus(userId, !currentStatus);
+        if (result.success) {
+          setActionMessage({ type: "success", text: currentStatus ? "Pegawai dinonaktifkan." : "Pegawai diaktifkan kembali." });
+          loadUsers();
+        } else {
+          setActionMessage({ type: "error", text: "Gagal mengubah status: " + result.error });
+        }
+      },
+    });
+  };
 
-    const result = await toggleEmployeeStatus(userId, !currentStatus);
+  const handleUnlock = async (userId: string, name: string) => {
+    setActionMessage(null);
+    const result = await unlockEmployeeAccount(userId);
     if (result.success) {
+      setActionMessage({ type: "success", text: `Kunci akun ${name} berhasil dibuka. Pegawai bisa login kembali.` });
       loadUsers();
     } else {
-      alert("Gagal mengubah status: " + result.error);
+      setActionMessage({ type: "error", text: "Gagal membuka kunci: " + result.error });
     }
   };
 
-  const handleResetPassword = async (userId: string, roleName: string) => {
-    if (roleName === "owner") {
-      alert("Reset password Owner harus dilakukan secara mandiri melalui menu Lupa Password.");
+  const handleResetPassword = (user: { id: string; name: string; username: string; role: { name: string } }) => {
+    if (user.role.name === "owner") {
+      setActionMessage({ type: "error", text: "Reset password Owner dilakukan mandiri lewat menu Lupa Password." });
       return;
     }
+    setActionMessage(null);
+    setPendingConfirm({
+      title: "Reset Password Pegawai",
+      message:
+        "Password diganti ke password sementara acak yang baru. Sesi pegawai yang sedang berjalan langsung berhenti, dan ia wajib menggantinya saat login berikutnya. Lanjutkan?",
+      confirmLabel: "Ya, Reset",
+      variant: "danger",
+      run: async () => {
+        const result = await resetEmployeePassword(user.id);
+        if (result.success) {
+          setActionMessage(null);
+          setCreatedCred({
+            name: user.name,
+            username: user.username,
+            tempPassword: result.newPassword!,
+            reset: true,
+          });
+          loadUsers();
+        } else {
+          setActionMessage({ type: "error", text: "Gagal mereset password: " + result.error });
+        }
+      },
+    });
+  };
 
-    if (!confirm("Apakah Anda yakin ingin MERESET password pegawai ini menjadi password bawaan (printpilot123!)?")) return;
-
-    const result = await resetEmployeePassword(userId);
+  const handleSaveSalary = async (userId: string) => {
+    const raw = salaryDrafts[userId];
+    const amount = Number(raw);
+    if (raw === undefined || !Number.isFinite(amount) || amount < 0) {
+      setActionMessage({ type: "error", text: "Nominal gaji tidak valid." });
+      return;
+    }
+    setSavingSalaryId(userId);
+    const result = await setEmployeeBaseSalary(userId, amount);
+    setSavingSalaryId(null);
     if (result.success) {
-      alert("Password berhasil direset menjadi: " + result.newPassword + "\\nPegawai akan dipaksa mengganti password saat login berikutnya.");
+      setActionMessage({ type: "success", text: "Gaji pokok berhasil disimpan." });
+      setSalaryDrafts((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
       loadUsers();
     } else {
-      alert("Gagal mereset password: " + result.error);
+      setActionMessage({ type: "error", text: "Gagal menyimpan gaji: " + result.error });
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.role.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = users.filter(u => {
+    const matchSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        u.role.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchRole = roleFilter === "ALL" || getUserRoles(u).includes(roleFilter);
+    return matchSearch && matchRole;
+  });
 
-  const getRoleBadge = (roleName: string) => {
-    const roles: Record<string, string> = {
-      owner: "bg-accent-teal/10 text-accent-teal border-accent-teal/20",
-      admin: "bg-accent-teal/10 text-accent-teal border-accent-teal/20",
-      designer_sales: "bg-status-yellow/10 text-status-yellow border-status-yellow/20",
-      operator: "bg-status-blue/10 text-status-blue border-status-blue/20",
-      finishing: "bg-status-green/10 text-status-green border-status-green/20",
-    };
-    return roles[roleName] || "bg-base text-muted border-border";
+  /** Returns all role names for a user (primary + extra) */
+  const getUserRoles = (user: any): string[] => {
+    const primary = user.role?.name;
+    const extra: string[] = (user.extra_roles ?? []).map((ur: any) => ur.role?.name).filter(Boolean);
+    return Array.from(new Set([primary, ...extra].filter(Boolean)));
   };
 
   return (
@@ -140,88 +237,264 @@ export default function OwnerUsersPage() {
             className="w-full pl-9 pr-4 py-2 bg-base border border-border rounded-xl focus:outline-none focus:border-accent-teal text-sm text-primary transition-colors"
           />
         </div>
+        <select
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value)}
+          className="px-4 py-2 bg-base border border-border rounded-xl text-sm text-primary focus:outline-none focus:border-accent-teal cursor-pointer"
+        >
+          <option value="ALL">Semua Peran</option>
+          <option value="owner">Owner</option>
+          <option value="admin">Admin / Kasir</option>
+          <option value="designer_sales">Designer / Setting</option>
+          <option value="operator">Operator Cetak</option>
+          <option value="gudang">Finishing & Gudang</option>
+        </select>
       </div>
 
       {/* User Table */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-elevated border-b border-border text-muted uppercase text-[10px] font-bold tracking-wider">
+            <thead className="bg-elevated border-b border-border text-muted text-xs font-semibold tracking-wide">
               <tr>
                 <th className="px-6 py-4">Informasi Pegawai</th>
                 <th className="px-6 py-4">Role / Peran</th>
+                <th className="px-6 py-4">Akses Mesin</th>
                 <th className="px-6 py-4">Status Akun</th>
+                <th className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    Gaji Pokok
+                    <button onClick={() => setHideSalary(!hideSalary)} className="p-1 hover:bg-elevated rounded-md text-muted hover:text-primary transition-colors" title={hideSalary ? "Tampilkan Gaji" : "Sembunyikan Gaji"}>
+                      {hideSalary ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                </th>
                 <th className="px-6 py-4 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-muted">Memuat data pegawai...</td>
+                  <td colSpan={6} className="px-6 py-8 text-center text-muted">Memuat data pegawai...</td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-muted flex flex-col items-center justify-center">
+                  <td colSpan={6} className="px-6 py-12 text-center text-muted flex flex-col items-center justify-center">
                     <Users className="h-12 w-12 mb-3 opacity-20" />
                     Belum ada data pegawai ditemukan.
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((user) => (
-                  <tr key={user.id} className={cn("transition-colors hover:bg-elevated/30", !user.active && "opacity-60 bg-base/50")}>
+                  <tr key={user.id} className={cn("transition-colors hover:bg-elevated/50", !user.active && "opacity-60 bg-base/50")}>
                     <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-primary">{user.name}</span>
-                        <span className="text-xs text-muted flex items-center gap-2 mt-0.5">
-                          @{user.username} <span className="text-border/50">•</span> {user.email}
-                        </span>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-accent-teal/10 text-accent-teal flex items-center justify-center font-bold shrink-0 shadow-sm border border-accent-teal/20">
+                          {user.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-primary">{user.name}</span>
+                          <span className="text-xs text-muted mt-0.5">@{user.username}</span>
+                          <span className="text-xs text-muted/70">{user.email}</span>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold border capitalize", getRoleBadge(user.role.name))}>
-                        {user.role.name.replace("_", " ")}
-                      </span>
+                      {(() => {
+                        const primary = user.role?.name;
+                        const ordered = [
+                          ...(primary ? [primary] : []),
+                          ...getUserRoles(user).filter((r) => r !== primary),
+                        ];
+                        const primaryRole = ordered[0];
+                        const rest = ordered.slice(1);
+                        return (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {primaryRole && <RoleBadge role={primaryRole} variant="primary" />}
+                            {rest.length > 0 && (
+                              <button
+                                onClick={() => setRoleEditFor({ id: user.id, name: user.name, primary: user.role.name, roles: getUserRoles(user) })}
+                                title={`Juga: ${rest.map((r) => roleLabel(r, true)).join(", ")}`}
+                                aria-label={`${rest.length} peran lain — ubah peran`}
+                                className="cursor-pointer rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold text-muted transition-colors hover:border-accent-teal/40 hover:text-accent-teal hover:bg-accent-teal/5"
+                              >
+                                +{rest.length}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-6 py-4">
+                      {getUserRoles(user).includes("operator") ? (() => {
+                        const count = user.user_machines?.length || 0;
+                        return (
+                          <button
+                            onClick={() => setMachineEditFor({ id: user.id, name: user.name, user_machines: user.user_machines || [] })}
+                            aria-label={`Atur akses mesin untuk ${user.name}`}
+                            title={count > 0 ? user.user_machines.map((um: any) => um.machine.name).join(", ") : undefined}
+                            className={cn(
+                              "inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium rounded-md border transition-colors cursor-pointer",
+                              count > 0 
+                                ? "bg-base border-border text-muted hover:border-accent-teal/50 hover:text-accent-teal" 
+                                : "bg-status-yellow/10 border-status-yellow/30 text-status-yellow-text hover:bg-status-yellow/20 hover:border-status-yellow/50"
+                            )}
+                          >
+                            {count > 0 ? (
+                              <Cpu className="h-3 w-3 shrink-0" />
+                            ) : (
+                              <AlertTriangle className="h-3 w-3 shrink-0" />
+                            )}
+                            {count > 0 ? `${count} mesin` : "Belum ada mesin"}
+                          </button>
+                        );
+                      })() : (
+                        <span className="text-muted/40 font-medium text-xs">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col items-start gap-1">
-                        <span className={cn(
-                          "px-2 py-0.5 rounded text-[10px] font-bold",
-                          user.active ? "bg-status-green/10 text-status-green" : "bg-status-red/10 text-status-red"
-                        )}>
-                          {user.active ? "Aktif" : "Nonaktif"}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {user.active ? (
+                            <div className="flex items-center gap-2 bg-status-green/5 border border-status-green/20 text-status-green px-2.5 py-1 rounded-md text-xs font-semibold">
+                              Aktif
+                              <span className="w-1 h-1 rounded-full bg-status-green/30 mx-0.5" />
+                              <span className="flex items-center gap-1.5 font-medium">
+                                {user.liveStatus === "BEKERJA" && (
+                                  <><span title="Sedang Bekerja" className="w-2 h-2 rounded-full bg-status-green shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" /> Bekerja</>
+                                )}
+                                {user.liveStatus === "PULANG" && (
+                                  <><span title="Sudah Pulang" className="w-2 h-2 rounded-full bg-status-red" /> Pulang</>
+                                )}
+                                {user.liveStatus === "LIBUR" && (
+                                  <><span title="Libur / Cuti" className="w-2 h-2 rounded-full bg-status-yellow" /> Libur</>
+                                )}
+                                {user.liveStatus === "BELUM_ABSEN" && (
+                                  <><span title="Belum Absen" className="w-2 h-2 rounded-full bg-border" /> Off</>
+                                )}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="bg-status-red/5 border border-status-red/20 text-status-red px-2.5 py-1 rounded-md text-xs font-semibold">
+                              Nonaktif
+                            </span>
+                          )}
+                        </div>
                         {user.must_change_password && (
-                          <span className="text-[10px] text-status-yellow font-medium flex items-center gap-1 bg-status-yellow/10 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] text-status-yellow-text font-medium flex items-center gap-1 bg-status-yellow/10 px-1.5 py-0.5 rounded border border-status-yellow/20">
                             <KeyRound className="h-3 w-3" /> Wajib ubah sandi
+                          </span>
+                        )}
+                        {isLocked(user) && (
+                          <span className="text-[10px] text-status-red font-medium flex items-center gap-1 bg-status-red/10 px-1.5 py-0.5 rounded border border-status-red/20">
+                            <LockKeyhole className="h-3 w-3" /> Terkunci ({user.failed_login_count}×)
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      {user.role.name !== "owner" && (
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleResetPassword(user.id, user.role.name)}
-                            className="p-2 text-muted hover:text-status-yellow hover:bg-status-yellow/10 rounded-lg transition-colors group relative"
-                            title="Reset Password"
-                          >
-                            <KeyRound className="h-4 w-4" />
-                          </button>
-                          
-                          <button
-                            onClick={() => handleToggleStatus(user.id, user.active, user.role.name)}
-                            className={cn(
-                              "p-2 rounded-lg transition-colors group relative",
-                              user.active 
-                                ? "text-muted hover:text-status-red hover:bg-status-red/10" 
-                                : "text-status-red bg-status-red/10 hover:text-status-green hover:bg-status-green/10"
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2 group">
+                        {salaryDrafts[user.id] !== undefined ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min={0}
+                              placeholder="0"
+                              autoFocus
+                              value={salaryDrafts[user.id]}
+                              onChange={(e) => setSalaryDrafts((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                              className="w-24 px-2 py-1 bg-base border border-border rounded-lg text-xs text-primary focus:outline-none focus:border-accent-teal"
+                            />
+                            <button
+                              onClick={() => handleSaveSalary(user.id)}
+                              disabled={savingSalaryId === user.id}
+                              className="text-[10px] font-bold text-accent-teal hover:bg-accent-teal/10 px-2 py-1 rounded"
+                            >
+                              {savingSalaryId === user.id ? "..." : "Simpan"}
+                            </button>
+                            <button
+                              onClick={() => setSalaryDrafts(prev => { const n={...prev}; delete n[user.id]; return n; })}
+                              className="text-[10px] font-bold text-muted hover:bg-elevated px-2 py-1 rounded"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            {hideSalary ? (
+                              <span className="font-mono font-bold text-primary tabular-nums tracking-widest">Rp •••••••</span>
+                            ) : (
+                              <span className="font-bold text-primary tabular-nums">
+                                {user.base_salary != null ? formatRp(user.base_salary) + " / bulan" : <span className="text-muted font-normal text-xs italic tracking-normal">Belum diset</span>}
+                              </span>
                             )}
-                            title={user.active ? "Nonaktifkan Akun" : "Aktifkan Akun"}
-                          >
-                            {user.active ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                          </button>
-                        </div>
-                      )}
+                            <button
+                              onClick={() => setSalaryDrafts(prev => ({ ...prev, [user.id]: String(user.base_salary ?? "") }))}
+                              className="p-1.5 text-muted hover:text-accent-teal opacity-0 group-hover:opacity-100 transition-opacity rounded hover:bg-elevated"
+                              title="Ubah Gaji"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <DropdownMenu
+                        label={`Aksi untuk ${user.name}`}
+                        trigger={<MoreVertical className="h-4 w-4" />}
+                      >
+                        <DropdownMenuItem
+                          icon={<Pencil className="h-4 w-4" />}
+                          onSelect={() =>
+                            setRoleEditFor({ id: user.id, name: user.name, primary: user.role.name, roles: getUserRoles(user) })
+                          }
+                        >
+                          Ubah Peran
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          icon={<ClipboardList className="h-4 w-4" />}
+                          onSelect={() =>
+                            setActionMessage({ type: "success", text: "Fitur Riwayat Kinerja akan segera hadir!" })
+                          }
+                        >
+                          Riwayat Kinerja
+                        </DropdownMenuItem>
+
+                        {user.role.name !== "owner" && (
+                          <>
+                            <DropdownMenuDivider />
+                            {isLocked(user) && (
+                              <DropdownMenuItem
+                                icon={<Unlock className="h-4 w-4" />}
+                                onSelect={() => handleUnlock(user.id, user.name)}
+                              >
+                                Buka Kunci Akun
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              icon={<KeyRound className="h-4 w-4" />}
+                              onSelect={() => handleResetPassword(user)}
+                            >
+                              Reset Password
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              icon={user.active ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                              onSelect={() => handleToggleStatus(user.id, user.active, user.role.name)}
+                            >
+                              {user.active ? "Nonaktifkan Akun" : "Aktifkan Akun"}
+                            </DropdownMenuItem>
+                            <DropdownMenuDivider />
+                            <DropdownMenuItem
+                              danger
+                              icon={<Trash2 className="h-4 w-4" />}
+                              onSelect={() => setDeleteFor({ id: user.id, name: user.name })}
+                            >
+                              Hapus Pegawai
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenu>
                     </td>
                   </tr>
                 ))
@@ -234,10 +507,265 @@ export default function OwnerUsersPage() {
       {isModalOpen && (
         <UserFormModal
           isLoading={isSaving}
+          workspaceSlug={workspaceSlug}
           onClose={() => setIsModalOpen(false)}
           onSave={handleSaveUser}
         />
       )}
+
+      {createdCred && (
+        <CredentialRevealDialog
+          cred={createdCred}
+          workspaceSlug={workspaceSlug}
+          onClose={() => setCreatedCred(null)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!pendingConfirm}
+        onClose={() => !confirmBusy && setPendingConfirm(null)}
+        onConfirm={runPendingConfirm}
+        title={pendingConfirm?.title ?? ""}
+        message={pendingConfirm?.message ?? ""}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        variant={pendingConfirm?.variant}
+        isLoading={confirmBusy}
+      />
+
+      {deleteFor && (
+        <DeleteEmployeeModal
+          userId={deleteFor.id}
+          name={deleteFor.name}
+          onClose={() => setDeleteFor(null)}
+          onDone={(msg) => {
+            setDeleteFor(null);
+            setActionMessage({ type: "success", text: msg });
+            loadUsers();
+          }}
+        />
+      )}
+
+      {roleEditFor && (
+        <RoleEditModal
+          target={roleEditFor}
+          onClose={() => setRoleEditFor(null)}
+          onDone={(msg) => {
+            setRoleEditFor(null);
+            setActionMessage({ type: "success", text: msg });
+            loadUsers();
+          }}
+        />
+      )}
+
+      {/* Machine Checklist Modal */}
+      {machineEditFor && (
+        <MachineAssignmentModal
+          user={machineEditFor}
+          onClose={() => setMachineEditFor(null)}
+          onSuccess={() => {
+            setMachineEditFor(null);
+            setActionMessage({ type: "success", text: "Checklist mesin berhasil disimpan." });
+            loadUsers();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Sumber tunggal label/ikon peran: `ROLE_META` di components/ui/RoleBadge.
+const ALL_ROLE_OPTIONS: { name: string; label: string }[] = Object.keys(ROLE_META).map(
+  (name) => ({ name, label: roleLabel(name, true) })
+);
+
+function RoleEditModal({
+  target, onClose, onDone,
+}: {
+  target: { id: string; name: string; primary: string; roles: string[] };
+  onClose: () => void;
+  onDone: (msg: string) => void;
+}) {
+  const isOwner = target.primary === "owner";
+  const [selected, setSelected] = useState<Set<string>>(new Set(target.roles));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function toggle(name: string) {
+    if (name === "owner") return; // peran Owner terkunci
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    const names = ALL_ROLE_OPTIONS.map((r) => r.name).filter((n) => selected.has(n));
+    const r = await updateUserRoles(target.id, names);
+    setBusy(false);
+    if (!r.success) { setErr(r.error ?? "Gagal menyimpan peran."); return; }
+    onDone(`Peran ${target.name} diperbarui.`);
+  }
+
+  // Owner: opsi "owner" selalu tercentang & dikunci.
+  const options = isOwner ? ALL_ROLE_OPTIONS : ALL_ROLE_OPTIONS.filter((r) => r.name !== "owner");
+  const count = [...selected].length;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-base font-bold text-primary">Ubah Peran — {target.name}</h3>
+          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
+        </div>
+        <p className="text-xs text-muted">
+          {isOwner
+            ? "Owner selalu punya akses penuh. Centang peran operasional yang Anda pegang sendiri; cabut saat sudah ada pegawainya."
+            : "Centang semua peran yang boleh dijalankan pegawai ini. Aksi di aplikasi menyesuaikan gabungan peran."}
+        </p>
+        {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
+
+        <div className="space-y-1.5">
+          {options.map((o) => {
+            const locked = o.name === "owner";
+            const checked = selected.has(o.name) || locked;
+            return (
+              <label
+                key={o.name}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-lg border px-3 py-2 text-sm",
+                  checked ? "border-accent-teal/40 bg-accent-teal/5 text-primary" : "border-border text-muted",
+                  locked ? "opacity-70 cursor-default" : "cursor-pointer hover:border-accent-teal/40",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={locked || busy}
+                  onChange={() => toggle(o.name)}
+                />
+                {o.label}
+                {locked && <span className="ml-auto text-[10px] text-muted">terkunci</span>}
+              </label>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={save}
+          disabled={busy || count === 0}
+          className="w-full h-10 rounded-lg bg-accent-teal text-white text-xs font-bold hover:brightness-110 disabled:opacity-40"
+        >
+          {busy ? "Menyimpan…" : "Simpan peran"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DeleteEmployeeModal({
+  userId, name, onClose, onDone,
+}: {
+  userId: string; name: string; onClose: () => void; onDone: (msg: string) => void;
+}) {
+  const [impact, setImpact] = useState<
+    | { canHardDelete: boolean; total: number; buckets: { label: string; n: number }[] }
+    | null
+  >(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [ack, setAck] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    getEmployeeDeleteImpact(userId).then((r) => {
+      if (r.success) setImpact({ canHardDelete: r.data.canHardDelete, total: r.data.total, buckets: r.data.buckets });
+      else setErr(r.error);
+    });
+  }, [userId]);
+
+  async function run() {
+    setBusy(true);
+    setErr(null);
+    const r = await deleteEmployee(userId);
+    setBusy(false);
+    if (!r.success) { setErr(r.error ?? "Gagal."); return; }
+    onDone(
+      r.mode === "deleted"
+        ? `Pegawai ${name} dihapus permanen.`
+        : `Identitas ${name} dihapus. Riwayat kerjanya tetap tersimpan sebagai "Mantan Pegawai".`
+    );
+  }
+
+  const hard = impact?.canHardDelete;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
+      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="flex justify-between items-center border-b border-border pb-3">
+          <h3 className="text-base font-bold text-status-red flex items-center gap-2">
+            <Trash2 className="h-4 w-4" /> Hapus Pegawai
+          </h3>
+          <button onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary disabled:opacity-40"><X className="h-5 w-5" /></button>
+        </div>
+
+        {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
+        {!impact && !err && <p className="text-xs text-muted">Mengecek riwayat…</p>}
+
+        {impact && hard && (
+          <>
+            <p className="text-sm text-primary">
+              <b>{name}</b> belum pernah menyentuh order, pembayaran, produksi, gaji, atau data apa pun.
+              Akun bisa dihapus <b>permanen</b>.
+            </p>
+            <p className="text-xs text-muted">Tindakan ini tidak bisa dibatalkan.</p>
+          </>
+        )}
+
+        {impact && !hard && (
+          <>
+            <p className="text-sm text-primary">
+              <b>{name}</b> punya riwayat kerja yang <b>tidak bisa ikut dihapus</b> — data itu milik
+              percetakan (order pelanggan, catatan pembayaran, slip gaji, jejak audit), bukan sekadar
+              milik pegawai. Menghapusnya akan merusak pembukuan &amp; laporan.
+            </p>
+            <ul className="text-xs text-muted bg-elevated/60 border border-border rounded-xl p-3 space-y-0.5">
+              {impact.buckets.map((b) => (
+                <li key={b.label} className="flex justify-between">
+                  <span className="capitalize">{b.label}</span>
+                  <span className="font-mono text-primary">{b.n}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm text-primary">
+              Yang dilakukan: <b>identitas pegawai dihapus</b> — nama, kontak, email, dan akun login —
+              lalu akun dinonaktifkan. Riwayat tetap ada, tercatat atas nama <b>&quot;Mantan Pegawai&quot;</b>.
+              Pegawai ini tidak akan bisa login lagi.
+            </p>
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+              Saya mengerti riwayat tidak terhapus dan identitas pegawai akan dihilangkan permanen
+            </label>
+          </>
+        )}
+
+        {impact && (
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose} disabled={busy} className="flex-1 h-10 rounded-xl bg-elevated border border-border text-xs font-bold text-muted hover:text-primary disabled:opacity-40">Batal</button>
+            <button
+              onClick={run}
+              disabled={busy || (!hard && !ack)}
+              className="flex-1 h-10 rounded-xl bg-status-red text-white text-xs font-bold hover:brightness-110 disabled:opacity-40"
+            >
+              {busy ? "Memproses…" : hard ? "Hapus Permanen" : "Hapus Identitas Pegawai"}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

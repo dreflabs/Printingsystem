@@ -2,135 +2,99 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  Palette,
-  Settings2,
-  Package,
-  BarChart2,
-  ShoppingCart,
-  ScanLine,
-  X,
-  Printer,
-  ChevronRight,
-  Tag,
-  LogOut,
-  Users,
-} from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { X, ChevronRight, ChevronDown, LogOut, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { signOutAction } from "@/actions/session";
+import { WORKSPACE_MODE_LABEL, type WorkspaceMode } from "@/lib/workspace-mode";
+import { SOLO_NAV, resolveNav, type UserRole, type ResolvedNav } from "@/lib/nav-config";
 
-type UserRole =
-  | "admin"
-  | "designer"
-  | "operator"
-  | "finishing"
-  | "owner"
-  | "pos";
-
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ReactNode;
-  roles: UserRole[];
-}
-
-const NAV_ITEMS: NavItem[] = [
-  {
-    label: "Dashboard",
-    href: "/admin",
-    icon: <LayoutDashboard className="h-5 w-5" />,
-    roles: ["admin"],
-  },
-  {
-    label: "Laporan",
-    href: "/admin/reports",
-    icon: <BarChart2 className="h-5 w-5" />,
-    roles: ["admin"],
-  },
-  {
-    label: "POS / Kasir",
-    href: "/pos",
-    icon: <ShoppingCart className="h-5 w-5" />,
-    roles: ["admin"],
-  },
-  {
-    label: "Katalog & Harga",
-    href: "/admin/products",
-    icon: <Tag className="h-5 w-5" />,
-    roles: ["admin"],
-  },
-  {
-    label: "Database Pelanggan",
-    href: "/admin/customers",
-    icon: <Users className="h-5 w-5" />,
-    roles: ["admin"],
-  },
-  {
-    label: "Dashboard",
-    href: "/designer",
-    icon: <Palette className="h-5 w-5" />,
-    roles: ["designer"],
-  },
-  {
-    label: "Dashboard",
-    href: "/operator",
-    icon: <Settings2 className="h-5 w-5" />,
-    roles: ["operator"],
-  },
-  {
-    label: "Finishing",
-    href: "/finishing",
-    icon: <Package className="h-5 w-5" />,
-    roles: ["finishing"],
-  },
-  {
-    label: "Dashboard",
-    href: "/owner",
-    icon: <LayoutDashboard className="h-5 w-5" />,
-    roles: ["owner"],
-  },
-  {
-    label: "Produksi & Laporan",
-    href: "/admin/production",
-    icon: <BarChart2 className="h-5 w-5" />,
-    roles: ["admin", "owner"],
-  },
-  {
-    label: "Scan QR",
-    href: "/scan",
-    icon: <ScanLine className="h-5 w-5" />,
-    roles: ["admin", "operator", "finishing"],
-  },
-  {
-    label: "Pegawai & Akses",
-    href: "/owner/users",
-    icon: <Users className="h-5 w-5" />,
-    roles: ["owner"],
-  },
+// Role switcher config: what dashboards each role maps to
+const ROLE_SWITCHER_CONFIG: { role: UserRole; label: string; href: string; color: string }[] = [
+  { role: "owner",          label: "Owner",            href: "/owner",    color: "text-accent-teal" },
+  { role: "admin",          label: "Admin",            href: "/admin",    color: "text-accent-teal" },
+  { role: "designer_sales", label: "Designer/Setting", href: "/designer", color: "text-status-yellow-text" },
+  { role: "operator",       label: "Operator Cetak",   href: "/operator", color: "text-status-blue" },
+  { role: "gudang",         label: "Finishing & Gudang", href: "/finishing", color: "text-status-green" },
 ];
+
+const EXPANDED_KEY = "pp_nav_expanded";
 
 interface SidebarProps {
   role: UserRole;
+  roles?: string[]; // All roles this user has (multi-role support)
+  workspaceMode?: WorkspaceMode;
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function Sidebar({ role, isOpen, onClose }: SidebarProps) {
+function hrefActive(pathname: string, href: string): boolean {
+  const isExactRoot = ["/admin", "/owner", "/designer", "/operator", "/finishing"].includes(href);
+  return isExactRoot ? pathname === href : pathname === href || pathname.startsWith(href + "/");
+}
+
+export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
-  const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(role));
+  const router = useRouter();
+  const [switcherOpen, setSwitcherOpen] = React.useState(false);
+
+  const userRoleSet = new Set(roles as UserRole[]);
+  const soloView = workspaceMode === "SOLO" && userRoleSet.has("owner");
+  const teamOwnerView =
+    (workspaceMode === "TEAM_SMALL" || workspaceMode === "TEAM_FULL") && userRoleSet.has("owner");
+  const roleKey = [...roles].sort().join(",");
+
+  // Navigasi ditentukan workspace_mode + peran:
+  //  - SOLO + Owner        → SOLO_NAV (rata, alur 1 orang)
+  //  - TIM  + Owner        → GROUPED_NAV disaring ke peran "owner" (pengawasan)
+  //  - selain itu (pegawai) → GROUPED_NAV disaring ke peran user
+  const navItems: ResolvedNav[] = React.useMemo(() => {
+    if (soloView) {
+      return SOLO_NAV.map((n) => ({ kind: "link" as const, label: n.label, href: n.href, icon: n.icon }));
+    }
+    const scope: UserRole[] = teamOwnerView ? ["owner"] : (roleKey.split(",").filter(Boolean) as UserRole[]);
+    return resolveNav(scope);
+  }, [soloView, teamOwnerView, roleKey]);
+
+  // Preferensi buka/tutup grup yang di-set manual viewer (localStorage). Grup yang
+  // memuat halaman aktif tetap terbuka otomatis kecuali viewer menutupnya sendiri.
+  // Sidebar hanya dirender di klien (layout return null sampai sesi siap), jadi
+  // aman membaca localStorage di initializer.
+  const [manual, setManual] = React.useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem(EXPANDED_KEY) || "{}"); } catch { return {}; }
+  });
+
+  const isGroupOpen = (label: string, hasActiveChild: boolean) =>
+    label in manual ? manual[label] : hasActiveChild;
+
+  const toggleGroup = (label: string, hasActiveChild: boolean) => {
+    setManual((prev) => {
+      const current = label in prev ? prev[label] : hasActiveChild;
+      const next = { ...prev, [label]: !current };
+      try { localStorage.setItem(EXPANDED_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
+  const switcherRoles = ROLE_SWITCHER_CONFIG.filter((r) => userRoleSet.has(r.role));
+  const hasMultipleRoles = !soloView && switcherRoles.length > 1;
+
+  const currentRoleLabel =
+    ROLE_SWITCHER_CONFIG.find((r) => {
+      if (pathname.startsWith("/owner")) return r.role === "owner";
+      if (pathname.startsWith("/admin")) return r.role === "admin";
+      if (pathname.startsWith("/designer")) return r.role === "designer_sales";
+      if (pathname.startsWith("/operator")) return r.role === "operator";
+      if (pathname.startsWith("/finishing")) return r.role === "gudang";
+      return false;
+    })?.label ?? role;
 
   return (
     <>
-      {/* Mobile Backdrop */}
       {isOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-base/70 backdrop-blur-sm lg:hidden"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 z-30 bg-base/70 backdrop-blur-sm lg:hidden" onClick={onClose} />
       )}
 
-      {/* Sidebar Panel */}
       <aside
         className={cn(
           "fixed top-0 left-0 z-40 h-full w-60 flex flex-col",
@@ -147,9 +111,7 @@ export function Sidebar({ role, isOpen, onClose }: SidebarProps) {
               <img src="/PRINT_PILOT_LOGO.png" alt="Print Pilot" className="h-full w-full object-contain" />
             </div>
             <div>
-              <span className="text-base font-bold text-primary tracking-tight">
-                Print Pilot
-              </span>
+              <span className="text-base font-bold text-primary tracking-tight">Print Pilot</span>
               <p className="text-[10px] text-muted -mt-0.5">Manajemen Percetakan</p>
             </div>
           </div>
@@ -162,58 +124,155 @@ export function Sidebar({ role, isOpen, onClose }: SidebarProps) {
           </button>
         </div>
 
+        {/* Role Switcher — only show when user has multiple roles */}
+        {hasMultipleRoles && (
+          <div className="px-3 pt-3 pb-1">
+            <button
+              onClick={() => setSwitcherOpen((o) => !o)}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-elevated border border-border hover:border-accent-teal/40 transition-all text-left group"
+            >
+              <Layers className="h-4 w-4 text-accent-teal shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] text-muted leading-none mb-0.5">Mode Aktif</p>
+                <p className="text-xs font-bold text-primary truncate">{currentRoleLabel}</p>
+              </div>
+              <ChevronDown className={cn("h-3.5 w-3.5 text-muted transition-transform", switcherOpen && "rotate-180")} />
+            </button>
+
+            {switcherOpen && (
+              <div className="mt-1.5 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
+                <p className="text-[10px] text-muted font-bold px-3 pt-2.5 pb-1.5 uppercase tracking-wider border-b border-border">
+                  Pindah Dashboard
+                </p>
+                {switcherRoles.map((r) => (
+                  <button
+                    key={r.role}
+                    onClick={() => {
+                      router.push(r.href);
+                      setSwitcherOpen(false);
+                      onClose();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-elevated transition-colors text-left"
+                  >
+                    <div className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
+                    <span className={cn("text-xs font-semibold", r.color)}>{r.label}</span>
+                    <span className="text-[10px] text-muted ml-auto font-mono">{r.href}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          {visibleItems.map((item) => {
-            const isExactRoot = ["/admin", "/owner", "/designer", "/operator", "/finishing"].includes(item.href);
-            const isActive = isExactRoot
-              ? pathname === item.href
-              : pathname === item.href || pathname.startsWith(item.href + "/");
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
-                  isActive
-                    ? "bg-accent-teal/15 text-accent-teal border border-accent-teal/30"
-                    : "text-muted hover:text-primary hover:bg-elevated"
-                )}
-              >
-                <span
+          {navItems.map((item) => {
+            if (item.kind === "link") {
+              const Icon = item.icon;
+              const active = hrefActive(pathname, item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
                   className={cn(
-                    "transition-colors",
-                    isActive ? "text-accent-teal" : "text-muted group-hover:text-primary"
+                    "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
+                    active
+                      ? "bg-accent-teal/15 text-accent-teal border border-accent-teal/30"
+                      : "text-muted hover:text-primary hover:bg-elevated"
                   )}
                 >
-                  {item.icon}
-                </span>
-                <span className="flex-1">{item.label}</span>
-                {isActive && <ChevronRight className="h-4 w-4 text-accent-teal" />}
-              </Link>
+                  <span className={cn("transition-colors", active ? "text-accent-teal" : "text-muted group-hover:text-primary")}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="flex-1">{item.label}</span>
+                  {active && <ChevronRight className="h-4 w-4 text-accent-teal" />}
+                </Link>
+              );
+            }
+
+            // group
+            const Icon = item.icon;
+            const hasActiveChild = item.children.some((c) => hrefActive(pathname, c.href));
+            const isOpenGroup = isGroupOpen(item.label, hasActiveChild);
+            return (
+              <div key={item.label}>
+                <button
+                  onClick={() => toggleGroup(item.label, hasActiveChild)}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
+                    hasActiveChild && !isOpenGroup
+                      ? "text-accent-teal"
+                      : "text-muted hover:text-primary hover:bg-elevated"
+                  )}
+                  aria-expanded={isOpenGroup}
+                >
+                  <span className={cn("transition-colors", hasActiveChild ? "text-accent-teal" : "text-muted group-hover:text-primary")}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="flex-1 text-left">{item.label}</span>
+                  <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", isOpenGroup && "rotate-180")} />
+                </button>
+                {isOpenGroup && (
+                  <div className="mt-1 ml-4 pl-3 border-l border-border space-y-1">
+                    {item.children.map((c) => {
+                      const active = hrefActive(pathname, c.href);
+                      return (
+                        <Link
+                          key={c.href}
+                          href={c.href}
+                          onClick={onClose}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-all",
+                            active
+                              ? "bg-accent-teal/15 text-accent-teal"
+                              : "text-muted hover:text-primary hover:bg-elevated"
+                          )}
+                        >
+                          <span className="flex-1">{c.label}</span>
+                          {active && <ChevronRight className="h-3.5 w-3.5 text-accent-teal" />}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
 
-        {/* Role Badge at Bottom */}
+        {/* Bottom: Role badge + Logout */}
         <div className="p-4 border-t border-border">
           <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-elevated">
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-status-green animate-pulse" />
-              <span className="text-xs text-muted capitalize">{role}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="h-2 w-2 rounded-full bg-status-green animate-pulse shrink-0" />
+              <div className="min-w-0">
+                <span className="text-xs text-muted truncate block capitalize">
+                  {soloView
+                    ? "Mode Solo"
+                    : teamOwnerView
+                      ? WORKSPACE_MODE_LABEL[workspaceMode]
+                      : hasMultipleRoles
+                        ? `${roles.length} Role Aktif`
+                        : role.replace("_", " ")}
+                </span>
+                {soloView && (
+                  <span className="text-[10px] text-accent-teal font-semibold">1 orang · semua peran</span>
+                )}
+                {teamOwnerView && switcherRoles.length > 1 && (
+                  <span className="text-[10px] text-muted">+ akses {switcherRoles.length - 1} divisi</span>
+                )}
+              </div>
             </div>
-            <button
-              onClick={() => {
-                localStorage.removeItem("userName");
-                localStorage.removeItem("userRole");
-                window.location.href = "/login";
-              }}
-              title="Logout / Ganti User"
-              className="p-1.5 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors cursor-pointer"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
+            <form action={signOutAction}>
+              <button
+                type="submit"
+                title="Keluar"
+                className="p-1.5 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors cursor-pointer shrink-0"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </form>
           </div>
         </div>
       </aside>

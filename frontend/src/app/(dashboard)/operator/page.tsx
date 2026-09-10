@@ -34,6 +34,22 @@ type Job = {
   fileName: string | null;
 };
 type MaterialOpt = { id: string; name: string; type: string; unitUsage: string; unitCustom: string | null };
+type HistoryRow = {
+  jobCode: string;
+  orderCode: string;
+  customerName: string;
+  machine: string;
+  status: string;
+  plannedQty: number;
+  actualQty: number;
+  wasteQty: number;
+  reprintQty: number;
+  startedAt: string | Date | null;
+  endedAt: string | Date | null;
+  durationMin: number | null;
+  isToday: boolean;
+};
+type HistorySummary = { todayCount: number; todayQty: number; todayWaste: number; weekCount: number };
 
 /** Alasan potong reject (hasil cetak tidak terpakai). */
 const REJECT_REASONS = [
@@ -52,6 +68,22 @@ const OFFCUT_REASONS = [
   "Bahan macet / sobek saat proses",
   "Lainnya",
 ];
+
+/** Waktu selesai job untuk riwayat: "Hari ini 14:20" / "9 Sep 14:20". */
+function fmtDoneAt(d: string | Date | null, isToday: boolean): string {
+  if (!d) return "—";
+  const dt = new Date(d);
+  const time = dt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  if (isToday) return `Hari ini ${time}`;
+  return `${dt.toLocaleDateString("id-ID", { day: "numeric", month: "short" })} ${time}`;
+}
+
+/** Durasi menit → "1j 20m" / "45m". */
+function fmtDur(min: number | null): string {
+  if (min == null) return "—";
+  if (min < 60) return `${min}m`;
+  return `${Math.floor(min / 60)}j ${min % 60}m`;
+}
 
 /** Prioritas job → badge. Prioritas 1 (normal) tidak diberi badge. */
 function priorityBadge(p: number): { label: string; text: string; bar: string } | null {
@@ -508,6 +540,9 @@ export default function OperatorPage() {
   const [pauseReason, setPauseReason] = useState("");
   const [bounceFor, setBounceFor] = useState<Job | null>(null);
   const [bounceReason, setBounceReason] = useState("");
+  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [historySummary, setHistorySummary] = useState<HistorySummary | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = useCallback(async () => {
     const res = await getOperatorJobs();
@@ -516,6 +551,8 @@ export default function OperatorPage() {
     setError(null);
     setMine(res.data.mine);
     setClaimable(res.data.queue);
+    setHistory(res.data.history);
+    setHistorySummary(res.data.historySummary);
     setHasMachines(res.data.hasMachines);
   }, []);
 
@@ -642,6 +679,58 @@ export default function OperatorPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Riwayat pekerjaan saya (7 hari terakhir) */}
+      <div className="rounded-2xl border border-border bg-card shadow-sm">
+        <button
+          onClick={() => setHistoryOpen((v) => !v)}
+          className="flex w-full items-center gap-2 p-4 text-left"
+        >
+          <CheckCircle2 className="h-5 w-5 text-status-green" />
+          <h2 className="text-base font-bold text-primary">Riwayat Pekerjaan Saya</h2>
+          {historySummary && (
+            <span className="ml-1 text-xs text-muted">
+              hari ini {historySummary.todayCount} job · {historySummary.todayQty} pcs
+              {historySummary.todayWaste > 0 && ` · ${historySummary.todayWaste} waste`}
+            </span>
+          )}
+          <span className="ml-auto text-xs font-bold text-muted">
+            {historyOpen ? "Tutup" : `Lihat (${history.length})`}
+          </span>
+        </button>
+
+        {historyOpen && (
+          <div className="border-t border-border">
+            {history.length === 0 ? (
+              <p className="p-6 text-center text-sm text-muted">Belum ada job selesai dalam 7 hari terakhir.</p>
+            ) : (
+              <div className="max-h-[60vh] divide-y divide-border/60 overflow-y-auto">
+                {history.map((h) => (
+                  <div key={h.jobCode} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-xs">
+                    <span className="font-mono font-bold text-accent-teal">{h.jobCode}</span>
+                    <StatusPill status={h.status} />
+                    <span className="text-muted">{h.orderCode} · {h.customerName}</span>
+                    <span className="ml-auto flex items-center gap-1 text-muted">
+                      <Clock className="h-3 w-3" /> {fmtDoneAt(h.endedAt, h.isToday)}
+                    </span>
+                    <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+                      <span>{h.machine}</span>
+                      <span className="font-semibold text-primary">{h.actualQty}/{h.plannedQty} pcs</span>
+                      {h.wasteQty > 0 && (
+                        <span className="rounded bg-status-red/10 px-1.5 py-0.5 font-bold text-status-red">waste {h.wasteQty}</span>
+                      )}
+                      {h.reprintQty > 0 && (
+                        <span className="rounded bg-status-yellow/15 px-1.5 py-0.5 font-bold text-status-yellow-text">reprint {h.reprintQty}</span>
+                      )}
+                      <span>· durasi ± {fmtDur(h.durationMin)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <RoleGuide role="operator" defaultCollapsed />

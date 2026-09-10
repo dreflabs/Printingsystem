@@ -81,7 +81,12 @@ export async function getOperatorJobs() {
       },
     } as const;
 
-    const [mineRows, queueRows] = await Promise.all([
+    // Riwayat: job yang pernah dikerjakan operator ini & sudah lewat tahap cetak,
+    // dengan actual_end dalam 7 hari terakhir. Untuk daftar "pekerjaan saya".
+    const historyCutoff = new Date();
+    historyCutoff.setDate(historyCutoff.getDate() - 7);
+
+    const [mineRows, queueRows, historyRows] = await Promise.all([
       prisma.productionJob.findMany({
         where: {
           tenant_id: tenant.id,
@@ -101,6 +106,21 @@ export async function getOperatorJobs() {
         },
         orderBy: [{ priority: "desc" }, { order: { deadline: "asc" } }, { created_at: "asc" }],
         include,
+      }),
+      prisma.productionJob.findMany({
+        where: {
+          tenant_id: tenant.id,
+          operator_id: actor.id,
+          actual_end: { not: null, gte: historyCutoff },
+        },
+        orderBy: { actual_end: "desc" },
+        take: 40,
+        select: {
+          job_code: true, status: true, planned_qty: true, actual_qty: true,
+          waste_qty: true, reprint_qty: true, actual_start: true, actual_end: true,
+          machine: { select: { name: true } },
+          order: { select: { order_code: true, customer: { select: { name: true } } } },
+        },
       }),
     ]);
 
@@ -137,9 +157,42 @@ export async function getOperatorJobs() {
       };
     };
 
-    return ok({ 
-      mine: mineRows.map(shape), 
+    // Durasi kerja bersih (menit) — actual_end − actual_start. Jeda tidak dikurangi
+    // di sini (butuh log jeda); ditandai perkiraan di UI.
+    const durationMin = (a: Date | null, b: Date | null) =>
+      a && b ? Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000)) : null;
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const history = historyRows.map((j) => ({
+      jobCode: j.job_code,
+      orderCode: j.order.order_code,
+      customerName: j.order.customer?.name ?? "-",
+      machine: j.machine.name,
+      status: j.status,
+      plannedQty: j.planned_qty,
+      actualQty: j.actual_qty,
+      wasteQty: j.waste_qty,
+      reprintQty: j.reprint_qty,
+      startedAt: j.actual_start,
+      endedAt: j.actual_end,
+      durationMin: durationMin(j.actual_start, j.actual_end),
+      isToday: !!j.actual_end && new Date(j.actual_end) >= startOfToday,
+    }));
+    const todays = history.filter((h) => h.isToday);
+    const historySummary = {
+      todayCount: todays.length,
+      todayQty: todays.reduce((s, h) => s + h.actualQty, 0),
+      todayWaste: todays.reduce((s, h) => s + h.wasteQty, 0),
+      weekCount: history.length,
+    };
+
+    return ok({
+      mine: mineRows.map(shape),
       queue: queueRows.map(shape),
+      history,
+      historySummary,
       hasMachines: allowedMachineIds.length > 0
     });
   } catch (e) {

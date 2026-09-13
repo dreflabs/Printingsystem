@@ -12,6 +12,8 @@ import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 const isGudang = (r: string[]) => r.includes("gudang");
+const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
+const isOperator = (r: string[]) => r.includes("operator");
 
 /**
  * Admin/Owner menekan "Rilis ke Produksi" untuk order yang tertahan gatekeeper
@@ -217,6 +219,9 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    if (!isOperator(actor.roles) && !isAdmin(actor.roles)) {
+      return fail("Hanya Operator/Admin/Owner yang boleh memulai produksi.");
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -233,6 +238,27 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
         if (job.operator_id !== actor.id) {
           throw new Error("Anda bukan operator yang di-assign ke job ini.");
         }
+      } else if (!isAdmin(actor.roles)) {
+        // Klaim job antrean bebas — pastikan operator memang ditugaskan ke mesin ini
+        // (Admin/Owner boleh klaim mesin mana pun sebagai override).
+        const grant = await tx.userMachine.findFirst({
+          where: { tenant_id: tenant.id, user_id: actor.id, machine_id: job.machine_id },
+        });
+        if (!grant) throw new Error("Anda tidak ditugaskan ke mesin job ini.");
+      }
+
+      // Klaim job antrean: kunci atomik supaya 2 operator tidak bisa menang bersamaan.
+      if (isClaim) {
+        const claim = await tx.productionJob.updateMany({
+          where: { id: job.id, status: "PRODUCTION_QUEUED", operator_id: null },
+          data: { status: "PRODUCTION_STARTED", operator_id: actor.id, actual_start: new Date() },
+        });
+        if (claim.count === 0) throw new Error("Job ini sudah diklaim operator lain.");
+        await tx.order.updateMany({
+          where: { id: job.order_id, status: { in: ["PRODUCTION_ASSIGNED", "CONFIRMED"] } },
+          data: { status: "PRODUCTION_STARTED" },
+        });
+        return { jobCode: job.job_code, orderId: job.order_id, jobStatus: "PRODUCTION_STARTED" };
       }
 
       // Operator boleh menjalankan beberapa job sekaligus — tidak ada batas
@@ -265,6 +291,9 @@ export async function pauseProduction(jobCode: string, reason: string): Promise<
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    if (!isOperator(actor.roles) && !isAdmin(actor.roles)) {
+      return fail("Hanya Operator/Admin/Owner yang boleh menjeda produksi.");
+    }
     if (!reason?.trim()) return fail("Alasan jeda wajib diisi.");
     const job = await findJobByCode(prisma, tenant.id, jobCode);
     if (!job) return fail("Job tidak ditemukan.");
@@ -287,6 +316,9 @@ export async function resumeProduction(jobCode: string): Promise<ActionResult<nu
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    if (!isOperator(actor.roles) && !isAdmin(actor.roles)) {
+      return fail("Hanya Operator/Admin/Owner yang boleh melanjutkan produksi.");
+    }
     const job = await findJobByCode(prisma, tenant.id, jobCode);
     if (!job) return fail("Job tidak ditemukan.");
     if (job.operator_id !== actor.id) return fail("Anda bukan operator job ini.");
@@ -490,6 +522,9 @@ export async function finishProduction(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    if (!isOperator(actor.roles) && !isAdmin(actor.roles)) {
+      return fail("Hanya Operator/Admin/Owner yang boleh menyelesaikan produksi.");
+    }
     if (!(input.actualQty > 0)) return fail("Jumlah aktual tidak boleh 0.");
     if ((input.wasteQty ?? 0) > 0 && !input.wasteReason?.trim()) {
       return fail("Waste > 0 wajib disertai alasan.");

@@ -12,7 +12,7 @@ import {
   DESIGN_ALLOWED_EXT,
   DESIGN_MAX_UPLOAD_BYTES,
 } from "@/lib/r2";
-import { storageReady, presignPutUrl } from "@/lib/storage";
+import { storageReady, presignPutUrl, isTenantKey } from "@/lib/storage";
 import { randomUUID } from "crypto";
 import { autoReleaseToProduction } from "@/lib/auto-release";
 import { safeError } from "@/lib/safe-error";
@@ -156,7 +156,19 @@ export async function uploadDesignVersion(
     if (!canDesign(actor.roles)) {
       return fail("Hanya Designer Sales/Admin/Owner yang boleh upload desain.");
     }
-    if (!input.filePath?.trim()) return fail("File desain wajib diisi.");
+    const filePath = input.filePath?.trim();
+    if (!filePath) return fail("File desain wajib diisi.");
+    // filePath boleh berupa object key R2 milik tenant ini (dari createDesignUploadUrl,
+    // namespace "tenants/<tenantId>/design/…") atau link http(s) bebas (MAKLOON manual).
+    // Tanpa ini, client bisa mengarahkan file_path ke object key milik tenant lain —
+    // /api/design/[versionId] menyajikan isinya tanpa cek tenant pada key itu sendiri.
+    if (!/^https?:\/\//i.test(filePath) && !isTenantKey(filePath, tenant.id, ["tenants"])) {
+      return fail("File desain tidak valid.");
+    }
+    const previewPath = input.previewPath?.trim() || null;
+    if (previewPath && !/^https?:\/\//i.test(previewPath) && !isTenantKey(previewPath, tenant.id, ["tenants"])) {
+      return fail("File pratinjau tidak valid.");
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await tx.designJob.findFirst({
@@ -191,11 +203,11 @@ export async function uploadDesignVersion(
           design_job_id: job.id,
           order_item_id: itemId,
           version_no: versionNo,
-          file_path: input.filePath.trim(),
+          file_path: filePath,
           file_name: input.fileName?.trim() || null,
           file_size: input.fileSize && input.fileSize > 0 ? Math.round(input.fileSize) : null,
           content_type: input.contentType?.trim() || null,
-          preview_path: input.previewPath || null,
+          preview_path: previewPath,
           uploaded_by: actor.id,
           approval_status: approvalStatus,
           approval_method: job.approval_method,

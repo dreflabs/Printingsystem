@@ -288,7 +288,9 @@ export async function getDesignQueue() {
         order: {
           select: {
             order_code: true, status: true, deadline: true, notes: true,
-            customer: { select: { name: true, phone: true } },
+            // Nomor HP/email konsumen sengaja TIDAK di-select — 03-ROLES/DESIGNER-SALES.md
+            // melarang designer_sales melihat kontak konsumen.
+            customer: { select: { name: true } },
             items: {
               where: { retail_product_id: null },
               select: {
@@ -346,7 +348,6 @@ export async function getDesignQueue() {
         orderCode: d.order.order_code,
         orderStatus: d.order.status,
         customerName: d.order.customer?.name ?? "-",
-        customerPhone: d.order.customer?.phone ?? null,
         designerId: d.designer_id,
         designer: d.designer?.name ?? "Belum Diambil",
         method: d.approval_method,

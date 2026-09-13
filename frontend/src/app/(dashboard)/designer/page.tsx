@@ -58,7 +58,6 @@ type Row = {
   latestFileName: string | null;
   latestFileUrl: string | null;
   deadline: string | Date | null;
-  customerPhone: string | null;
   notes: string | null;
   pendingCount: number;
   items: {
@@ -362,8 +361,7 @@ function DesignDetailModal({ row, onClose }: { row: Row; onClose: () => void }) 
               <FileText className="h-4 w-4 text-accent-teal" /> {row.orderCode}
             </h3>
             <p className="text-xs text-muted mt-0.5">
-              {row.customerName}
-              {row.customerPhone ? ` · ${row.customerPhone}` : ""} · jatuh tempo {fmtDeadline(row.deadline)}
+              {row.customerName} · jatuh tempo {fmtDeadline(row.deadline)}
             </p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated">

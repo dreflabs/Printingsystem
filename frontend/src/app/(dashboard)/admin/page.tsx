@@ -14,10 +14,11 @@ import { getOrders, getOrderDetail } from "@/actions/queries";
 import { addPayment } from "@/actions/orders";
 import { assignProductionJob, getProductionAssignData } from "@/actions/design";
 import { releaseOrderToProduction } from "@/actions/production";
-import { submitFinalAudit, getFinalAuditChecks, type AuditCheck } from "@/actions/audit";
+import { submitFinalAudit, getFinalAuditChecks, createCorrection, approveCorrection, listCorrections, type AuditCheck } from "@/actions/audit";
 import { getSessionUser } from "@/actions/session";
 import { freezeOrder, unfreezeOrder } from "@/actions/hold";
 import { cancelOrder, requestOrderCancellation } from "@/actions/cancel";
+import { requestDiscount } from "@/actions/orders";
 
 const FREEZE_BLOCKED = ["CLOSED", "CANCELLED", "PICKED_UP", "ON_HOLD"];
 /** Samakan dengan TERMINAL di actions/cancel.ts — tidak bisa dibatalkan sama sekali. */
@@ -70,9 +71,24 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
   const [cancelRefundAmount, setCancelRefundAmount] = useState("");
   const [cancelRefundMethod, setCancelRefundMethod] = useState<"" | "CASH" | "TRANSFER">("");
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [discountMode, setDiscountMode] = useState(false);
+  const [discountAmount, setDiscountAmount] = useState("");
+  const [discountReasonInput, setDiscountReasonInput] = useState("");
+  const [discountBusy, setDiscountBusy] = useState(false);
+  const [corrections, setCorrections] = useState<Extract<Awaited<ReturnType<typeof listCorrections>>, { success: true }>["data"]>([]);
+  const [correctionMode, setCorrectionMode] = useState(false);
+  const [correctionCategory, setCorrectionCategory] = useState<"FINANCIAL" | "MATERIAL" | "QUANTITY" | "OTHER">("OTHER");
+  const [correctionField, setCorrectionField] = useState("");
+  const [correctionOld, setCorrectionOld] = useState("");
+  const [correctionNew, setCorrectionNew] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correctionBusy, setCorrectionBusy] = useState(false);
   const reload = () => getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
+  const reloadCorrections = () => listCorrections(orderId).then((r) => { if (r.success) setCorrections(r.data); });
   useEffect(() => {
     getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
+    reloadCorrections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 
   const designApproved = !!d?.designJobs.some((j) => j.status === "APPROVED");
@@ -132,6 +148,40 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
     onChanged();
     if (cancelIsPreProduction || isOwner) onClose();
     else await reload();
+  }
+
+  async function doRequestDiscount() {
+    setDiscountBusy(true); setErr(null);
+    const res = await requestDiscount(orderId, { amount: Number(discountAmount) || 0, reason: discountReasonInput });
+    setDiscountBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    setDiscountMode(false); setDiscountAmount(""); setDiscountReasonInput("");
+    await reload();
+    onChanged();
+  }
+
+  async function doCreateCorrection() {
+    setCorrectionBusy(true); setErr(null);
+    const res = await createCorrection(orderId, {
+      correctedEntity: "Order",
+      correctedId: orderId,
+      category: correctionCategory,
+      fieldName: correctionField,
+      oldValue: correctionOld || undefined,
+      newValue: correctionNew || undefined,
+      reason: correctionReason,
+    });
+    setCorrectionBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    setCorrectionMode(false); setCorrectionField(""); setCorrectionOld(""); setCorrectionNew(""); setCorrectionReason(""); setCorrectionCategory("OTHER");
+    await reloadCorrections();
+  }
+
+  async function doDecideCorrection(id: string, approve: boolean) {
+    setErr(null);
+    const res = await approveCorrection(id, { approve });
+    if (!res.success) { setErr(res.error); return; }
+    await reloadCorrections();
   }
 
   return (
@@ -223,6 +273,34 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
                   </div>
                 </div>
               )}
+
+              {corrections.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-primary mb-2">Riwayat Koreksi</p>
+                  <div className="border border-border rounded-xl divide-y divide-border/60 text-xs">
+                    {corrections.map((c) => (
+                      <div key={c.id} className="px-3 py-2 space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-primary">{c.category} · {c.field_name}</span>
+                          <span className={cn("font-bold", c.approved_by ? "text-status-green" : "text-status-yellow-text")}>
+                            {c.approved_by ? "Disetujui" : "Menunggu Owner"}
+                          </span>
+                        </div>
+                        {(c.old_value || c.new_value) && (
+                          <p className="text-muted">{c.old_value ?? "—"} → {c.new_value ?? "—"}</p>
+                        )}
+                        <p className="text-muted italic">&ldquo;{c.reason}&rdquo;</p>
+                        {isOwner && !c.approved_by && (
+                          <div className="flex gap-2 pt-1">
+                            <button onClick={() => doDecideCorrection(c.id, true)} className="px-2 py-1 rounded-lg bg-status-green/10 text-status-green font-bold hover:bg-status-green/20">Setujui</button>
+                            <button onClick={() => doDecideCorrection(c.id, false)} className="px-2 py-1 rounded-lg bg-status-red/10 text-status-red font-bold hover:bg-status-red/20">Tolak</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -269,6 +347,51 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
             {!cancelIsPreProduction && !isOwner && (
               <p className="text-[11px] text-status-yellow-text">
                 Order sudah masuk produksi — DP hangus dan pengajuan ini akan menunggu keputusan Owner.
+              </p>
+            )}
+          </div>
+        )}
+        {d && discountMode && (
+          <div className="px-5 pb-3 pt-4 border-t border-border shrink-0 space-y-2">
+            <label className="text-[11px] font-bold text-primary uppercase">Ajukan diskon</label>
+            <div className="grid grid-cols-2 gap-2">
+              <input type="number" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value)} autoFocus
+                placeholder={`maks ${fmtRp(d.subtotal - 1)}`}
+                className="w-full h-9 rounded-lg bg-elevated border border-border text-xs text-primary px-3 outline-none focus:border-accent-teal" />
+            </div>
+            <textarea value={discountReasonInput} onChange={(e) => setDiscountReasonInput(e.target.value)} rows={2}
+              placeholder="mis. pelanggan lama / kompensasi keterlambatan (min. 5 karakter)"
+              className="w-full rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none" />
+            <p className="text-[10px] text-muted">Keputusan akhir tetap di tangan Owner.</p>
+          </div>
+        )}
+        {d && correctionMode && (
+          <div className="px-5 pb-3 pt-4 border-t border-border shrink-0 space-y-2">
+            <label className="text-[11px] font-bold text-primary uppercase">Ajukan koreksi (order sudah CLOSED)</label>
+            <div className="grid grid-cols-2 gap-2">
+              <select value={correctionCategory} onChange={(e) => setCorrectionCategory(e.target.value as typeof correctionCategory)}
+                className="w-full h-9 rounded-lg bg-elevated border border-border text-xs text-primary px-2 outline-none focus:border-accent-teal">
+                <option value="OTHER">Lainnya</option>
+                <option value="QUANTITY">Jumlah</option>
+                <option value="MATERIAL">Material</option>
+                {isOwner && <option value="FINANCIAL">Keuangan</option>}
+              </select>
+              <input value={correctionField} onChange={(e) => setCorrectionField(e.target.value)}
+                placeholder="Nama field, mis. quantity item#1"
+                className="w-full h-9 rounded-lg bg-elevated border border-border text-xs text-primary px-3 outline-none focus:border-accent-teal" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input value={correctionOld} onChange={(e) => setCorrectionOld(e.target.value)} placeholder="Nilai lama (opsional)"
+                className="w-full h-9 rounded-lg bg-elevated border border-border text-xs text-primary px-3 outline-none focus:border-accent-teal" />
+              <input value={correctionNew} onChange={(e) => setCorrectionNew(e.target.value)} placeholder="Nilai baru (opsional)"
+                className="w-full h-9 rounded-lg bg-elevated border border-border text-xs text-primary px-3 outline-none focus:border-accent-teal" />
+            </div>
+            <textarea value={correctionReason} onChange={(e) => setCorrectionReason(e.target.value)} rows={2}
+              placeholder="Alasan koreksi (min. 20 karakter)"
+              className="w-full rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none" />
+            {!isOwner && (
+              <p className="text-[10px] text-muted">
+                {correctionCategory === "FINANCIAL" ? "Koreksi keuangan khusus Owner." : "Akan menunggu persetujuan Owner sebelum berlaku."}
               </p>
             )}
           </div>
@@ -340,6 +463,30 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
             <button onClick={doCancel} disabled={cancelBusy || !cancelReason.trim()}
               className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-red text-white text-sm font-bold hover:brightness-110 disabled:opacity-50">
               {cancelBusy ? "Memproses…" : cancelIsPreProduction || isOwner ? "Konfirmasi Batalkan" : "Ajukan ke Owner"}
+            </button>
+          )}
+          {d && !["CLOSED", "CANCELLED"].includes(d.status) && !(d.discount > 0 && d.discountApproved) && !freezeMode && !cancelMode && !discountMode && (
+            <button onClick={() => setDiscountMode(true)}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-elevated border border-border text-sm font-bold text-primary hover:bg-elevated/70">
+              Ajukan Diskon
+            </button>
+          )}
+          {d && discountMode && (
+            <button onClick={doRequestDiscount} disabled={discountBusy || !discountReasonInput.trim() || Number(discountAmount) <= 0}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-50">
+              {discountBusy ? "Memproses…" : "Kirim Pengajuan"}
+            </button>
+          )}
+          {d && d.status === "CLOSED" && !correctionMode && (
+            <button onClick={() => setCorrectionMode(true)}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-elevated border border-border text-sm font-bold text-primary hover:bg-elevated/70">
+              Ajukan Koreksi
+            </button>
+          )}
+          {d && correctionMode && (
+            <button onClick={doCreateCorrection} disabled={correctionBusy || !correctionField.trim() || correctionReason.trim().length < 20}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-50">
+              {correctionBusy ? "Memproses…" : "Kirim Koreksi"}
             </button>
           )}
         </div>

@@ -62,20 +62,23 @@ function ReceiptModal({ open, transactionData, onClose }: { open: boolean, trans
   );
 }
 
+/** Diskon sampai persentase ini boleh diinput bebas; di atasnya wajib konfirmasi password Owner (lihat pos.ts). */
+const RETAIL_FREE_DISCOUNT_PCT = 10;
+
 function PosPaymentModal({
   open,
-  totalAmount,
+  subtotal,
   customerName,
   defaultDiscount = 0,
   onClose,
   onSuccess,
 }: {
   open: boolean;
-  totalAmount: number;
+  subtotal: number;
   customerName: string;
   defaultDiscount?: number;
   onClose: () => void;
-  onSuccess: (method: "TUNAI" | "QRIS", cashGiven: number) => void;
+  onSuccess: (method: "TUNAI" | "QRIS", cashGiven: number, discount: number) => void;
 }) {
   const [method, setMethod] = useState<"TUNAI" | "QRIS">("TUNAI");
   const [cashInput, setCashInput] = useState("");
@@ -96,7 +99,11 @@ function PosPaymentModal({
   if (!open) return null;
 
   const discount = Number(discountInput) || 0;
-  const finalAmount = Math.max(0, totalAmount - discount);
+  const freeDiscountLimit = Math.round(subtotal * (RETAIL_FREE_DISCOUNT_PCT / 100));
+  const needsOwnerApproval = discount > freeDiscountLimit;
+  const ppnBase = Math.max(0, subtotal - discount);
+  const tax = Math.round(ppnBase * 0.11);
+  const finalAmount = Math.max(0, subtotal - discount + tax);
   const cashGiven = Number(cashInput) || 0;
   const change = Math.max(0, cashGiven - finalAmount);
   const isValidCash = method === "TUNAI" ? cashGiven >= finalAmount : true;
@@ -114,8 +121,9 @@ function PosPaymentModal({
         <div className="bg-elevated p-4 rounded-xl flex justify-between items-center">
           <div>
             <p className="text-xs text-muted">Pelanggan: {customerName || "Umum"}</p>
-            <p className="text-xs text-muted mt-1">Subtotal: {formatRupiah(totalAmount)}</p>
+            <p className="text-xs text-muted mt-1">Subtotal: {formatRupiah(subtotal)}</p>
             {discount > 0 && <p className="text-xs text-status-red font-bold">Diskon: -{formatRupiah(discount)}</p>}
+            <p className="text-xs text-muted">PPN 11%: {formatRupiah(tax)}</p>
             <p className="text-sm font-bold text-primary mt-2">Total Akhir</p>
           </div>
           <p className="text-3xl font-mono font-bold text-status-yellow-text">{formatRupiah(finalAmount)}</p>
@@ -131,6 +139,11 @@ function PosPaymentModal({
             placeholder="0"
             className="w-full h-10 rounded-xl bg-elevated border border-border text-primary text-sm px-4 outline-none focus:border-status-yellow transition-all"
           />
+          {needsOwnerApproval && (
+            <p className="text-xs text-status-yellow-text mt-1">
+              Diskon di atas {RETAIL_FREE_DISCOUNT_PCT}% dari subtotal ({formatRupiah(freeDiscountLimit)}) wajib konfirmasi password Owner setelah ini.
+            </p>
+          )}
         </div>
 
         {/* Method Toggle */}
@@ -200,7 +213,7 @@ function PosPaymentModal({
           <button onClick={onClose} className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary transition-colors cursor-pointer">
             Batal
           </button>
-          <button onClick={() => onSuccess(method, cashGiven)} disabled={!isValidCash} className={cn("flex-[2] h-11 rounded-xl text-white text-sm font-bold flex items-center justify-center transition-all shadow-sm", isValidCash ? "bg-status-green hover:brightness-110 shadow-status-green/20 cursor-pointer" : "bg-status-green/50 cursor-not-allowed")}>
+          <button onClick={() => onSuccess(method, cashGiven, discount)} disabled={!isValidCash} className={cn("flex-[2] h-11 rounded-xl text-white text-sm font-bold flex items-center justify-center transition-all shadow-sm", isValidCash ? "bg-status-green hover:brightness-110 shadow-status-green/20 cursor-pointer" : "bg-status-green/50 cursor-not-allowed")}>
             Selesaikan Transaksi
           </button>
         </div>
@@ -343,7 +356,20 @@ export default function PosPage() {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
   };
 
-  const handleCheckoutSuccess = async (method: "TUNAI" | "QRIS", cashGiven: number) => {
+  const [ownerOverride, setOwnerOverride] = useState<{
+    open: boolean;
+    username: string;
+    password: string;
+    error: string | null;
+    pending: { method: "TUNAI" | "QRIS"; cashGiven: number; discount: number } | null;
+  }>({ open: false, username: "", password: "", error: null, pending: null });
+
+  const handleCheckoutSuccess = async (
+    method: "TUNAI" | "QRIS",
+    cashGiven: number,
+    discount: number,
+    ownerOverrideInput?: { username: string; password: string }
+  ) => {
     if (submitting) return;
     setSubmitting(true);
     try {
@@ -354,20 +380,36 @@ export default function PosPage() {
         quantity: item.qty,
         notes: item.notes || undefined,
       }));
-      const amountPaid = method === "TUNAI" ? cashGiven : total;
+      const ppnBase = Math.max(0, subtotal - discount);
+      const finalTax = Math.round(ppnBase * 0.11);
+      const finalTotal = Math.max(0, subtotal - discount + finalTax);
+      const amountPaid = method === "TUNAI" ? cashGiven : finalTotal;
 
       const res = await processRetailOrder({
         items: lines,
         customerId: selectedCustomerId || null,
-        tax,
+        discount,
+        tax: finalTax,
         payment: { method: method === "TUNAI" ? "CASH" : "QRIS", amountPaid },
+        ownerOverride: ownerOverrideInput,
       });
 
       if (!res.success) {
+        if (res.error.includes("wajib konfirmasi password Owner") || res.error.includes("Owner salah")) {
+          setOwnerOverride({
+            open: true,
+            username: ownerOverrideInput?.username ?? "",
+            password: "",
+            error: res.error.includes("salah") ? res.error : null,
+            pending: { method, cashGiven, discount },
+          });
+          return;
+        }
         toast({ type: "error", title: "Transaksi gagal", message: res.error });
         return;
       }
 
+      setOwnerOverride({ open: false, username: "", password: "", error: null, pending: null });
       setShowPaymentModal(false);
       setReceiptData({
         total: res.data.total,
@@ -417,12 +459,69 @@ export default function PosPage() {
       />
       <PosPaymentModal
         open={showPaymentModal}
-        totalAmount={total}
+        subtotal={subtotal}
         customerName={displayCustomerName}
         defaultDiscount={defaultDiscountPct > 0 && subtotal > 0 ? Math.round((subtotal * defaultDiscountPct) / 100) : 0}
         onClose={() => setShowPaymentModal(false)}
-        onSuccess={handleCheckoutSuccess}
+        onSuccess={(method, cashGiven, discount) => handleCheckoutSuccess(method, cashGiven, discount)}
       />
+
+      {/* Konfirmasi Owner untuk diskon di atas batas bebas */}
+      {ownerOverride.open && ownerOverride.pending && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-base/80 backdrop-blur-sm"
+            onClick={() => setOwnerOverride({ open: false, username: "", password: "", error: null, pending: null })}
+          />
+          <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
+            <h3 className="text-lg font-bold text-primary">Konfirmasi Owner</h3>
+            <p className="text-sm text-muted">
+              Diskon melebihi {RETAIL_FREE_DISCOUNT_PCT}% dari subtotal. Masukkan akun Owner untuk melanjutkan.
+            </p>
+            {ownerOverride.error && <p className="text-xs text-status-red font-bold">{ownerOverride.error}</p>}
+            <div>
+              <label className="text-xs text-muted font-medium mb-1 block">Username Owner</label>
+              <input
+                type="text"
+                value={ownerOverride.username}
+                onChange={(e) => setOwnerOverride((s) => ({ ...s, username: e.target.value }))}
+                className="w-full h-10 rounded-xl bg-elevated border border-border text-primary text-sm px-4 outline-none focus:border-status-yellow"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted font-medium mb-1 block">Password Owner</label>
+              <input
+                type="password"
+                value={ownerOverride.password}
+                onChange={(e) => setOwnerOverride((s) => ({ ...s, password: e.target.value }))}
+                className="w-full h-10 rounded-xl bg-elevated border border-border text-primary text-sm px-4 outline-none focus:border-status-yellow"
+              />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setOwnerOverride({ open: false, username: "", password: "", error: null, pending: null })}
+                className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                disabled={!ownerOverride.username || !ownerOverride.password || submitting}
+                onClick={() => {
+                  const p = ownerOverride.pending!;
+                  handleCheckoutSuccess(p.method, p.cashGiven, p.discount, {
+                    username: ownerOverride.username,
+                    password: ownerOverride.password,
+                  });
+                }}
+                className="flex-[2] h-11 rounded-xl bg-status-green text-white text-sm font-bold flex items-center justify-center cursor-pointer hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Konfirmasi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Void Modal */}
       {voidOrder && (

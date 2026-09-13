@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import bcrypt from "bcryptjs";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
@@ -9,6 +10,9 @@ import { retryOnUnique } from "@/lib/retry";
 import { logAction } from "@/lib/logger";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
+
+/** Diskon retail sampai persentase ini boleh diinput kasir/admin tanpa persetujuan. Di atasnya wajib konfirmasi Owner. */
+const RETAIL_FREE_DISCOUNT_PCT = 10;
 
 /** Satu baris keranjang kasir. `retailProductId` null = item custom/manual. */
 export interface RetailCartLine {
@@ -31,6 +35,8 @@ export interface ProcessRetailOrderInput {
     amountPaid: number;
     reference?: string;
   };
+  /** wajib diisi kalau diskon melebihi RETAIL_FREE_DISCOUNT_PCT dari subtotal. */
+  ownerOverride?: { username: string; password: string };
 }
 
 export interface ProcessRetailOrderResult {
@@ -102,6 +108,27 @@ export async function processRetailOrder(
         }
         return { input: { ...i, unitPrice }, product: product ?? null };
       });
+
+      // Diskon di atas batas bebas wajib konfirmasi password Owner (kebijakan anti-kebocoran kasir).
+      const freeDiscountLimit = Math.round(subtotal * (RETAIL_FREE_DISCOUNT_PCT / 100));
+      let ownerOverrideUserId: string | null = null;
+      if (discount > freeDiscountLimit) {
+        const override = input.ownerOverride;
+        if (!override?.username || !override?.password) {
+          throw new Error(
+            `Diskon di atas ${RETAIL_FREE_DISCOUNT_PCT}% dari subtotal wajib konfirmasi password Owner.`
+          );
+        }
+        const owner = await tx.user.findFirst({
+          where: { tenant_id: tenant.id, active: true, role: { name: "owner" }, username: override.username },
+          select: { id: true, password_hash: true },
+        });
+        const passOk = owner ? await bcrypt.compare(override.password, owner.password_hash) : false;
+        if (!owner || !passOk) {
+          throw new Error("Username atau password Owner salah.");
+        }
+        ownerOverrideUserId = owner.id;
+      }
 
       // PPN dihitung ulang di server: harus 0 (tidak kena PPN) atau 11% dari (subtotal − diskon).
       const ppnBase = Math.max(0, subtotal - discount);
@@ -193,13 +220,25 @@ export async function processRetailOrder(
         },
       });
 
-      return { orderId: order.id, orderCode: order.order_code, total, change };
+      return { orderId: order.id, orderCode: order.order_code, total, change, ownerOverrideUserId };
     }));
+
+    if (result.ownerOverrideUserId) {
+      await logAction(
+        actor.id,
+        "RETAIL_DISCOUNT_OWNER_OVERRIDE",
+        "Order",
+        result.orderId,
+        null,
+        { discount, freeLimitPct: RETAIL_FREE_DISCOUNT_PCT, approvedBy: result.ownerOverrideUserId },
+        `Diskon retail di atas ${RETAIL_FREE_DISCOUNT_PCT}% dikonfirmasi Owner di kasir.`
+      );
+    }
 
     revalidatePath("/pos");
     revalidatePath("/admin/products");
     revalidatePath("/admin/reports");
-    return ok(result);
+    return ok({ orderId: result.orderId, orderCode: result.orderCode, total: result.total, change: result.change });
   } catch (e) {
     console.error("processRetailOrder:", e);
     return fail(safeError(e, "Gagal memproses transaksi."));

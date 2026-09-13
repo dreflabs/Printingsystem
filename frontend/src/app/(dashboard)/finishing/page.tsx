@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ClipboardList, Wrench, Package, Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
+import { getSessionUser } from "@/actions/session";
 import { QCTab } from "./QCTab";
 import { FinishingTab } from "./FinishingTab";
 import { StorageTab } from "./StorageTab";
@@ -20,8 +21,30 @@ const TABS: { id: FinishingTab; label: string; icon: typeof ClipboardList }[] = 
   { id: "material", label: "Material", icon: Box },
 ];
 
+/**
+ * Tab qc/finishing/storage hanya bisa DISELESAIKAN oleh gudang/admin/owner di
+ * server (submitQC/startFinishing/finishFinishing/assignStorageLocation). Route
+ * `/finishing` sengaja tetap dibuka untuk operator (cek stok bahan di Material),
+ * tapi tanpa gate ini operator bisa mengisi form QC/Finishing penuh dulu baru
+ * ditolak server — dead-end yang membingungkan.
+ */
+const OPERATOR_ALLOWED_TABS: FinishingTab[] = ["material"];
+
 export default function FinishingPage() {
   const [activeTab, setActiveTab] = useState<FinishingTab>("qc");
+  const [isOperatorOnly, setIsOperatorOnly] = useState(false);
+
+  useEffect(() => {
+    getSessionUser().then((r) => {
+      if (r.ok && r.user.role === "operator") {
+        setIsOperatorOnly(true);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setActiveTab("material");
+      }
+    });
+  }, []);
+
+  const visibleTabs = isOperatorOnly ? TABS.filter((t) => OPERATOR_ALLOWED_TABS.includes(t.id)) : TABS;
 
   return (
     <div className="space-y-6">
@@ -36,7 +59,7 @@ export default function FinishingPage() {
 
       {/* Tab Navigation */}
       <div className="flex gap-2 bg-elevated p-1 rounded-xl border border-border w-fit overflow-x-auto">
-        {TABS.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -50,9 +73,9 @@ export default function FinishingPage() {
         ))}
       </div>
 
-      {activeTab === "qc" && <QCTab />}
-      {activeTab === "finishing" && <FinishingTab />}
-      {activeTab === "storage" && <StorageTab />}
+      {activeTab === "qc" && !isOperatorOnly && <QCTab />}
+      {activeTab === "finishing" && !isOperatorOnly && <FinishingTab />}
+      {activeTab === "storage" && !isOperatorOnly && <StorageTab />}
       {activeTab === "material" && <MaterialTab />}
     </div>
   );

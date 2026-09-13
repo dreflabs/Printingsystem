@@ -17,8 +17,13 @@ import { releaseOrderToProduction } from "@/actions/production";
 import { submitFinalAudit, getFinalAuditChecks, type AuditCheck } from "@/actions/audit";
 import { getSessionUser } from "@/actions/session";
 import { freezeOrder, unfreezeOrder } from "@/actions/hold";
+import { cancelOrder, requestOrderCancellation } from "@/actions/cancel";
 
 const FREEZE_BLOCKED = ["CLOSED", "CANCELLED", "PICKED_UP", "ON_HOLD"];
+/** Samakan dengan TERMINAL di actions/cancel.ts — tidak bisa dibatalkan sama sekali. */
+const CANCEL_TERMINAL = ["CLOSED", "CANCELLED", "PICKED_UP", "FINAL_AUDIT_PENDING", "FINAL_AUDIT_COMPLETE"];
+/** Samakan dengan PRE_PRODUCTION di actions/cancel.ts — Admin boleh cancel langsung, DP refundable. */
+const CANCEL_PRE_PRODUCTION = ["DRAFT", "DESIGNING", "WAITING_APPROVAL", "APPROVED", "WAITING_PAYMENT", "CONFIRMED"];
 // Status di mana order sudah tidak perlu / tidak bisa di-assign ke produksi.
 const ASSIGN_BLOCKED = ["DRAFT", "CANCELLED", "CLOSED", "PICKED_UP", "ON_HOLD"];
 
@@ -60,6 +65,11 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
   const [holdBusy, setHoldBusy] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [releaseBusy, setReleaseBusy] = useState(false);
+  const [cancelMode, setCancelMode] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelRefundAmount, setCancelRefundAmount] = useState("");
+  const [cancelRefundMethod, setCancelRefundMethod] = useState<"" | "CASH" | "TRANSFER">("");
+  const [cancelBusy, setCancelBusy] = useState(false);
   const reload = () => getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
   useEffect(() => {
     getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
@@ -102,6 +112,26 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
     setHoldBusy(false);
     if (!res.success) { setErr(res.error); return; }
     onChanged(); onClose();
+  }
+
+  const cancelIsPreProduction = !!d && CANCEL_PRE_PRODUCTION.includes(d.status);
+
+  async function doCancel() {
+    if (!d) return;
+    setCancelBusy(true); setErr(null);
+    const res =
+      cancelIsPreProduction || isOwner
+        ? await cancelOrder(orderId, {
+            reason: cancelReason,
+            refundAmount: cancelRefundAmount ? Number(cancelRefundAmount) : undefined,
+            refundMethod: cancelRefundMethod || undefined,
+          })
+        : await requestOrderCancellation(orderId, cancelReason);
+    setCancelBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    onChanged();
+    if (cancelIsPreProduction || isOwner) onClose();
+    else await reload();
   }
 
   return (
@@ -204,6 +234,45 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
               className="w-full rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none" />
           </div>
         )}
+        {d && d.cancellationReason && !d.cancelledAt && (
+          <div className="px-5 pb-3 pt-4 border-t border-border shrink-0">
+            <p className="text-xs text-status-yellow-text bg-status-yellow/10 border border-status-yellow/30 rounded-xl p-3">
+              Menunggu keputusan Owner untuk pembatalan — alasan: &ldquo;{d.cancellationReason}&rdquo;
+            </p>
+          </div>
+        )}
+        {d && cancelMode && (
+          <div className="px-5 pb-3 pt-4 border-t border-border shrink-0 space-y-2">
+            <label className="text-[11px] font-bold text-primary uppercase">Alasan pembatalan</label>
+            <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} rows={2} autoFocus
+              placeholder="mis. konsumen membatalkan pesanan / salah input"
+              className="w-full rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-status-red resize-none" />
+            {(cancelIsPreProduction || isOwner) && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-muted uppercase">Refund (Rp, opsional)</label>
+                  <input type="number" value={cancelRefundAmount} onChange={(e) => setCancelRefundAmount(e.target.value)}
+                    placeholder={cancelIsPreProduction ? `maks ${fmtRp(d.paidAmount)}` : `maks ${fmtRp(Math.max(0, d.paidAmount - d.dpRequired))} (di luar DP)`}
+                    className="w-full h-9 rounded-lg bg-elevated border border-border text-xs text-primary px-3 outline-none focus:border-status-red" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted uppercase">Metode refund</label>
+                  <select value={cancelRefundMethod} onChange={(e) => setCancelRefundMethod(e.target.value as "" | "CASH" | "TRANSFER")}
+                    className="w-full h-9 rounded-lg bg-elevated border border-border text-xs text-primary px-2 outline-none focus:border-status-red">
+                    <option value="">— tidak ada —</option>
+                    <option value="CASH">Tunai</option>
+                    <option value="TRANSFER">Transfer</option>
+                  </select>
+                </div>
+              </div>
+            )}
+            {!cancelIsPreProduction && !isOwner && (
+              <p className="text-[11px] text-status-yellow-text">
+                Order sudah masuk produksi — DP hangus dan pengajuan ini akan menunggu keputusan Owner.
+              </p>
+            )}
+          </div>
+        )}
         <div className="flex flex-wrap gap-3 p-5 border-t border-border shrink-0">
           <button onClick={onClose} className="flex-1 min-w-[120px] h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary">Tutup</button>
           {d && (
@@ -259,6 +328,18 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
             <button onClick={doFreeze} disabled={holdBusy || !freezeReason.trim()}
               className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-red text-white text-sm font-bold hover:brightness-110 disabled:opacity-50">
               {holdBusy ? "Memproses…" : "Konfirmasi Bekukan"}
+            </button>
+          )}
+          {d && !CANCEL_TERMINAL.includes(d.status) && !d.cancellationReason && !freezeMode && !cancelMode && (
+            <button onClick={() => setCancelMode(true)}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-red/10 border border-status-red/30 text-status-red text-sm font-bold hover:bg-status-red/20">
+              Batalkan Order
+            </button>
+          )}
+          {d && cancelMode && (
+            <button onClick={doCancel} disabled={cancelBusy || !cancelReason.trim()}
+              className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-red text-white text-sm font-bold hover:brightness-110 disabled:opacity-50">
+              {cancelBusy ? "Memproses…" : cancelIsPreProduction || isOwner ? "Konfirmasi Batalkan" : "Ajukan ke Owner"}
             </button>
           )}
         </div>

@@ -856,6 +856,8 @@ export async function getOrderDetail(orderId: string) {
       balance: num(o.balance),
       deadline: o.deadline,
       notes: o.notes,
+      cancellationReason: o.cancellation_reason,
+      cancelledAt: o.cancelled_at,
       items: o.items.map((i) => ({
         name: i.product?.name ?? i.retail_product?.name ?? i.description ?? "-",
         quantity: i.quantity,

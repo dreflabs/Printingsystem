@@ -9,14 +9,17 @@ import {
 } from "@/lib/storage";
 
 /**
- * Penyimpanan objek LOKAL untuk pengembangan tanpa R2.
+ * Penyimpanan objek LOKAL — dipakai untuk dev tanpa R2, ATAU sebagai driver
+ * produksi resmi di VPS yang sengaja tidak pakai R2 (`STORAGE_DRIVER=local` +
+ * `LOCAL_STORAGE_DIR` ke volume persisten, lihat DEPLOY.md §6c).
  *
- *   PUT /api/local-storage/<key>   → tulis body ke .local-storage/<key>
+ *   PUT /api/local-storage/<key>   → tulis body ke LOCAL_STORAGE_DIR/<key>
  *   GET /api/local-storage/<key>   → kirim isi file
  *
- * Aktif HANYA saat `storageMode() === "local"` (R2 tak terkonfigurasi & bukan
- * produksi). Di produksi route ini menjawab 404, jadi tidak menambah permukaan
- * serangan. Key wajib ter-scope ke tenant pemanggil (segmen ke-2 = tenant.id),
+ * Aktif HANYA saat `storageMode() === "local"`. Kalau driver aktif adalah R2
+ * ("r2") atau storage belum dikonfigurasi ("none"), route ini menjawab 404 —
+ * jadi tidak menambah permukaan serangan saat mode lokal sedang tidak dipakai.
+ * Key wajib ter-scope ke tenant pemanggil (segmen ke-2 = tenant.id),
  * konsisten dengan pola key di actions (`tenants/<id>/…`, `avatars/<id>/…`).
  */
 

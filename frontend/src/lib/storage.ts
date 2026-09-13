@@ -1,18 +1,23 @@
 /**
- * Abstraksi penyimpanan objek: Cloudflare R2 di produksi, folder lokal saat
- * dikembangkan tanpa kredensial R2.
+ * Abstraksi penyimpanan objek — dua driver yang sama-sama didukung penuh di
+ * produksi: Cloudflare R2 (presigned URL, upload langsung dari browser) atau
+ * disk VPS sendiri lewat `/api/local-storage`. Pilih lewat `STORAGE_DRIVER`,
+ * setup masing-masing ada di DEPLOY.md §6c.
  *
  * Pilihan mode (urutan):
- *   1. `STORAGE_DRIVER=local` → paksa lokal, walau env R2_* terisi. Dipakai saat
- *      dev: kredensial R2 produksi ada di `.env` tapi CORS bucket tidak
- *      mengizinkan origin localhost, jadi PUT langsung dari browser gagal.
+ *   1. `STORAGE_DRIVER=local` → paksa lokal, walau env R2_* terisi. Dipakai
+ *      baik untuk dev (kredensial R2 produksi ada di `.env` tapi CORS bucket
+ *      tidak mengizinkan origin localhost) MAUPUN produksi VPS yang sengaja
+ *      tidak pakai R2 — asal `LOCAL_STORAGE_DIR` menunjuk ke volume persisten.
  *   2. `STORAGE_DRIVER=r2`    → paksa R2 (butuh env R2_* lengkap, else "none").
- *   3. auto: R2 bila terkonfigurasi; selain itu lokal bila bukan produksi
- *      (atau `ALLOW_LOCAL_STORAGE=1`); selain itu "none".
+ *   3. auto (STORAGE_DRIVER kosong): R2 bila terkonfigurasi; selain itu lokal
+ *      bila bukan produksi (atau `ALLOW_LOCAL_STORAGE=1`); selain itu "none".
+ *      Di produksi sebaiknya `STORAGE_DRIVER` selalu diisi eksplisit — jangan
+ *      andalkan auto-fallback ini.
  *
  * Mode "local" menulis/membaca file lewat route `/api/local-storage/*` ke
- * `LOCAL_STORAGE_DIR` (default `.local-storage/`). Route itu hanya aktif saat
- * mode "local", jadi tidak ada permukaan baru di produksi. "none" → upload
+ * `LOCAL_STORAGE_DIR` (default `.local-storage/` — HANYA aman untuk dev; di
+ * produksi wajib path volume persisten, lihat DEPLOY.md). "none" → upload
  * ditolak.
  */
 

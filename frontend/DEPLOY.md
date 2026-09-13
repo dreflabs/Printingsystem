@@ -214,12 +214,51 @@ curl -X POST -H "Authorization: Bearer $JOBS_SECRET" \
 `200` = terkirim. `502` = ada yang gagal, dan balasannya memuat pesan error
 provider apa adanya. Tabel lengkap ada di [`JOBS.md`](./JOBS.md).
 
-### 6c. Cloudflare R2 — file desain
+### 6c. Penyimpanan file desain — VPS (lokal) atau Cloudflare R2
 
-Designer meng-upload file desain langsung dari dashboard; file disimpan di
-Cloudflare R2 dan tidak pernah melewati server aplikasi (presigned URL).
+Designer meng-upload file desain langsung dari dashboard. Aplikasi mendukung
+dua driver penyimpanan lewat `src/lib/storage.ts`, dipilih env `STORAGE_DRIVER`:
 
-**Setup:**
+- **`local`** — file ditulis ke disk VPS sendiri, lewat route
+  `/api/local-storage`. **Ini yang dipakai sekarang (default aktif).**
+- **`r2`** — file di Cloudflare R2, upload/unduh langsung dari browser lewat
+  presigned URL (tidak lewat server). Kodenya tetap ada dan didukung penuh —
+  tinggal ganti `STORAGE_DRIVER=r2` + isi env `R2_*` kapan saja mau pindah
+  balik, tanpa perlu ubah kode apa pun.
+
+Kalau `STORAGE_DRIVER` tidak diisi sama sekali, aplikasi auto-pilih: pakai R2
+kalau env `R2_*` lengkap, kalau tidak baru jatuh ke lokal. Karena kita ingin
+lokal jadi pilihan pasti (bukan auto-fallback), **selalu set `STORAGE_DRIVER`
+secara eksplisit** di Coolify — jangan dibiarkan kosong.
+
+#### Setup VPS/lokal (aktif sekarang)
+
+Beda penting dari R2: upload/unduh lewat server aplikasi sendiri (bukan
+langsung ke storage eksternal), jadi **wajib** ada volume disk persisten —
+tanpa itu, semua file desain hilang setiap kali aplikasi di-redeploy.
+
+1. Coolify → resource aplikasi → tab **Storages** (Persistent Storage) →
+   tambah volume, mount ke path di dalam container, mis. `/data/uploads`.
+   Jangan pakai path di dalam folder build aplikasi (tertimpa tiap deploy).
+2. Coolify → **Environment Variables**:
+   ```
+   STORAGE_DRIVER=local
+   LOCAL_STORAGE_DIR=/data/uploads
+   DESIGN_MAX_UPLOAD_MB=200        # opsional
+   ```
+3. **Redeploy.**
+4. Verifikasi: upload 1 file desain test → buka lagi untuk pastikan bisa
+   dibaca → **redeploy sekali lagi TANPA ubah apa pun** → buka file yang sama
+   tadi. Kalau masih bisa dibuka, volume persisten sudah benar. Kalau
+   hilang/404, volume belum ter-mount dengan benar — jangan pakai mode ini
+   sampai ini beres.
+5. Kalau upload file besar (mendekati batas `DESIGN_MAX_UPLOAD_MB`) gagal
+   di tengah jalan, cek batas ukuran body di reverse proxy Coolify (Traefik) —
+   itu di luar kendali kode aplikasi.
+6. **Backup VPS harus mencakup path volume ini juga**, terpisah dari backup
+   database di §7 — kalau tidak, file desain tidak ikut ter-backup.
+
+#### Setup Cloudflare R2 (alternatif, tersimpan untuk dipakai lagi kapan saja)
 
 1. Cloudflare dashboard → **R2** → **Create bucket** → nama `printpilot-designs`
    (biarkan **private** — jangan aktifkan Public Access).
@@ -231,7 +270,7 @@ Cloudflare R2 dan tidak pernah melewati server aplikasi (presigned URL).
    ```json
    [
      {
-       "AllowedOrigins": ["http://vrpxeb4navbfutprvjzslbhg.72.61.208.178.sslip.io"],
+       "AllowedOrigins": ["https://hrm-kreatifindo.cloud"],
        "AllowedMethods": ["PUT", "GET"],
        "AllowedHeaders": ["*"],
        "ExposeHeaders": ["ETag"],
@@ -242,6 +281,7 @@ Cloudflare R2 dan tidak pernah melewati server aplikasi (presigned URL).
    Tanpa CORS yang benar, upload dari browser **gagal** (HTTP 0 / error jaringan).
 4. Coolify → **Environment Variables**:
    ```
+   STORAGE_DRIVER=r2
    R2_ACCOUNT_ID=<account id>
    R2_ACCESS_KEY_ID=<access key id>
    R2_SECRET_ACCESS_KEY=<secret>
@@ -250,9 +290,14 @@ Cloudflare R2 dan tidak pernah melewati server aplikasi (presigned URL).
    ```
 5. **Redeploy.**
 
-Format file yang diterima: PDF, AI, CDR, EPS, SVG, PSD, PNG, JPG, WEBP, TIFF.
-Tanpa R2 dikonfigurasi, tombol upload menolak dengan pesan jelas (fitur lain
-tidak terganggu). `purgeTenant` juga menghapus file R2 tenant yang di-purge.
+Format file yang diterima (berlaku untuk kedua mode): PDF, AI, CDR, EPS, SVG,
+PSD, PNG, JPG, WEBP, TIFF. Tanpa storage dikonfigurasi, tombol upload menolak
+dengan pesan jelas (fitur lain tidak terganggu). `purgeTenant` menghapus file
+tenant yang di-purge di storage manapun yang sedang aktif (lokal atau R2).
+
+> **Pindah antar mode kapan saja**: tinggal ganti `STORAGE_DRIVER` + env
+> terkait lalu redeploy — tidak ada migrasi data otomatis antar mode, file
+> lama di mode sebelumnya tidak ikut pindah sendiri kalau nanti bolak-balik.
 
 ---
 

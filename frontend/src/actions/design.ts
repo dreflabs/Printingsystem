@@ -257,11 +257,14 @@ export async function uploadDesignVersion(
  */
 export async function approveDesign(
   orderId: string,
-  input: { notes?: string; approvalMethodOverride?: "WALK_IN" | "MAKLOON" | "ONLINE"; itemId?: string | null }
+  input: { notes?: string; itemId?: string | null }
 ): Promise<ActionResult<{ approvedCount: number; fullyApproved: boolean; pendingItems: string[] }>> {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    if (!canDesign(actor.roles)) {
+      return fail("Hanya Designer Sales/Admin/Owner yang boleh menyetujui desain.");
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await tx.designJob.findFirst({
@@ -269,7 +272,7 @@ export async function approveDesign(
       });
       if (!job) throw new Error("Job desain tidak ditemukan.");
 
-      const method = input.approvalMethodOverride || job.approval_method;
+      const method = job.approval_method;
       if (method === "ONLINE" && !isAdmin(actor.roles)) {
         throw new Error("Persetujuan desain ONLINE harus dilakukan oleh Admin.");
       }

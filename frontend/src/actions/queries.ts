@@ -962,7 +962,12 @@ export async function getJobLabel(codeOrId: string) {
 export async function getOrderReceipt(codeOrId: string) {
   try {
     const tenant = await requireTenant();
-    await requireUser();
+    const actor = await requireUser();
+    // Nota memuat nomor HP konsumen + rincian finansial lengkap — hanya
+    // Admin/Owner (kasir) yang boleh mencetaknya, bukan operator/gudang/designer.
+    if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) {
+      return fail("Hanya Admin/Owner yang boleh mencetak nota.");
+    }
     const c = codeOrId.trim().replace(/^ORD:/i, "").trim();
 
     const [t, order] = await Promise.all([

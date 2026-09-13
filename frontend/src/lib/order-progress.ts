@@ -60,7 +60,7 @@ export async function allLiveJobsReached(
   targetJobStatus: string
 ): Promise<boolean> {
   const jobs = await tx.productionJob.findMany({
-    where: { order_id: orderId, parent_job_id: null, status: { notIn: DEAD_JOB_STATUS } },
+    where: { order_id: orderId, status: { notIn: DEAD_JOB_STATUS } },
     select: { status: true },
   });
   if (jobs.length === 0) return false;

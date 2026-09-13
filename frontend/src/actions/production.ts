@@ -547,6 +547,15 @@ export async function finishProduction(
         throw new Error(`Job tidak bisa diselesaikan dari status ${job.status}.`);
       }
 
+      // Kunci job SEBELUM memotong stok — cegah dua panggilan finishProduction
+      // yang hampir bersamaan (klik ganda, retry jaringan) sama-sama lolos cek
+      // status lalu dobel memotong stok material untuk satu job yang sama.
+      const claim = await tx.productionJob.updateMany({
+        where: { id: job.id, status: { in: ["PRODUCTION_STARTED", "PRODUCTION_PAUSED"] } },
+        data: { status: "PRODUCTION_COMPLETE" },
+      });
+      if (claim.count === 0) throw new Error("Job sudah diselesaikan lewat panggilan lain.");
+
       const lowStock: string[] = [];
       for (const m of input.materials) {
         const material = await tx.material.findFirst({ where: { id: m.materialId, tenant_id: tenant.id } });

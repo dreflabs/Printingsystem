@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { can } from "@/lib/permissions";
 import { logAction } from "@/lib/logger";
 import { retryOnUnique } from "@/lib/retry";
 import {
@@ -39,13 +40,33 @@ async function nextJobCode(tx: Prisma.TransactionClient, tenantId: string): Prom
 export async function getDesignJob(orderId: string) {
   try {
     const tenant = await requireTenant();
-    await requireUser();
+    const actor = await requireUser();
     const job = await prisma.designJob.findFirst({
       where: { order_id: orderId, tenant_id: tenant.id },
       include: { versions: { orderBy: { version_no: "asc" } } },
     });
     if (!job) return fail("Job desain tidak ditemukan untuk order ini.");
-    return ok(job);
+
+    const designStaff = actor.roles.some((r) => r === "owner" || r === "admin") || can(actor, "design.upload") || can(actor, "design.approve_walkin") || can(actor, "design.approve_online");
+    const canManage = designStaff && (actor.roles.some((r) => r === "owner" || r === "admin") || job.designer_id === actor.id);
+    if (canManage) return ok(job);
+
+    // Staf produksi hanya perlu metadata/file approved ketika order sudah
+    // benar-benar masuk tahap operasional dan job menjadi tanggung jawabnya.
+    if (job.status !== "APPROVED") return fail("Desain belum tersedia untuk tahap operasional.");
+    const approved = job.versions.filter((v) => v.approval_status === "APPROVED" && (v.file_path || v.file_name));
+    if (can(actor, "production.execute")) {
+      const assigned = await prisma.productionJob.findFirst({ where: { tenant_id: tenant.id, order_id: orderId, operator_id: actor.id }, select: { id: true } });
+      if (assigned) return ok({ ...job, versions: approved });
+    }
+    if (can(actor, "qc.submit") || can(actor, "finishing.execute")) {
+      const operational = await prisma.productionJob.findFirst({
+        where: { tenant_id: tenant.id, order_id: orderId, status: { in: ["PRODUCTION_COMPLETE", "QC_PENDING", "QC_PASSED", "FINISHING_STARTED", "FINISHING_COMPLETE", "STORAGE_PENDING", "STORED", "READY_FOR_PICKUP", "IN_TRANSIT"] } },
+        select: { id: true },
+      });
+      if (operational) return ok({ ...job, versions: approved });
+    }
+    return fail("Anda tidak memiliki akses ke desain order ini.");
   } catch (e) {
     console.error("getDesignJob:", e);
     return fail(safeError(e, "Gagal memuat design job."));

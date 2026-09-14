@@ -198,6 +198,28 @@ export default function ProductionPage() {
         </div>
       )}
 
+      {d && d.inactiveAssignedJobs.length > 0 && (
+        <div className="bg-card border border-status-yellow/50 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle className="h-5 w-5 text-status-yellow-text" />
+            <h2 className="text-base font-bold text-primary">Job Operator Nonaktif</h2>
+            <span className="ml-auto text-xs font-bold text-status-yellow-text bg-status-yellow/10 px-2 py-0.5 rounded-full border border-status-yellow/30">{d.inactiveAssignedJobs.length}</span>
+          </div>
+          <p className="text-xs text-muted mb-3">Job yang sudah dimulai dipertahankan agar progres tidak hilang. Alihkan ke operator aktif setelah meninjau kondisi mesin.</p>
+          <div className="space-y-2">
+            {d.inactiveAssignedJobs.map((j) => (
+              <div key={j.jobCode} className="flex flex-wrap items-center gap-3 rounded-xl bg-elevated border border-border px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-mono font-bold text-primary">{j.jobCode} <span className="text-muted font-sans">· {j.orderCode}</span></p>
+                  <p className="text-[11px] text-muted mt-0.5">{j.machineName} · Operator: {j.operatorName} · Status {j.status}</p>
+                </div>
+                <button onClick={() => setReassignJob(j)} className="text-xs font-bold px-3 py-1.5 rounded-lg bg-accent-teal text-white hover:brightness-110 whitespace-nowrap">Reassign</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         {kpis.map((k) => (
           <button

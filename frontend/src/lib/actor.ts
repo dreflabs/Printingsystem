@@ -120,7 +120,10 @@ export async function getCurrentUser(): Promise<Actor | null> {
   // ── 2. Sesi tenant biasa ─────────────────────────────────────────────
   const sid = su?.id;
   if (sid) {
-    const u = await prisma.user.findUnique({ where: { id: sid }, include: USER_WITH_ROLES });
+    // Sesi JWT tidak cukup untuk mengizinkan aksi. Akun yang dinonaktifkan
+    // harus kehilangan akses pada request berikutnya, walaupun token lamanya
+    // masih belum kedaluwarsa.
+    const u = await prisma.user.findFirst({ where: { id: sid, active: true }, include: USER_WITH_ROLES });
     if (u) {
       // Revoke sesi lama: token yang terbit sebelum password terakhir diganti ditolak.
       const tokenPw = session!.user.pwChangedAt ?? 0;

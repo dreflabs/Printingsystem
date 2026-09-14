@@ -124,9 +124,11 @@ function groupFor(status: string): WorkGroup {
 export async function getNextSteps() {
   try {
     const tenant = await requireTenant();
-    const actor = await requireUser();
-    // Panel ini memang untuk yang jalan sendiri — butuh > 1 peran.
-    const solo = actor.roles.length > 1;
+    await requireUser();
+    // Mode workspace adalah sumber kebenaran tampilan. Jumlah role tidak boleh
+    // mengubah workspace TEAM menjadi Solo secara diam-diam (Owner bisa saja
+    // memegang beberapa role untuk takeover darurat).
+    const solo = normalizeWorkspaceMode((tenant as { workspace_mode?: string }).workspace_mode) === "SOLO";
 
     const orders = await prisma.order.findMany({
       where: { tenant_id: tenant.id, status: { notIn: [...DONE] } },

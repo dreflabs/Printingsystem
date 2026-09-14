@@ -180,10 +180,12 @@ export async function autoReleaseToProduction(
   const activeOps = defaultOpIds.length
     ? await tx.user.findMany({
         where: { id: { in: defaultOpIds }, tenant_id: tenantId, active: true },
-        select: { id: true },
+        select: { id: true, user_machines: { where: { machine_id: { in: machineIds } }, select: { machine_id: true } } },
       })
     : [];
-  const activeOpSet = new Set(activeOps.map((u) => u.id));
+  // Operator default hanya boleh menerima job bila benar-benar diberi akses
+  // ke mesin tersebut. Referensi default_operator_id saja bukan grant akses.
+  const activeOpMachineSet = new Set(activeOps.flatMap((u) => u.user_machines.map((um) => `${u.id}:${um.machine_id}`)));
 
   // Gabungkan item per mesin default → 1 job per mesin, qty dijumlah.
   // Deadline job = yang PALING AWAL di antara item-itemnya (fallback deadline order).
@@ -205,7 +207,7 @@ export async function autoReleaseToProduction(
   for (const [machineId, plannedQty] of qtyByMachine) {
     const machine = machineById.get(machineId);
     const defOp = machine?.default_operator_id ?? null;
-    const pinned = defOp && activeOpSet.has(defOp);
+    const pinned = defOp && activeOpMachineSet.has(`${defOp}:${machineId}`);
     const jobDeadline = deadlineByMachine.get(machineId) ?? orderDeadline;
     const code = await nextJobCode(tx, tenantId);
     await tx.productionJob.create({

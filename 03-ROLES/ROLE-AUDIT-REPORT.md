@@ -99,3 +99,143 @@ Quota user dan order diperiksa sebelum operasi utama. Dua request paralel masih 
 - TypeScript: lulus.
 - Prisma validate: lulus.
 - Build produksi tidak selesai karena environment tidak dapat mengakses Google Font Inter; ini bukan error TypeScript atau Prisma.
+
+## Audit ulang kompatibilitas 1, 2, dan banyak pegawai — 15 September 2026
+
+### Kesimpulan
+
+Fondasi multi-role Print Pilot sudah kompatibel untuk satu orang, tim 2–3 orang,
+dan tim yang lebih besar. Modelnya lebih sesuai dengan proses percetakan daripada
+model kasir generik karena role dipisah menjadi Owner, Admin, Designer Sales,
+Operator, dan Gudang. Namun, statusnya **belum setara dengan kontrol profesional
+Moka** sampai tiga hal diperbaiki: enforcement policy staffing di server,
+penonaktifan user yang langsung mencabut sesi/pekerjaan, dan akses granular
+berbasis fitur.
+
+### Mekanisme yang benar-benar berjalan
+
+1. `User.role_id` menyimpan primary role; `UserRole` menyimpan role tambahan.
+   `getCurrentUser()` memuat keduanya, mengurutkan primary role dengan prioritas
+   owner → admin → designer → operator → gudang, dan action memakai union role.
+2. `workspace_mode` (`SOLO`, `TEAM_SMALL`, `TEAM_FULL`) hanya mengubah beranda
+   dan navigasi. Nilai ini tidak membatasi permission dan tidak memaksa jumlah
+   pegawai atau separation of duties.
+3. Pada pendaftaran, Owner diberi seluruh role operasional sebagai bootstrap.
+   Owner dapat melepas role operasional setelah pegawai pengganti tersedia;
+   permission Owner sendiri tetap penuh sebagai jalur takeover darurat.
+4. Pegawai baru dibuat dengan password sementara acak, wajib mengganti password,
+   dan dibatasi oleh kuota user aktif. Owner dapat menggabungkan beberapa role
+   pada satu akun tanpa membuat role baru berdasarkan jumlah orang.
+5. Produksi dirutekan ke satu `ProductionJob` per mesin. Mesin dapat memiliki
+   default operator; tanpa itu job masuk queue dan di-claim atomik oleh Operator
+   yang mempunyai `UserMachine` untuk mesin tersebut.
+6. Sidebar pegawai menampilkan menu berdasarkan union role. Dashboard Designer,
+   Operator, dan Gudang memiliki akses Absensi Saya; Admin/Owner memiliki modul
+   rekap dan konfigurasi.
+
+### Penilaian berdasarkan ukuran tim
+
+**Satu orang — layak dengan catatan (8/10).** Owner bootstrap dapat menjalankan
+order, desain, produksi, QC, finishing, storage, dan pickup. Beranda Solo
+memberi antrean langkah berikutnya. Kelemahannya, mode Solo adalah presentasi;
+tidak ada constraint yang mencegah tenant memiliki pegawai lain atau satu orang
+melakukan dua tahap yang sama.
+
+**Dua sampai tiga orang — layak untuk operasi harian (7/10).** Form pegawai
+mendukung kombinasi Admin + Operator + Gudang pada satu akun, dan mode
+`TEAM_SMALL` disarankan otomatis ketika ada pegawai aktif. Queue per mesin,
+claim atomik, dan assignment manual sudah mendukung pembagian kerja. Separation
+of duties masih berupa dokumentasi, sehingga konflik pembuat-versus-approver
+belum dipaksa oleh policy tenant.
+
+**Empat orang atau lebih — fondasi tersedia, kontrol enterprise belum lengkap
+(6/10).** Mode `TEAM_FULL` disarankan mulai lima pegawai, role dapat dipisah,
+dan akses mesin dapat dibatasi. Belum ada shift, kapasitas per mesin, lokasi/
+outlet, load balancing otomatis, atau custom role berbasis permission. Jika
+operator dinonaktifkan, job yang sudah assigned belum otomatis dikembalikan ke
+queue atau dibuatkan tugas reassign; Admin hanya melihat sebagian kondisi melalui
+overview produksi.
+
+### Temuan implementasi yang harus ditutup
+
+- **P1 — sesi user nonaktif dan pekerjaan yang ditinggalkan (ditutup sebagian).**
+  Sesi sekarang langsung gugur di server; job produksi yang belum dimulai
+  dikembalikan ke queue, sedangkan job `STARTED/PAUSED` tampil sebagai tugas
+  reassign agar progres tidak hilang. Finishing/storage aktif tetap memerlukan
+  keputusan manual karena kolom penanggung jawabnya wajib menyimpan jejak.
+- **P1 — default operator dan grant mesin (ditutup).**
+  Penetapan default otomatis membuat `UserMachine`, dan auto-release memeriksa
+  grant operator–mesin sebelum membuat `PRODUCTION_ASSIGNED`.
+- **P1 — policy staffing belum menjadi model data/enforcement.** Belum ada
+  `TenantPolicy`, konfigurasi separation of duties, shift, atau constraint yang
+  dipakai semua action. `STAFFING-POLICIES.md` saat ini adalah aturan bisnis
+  terdokumentasi, bukan gerbang server.
+- **P1 — akses file desain terlalu luas (ditutup).**
+  `getDesignJob()` dan `GET /api/design/[versionId]` sekarang memeriksa role,
+  PIC desain, status approval, dan assignment operasional sebelum mengembalikan
+  metadata atau file.
+- **P2 — permission belum konsisten.** Banyak action masih memakai
+  `actor.roles.includes(...)` langsung. Ini ekuivalen untuk role bawaan sekarang,
+  tetapi mengabaikan jalur override, entitlement, dan mode read-only yang
+  dijanjikan arsitektur permission.
+- **P2 — indikator Solo (ditutup).** `getNextSteps()` sekarang membaca
+  `workspace_mode`, sehingga jumlah role tidak mengubah tampilan workspace.
+- **P2 — multi-role dapat menggandakan label menu.** User non-Owner dengan dua
+  role operasional dapat melihat dua shortcut `Absensi Saya` yang menunjuk
+  dashboard berbeda; sebaiknya satu shortcut mengikuti dashboard aktif atau
+  diarahkan ke halaman absensi bersama.
+
+### Perbandingan dengan Moka
+
+Moka menyediakan dua role standar, Administrator dan Cashier, lalu Owner dapat
+membuat employee role sendiri dan memilih permission App/Backoffice per fitur.
+Administrator tidak dapat dihapus oleh Owner, sedangkan role Cashier dapat
+dihapus bila tidak lagi dipakai. Moka juga menyediakan PIN authorization untuk
+fitur sensitif seperti diskon, refund, invoice, dan perubahan bill
+([panduan akses karyawan Moka](https://help.mokapos.com/cara-mengatur-akses-karyawan),
+[panduan PIN akses karyawan](https://help.mokapos.com/cara-mengatur-pin-untuk-akses-karyawan)).
+
+Moka menekankan laporan shift lintas outlet dan identifikasi pegawai pada setiap
+shift ([Employee Management Moka](https://www.mokapos.com/manajemen-karyawan)).
+Print Pilot saat ini unggul pada role yang langsung mengikuti rantai desain →
+cetak → QC → finishing, tetapi masih single-tenant/single-outlet, tanpa custom
+role, feature PIN untuk transaksi, atau shift/outlet scope.
+
+### Putusan audit
+
+Arsitektur role Print Pilot **sudah cocok secara konsep** untuk skala 1 sampai
+banyak orang dan lebih tepat untuk percetakan daripada menyalin role kasir Moka
+secara mentah. Ia belum boleh diberi label “setara Moka” dalam kontrol akses.
+Prioritas implementasi: (1) cabut sesi dan requeue saat user dinonaktifkan,
+(2) jadikan grant mesin syarat default assignment, (3) implementasikan policy
+separation of duties/shift per tenant, (4) tutup akses file desain, lalu
+(5) tambahkan custom role atau feature PIN bila kebutuhan transaksi meningkat.
+
+## Implementasi hasil persetujuan — 15 September 2026
+
+Empat perbaikan prioritas pertama telah diterapkan dan divalidasi:
+
+1. **Sesi akun nonaktif dicabut di server.** `getCurrentUser()` sekarang hanya
+   menerima user aktif. Menonaktifkan pegawai mengembalikan job produksi yang
+   belum dimulai ke `PRODUCTION_QUEUED`, mencatat jumlah job yang perlu reassign,
+   dan memperbarui dashboard produksi. Job yang sudah `STARTED/PAUSED` tidak
+   dihapus progresnya; Admin/Owner mendapat panel **Job Operator Nonaktif**.
+2. **Default operator wajib punya akses mesin.** Saat mesin diberi default
+   operator, `UserMachine` otomatis dibuat. Saat auto-release, sistem tetap
+   memeriksa pasangan operator–mesin; jika grant hilang, job masuk antrean dan
+   tidak salah-pin ke operator.
+3. **Mode Solo konsisten.** Panel langkah berikutnya membaca
+   `Tenant.workspace_mode`, bukan jumlah role. Owner multi-role di workspace tim
+   tidak lagi melihat antrean Solo secara tidak sengaja.
+4. **Akses file desain ditutup.** Owner/Admin atau Designer PIC dapat melihat
+   job desainnya. Operator hanya dapat membuka file approved pada order yang
+   ditugaskan. QC/Finishing hanya dapat membuka file approved setelah order
+   masuk tahap operasional. Endpoint API dan Server Action menerapkan aturan
+   yang sama.
+
+Validasi setelah perubahan: `npx tsc --noEmit`, `npx prisma validate`, dan
+ESLint pada seluruh file yang berubah berhasil tanpa error. Temuan yang masih
+terbuka adalah policy separation-of-duties/shift sebagai konfigurasi tenant,
+custom role berbasis permission, PIN untuk aksi sensitif, serta scope outlet dan
+load balancing; semuanya merupakan tahap berikutnya, bukan prasyarat untuk
+operasi satu sampai banyak pegawai saat ini.

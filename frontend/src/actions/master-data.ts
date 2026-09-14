@@ -676,6 +676,15 @@ export async function createMachine(data: { name: string; category: string; stat
         default_operator_id: defaultOperatorId,
       },
     });
+    if (defaultOperatorId) {
+      // Menetapkan operator default sekaligus memastikan grant mesin ada;
+      // auto-release tetap memverifikasi grant ini sebagai defense in depth.
+      await prisma.userMachine.upsert({
+        where: { user_id_machine_id: { user_id: defaultOperatorId, machine_id: machine.id } },
+        create: { tenant_id: tenant.id, user_id: defaultOperatorId, machine_id: machine.id, assigned_by: actor.id },
+        update: { tenant_id: tenant.id, assigned_by: actor.id },
+      });
+    }
     revalidatePath("/admin");
     revalidatePath("/admin/products");
     return ok(machine);
@@ -704,6 +713,14 @@ export async function updateMachine(
       patch.default_operator_id = await resolveDefaultOperator(tenant.id, data.default_operator_id);
     }
     const machine = await prisma.machine.update({ where: { id }, data: patch });
+    const defaultOperatorId = typeof patch.default_operator_id === "string" ? patch.default_operator_id : null;
+    if (defaultOperatorId) {
+      await prisma.userMachine.upsert({
+        where: { user_id_machine_id: { user_id: defaultOperatorId, machine_id: machine.id } },
+        create: { tenant_id: tenant.id, user_id: defaultOperatorId, machine_id: machine.id, assigned_by: actor.id },
+        update: { tenant_id: tenant.id, assigned_by: actor.id },
+      });
+    }
     revalidatePath("/admin");
     revalidatePath("/admin/products");
     return ok(machine);
@@ -744,5 +761,4 @@ export async function deleteMachine(id: string) {
     return fail(safeError(e, "Gagal menghapus mesin."));
   }
 }
-
 

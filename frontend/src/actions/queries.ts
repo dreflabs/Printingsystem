@@ -602,7 +602,7 @@ export async function getProductionOverview() {
         take: 200,
         include: {
           machine: { select: { id: true, name: true, machine_code: true, status: true } },
-          operator: { select: { id: true, name: true } },
+          operator: { select: { id: true, name: true, active: true } },
           order: { select: { order_code: true, deadline: true, customer: { select: { name: true } } } },
         },
       }),
@@ -695,6 +695,7 @@ export async function getProductionOverview() {
       machineName: j.machine.name,
       operatorId: j.operator?.id ?? null,
       operatorName: j.operator?.name ?? "—",
+      operatorActive: j.operator?.active ?? null,
       plannedQty: j.planned_qty,
       actualQty: j.actual_qty,
       wasteQty: j.waste_qty,
@@ -715,6 +716,10 @@ export async function getProductionOverview() {
         const deadlineB = b.deadline ? new Date(b.deadline).getTime() : Number.POSITIVE_INFINITY;
         return (deadlineA - deadlineB) || a.orderCode.localeCompare(b.orderCode);
       });
+
+    const inactiveAssignedJobs = shaped
+      .filter((j) => j.operatorId != null && j.operatorActive === false && ["PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"].includes(j.status))
+      .sort((a, b) => a.orderCode.localeCompare(b.orderCode));
 
     const loadByMachine = new Map<string, { active: number; queued: number; assigned: number; plannedQty: number }>();
     for (const j of shaped) {
@@ -746,6 +751,7 @@ export async function getProductionOverview() {
       })),
       jobs: shaped,
       unassignedJobs,
+      inactiveAssignedJobs,
       stuckOrders,
       reassignOptions: {
         machines: machines.filter((m) => m.status === "ACTIVE").map((m) => ({ id: m.id, name: m.name })),

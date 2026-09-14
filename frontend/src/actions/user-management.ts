@@ -377,18 +377,43 @@ export async function toggleEmployeeStatus(userId: string, active: boolean) {
       }
     }
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        active,
-        deactivated_at: active ? null : new Date(),
-      },
+    let requeuedProduction = 0;
+    let needsReassignProduction = 0;
+    await prisma.$transaction(async (tx) => {
+      if (!active) {
+        // Job yang belum dimulai aman dikembalikan ke antrean mesin. Job yang
+        // sudah berjalan dipertahankan agar progres/jejak operator tidak hilang
+        // dan ditandai untuk keputusan reassign Admin/Owner.
+        const queued = await tx.productionJob.updateMany({
+          where: {
+            tenant_id: tenant.id,
+            operator_id: userId,
+            status: { in: ["PRODUCTION_ASSIGNED", "PRODUCTION_QUEUED"] },
+          },
+          data: { operator_id: null, status: "PRODUCTION_QUEUED" },
+        });
+        requeuedProduction = queued.count;
+        needsReassignProduction = await tx.productionJob.count({
+          where: { tenant_id: tenant.id, operator_id: userId, status: { in: ["PRODUCTION_STARTED", "PRODUCTION_PAUSED"] } },
+        });
+      }
+      await tx.user.update({
+        where: { id: userId },
+        data: { active, deactivated_at: active ? null : new Date() },
+      });
     });
 
-    await logAction(actor.id, active ? "EMPLOYEE_ACTIVATED" : "EMPLOYEE_DEACTIVATED", "User", userId, { active: user.active }, { active }, impersonationNote(actor));
+    await logAction(actor.id, active ? "EMPLOYEE_ACTIVATED" : "EMPLOYEE_DEACTIVATED", "User", userId, { active: user.active }, {
+      active,
+      requeuedProduction,
+      needsReassignProduction,
+    }, impersonationNote(actor));
 
     revalidatePath("/owner/users");
-    return { success: true };
+    revalidatePath("/admin");
+    revalidatePath("/admin/production");
+    revalidatePath("/operator");
+    return { success: true, requeuedProduction, needsReassignProduction };
   } catch (error: unknown) {
     return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
   }

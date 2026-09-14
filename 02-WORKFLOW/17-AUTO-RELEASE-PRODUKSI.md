@@ -75,10 +75,13 @@ Form **"Assign ke Produksi"** (`assignProductionJob`) tetap ada, dipakai saat
 auto-release tidak jalan:
 
 - item custom tanpa produk / produk tanpa `default_machine_id`
-- mesin default sedang MAINTENANCE/INACTIVE
+- mesin default sedang MAINTENANCE/INACTIVE — Admin memilih mesin ACTIVE pengganti
 - Admin perlu meng-override mesin/operator/prioritas (mis. rush)
 
 Job hasil jalur ini berstatus `PRODUCTION_ASSIGNED` dengan operator di-pin.
+Penugasan hanya sah bila operator aktif memiliki grant `UserMachine` untuk mesin
+target. Form menyaring operator berdasarkan grant tersebut dan server menolak
+kombinasi mesin/operator yang tidak terdaftar.
 
 ---
 

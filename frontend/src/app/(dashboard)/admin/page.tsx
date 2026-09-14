@@ -591,7 +591,7 @@ function AssignProductionModal({
   orderId: string; orderCode: string; defaultQty: number; onClose: () => void; onDone: () => void;
 }) {
   const [machines, setMachines] = useState<{ id: string; name: string; category: string }[]>([]);
-  const [operators, setOperators] = useState<{ id: string; name: string }[]>([]);
+  const [operators, setOperators] = useState<{ id: string; name: string; machineIds: string[] }[]>([]);
   const [machineId, setMachineId] = useState("");
   const [operatorId, setOperatorId] = useState("");
   const [qty, setQty] = useState(String(defaultQty || ""));
@@ -626,6 +626,10 @@ function AssignProductionModal({
     onDone();
   }
 
+  const availableOperators = machineId
+    ? operators.filter((operator) => operator.machineIds.includes(machineId))
+    : [];
+
   const inp = "w-full h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal";
 
   return (
@@ -652,17 +656,26 @@ function AssignProductionModal({
           <>
             <div>
               <label className="text-xs text-muted font-medium mb-1 block">Mesin *</label>
-              <select value={machineId} onChange={(e) => setMachineId(e.target.value)} className={inp}>
+              <select
+                value={machineId}
+                onChange={(e) => { setMachineId(e.target.value); setOperatorId(""); }}
+                className={inp}
+              >
                 <option value="">— pilih mesin —</option>
                 {machines.map((m) => <option key={m.id} value={m.id}>{m.name} · {m.category}</option>)}
               </select>
             </div>
             <div>
               <label className="text-xs text-muted font-medium mb-1 block">Operator *</label>
-              <select value={operatorId} onChange={(e) => setOperatorId(e.target.value)} className={inp}>
-                <option value="">— pilih operator —</option>
-                {operators.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              <select value={operatorId} onChange={(e) => setOperatorId(e.target.value)} className={inp} disabled={!machineId || availableOperators.length === 0}>
+                <option value="">
+                  {!machineId ? "— pilih mesin terlebih dahulu —" : availableOperators.length === 0 ? "— belum ada operator berakses mesin ini —" : "— pilih operator —"}
+                </option>
+                {availableOperators.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
+              {machineId && availableOperators.length === 0 && (
+                <p className="mt-1 text-[11px] text-status-yellow-text">Minta Owner menambahkan akses operator ke mesin ini melalui Pegawai → Akun &amp; Akses.</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

@@ -596,7 +596,10 @@ export interface ProductionAssignment {
 
 /** Mesin ACTIVE + operator aktif tenant ini — untuk form "Assign ke Produksi". */
 export async function getProductionAssignData(): Promise<
-  ActionResult<{ machines: { id: string; name: string; machineCode: string; category: string }[]; operators: { id: string; name: string }[] }>
+  ActionResult<{
+    machines: { id: string; name: string; machineCode: string; category: string }[];
+    operators: { id: string; name: string; machineIds: string[] }[];
+  }>
 > {
   try {
     const tenant = await requireTenant();
@@ -617,13 +620,21 @@ export async function getProductionAssignData(): Promise<
             { extra_roles: { some: { role: { name: "operator" } } } },
           ],
         },
-        select: { id: true, name: true },
+        select: {
+          id: true,
+          name: true,
+          user_machines: { where: { tenant_id: tenant.id }, select: { machine_id: true } },
+        },
         orderBy: { name: "asc" },
       }),
     ]);
     return ok({
       machines: machines.map((m) => ({ id: m.id, name: m.name, machineCode: m.machine_code, category: m.category })),
-      operators,
+      operators: operators.map((operator) => ({
+        id: operator.id,
+        name: operator.name,
+        machineIds: operator.user_machines.map((grant) => grant.machine_id),
+      })),
     });
   } catch (e) {
     console.error("getProductionAssignData:", e);
@@ -729,6 +740,27 @@ export async function assignProductionJob(
       ]);
       if (machines.length !== machineIds.length) throw new Error("Ada mesin yang tidak valid.");
       if (operators.length !== operatorIds.length) throw new Error("Ada operator yang tidak valid.");
+
+      // Penugasan manual wajib mengikuti grant mesin yang sama dengan jalur
+      // auto-release dan reassign. Role Operator saja tidak cukup karena satu
+      // Operator dapat dibatasi ke mesin tertentu oleh Owner.
+      const grants = await tx.userMachine.findMany({
+        where: {
+          tenant_id: tenant.id,
+          OR: assignments.map((assignment) => ({
+            user_id: assignment.operatorId,
+            machine_id: assignment.machineId,
+          })),
+        },
+        select: { user_id: true, machine_id: true },
+      });
+      const grantKeys = new Set(grants.map((grant) => `${grant.user_id}:${grant.machine_id}`));
+      const missingGrant = assignments.find(
+        (assignment) => !grantKeys.has(`${assignment.operatorId}:${assignment.machineId}`),
+      );
+      if (missingGrant) {
+        throw new Error("Operator belum memiliki akses ke mesin yang dipilih. Minta Owner mengatur Akses Mesin terlebih dahulu.");
+      }
 
       // Aturan 17: mesin MAINTENANCE / INACTIVE tidak boleh menerima job baru.
       const down = machines.find((m) => m.status !== "ACTIVE");

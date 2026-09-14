@@ -10,6 +10,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { can } from "@/lib/permissions";
 import { getTenantEntitlements } from "@/lib/entitlements";
+import { safeError } from "@/lib/safe-error";
 
 const USER_SELECT = {
   id: true,
@@ -50,16 +51,60 @@ export async function updateOperatorMachines(userId: string, machineIds: string[
     const isOp = target.role.name === "operator" || target.extra_roles.some(er => er.role.name === "operator");
     if (!isOp) return fail("Pegawai ini tidak memiliki role Operator Cetak.");
 
+    // Normalisasi input sebelum dipakai pada query/createMany. Selain menjaga
+    // unique constraint, ini mencegah ID kosong/duplikat masuk ke relasi akses.
+    const requestedMachineIds = [...new Set((machineIds ?? []).map((id) => id.trim()).filter(Boolean))];
+
     await prisma.$transaction(async (tx) => {
+      // UserMachine adalah relasi tenant-scoped. Validasi ini wajib dilakukan
+      // di server karena daftar mesin dari browser tidak dapat dipercaya.
+      const machines = requestedMachineIds.length === 0
+        ? []
+        : await tx.machine.findMany({
+            where: { tenant_id: tenant.id, id: { in: requestedMachineIds } },
+            select: { id: true, name: true },
+          });
+      if (machines.length !== requestedMachineIds.length) {
+        throw new Error("Ada mesin yang tidak valid atau bukan milik toko ini.");
+      }
+
+      // Jangan mencabut akses dari operator yang masih memegang job aktif pada
+      // mesin tersebut. Owner harus memindahkan job lebih dulu agar tugas tidak
+      // hilang dari dashboard atau kehilangan penanggung jawab.
+      const currentGrants = await tx.userMachine.findMany({
+        where: { tenant_id: tenant.id, user_id: userId },
+        select: { machine_id: true },
+      });
+      const removedMachineIds = currentGrants
+        .map((grant) => grant.machine_id)
+        .filter((id) => !requestedMachineIds.includes(id));
+      if (removedMachineIds.length > 0) {
+        const activeJobs = await tx.productionJob.findMany({
+          where: {
+            tenant_id: tenant.id,
+            operator_id: userId,
+            machine_id: { in: removedMachineIds },
+            status: { in: ["PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"] },
+          },
+          select: { job_code: true, machine_id: true },
+          orderBy: { job_code: "asc" },
+        });
+        if (activeJobs.length > 0) {
+          const codes = activeJobs.slice(0, 3).map((job) => job.job_code).join(", ");
+          const suffix = activeJobs.length > 3 ? " dan lainnya" : "";
+          throw new Error(`Akses mesin tidak dapat dicabut karena ${activeJobs.length} job masih aktif (${codes}${suffix}). Reassign job terlebih dahulu.`);
+        }
+      }
+
       // Hapus yang lama
       await tx.userMachine.deleteMany({
         where: { tenant_id: tenant.id, user_id: userId }
       });
       
       // Insert yang baru
-      if (machineIds.length > 0) {
+      if (requestedMachineIds.length > 0) {
         await tx.userMachine.createMany({
-          data: machineIds.map(mid => ({
+          data: requestedMachineIds.map(mid => ({
             tenant_id: tenant.id,
             user_id: userId,
             machine_id: mid,
@@ -68,14 +113,14 @@ export async function updateOperatorMachines(userId: string, machineIds: string[
         });
       }
       
-      await logAction(actor.id, "UPDATE_OPERATOR_MACHINES", "User", userId, "Assigned machines updated", { machineIds });
+      await logAction(actor.id, "UPDATE_OPERATOR_MACHINES", "User", userId, "Assigned machines updated", { machineIds: requestedMachineIds });
     });
 
     revalidatePath("/owner/users");
     return ok(null);
   } catch (error) {
     console.error("updateOperatorMachines error:", error);
-    return fail("Terjadi kesalahan saat menyimpan tugas mesin.");
+    return fail(safeError(error, "Terjadi kesalahan saat menyimpan tugas mesin."));
   }
 }
 

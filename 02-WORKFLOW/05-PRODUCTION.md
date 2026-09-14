@@ -11,9 +11,13 @@ Desain APPROVED + syarat pembayaran terpenuhi + Completeness Gate lolos
   → Operator menyelesaikan produksi, input actual qty & waste (PRODUCTION_COMPLETE)
 ```
 
-Jalur manual (fallback): kalau ada item tanpa mesin default, mesin default sedang
-MAINTENANCE, atau Admin perlu meng-override prioritas/mesin/operator, Admin memakai
-form **"Assign ke Produksi"** → job dibuat `PRODUCTION_ASSIGNED` (di-pin ke operator).
+Jalur manual (fallback): kalau ada item tanpa mesin default, mesin default tidak
+routable, atau Admin perlu meng-override prioritas/mesin/operator, Admin memilih
+mesin **ACTIVE** pengganti melalui form **"Assign ke Produksi"** → job dibuat
+`PRODUCTION_ASSIGNED` (di-pin ke operator).
+Operator yang dipilih wajib memiliki akses ke mesin tersebut melalui `UserMachine`.
+Jika belum memiliki akses, Owner harus menambahkannya melalui **Pegawai → Akun &
+Akses** sebelum Admin dapat mengirim job ke produksi.
 Lihat `02-WORKFLOW/17-AUTO-RELEASE-PRODUKSI.md`.
 
 Dicatat per job:

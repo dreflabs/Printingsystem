@@ -79,6 +79,7 @@ export default function AdminCustomersPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
           <input
+            aria-label="Cari pelanggan berdasarkan nama, nomor WhatsApp, atau kode"
             placeholder="Cari nama / No WA / kode..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -127,7 +128,7 @@ export default function AdminCustomersPage() {
                   </td>
                   <td className="px-6 py-4 text-muted text-xs">{fmtDate(c.created_at)}</td>
                   <td className="px-6 py-4 text-right">
-                    <button onClick={() => openEdit(c)} className="p-2 bg-elevated border border-border rounded-lg text-muted hover:text-accent-teal hover:border-accent-teal transition-all">
+                    <button aria-label={`Edit pelanggan ${c.name}`} onClick={() => openEdit(c)} className="p-2 bg-elevated border border-border rounded-lg text-muted hover:text-accent-teal hover:border-accent-teal transition-all">
                       <Edit className="h-4 w-4" />
                     </button>
                   </td>

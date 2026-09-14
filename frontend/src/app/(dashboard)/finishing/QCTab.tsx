@@ -81,7 +81,7 @@ function QCInspectionModal({ job, onClose, onDone }: { job: QCJob; onClose: () =
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-[0_8px_56px_rgba(0,0,0,0.6)] flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-modal flex flex-col max-h-[90vh]">
         <div className="p-5 border-b border-border shrink-0">
           <h3 className="text-base font-bold text-primary">Form Inspeksi QC</h3>
           <p className="text-xs text-muted font-mono">{job.jobCode} · {job.orderCode} · {job.plannedQty} pcs</p>
@@ -264,7 +264,7 @@ export function QCTab() {
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted">Inspeksi kualitas cetak — checklist PASS / FAIL per job (SCAN 3)</p>
+        <p className="text-sm text-muted">Pemeriksaan kualitas cetak — checklist PASS / FAIL per job</p>
         <a href="/scan" className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white text-sm font-semibold shadow-lg shadow-accent-teal/20 hover:brightness-110 transition-all">
           <ScanLine className="h-4 w-4" /> Scan Cepat
         </a>
@@ -274,7 +274,7 @@ export function QCTab() {
 
       <div className="grid grid-cols-2 gap-4">
         {kpi.map((k) => (
-          <div key={k.label} className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-5 shadow-sm">
+          <div key={k.label} className="bg-card border border-border rounded-2xl p-5 shadow-card">
             <p className={cn("text-4xl font-bold", k.color)}>{k.value}</p>
             <p className="text-xs text-muted mt-1 font-medium">{k.label}</p>
           </div>
@@ -300,7 +300,7 @@ export function QCTab() {
       </div>
 
       {activeTab === "queue" && (
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-card border border-border rounded-2xl shadow-card overflow-hidden">
           <div className="flex items-center gap-2 p-5 border-b border-border">
             <ClipboardList className="h-5 w-5 text-status-yellow-text" />
             <h2 className="text-base font-semibold text-primary">Antrian Job PRODUCTION_COMPLETE</h2>
@@ -346,7 +346,7 @@ export function QCTab() {
       )}
 
       {activeTab === "history" && (
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-card border border-border rounded-2xl shadow-card overflow-hidden">
           <div className="flex items-center gap-2 p-5 border-b border-border bg-elevated/30">
             <History className="h-5 w-5 text-accent-teal" />
             <h2 className="text-base font-semibold text-primary">Riwayat Inspeksi QC Terakhir</h2>

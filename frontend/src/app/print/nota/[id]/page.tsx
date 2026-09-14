@@ -65,7 +65,8 @@ export default function PrintNotaPage() {
   });
 
   return (
-    <div className="w-full flex justify-center bg-elevated min-h-screen py-10 print:bg-white print:py-0">
+    <div className="w-full flex justify-center bg-elevated min-h-screen py-10 print:bg-white print:py-0 print:min-h-0 print:w-[80mm] print:justify-start">
+      <style>{`@page { size: 80mm auto; margin: 0; } @media print { html, body { width: 80mm; margin: 0; } }`}</style>
       <button
         onClick={() => window.print()}
         className="fixed top-4 right-4 print:hidden flex items-center gap-2 bg-accent-teal text-white px-4 py-2 rounded-lg font-bold shadow-lg hover:brightness-110"
@@ -142,11 +143,11 @@ export default function PrintNotaPage() {
           <>
             <Sep />
             <div className="text-[10px] font-bold">Riwayat Pembayaran</div>
-            <div className="flex justify-between text-[9px] text-neutral-500">
+            <div className="flex justify-between text-[10px] text-neutral-500">
               <span>Tanggal · Metode</span><span>Bayar / Sisa</span>
             </div>
             {nota.payments.map((p, i) => (
-              <div key={i} className="flex justify-between">
+              <div key={i} className="flex justify-between text-[10px]">
                 <span>{fmtDay(p.paidAt)} · {METHOD_LABEL[p.method] ?? p.method}</span>
                 <span>{rp(p.amount)} <span className="text-neutral-500">/ {rp(remainingAfter[i])}</span></span>
               </div>
@@ -172,7 +173,7 @@ export default function PrintNotaPage() {
               </div>
             </>
           )}
-          <div className="mt-1">Terima kasih 🙏</div>
+          <div className="mt-1">Terima kasih</div>
           <div className="text-[9px] text-neutral-500 mt-1">
             Dicetak {fmtDate(nota.printedAt)} · harga termasuk PPN
           </div>

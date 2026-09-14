@@ -270,7 +270,7 @@ export default function AttendancePage() {
             ))}
           </select>
         </label>
-        <button onClick={loadReport} className="h-9 w-9 flex items-center justify-center rounded-lg bg-elevated border border-border text-muted hover:text-primary hover:border-accent-teal transition-all">
+        <button aria-label="Muat ulang laporan absensi" onClick={loadReport} className="h-9 w-9 flex items-center justify-center rounded-lg bg-elevated border border-border text-muted hover:text-primary hover:border-accent-teal transition-all">
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
         </button>
       </div>
@@ -398,8 +398,8 @@ export default function AttendancePage() {
                               onChange={(e) => setEditNote({ id: r.recordId, value: e.target.value })}
                               className="h-8 w-40 rounded-md bg-elevated border border-border px-2 text-primary outline-none focus:border-accent-teal"
                             />
-                            <button onClick={saveNote} className="p-1.5 rounded-md bg-accent-teal/15 text-accent-teal hover:bg-accent-teal/25"><Check className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => setEditNote(null)} className="p-1.5 rounded-md bg-elevated text-muted hover:text-primary"><X className="h-3.5 w-3.5" /></button>
+                            <button aria-label="Simpan catatan" onClick={saveNote} className="p-1.5 rounded-md bg-accent-teal/15 text-accent-teal hover:bg-accent-teal/25"><Check className="h-3.5 w-3.5" /></button>
+                            <button aria-label="Batalkan edit catatan" onClick={() => setEditNote(null)} className="p-1.5 rounded-md bg-elevated text-muted hover:text-primary"><X className="h-3.5 w-3.5" /></button>
                           </div>
                         ) : (
                           <div className="flex items-start gap-1.5">

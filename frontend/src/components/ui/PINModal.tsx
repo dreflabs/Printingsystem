@@ -37,8 +37,8 @@ export function PINModal({ open, onClose, onSuccess, title = "Otorisasi Admin", 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-card border border-status-yellow/30 rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.6)]">
-        <button onClick={onClose} className="absolute right-4 top-4 text-muted hover:text-primary transition-colors cursor-pointer">
+      <div className="relative w-full max-w-sm bg-card border border-status-yellow/30 rounded-2xl p-6 shadow-modal">
+        <button aria-label="Tutup verifikasi PIN" onClick={onClose} className="absolute right-4 top-4 text-muted hover:text-primary transition-colors cursor-pointer">
           <X className="h-5 w-5" />
         </button>
         

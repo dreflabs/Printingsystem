@@ -127,6 +127,7 @@ export default function OwnerReportsPage() {
             className="h-10 rounded-xl bg-elevated border border-border text-sm text-primary px-3 outline-none focus:border-accent-teal"
           />
           <button
+            aria-label="Muat ulang laporan owner"
             onClick={load}
             className="flex items-center justify-center h-10 w-10 rounded-xl bg-elevated border border-border text-muted hover:text-primary hover:border-accent-teal transition-all"
             title="Muat ulang"

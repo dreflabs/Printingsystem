@@ -93,12 +93,12 @@ export interface KioskPinRow {
   hasPin: boolean;
 }
 
-/** Daftar pegawai (non-owner) untuk pengaturan PIN kiosk. */
+/** Daftar pegawai yang eligible untuk pengaturan PIN kiosk. */
 export async function listEmployeesForKiosk(): Promise<ActionResult<KioskPinRow[]>> {
   try {
     const { tenant } = await ownerGuard();
     const users = await prisma.user.findMany({
-      where: { tenant_id: tenant.id, active: true },
+      where: { tenant_id: tenant.id, active: true, attendance_eligible: true },
       select: { id: true, name: true, kiosk_pin_hash: true, role: { select: { name: true } } },
       orderBy: { name: "asc" },
     });

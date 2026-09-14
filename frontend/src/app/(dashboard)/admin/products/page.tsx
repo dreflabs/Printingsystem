@@ -243,7 +243,7 @@ function Shell({ title, onClose, busy, children }: { title: string; onClose: () 
       <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal space-y-3.5 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center">
           <h3 className="text-base font-bold text-primary">{title}</h3>
-          <button onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary disabled:opacity-40"><X className="h-5 w-5" /></button>
+          <button aria-label="Tutup modal produk" onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary disabled:opacity-40"><X className="h-5 w-5" /></button>
         </div>
         {children}
       </div>
@@ -520,11 +520,11 @@ function Badge({ active }: { active: boolean }) {
 function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete?: () => void }) {
   return (
     <div className="flex items-center justify-end gap-1">
-      <button onClick={onEdit} className="p-1.5 text-muted hover:text-accent-teal hover:bg-accent-teal/10 rounded-md transition-colors" title="Edit">
+      <button aria-label="Edit produk" onClick={onEdit} className="p-1.5 text-muted hover:text-accent-teal hover:bg-accent-teal/10 rounded-md transition-colors" title="Edit">
         <Pencil className="h-4 w-4" />
       </button>
       {onDelete && (
-        <button onClick={onDelete} className="p-1.5 text-muted hover:text-status-red hover:bg-status-red/10 rounded-md transition-colors" title="Hapus">
+        <button aria-label="Hapus produk" onClick={onDelete} className="p-1.5 text-muted hover:text-status-red hover:bg-status-red/10 rounded-md transition-colors" title="Hapus">
           <Trash2 className="h-4 w-4" />
         </button>
       )}

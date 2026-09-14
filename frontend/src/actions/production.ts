@@ -10,10 +10,7 @@ import { autoReleaseToProduction } from "@/lib/auto-release";
 import { advanceOrderWhenAllJobs } from "@/lib/order-progress";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
-
-const isGudang = (r: string[]) => r.includes("gudang");
-const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
-const isOperator = (r: string[]) => r.includes("operator");
+import { can, canAny } from "@/lib/permissions";
 
 /**
  * Admin/Owner menekan "Rilis ke Produksi" untuk order yang tertahan gatekeeper
@@ -25,7 +22,7 @@ export async function releaseOrderToProduction(orderId: string): Promise<ActionR
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) {
+    if (!can(actor, "production.assign")) {
       return fail("Hanya Admin/Owner yang boleh merilis order ke produksi.");
     }
 
@@ -150,35 +147,33 @@ export async function getScanContext(code: string) {
       });
     }
 
-    if (actor.roles.includes("operator")) {
+    if (can(actor, "production.execute")) {
       const mine = job.operator_id === actor.id;
       const claimable = s === "PRODUCTION_QUEUED" && job.operator_id == null;
       if (claimable || (mine && s === "PRODUCTION_ASSIGNED")) {
-        actions.push({ action: "start_production", label: claimable ? "Ambil & Mulai (SCAN 1)" : "Mulai Produksi (SCAN 1)" });
+        actions.push({ action: "start_production", label: claimable ? "Ambil & Mulai Produksi" : "Mulai Produksi" });
       }
       if (claimable || ((mine || job.operator_id == null) && PRE_START_JOB.includes(s))) {
         actions.push({ action: "bounce_design", label: "Lapor File Bermasalah" });
       }
       if (mine && s === "PRODUCTION_STARTED") {
-        actions.push({ action: "finish_production", label: "Selesai Produksi (SCAN 2)" });
+        actions.push({ action: "finish_production", label: "Selesaikan Produksi" });
         actions.push({ action: "pause_production", label: "Jeda Produksi" });
       }
       if (mine && s === "PRODUCTION_PAUSED") actions.push({ action: "resume_production", label: "Lanjutkan Produksi" });
     }
-    if (isGudang(actor.roles)) {
-      if (s === "PRODUCTION_COMPLETE") actions.push({ action: "submit_qc", label: "Isi Form QC (SCAN 3)" });
-      if (s === "QC_PASSED") actions.push({ action: "start_finishing", label: "Mulai Finishing (SCAN 4)" });
-      if (s === "FINISHING_STARTED") actions.push({ action: "finish_finishing", label: "Selesai Finishing (SCAN 5)" });
-      if (s === "FINISHING_COMPLETE") actions.push({ action: "assign_storage", label: "Simpan ke Gudang (SCAN 6+7)" });
-      if (s === "STORED" && order.status === "READY_FOR_PICKUP") {
-        actions.push({ action: "confirm_counter", label: "Barang di Counter (SCAN 9)" });
-      }
-      if (s !== "PICKED_UP") actions.push({ action: "report_incident", label: "Lapor Barang Tidak Ditemukan" });
+    if (can(actor, "qc.submit") && s === "PRODUCTION_COMPLETE") actions.push({ action: "submit_qc", label: "Pemeriksaan Kualitas (QC)" });
+    if (can(actor, "finishing.execute") && s === "QC_PASSED") actions.push({ action: "start_finishing", label: "Mulai Finishing (SCAN 4)" });
+    if (can(actor, "finishing.execute") && s === "FINISHING_STARTED") actions.push({ action: "finish_finishing", label: "Selesai Finishing (SCAN 5)" });
+    if (can(actor, "storage.store") && s === "FINISHING_COMPLETE") actions.push({ action: "assign_storage", label: "Simpan ke Gudang (SCAN 6+7)" });
+    if (can(actor, "storage.move_to_counter") && s === "STORED" && order.status === "READY_FOR_PICKUP") {
+      actions.push({ action: "confirm_counter", label: "Barang di Counter (SCAN 9)" });
     }
-    if (actor.roles.includes("owner") && s === "FAILED_REWORK") {
+    if (can(actor, "storage.report_incident") && s !== "PICKED_UP") actions.push({ action: "report_incident", label: "Lapor Barang Tidak Ditemukan" });
+    if (can(actor, "production.rework_decide") && s === "FAILED_REWORK") {
       actions.push({ action: "decide_rework", label: "Putuskan Rework" });
     }
-    if ((actor.roles.includes("admin") || actor.roles.includes("owner")) && ["IN_TRANSIT", "READY_FOR_PICKUP"].includes(order.status)) {
+    if (can(actor, "pickup.release") && ["IN_TRANSIT", "READY_FOR_PICKUP"].includes(order.status)) {
       actions.push({ action: "release", label: "Serahkan ke Konsumen (SCAN 10)" });
     }
     actions.push({ action: "view", label: "Lihat Detail" });
@@ -192,8 +187,10 @@ export async function getScanContext(code: string) {
       plannedQty: job.planned_qty,
       actualQty: job.actual_qty,
       isAssignedOperator: job.operator_id === actor.id,
-      paidAmount: Number(order.paid_amount),
-      balance: Number(order.balance),
+      // Nominal pembayaran hanya dikirim ke role yang memiliki permission
+      // payment.view_detail. Role produksi cukup melihat status proses.
+      paidAmount: can(actor, "payment.view_detail") ? Number(order.paid_amount) : null,
+      balance: can(actor, "payment.view_detail") ? Number(order.balance) : null,
       files,
       // Kompat lama: file pertama sebagai tunggal.
       fileUrl: files[0]?.url ?? null,
@@ -219,7 +216,7 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isOperator(actor.roles) && !isAdmin(actor.roles)) {
+    if (!canAny(actor, "production.execute", "production.assign")) {
       return fail("Hanya Operator/Admin/Owner yang boleh memulai produksi.");
     }
 
@@ -238,7 +235,7 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
         if (job.operator_id !== actor.id) {
           throw new Error("Anda bukan operator yang di-assign ke job ini.");
         }
-      } else if (!isAdmin(actor.roles)) {
+      } else if (!can(actor, "production.assign")) {
         // Klaim job antrean bebas — pastikan operator memang ditugaskan ke mesin ini
         // (Admin/Owner boleh klaim mesin mana pun sebagai override).
         const grant = await tx.userMachine.findFirst({
@@ -291,7 +288,7 @@ export async function pauseProduction(jobCode: string, reason: string): Promise<
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isOperator(actor.roles) && !isAdmin(actor.roles)) {
+    if (!canAny(actor, "production.execute", "production.assign")) {
       return fail("Hanya Operator/Admin/Owner yang boleh menjeda produksi.");
     }
     if (!reason?.trim()) return fail("Alasan jeda wajib diisi.");
@@ -316,7 +313,7 @@ export async function resumeProduction(jobCode: string): Promise<ActionResult<nu
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isOperator(actor.roles) && !isAdmin(actor.roles)) {
+    if (!canAny(actor, "production.execute", "production.assign")) {
       return fail("Hanya Operator/Admin/Owner yang boleh melanjutkan produksi.");
     }
     const job = await findJobByCode(prisma, tenant.id, jobCode);
@@ -353,8 +350,8 @@ export async function bounceDesignFromProduction(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    const isAdminOwner = actor.roles.includes("admin") || actor.roles.includes("owner");
-    if (!actor.roles.includes("operator") && !isAdminOwner) {
+    const isAdminOwner = can(actor, "production.assign");
+    if (!canAny(actor, "production.execute", "production.assign")) {
       return fail("Hanya Operator/Admin/Owner yang boleh mengembalikan file ke desainer.");
     }
     const reason = input.reason?.trim() ?? "";
@@ -436,7 +433,7 @@ export async function reassignProductionJob(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) return fail("Hanya Admin/Owner yang boleh reassign job.");
+    if (!can(actor, "production.reassign")) return fail("Hanya Admin/Owner yang boleh reassign job.");
     if (!input.reason?.trim()) return fail("Alasan reassignment wajib diisi.");
 
     const job = await findJobByCode(prisma, tenant.id, jobCode);
@@ -456,10 +453,21 @@ export async function reassignProductionJob(
 
     const [machine, operator] = await Promise.all([
       prisma.machine.findFirst({ where: { id: input.machineId, tenant_id: tenant.id } }),
-      prisma.user.findFirst({ where: { id: input.operatorId, tenant_id: tenant.id } }),
+      prisma.user.findFirst({
+        where: {
+          id: input.operatorId,
+          tenant_id: tenant.id,
+          active: true,
+          OR: [
+            { role: { name: "operator" } },
+            { extra_roles: { some: { role: { name: "operator" } } } },
+          ],
+          user_machines: { some: { tenant_id: tenant.id, machine_id: input.machineId } },
+        },
+      }),
     ]);
     if (!machine) return fail("Mesin tidak valid.");
-    if (!operator) return fail("Operator tidak valid.");
+    if (!operator) return fail("Operator tidak valid, tidak aktif, atau belum ditugaskan ke mesin target.");
     // Aturan 17: jangan pindahkan job ke mesin yang sedang MAINTENANCE / INACTIVE.
     if (machine.status !== "ACTIVE" && machine.id !== job.machine_id) {
       return fail(`Mesin ${machine.name} sedang ${machine.status} — tidak bisa menerima job.`);
@@ -522,7 +530,7 @@ export async function finishProduction(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isOperator(actor.roles) && !isAdmin(actor.roles)) {
+    if (!canAny(actor, "production.execute", "production.assign")) {
       return fail("Hanya Operator/Admin/Owner yang boleh menyelesaikan produksi.");
     }
     if (!(input.actualQty > 0)) return fail("Jumlah aktual tidak boleh 0.");
@@ -666,7 +674,7 @@ export async function submitQC(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.roles)) return fail("Hanya role Gudang yang boleh melakukan QC.");
+    if (!can(actor, "qc.submit")) return fail("Hanya role Gudang yang boleh melakukan QC.");
     if (input.result === "FAIL") {
       if (!input.notes || input.notes.trim().length < 20) {
         return fail("QC FAIL wajib deskripsi masalah minimal 20 karakter.");
@@ -754,7 +762,7 @@ export async function decideRework(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh memutuskan rework.");
+    if (!can(actor, "production.rework_decide")) return fail("Hanya Owner yang boleh memutuskan rework.");
     if (!input.reason?.trim()) return fail("Alasan keputusan wajib diisi.");
 
     const result = await prisma.$transaction(async (tx) => {
@@ -844,7 +852,7 @@ export async function startFinishing(jobCode: string): Promise<ActionResult<{ jo
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.roles)) return fail("Hanya role Gudang yang boleh mulai finishing.");
+    if (!can(actor, "finishing.execute")) return fail("Hanya role Gudang yang boleh mulai finishing.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -883,7 +891,7 @@ export async function finishFinishing(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.roles)) return fail("Hanya role Gudang yang boleh menyelesaikan finishing.");
+    if (!can(actor, "finishing.execute")) return fail("Hanya role Gudang yang boleh menyelesaikan finishing.");
     if (!(input.actualQty > 0)) return fail("Jumlah aktual finishing tidak boleh 0.");
 
     const result = await prisma.$transaction(async (tx) => {

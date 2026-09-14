@@ -28,15 +28,48 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-function hrefActive(pathname: string, href: string): boolean {
-  const isExactRoot = ["/admin", "/owner", "/designer", "/operator", "/finishing"].includes(href);
-  return isExactRoot ? pathname === href : pathname === href || pathname.startsWith(href + "/");
+function hrefActive(pathname: string, href: string, hash = ""): boolean {
+  // Hash anchors (e.g. /operator#absensi) are navigation targets inside a
+  // dashboard; active state still follows the pathname portion.
+  const [pathOnly, targetHash] = href.split("#", 2);
+  const isExactRoot = ["/admin", "/owner", "/designer", "/operator", "/finishing"].includes(pathOnly);
+  if (targetHash) return pathname === pathOnly && hash === `#${targetHash}`;
+  if (isExactRoot) return pathname === pathOnly && hash === "";
+  return pathname === pathOnly || pathname.startsWith(pathOnly + "/");
 }
 
 export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
+  const [hash, setHash] = React.useState("");
+
+  React.useEffect(() => {
+    const syncHash = () => setHash(window.location.hash);
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
+
+  React.useEffect(() => {
+    // Route changes performed by the role switcher use pushState and do not
+    // emit hashchange; resync so the previous dashboard anchor is not carried
+    // into the new dashboard.
+    const timer = window.setTimeout(() => setHash(window.location.hash), 0);
+    return () => window.clearTimeout(timer);
+  }, [pathname]);
+
+  // Dashboard content berada di scroll container internal; native anchor
+  // navigation tidak selalu menggulir container tersebut. Sinkronkan hash ke
+  // target setelah route/hash dan konten selesai dirender.
+  React.useEffect(() => {
+    if (!hash) return;
+    const targetId = decodeURIComponent(hash.slice(1));
+    const timer = window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [pathname, hash]);
 
   const userRoleSet = new Set(roles as UserRole[]);
   const soloView = workspaceMode === "SOLO" && userRoleSet.has("owner");
@@ -98,7 +131,7 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
       <aside
         className={cn(
           "fixed top-0 left-0 z-40 h-full w-60 flex flex-col",
-          "bg-card/95 border-r border-border backdrop-blur-xl",
+          "bg-card border-r border-border shadow-card",
           "transition-transform duration-300 ease-in-out",
           isOpen ? "translate-x-0" : "-translate-x-full",
           "lg:relative lg:translate-x-0 lg:flex"
@@ -169,12 +202,32 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
           {navItems.map((item) => {
             if (item.kind === "link") {
               const Icon = item.icon;
-              const active = hrefActive(pathname, item.href);
+              const active = hrefActive(pathname, item.href, hash);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  onClick={onClose}
+                  onClick={(event) => {
+                    onClose();
+                    const [targetPath, targetHash] = item.href.split("#", 2);
+                    if (!targetHash) {
+                      // Next's pushState does not emit hashchange when leaving
+                      // an anchored dashboard; clear stale active state.
+                      setHash("");
+                      return;
+                    }
+                    // Next navigation uses history.pushState, which may not
+                    // emit hashchange. Keep local state in sync explicitly so
+                    // the internal dashboard scroll container is handled.
+                    setHash(`#${targetHash}`);
+                    if (pathname === targetPath) {
+                      event.preventDefault();
+                      window.history.replaceState(null, "", `${targetPath}#${targetHash}`);
+                      window.setTimeout(() => {
+                        document.getElementById(targetHash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }, 0);
+                    }
+                  }}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
                     active
@@ -267,6 +320,7 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
             <form action={signOutAction}>
               <button
                 type="submit"
+                aria-label="Keluar"
                 title="Keluar"
                 className="p-1.5 text-muted hover:text-status-red hover:bg-status-red/10 rounded-lg transition-colors cursor-pointer shrink-0"
               >

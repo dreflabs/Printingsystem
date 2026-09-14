@@ -83,8 +83,8 @@ function ToastContainer({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: st
             key={t.id}
             className={cn(
               "pointer-events-auto flex items-start gap-3 w-80 rounded-xl",
-              "bg-card/90 backdrop-blur-xl border border-border p-4",
-              "shadow-[0_4px_24px_rgba(0,0,0,0.4)]",
+              "bg-card border border-border p-4",
+              "shadow-popover",
               "animate-in slide-in-from-right-4 duration-300",
               cfg.border
             )}

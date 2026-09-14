@@ -1,5 +1,10 @@
 # GUDANG
 
+## Absensi
+
+- Wajib absen masuk, istirahat, dan pulang bila akun aktif serta eligible.
+- Punch HP/kiosk tetap memakai validasi server, selfie, lokasi, dan aturan tenant.
+
 Menangani seluruh tahap akhir alur produksi dalam satu role: inspeksi kualitas (QC), proses finishing & cetak label, hingga penyimpanan dan pengeluaran barang dari gudang. Role ini menggabungkan 3 role sebelumnya (QC Inspector, Finishing Staff, Warehouse Staff) menjadi satu — cocok untuk percetakan kecil/menengah yang stafnya mengerjakan lebih dari satu tahap sekaligus.
 
 ## Hak Akses

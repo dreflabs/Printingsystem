@@ -80,7 +80,7 @@ export function MachineAssignmentModal({ user, onClose, onSuccess }: MachineAssi
             </h2>
             <p className="text-xs text-muted mt-1">Operator: <span className="font-semibold text-primary">{user.name}</span></p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-base text-muted transition-colors">
+          <button aria-label="Tutup checklist mesin" onClick={onClose} className="p-1.5 rounded-full hover:bg-base text-muted transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>

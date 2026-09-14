@@ -180,6 +180,7 @@ export async function registerTenant(
           role_id: roleIds["owner"],
           phone,
           active: true,
+          attendance_eligible: true,
         },
       });
 

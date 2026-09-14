@@ -8,8 +8,8 @@ import { logAction } from "@/lib/logger";
 import { DEAD_JOB_STATUS } from "@/lib/order-progress";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
-
-const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
+import { can, canAny } from "@/lib/permissions";
+import { requireEntitlement } from "@/lib/entitlements";
 
 const rp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 
@@ -34,6 +34,7 @@ export async function getFinalAuditChecks(
   try {
     const tenant = await requireTenant();
     await requireUser();
+    await requireEntitlement(tenant.id, "audit_trail");
     const checks = await computeAuditChecks(tenant.id, orderId);
     if (!checks) return fail("Order tidak ditemukan.");
     return ok({ checks, hasCritical: checks.some((c) => c.severity === "CRIT") });
@@ -181,7 +182,8 @@ export async function submitFinalAudit(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!isAdmin(actor.roles)) return fail("Hanya Admin/Owner yang boleh submit final audit.");
+    await requireEntitlement(tenant.id, "audit_trail");
+    if (!can(actor, "audit.submit")) return fail("Hanya Admin/Owner yang boleh submit final audit.");
 
     const result = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
@@ -272,7 +274,8 @@ export async function approveFinalAudit(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh menyetujui audit.");
+    await requireEntitlement(tenant.id, "audit_trail");
+    if (!can(actor, "audit.approve")) return fail("Hanya Owner yang boleh menyetujui audit.");
 
     const result = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
@@ -331,10 +334,11 @@ export async function createCorrection(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh membuat koreksi.");
+    await requireEntitlement(tenant.id, "audit_trail");
+    if (!canAny(actor, "correction.create_operational", "correction.create_financial")) return fail("Hanya Owner/Admin yang boleh membuat koreksi.");
     // Koreksi FINANCIAL khusus Owner — batasan ini untuk yang bertindak sebagai
     // Admin saja (Owner di Solo Mode juga punya peran Admin, tetap boleh).
-    if (!actor.roles.includes("owner") && input.category === "FINANCIAL") {
+    if (!can(actor, "correction.create_financial") && input.category === "FINANCIAL") {
       return fail("Koreksi keuangan hanya boleh dibuat Owner.");
     }
     if (!input.reason || input.reason.trim().length < 20) {
@@ -384,7 +388,8 @@ export async function approveCorrection(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh menyetujui koreksi.");
+    await requireEntitlement(tenant.id, "audit_trail");
+    if (!can(actor, "correction.approve")) return fail("Hanya Owner yang boleh menyetujui koreksi.");
 
     const correction = await prisma.correction.findFirst({
       where: { id: correctionId, tenant_id: tenant.id },
@@ -415,6 +420,7 @@ export async function listCorrections(orderId?: string) {
   try {
     const tenant = await requireTenant();
     await requireUser();
+    await requireEntitlement(tenant.id, "audit_trail");
     const corrections = await prisma.correction.findMany({
       where: { tenant_id: tenant.id, ...(orderId ? { order_id: orderId } : {}) },
       orderBy: { created_at: "desc" },

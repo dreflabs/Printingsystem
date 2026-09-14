@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
-import { requireUser, requireMutableActor } from "@/lib/actor";
+import { requireMutableActor, requireUser } from "@/lib/actor";
 import { logAction } from "@/lib/logger";
 import { retryOnUnique } from "@/lib/retry";
 import { autoReleaseToProduction } from "@/lib/auto-release";
 import { safeError } from "@/lib/safe-error";
+import { can, canAny } from "@/lib/permissions";
+import { getTenantEntitlements } from "@/lib/entitlements";
 import { ok, fail, type ActionResult } from "@/types";
 
 type OrderTypeInput = "walkin" | "online" | "makloon";
@@ -88,8 +90,24 @@ export async function createPrintingOrder(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!["owner", "admin", "designer_sales"].some((r) => actor.roles.includes(r))) {
+    if (!canAny(actor, "order.create")) {
       return fail("Hanya Owner/Admin/Designer Sales yang boleh membuat order.");
+    }
+    if (!Object.prototype.hasOwnProperty.call(APPROVAL_METHOD, input.orderType)) return fail("Tipe order tidak valid.");
+    const designerRestricted = actor.roles.includes("designer_sales") && !actor.roles.some((r) => r === "admin" || r === "owner");
+
+    const entitlements = await getTenantEntitlements(tenant.id);
+    if (entitlements.maxOrdersPerMonth != null) {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const ordersThisMonth = await prisma.order.count({
+        where: { tenant_id: tenant.id, created_at: { gte: startOfMonth } },
+      });
+      if (ordersThisMonth >= entitlements.maxOrdersPerMonth) {
+        return fail(
+          `Kuota order bulanan paket Anda sudah penuh (${ordersThisMonth}/${entitlements.maxOrdersPerMonth}). Upgrade paket untuk membuat order baru.`,
+        );
+      }
     }
 
     const items = (input.items ?? []).filter((i) => i.quantity > 0);
@@ -101,7 +119,7 @@ export async function createPrintingOrder(
     const deadlineDate = new Date(input.deadline);
     if (Number.isNaN(deadlineDate.getTime())) return fail("Format deadline tidak valid.");
 
-    const dpPct = input.dpOverridePct ?? 50;
+    const dpPct = designerRestricted ? 50 : (input.dpOverridePct ?? 50);
     if (dpPct < 0 || dpPct > 100) return fail("Persen DP tidak valid.");
     if (input.dpOverridePct != null && input.dpOverridePct < 50) {
       // Aturan 13 / 04-PAYMENT.md:
@@ -122,7 +140,7 @@ export async function createPrintingOrder(
       if (!input.dpOverrideReason) return fail("Override DP wajib menyertakan alasan.");
     }
 
-    const discount = Math.max(0, Math.round(input.discount ?? 0));
+    const discount = designerRestricted ? 0 : Math.max(0, Math.round(input.discount ?? 0));
     if (discount > 0 && !input.discountReason) {
       return fail("Diskon wajib menyertakan alasan.");
     }
@@ -153,8 +171,29 @@ export async function createPrintingOrder(
       // 2. Totals — diskon TIDAK dipotong sebelum di-approve Owner (aturan 14).
       //    `discount` disimpan sebagai permintaan; total/dp/balance tetap harga penuh
       //    sampai decideDiscount(approve) dipanggil.
+      const resolvedItems = [] as (PrintingOrderItemInput & { unitPrice: number })[];
       let subtotal = 0;
-      for (const i of items) subtotal += i.unitPrice * i.quantity;
+      for (const i of items) {
+        let unitPrice = Math.max(0, Math.round(Number(i.unitPrice) || 0));
+        if (designerRestricted) {
+          if (!i.productId) throw new Error("Designer wajib memilih produk dari katalog.");
+          const product = await tx.product.findFirst({
+            where: { id: i.productId, tenant_id: tenant.id, active: true },
+            select: { unit: true, base_price: true },
+          });
+          const basePrice = Number(product?.base_price ?? 0);
+          if (!product || !(basePrice > 0)) throw new Error("Produk belum memiliki harga katalog aktif.");
+          if (product.unit === "M2") {
+            const area = ((Number(i.width) || 0) / 100) * ((Number(i.height) || 0) / 100);
+            if (!(area > 0)) throw new Error("Ukuran wajib diisi untuk produk berbasis M2.");
+            unitPrice = Math.round(basePrice * area);
+          } else {
+            unitPrice = Math.round(basePrice);
+          }
+        }
+        resolvedItems.push({ ...i, unitPrice });
+        subtotal += unitPrice * Math.max(1, Number(i.quantity) || 1);
+      }
       const total = subtotal;
       const dpRequired = Math.round((total * dpPct) / 100);
 
@@ -184,7 +223,7 @@ export async function createPrintingOrder(
       });
 
       // 4. Items
-      for (const i of items) {
+      for (const i of resolvedItems) {
         const size =
           i.width && i.height ? `${i.width}x${i.height}` : i.width ? `${i.width}` : null;
         const itemDeadline = i.deadline ? new Date(i.deadline) : null;
@@ -212,7 +251,8 @@ export async function createPrintingOrder(
           order_id: order.id,
           designer_id: input.designerId || null,
           status: "PENDING",
-          current_version: 1,
+          // Belum ada file desain; versi pertama yang diupload harus V1.
+          current_version: 0,
           approval_method: APPROVAL_METHOD[input.orderType],
         },
       });
@@ -272,7 +312,7 @@ export async function addPayment(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) {
+    if (!can(actor, "payment.receive")) {
       return fail("Hanya Admin/Owner yang boleh mengkonfirmasi pembayaran.");
     }
     if (!(input.amount > 0)) return fail("Nominal pembayaran harus lebih dari 0.");
@@ -375,7 +415,7 @@ export async function decideDiscount(
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
     // Aturan 14: keputusan diskon HANYA Owner (Admin cuma mengajukan).
-    if (!actor.roles.includes("owner")) {
+    if (!can(actor, "discount.approve")) {
       return fail("Hanya Owner yang boleh memutuskan diskon.");
     }
 
@@ -463,7 +503,7 @@ export async function requestDiscount(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner") && !actor.roles.includes("admin")) {
+    if (!can(actor, "discount.request")) {
       return fail("Hanya Owner atau Admin yang boleh mengajukan diskon.");
     }
 
@@ -503,6 +543,9 @@ export async function requestDiscount(
 export async function getOrderFormData() {
   try {
     const tenant = await requireTenant();
+    const actor = await requireUser();
+    const canViewContact = can(actor, "customer.view_contact");
+    const canViewQuote = can(actor, "payment.view_detail") || can(actor, "quote.edit_price");
     const [customers, products, materials, designers, finishingRows] = await Promise.all([
       prisma.customer.findMany({
         where: { tenant_id: tenant.id },
@@ -536,16 +579,16 @@ export async function getOrderFormData() {
       customers: customers.map((c) => ({
         id: c.id,
         name: c.name,
-        phone: c.phone,
+        phone: canViewContact ? c.phone : null,
         type: c.type,
-        defaultDiscountPct: c.default_discount_pct == null ? 0 : Number(c.default_discount_pct),
+        defaultDiscountPct: canViewQuote && c.default_discount_pct != null ? Number(c.default_discount_pct) : 0,
       })),
       products: products.map((p) => ({
         id: p.id,
         name: p.name,
         category: p.category,
         unit: p.unit,
-        basePrice: p.base_price == null ? null : Number(p.base_price),
+        basePrice: canViewQuote && p.base_price != null ? Number(p.base_price) : null,
         default_material_id: p.default_material_id,
       })),
       materials,

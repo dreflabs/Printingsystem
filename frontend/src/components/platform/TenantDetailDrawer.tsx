@@ -95,7 +95,7 @@ export function TenantDetailDrawer({ tenantId, onClose, onChanged }: { tenantId:
           <h2 className="text-base font-bold text-primary">
             {detail?.name ?? "Memuat…"} {detail && <span className="font-mono text-xs text-accent-teal ml-2">{detail.slug}</span>}
           </h2>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
+          <button aria-label="Tutup detail tenant" onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
         </div>
 
         {error && <div className="m-5 rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-3 text-sm text-status-red">{error}</div>}

@@ -32,7 +32,7 @@ type Job = {
   suggestedMaterialId: string | null;
   fileUrl: string | null;
   fileName: string | null;
-  files: { label: string; url: string; name: string | null }[];
+  files: { label: string; url: string; name: string | null; notes: string | null }[];
 };
 type MaterialOpt = { id: string; name: string; type: string; unitUsage: string; unitCustom: string | null };
 type HistoryRow = {
@@ -147,7 +147,7 @@ function JobItems({ items, dense }: { items: JobItem[]; dense?: boolean }) {
 
 /** Tombol buka file cetak (dibuka di tab baru untuk di-RIP ke mesin).
  * Combo order: satu tombol per file desain item. */
-function FileButton({ files }: { files: { label: string; url: string; name: string | null }[] }) {
+function FileButton({ files }: { files: { label: string; url: string; name: string | null; notes: string | null }[] }) {
   if (!files || files.length === 0) return null;
   const single = files.length === 1;
   return (
@@ -171,6 +171,17 @@ function FileButton({ files }: { files: { label: string; url: string; name: stri
   );
 }
 
+function DesignNotes({ files }: { files: { notes: string | null }[] }) {
+  const notes = Array.from(new Set(files.map((f) => f.notes?.trim()).filter(Boolean))) as string[];
+  if (notes.length === 0) return null;
+  return (
+    <div className="mt-2 rounded-lg border border-status-blue/20 bg-status-blue/5 px-2.5 py-2 text-[11px] text-muted">
+      <p className="font-bold text-primary">Catatan desain</p>
+      {notes.map((note) => <p key={note} className="mt-0.5">{note}</p>)}
+    </div>
+  );
+}
+
 function QueueCard({
   job, busy, onStart, onBounce,
 }: {
@@ -189,6 +200,7 @@ function QueueCard({
       </div>
 
       <JobItems items={job.items} />
+      <DesignNotes files={job.files} />
 
       <p className="mt-2 font-mono text-[11px] text-muted">{job.jobCode} · {job.machine}</p>
 
@@ -236,6 +248,7 @@ function ActiveCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <JobItems items={job.items} dense />
+          <DesignNotes files={job.files} />
           <p className="mt-1 font-mono text-[11px] text-muted">
             {job.jobCode} · {job.machine}
             {dl && <span className={cn("ml-1.5 font-sans font-bold", TONE_CLS[dl.tone])}>· {dl.label}</span>}
@@ -527,7 +540,7 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
         onClick={submit}
         className="w-full h-12 rounded-xl bg-status-green text-white text-sm font-black hover:brightness-110 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
       >
-        <CheckCircle2 className="h-5 w-5" /> {busy ? "Menyimpan…" : "Selesai Produksi (SCAN 2)"}
+        <CheckCircle2 className="h-5 w-5" /> {busy ? "Menyimpan…" : "Selesaikan Produksi"}
       </button>
     </div>
   );
@@ -612,7 +625,7 @@ export default function OperatorPage() {
         </div>
         <a
           href="/scan"
-          className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent-teal px-5 text-sm font-bold text-white hover:brightness-110 transition-all"
+          className="inline-flex h-14 items-center gap-2 rounded-xl bg-accent-teal px-5 text-sm font-bold text-white hover:brightness-110 transition-all"
         >
           <ScanLine className="h-5 w-5" /> Scan QR Job
         </a>
@@ -751,7 +764,7 @@ export default function OperatorPage() {
       <Modal
         open={!!finishJob}
         onClose={() => setFinishFor(null)}
-        title="Selesai Produksi (SCAN 2)"
+        title="Selesaikan Produksi"
         description={finishJob ? `${finishJob.jobCode} · ${finishJob.orderCode}` : undefined}
         size="md"
       >

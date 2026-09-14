@@ -1,5 +1,11 @@
 # DESIGNER SALES
 
+## Absensi
+
+- Wajib absen masuk, istirahat, dan pulang bila akun aktif dan
+  `attendance_eligible=true` (default role operasional).
+- Mengikuti channel yang diaktifkan Owner: HP pribadi atau kiosk.
+
 Membuat desain, mengelola versi desain, dan memproses approval desain konsumen walk-in dan makloon.
 
 ## Hak Akses

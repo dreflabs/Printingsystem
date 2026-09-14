@@ -8,6 +8,8 @@ import { generateTempPassword } from "@/lib/temp-password";
 import { ok, fail, type ActionResult } from "@/types";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
+import { can } from "@/lib/permissions";
+import { getTenantEntitlements } from "@/lib/entitlements";
 
 const USER_SELECT = {
   id: true,
@@ -20,11 +22,14 @@ const USER_SELECT = {
   locked_until: true,
   last_login_at: true,
   created_at: true,
+  attendance_eligible: true,
   base_salary: true,
   role: { select: { name: true } },
   extra_roles: { select: { role: { select: { name: true } } } },
   user_machines: { select: { machine_id: true, machine: { select: { name: true } } } },
 } as const;
+
+const ATTENDANCE_DEFAULT_ROLES = new Set(["owner", "designer_sales", "operator", "gudang"]);
 
 export async function updateOperatorMachines(userId: string, machineIds: string[]): Promise<ActionResult<null>> {
   try {
@@ -32,7 +37,7 @@ export async function updateOperatorMachines(userId: string, machineIds: string[
     const actor = await requireUser();
     
     // Hanya Owner yang boleh mengatur ini
-    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh mengatur penugasan mesin.");
+    if (!can(actor, "shop.configure")) return fail("Hanya Owner yang boleh mengatur penugasan mesin.");
 
     // Verifikasi user yang dituju ada di tenant yang sama
     const target = await prisma.user.findFirst({
@@ -78,7 +83,7 @@ export async function getTenantUsers() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh melihat daftar pegawai.");
+    if (!can(actor, "user.view")) throw new Error("Hanya Owner yang boleh melihat daftar pegawai.");
 
     // Start of today in local timezone (assuming server runs on same TZ or we just use simple UTC boundary)
     // To be perfectly safe, we'll fetch records created in the last 24 hours or just fetch the latest 1 record per user.
@@ -132,7 +137,7 @@ export async function createEmployee(data: {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh menambah pegawai.");
+    if (!can(actor, "user.create")) throw new Error("Hanya Owner yang boleh menambah pegawai.");
     if (data.role_name === "owner" || data.extra_role_names?.includes("owner")) {
       throw new Error("Role Owner tidak bisa dibuat lewat form ini.");
     }
@@ -140,6 +145,20 @@ export async function createEmployee(data: {
     // Find the primary role ID
     const role = await prisma.role.findUnique({ where: { name: data.role_name } });
     if (!role) throw new Error("Role not found");
+
+    // Kuota paket dihitung dari user aktif, termasuk Owner. Jangan hanya
+    // mengandalkan UI: createEmployee adalah gerbang server-side terakhir.
+    const entitlements = await getTenantEntitlements(tenant.id);
+    if (entitlements.maxUsers != null) {
+      const activeUsers = await prisma.user.count({
+        where: { tenant_id: tenant.id, active: true },
+      });
+      if (activeUsers >= entitlements.maxUsers) {
+        throw new Error(
+          `Kuota user aktif paket Anda sudah penuh (${activeUsers}/${entitlements.maxUsers}). Upgrade paket atau nonaktifkan pegawai terlebih dahulu.`,
+        );
+      }
+    }
 
     // Username & email hanya unik PER TENANT (@@unique([tenant_id, username]) dan
     // @@unique([tenant_id, email])), jadi pemeriksaannya wajib dibatasi tenant ini.
@@ -169,6 +188,7 @@ export async function createEmployee(data: {
         phone: data.phone?.trim() || null,
         password_hash,
         role_id: role.id,
+        attendance_eligible: ATTENDANCE_DEFAULT_ROLES.has(data.role_name) || (data.extra_role_names ?? []).some((r) => ATTENDANCE_DEFAULT_ROLES.has(r)),
         must_change_password: true,
       },
     });
@@ -207,6 +227,24 @@ export async function createEmployee(data: {
   }
 }
 
+/** Owner mengatur apakah akun termasuk daftar pegawai yang wajib absen. */
+export async function setAttendanceEligibility(userId: string, eligible: boolean): Promise<ActionResult<null>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (!can(actor, "user.update_role")) return fail("Hanya Owner yang boleh mengatur kewajiban absensi.");
+    const target = await prisma.user.findFirst({ where: { id: userId, tenant_id: tenant.id } });
+    if (!target) return fail("Pegawai tidak ditemukan.");
+    await prisma.user.update({ where: { id: target.id }, data: { attendance_eligible: !!eligible } });
+    await logAction(actor.id, "ATTENDANCE_ELIGIBILITY_UPDATED", "User", target.id, { eligible: target.attendance_eligible }, { eligible: !!eligible }, impersonationNote(actor));
+    revalidatePath("/owner/users");
+    return ok(null);
+  } catch (error) {
+    console.error("setAttendanceEligibility:", error);
+    return fail(error instanceof Error ? error.message : "Gagal mengubah kewajiban absensi.");
+  }
+}
+
 /**
  * Update the roles for an existing user.
  * The first role in the array becomes the primary role.
@@ -216,12 +254,12 @@ export async function updateUserRoles(userId: string, roleNames: string[]) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh mengubah role pegawai.");
+    if (!can(actor, "user.update_role")) throw new Error("Hanya Owner yang boleh mengubah role pegawai.");
     if (roleNames.length === 0) throw new Error("Minimal 1 role harus dipilih");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
-      include: { role: true },
+      include: { role: true, extra_roles: { include: { role: true } } },
     });
     if (!user) throw new Error("User tidak ditemukan");
     if (user.role.name === "owner" && !roleNames.includes("owner")) {
@@ -230,7 +268,51 @@ export async function updateUserRoles(userId: string, roleNames: string[]) {
     if (roleNames.includes("owner") && user.role.name !== "owner") {
       throw new Error("Role Owner tidak bisa ditambahkan lewat form ini.");
     }
-    const oldRoleNames = [user.role.name];
+    const oldRoleNames = [user.role.name, ...user.extra_roles.map((r) => r.role.name)];
+
+    // Jangan mencabut role operasional saat pekerjaan user masih berjalan.
+    // Tanpa guard ini, job bisa kehilangan penanggung jawab sementara role
+    // baru sudah tersimpan. Owner harus melakukan reassign atau memakai alur
+    // takeover darurat yang terpisah.
+    const removingOperator = oldRoleNames.includes("operator") && !roleNames.includes("operator");
+    const removingGudang = oldRoleNames.includes("gudang") && !roleNames.includes("gudang");
+    const activeProductionStatuses = [
+      "PRODUCTION_QUEUED",
+      "PRODUCTION_ASSIGNED",
+      "PRODUCTION_STARTED",
+      "PRODUCTION_PAUSED",
+      "PRODUCTION_COMPLETE",
+      "QC_PASSED",
+      "FINISHING_STARTED",
+      "FINISHING_COMPLETE",
+      "STORED",
+      "IN_TRANSIT",
+    ];
+    const [activeProduction, activeFinishing, activeStorage] = await Promise.all([
+      removingOperator
+        ? prisma.productionJob.count({
+            where: { tenant_id: tenant.id, operator_id: userId, status: { in: activeProductionStatuses } },
+          })
+        : Promise.resolve(0),
+      removingGudang
+        ? prisma.finishingJob.count({
+            where: { tenant_id: tenant.id, operator_id: userId, status: "FINISHING_STARTED" },
+          })
+        : Promise.resolve(0),
+      removingGudang
+        ? prisma.storageItem.count({
+            where: { tenant_id: tenant.id, status: { in: ["STORED", "IN_TRANSIT"] }, OR: [{ stored_by: userId }, { transit_by: userId }] },
+          })
+        : Promise.resolve(0),
+    ]);
+    if (activeProduction || activeFinishing || activeStorage) {
+      const parts = [
+        activeProduction ? `${activeProduction} job produksi` : "",
+        activeFinishing ? `${activeFinishing} job finishing` : "",
+        activeStorage ? `${activeStorage} item storage` : "",
+      ].filter(Boolean).join(", ");
+      throw new Error(`Role tidak dapat dicabut karena masih ada pekerjaan aktif (${parts}). Reassign pekerjaan terlebih dahulu.`);
+    }
 
     const allRoles = await prisma.role.findMany({
       where: { name: { in: roleNames } },
@@ -274,7 +356,7 @@ export async function toggleEmployeeStatus(userId: string, active: boolean) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh mengaktifkan/menonaktifkan pegawai.");
+    if (!can(actor, "user.deactivate")) throw new Error("Hanya Owner yang boleh mengaktifkan/menonaktifkan pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
@@ -282,6 +364,18 @@ export async function toggleEmployeeStatus(userId: string, active: boolean) {
     });
     if (!user) throw new Error("User not found");
     if (user.role.name === "owner") throw new Error("Cannot deactivate the owner account");
+
+    if (active) {
+      const entitlements = await getTenantEntitlements(tenant.id);
+      if (entitlements.maxUsers != null) {
+        const activeUsers = await prisma.user.count({ where: { tenant_id: tenant.id, active: true } });
+        if (activeUsers >= entitlements.maxUsers) {
+          throw new Error(
+            `Kuota user aktif paket Anda sudah penuh (${activeUsers}/${entitlements.maxUsers}). Upgrade paket atau nonaktifkan pegawai lain terlebih dahulu.`,
+          );
+        }
+      }
+    }
 
     await prisma.user.update({
       where: { id: userId },
@@ -308,7 +402,7 @@ export async function unlockEmployeeAccount(userId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh membuka kunci akun pegawai.");
+    if (!can(actor, "user.update_role")) throw new Error("Hanya Owner yang boleh membuka kunci akun pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
@@ -334,7 +428,7 @@ export async function resetEmployeePassword(userId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh me-reset password pegawai.");
+    if (!can(actor, "user.reset_password")) throw new Error("Hanya Owner yang boleh me-reset password pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
@@ -415,7 +509,7 @@ export async function getEmployeeDeleteImpact(userId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh menghapus pegawai.");
+    if (!can(actor, "user.deactivate")) throw new Error("Hanya Owner yang boleh menghapus pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },
@@ -450,7 +544,7 @@ export async function deleteEmployee(userId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh menghapus pegawai.");
+    if (!can(actor, "user.deactivate")) throw new Error("Hanya Owner yang boleh menghapus pegawai.");
 
     const user = await prisma.user.findFirst({
       where: { id: userId, tenant_id: tenant.id },

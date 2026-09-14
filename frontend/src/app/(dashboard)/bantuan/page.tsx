@@ -43,7 +43,7 @@ const MENUS: Record<GuideRole, MenuItem[]> = {
   ],
   operator: [
     { label: "Dashboard", href: "/operator", icon: Settings2, desc: "Kartu Absensi (absen masuk/pulang + istirahat), job Anda yang aktif, dan antrian job yang bisa diklaim. Maksimal 1 job aktif per operator." },
-    { label: "Scan QR", href: "/scan", icon: ScanLine, desc: "Pindai kode job di lembar kerja: Mulai (SCAN 1), lalu Selesai + catat hasil (SCAN 2)." },
+    { label: "Scan QR", href: "/scan", icon: ScanLine, desc: "Pindai kode job di lembar kerja untuk mengambil/memulai produksi, lalu menyelesaikan produksi dan mencatat hasil." },
   ],
   gudang: [
     { label: "Dashboard Gudang & Finishing", href: "/finishing", icon: Package, desc: "Kartu Absensi di atas, lalu empat tab: QC (inspeksi), Finishing (penyelesaian + cetak label), Storage (simpan ke rak & serah counter), Material (stok bahan baku)." },
@@ -53,9 +53,9 @@ const MENUS: Record<GuideRole, MenuItem[]> = {
 
 // ── Alur Scan QR (lintas peran) ────────────────────────────────────────────
 const SCAN_FLOW: { code: string; who: string; what: string }[] = [
-  { code: "SCAN 1", who: "Operator", what: "Mulai produksi. Job berpindah ke PRODUCTION_STARTED. Job antrian tanpa operator otomatis jadi milik yang scan." },
-  { code: "SCAN 2", who: "Operator", what: "Selesai produksi: isi jumlah aktual + pemakaian bahan (wajib) + waste bila ada. Job → QC_PENDING." },
-  { code: "SCAN 3", who: "Gudang", what: "QC: PASS → lanjut finishing. FAIL → isi kategori + deskripsi (min. 20 karakter), Owner memutuskan rework." },
+  { code: "Mulai Produksi", who: "Operator", what: "Ambil job antrean atau mulai job yang sudah ditugaskan. Status menjadi PRODUCTION_STARTED; job antrean otomatis menjadi tanggung jawab Operator yang berhasil mengambilnya." },
+  { code: "Selesaikan Produksi", who: "Operator", what: "Isi jumlah aktual, pemakaian bahan (wajib), dan waste bila ada. Job menjadi PRODUCTION_COMPLETE dan menunggu pemeriksaan kualitas." },
+  { code: "Pemeriksaan Kualitas (QC)", who: "Gudang", what: "Periksa hasil cetak. PASS melanjutkan ke finishing; FAIL meminta kategori dan deskripsi masalah, lalu Owner memutuskan rework." },
   { code: "SCAN 4", who: "Gudang", what: "Mulai finishing (laminasi / potong / jahit / mata ayam, dll.)." },
   { code: "SCAN 5", who: "Gudang", what: "Selesai finishing: isi jumlah akhir. Label QR bisa dicetak dari sini." },
   { code: "SCAN 6–7", who: "Gudang", what: "Simpan ke rak: pindai job lalu pindai lokasi rak. Barang tersimpan, order → READY_FOR_PICKUP, notifikasi terkirim ke pelanggan." },
@@ -158,7 +158,7 @@ export default function BantuanPage() {
             placeholder="Cari kata kunci (misal: DP, Rework, Absen)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3.5 bg-background border border-border rounded-2xl focus:outline-none focus:border-accent-teal focus:ring-1 focus:ring-accent-teal shadow-sm text-sm text-primary transition-all"
+            className="w-full pl-12 pr-4 py-3.5 bg-elevated border border-border rounded-2xl focus:outline-none focus:border-accent-teal focus:ring-1 focus:ring-accent-teal shadow-sm text-sm text-primary transition-all"
           />
         </div>
       </div>
@@ -222,7 +222,7 @@ export default function BantuanPage() {
 
       {/* Scan QR */}
       {filteredScanFlow.length > 0 && (
-        <Section icon={ScanLine} title="Alur Scan QR (SCAN 1–10)">
+        <Section icon={ScanLine} title="Alur QR dan Proses Order">
           <p className="text-xs text-muted mb-6 bg-elevated p-3 rounded-xl border border-border">
             Tiap job punya kode QR di lembar kerja. Pindai di menu <b>Scan QR</b>; aksi yang muncul menyesuaikan tahap job dan peran Anda.
           </p>
@@ -305,7 +305,7 @@ export default function BantuanPage() {
         <div className="text-center py-12 px-4 bg-card border border-border rounded-2xl">
           <Search className="h-10 w-10 text-muted mx-auto mb-3 opacity-30" />
           <h3 className="text-lg font-bold text-primary mb-1">Tidak ditemukan</h3>
-          <p className="text-sm text-muted">Tidak ada hasil yang cocok dengan kata kunci "{searchQuery}".</p>
+          <p className="text-sm text-muted">Tidak ada hasil yang cocok dengan kata kunci &quot;{searchQuery}&quot;.</p>
         </div>
       )}
     </div>

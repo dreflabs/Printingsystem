@@ -96,6 +96,9 @@ export function checkProductionReadiness(input: ReadinessInput): ReadinessResult
     if (!input.customerId || !input.customerName?.trim()) {
       missing.push("Data pemesan belum lengkap (nama)");
     }
+    if (!input.customerContact?.trim()) {
+      missing.push("Kontak pemesan belum diisi");
+    }
   }
 
   // 6. Deadline wajib (dipakai prioritas antrian operator)

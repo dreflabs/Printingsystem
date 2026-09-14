@@ -37,7 +37,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
             <Camera className="h-5 w-5 text-accent-teal" />
             <h3 className="font-semibold text-primary">Scan QR Code</h3>
           </div>
-          <button onClick={onClose} className="p-2 bg-base rounded-full hover:bg-border transition-colors text-muted hover:text-primary">
+          <button aria-label="Tutup pemindai QR" onClick={onClose} className="p-2 bg-base rounded-full hover:bg-border transition-colors text-muted hover:text-primary">
             <X className="h-5 w-5" />
           </button>
         </div>

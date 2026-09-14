@@ -66,13 +66,13 @@ Setelah DP diterima dan dikonfirmasi Admin:
 - Sistem langsung menjalankan **Completeness Gate**. Kalau semua syarat wajib
   terpenuhi (DP, desain APPROVED + file final, diskon tidak menggantung, identitas
   pemesan, deadline, tiap item lengkap, tiap produk punya mesin default) → sistem
-  **otomatis** membuat Production Job per item (status `PRODUCTION_QUEUED`) tanpa
+  **otomatis** membuat Production Job per mesin (status `PRODUCTION_QUEUED`) tanpa
   approval Admin.
 - **Admin tidak perlu menekan tombol apa pun** untuk meneruskan order ke Operator.
 - Kalau gate belum lolos, order tetap CONFIRMED dan alasannya tampil di dashboard
   Admin; tombol **"Assign ke Produksi"** manual tetap tersedia sebagai jalur
   fallback (mis. item custom tanpa mesin default, atau mesin default MAINTENANCE).
-- Operator mengambil job dari antrian mesinnya sendiri (scan SCAN 1 = klaim + mulai).
+- Operator mengambil job dari antrian mesinnya sendiri melalui **Ambil & Mulai Produksi** (kode internal SCAN 1 = klaim + mulai).
 
 Detail: `02-WORKFLOW/17-AUTO-RELEASE-PRODUKSI.md`.
 
@@ -92,7 +92,8 @@ Detail: `02-WORKFLOW/17-AUTO-RELEASE-PRODUKSI.md`.
 ## Multiple Job per Order
 
 Jika satu order punya beberapa item produk yang butuh mesin berbeda:
-- Sistem buat **Production Job terpisah** per item
+- Sistem buat **Production Job terpisah** per mesin
+- Item yang memakai mesin default sama digabung dalam satu job dan jumlah rencananya dijumlahkan
 - Masing-masing job berjalan di mesin yang sesuai secara paralel atau berurutan
 - Semua job dalam satu order harus selesai sebelum order bisa masuk ke Pickup
 

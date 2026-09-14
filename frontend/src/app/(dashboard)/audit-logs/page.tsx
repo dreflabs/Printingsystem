@@ -66,11 +66,13 @@ export default function AuditLogsPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Cari audit log"
             placeholder="Cari aksi / entity id / tipe..."
             className="w-full h-9 rounded-lg bg-elevated border border-border text-sm text-primary pl-9 pr-3 outline-none focus:border-accent-teal"
           />
         </div>
         <select
+          aria-label="Filter tipe entitas audit log"
           value={entityType}
           onChange={(e) => setEntityType(e.target.value)}
           className="h-9 rounded-lg bg-elevated border border-border text-sm text-muted px-3 outline-none focus:border-accent-teal"

@@ -19,8 +19,8 @@ export const SOLO_FLOW_STEPS: Step[] = [
   { title: "Terima order", body: <>Menu <GuideLink href="/admin">Order</GuideLink> → <b>+ Order Baru</b>: pilih/entri pelanggan, tambah item cetak dari katalog, isi ukuran &amp; jumlah, tentukan deadline.</> },
   { title: "Desain & ACC", body: "Unggah file desain, tangani revisi bila ada, lalu ACC saat final. Order lanjut ke pembayaran / produksi." },
   { title: "Terima DP", body: "Catat DP di detail order → order jadi CONFIRMED dan otomatis masuk antrian produksi (produk cetak wajib punya Mesin Default)." },
-  { title: "Cetak", body: <>Menu <GuideLink href="/scan">Scan QR</GuideLink> atau Produksi: mulai job (SCAN 1), lalu isi jumlah aktual &amp; pemakaian bahan saat selesai (SCAN 2).</> },
-  { title: "QC & finishing", body: "Gudang & Finishing: periksa hasil cetak (SCAN 3), kerjakan laminasi/potong/jahit, tandai selesai dengan jumlah akhir." },
+  { title: "Cetak", body: <>Menu <GuideLink href="/scan">Scan QR</GuideLink> atau Produksi: ambil &amp; mulai job, lalu isi jumlah aktual dan pemakaian bahan saat produksi selesai.</> },
+  { title: "QC & finishing", body: "Gudang & Finishing: lakukan pemeriksaan kualitas hasil cetak, kerjakan laminasi/potong/jahit, lalu tandai selesai dengan jumlah akhir." },
   { title: "Simpan ke rak", body: "Scan job + scan lokasi rak (SCAN 6–7). Pelanggan otomatis dapat notifikasi barang siap diambil." },
   { title: "Serahkan", body: <>Saat pelanggan datang: terima pelunasan lalu serah terima di <GuideLink href="/pos">Kasir</GuideLink> (SCAN 10).</> },
 ];
@@ -58,8 +58,8 @@ export const GUIDE_STEPS: Record<GuideRole, Step[]> = {
   operator: [
     { title: "Absen masuk", body: "Kartu Absensi di atas: tekan Absen Masuk (pakai lokasi + selfie). Tombol istirahat & Absen Pulang ada di kartu yang sama." },
     { title: "Scan QR job", body: <>Di <GuideLink href="/scan">Scan QR</GuideLink>, pindai kode job pada lembar kerja. Kartu menampilkan status, jumlah rencana, dan pembayaran.</> },
-    { title: "Mulai produksi (SCAN 1)", body: "Job antrian (PRODUCTION_QUEUED) bisa Anda klaim — begitu dimulai, job jadi tanggung jawab Anda. Boleh menjalankan beberapa job sekaligus." },
-    { title: "Catat hasil (SCAN 2)", body: "Setelah selesai, isi jumlah aktual dan pemakaian bahan (wajib) + waste bila ada. Stok bahan otomatis berkurang." },
+    { title: "Ambil & mulai produksi", body: "Job antrian (PRODUCTION_QUEUED) bisa Anda klaim — begitu dimulai, job menjadi tanggung jawab Anda. Anda boleh menjalankan beberapa job sekaligus." },
+    { title: "Selesaikan produksi", body: "Setelah selesai, isi jumlah aktual dan pemakaian bahan (wajib), serta waste bila ada. Stok bahan otomatis berkurang." },
     { title: "Serahkan ke QC", body: "Job selesai otomatis masuk antrian QC di Gudang. Ambil job berikutnya." },
   ],
   gudang: [

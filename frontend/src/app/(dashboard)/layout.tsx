@@ -20,7 +20,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     });
   }, []);
 
-  if (!ready) return null;
+  if (!ready) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-base text-muted" role="status" aria-live="polite">
+        <div className="flex items-center gap-3 text-sm font-medium">
+          <span className="h-4 w-4 rounded-full border-2 border-accent-teal border-t-transparent animate-spin" />
+          Memuat dashboard…
+        </div>
+      </div>
+    );
+  }
 
   const role = (user?.role ?? "admin") as never;
   const roles = user?.roles ?? [user?.role ?? "admin"];

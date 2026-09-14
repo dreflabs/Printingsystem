@@ -66,6 +66,10 @@ export async function autoReleaseToProduction(
   orderId: string,
   opts?: { bypassGatekeeper?: boolean }
 ): Promise<AutoReleaseResult> {
+  // Serialisasi semua jalur yang dapat membuat ProductionJob (pembayaran,
+  // approval desain, dan tombol release Admin) agar dua transaksi paralel
+  // tidak sama-sama melihat order tanpa job lalu membuat duplikat.
+  await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} AND tenant_id = ${tenantId} FOR UPDATE`;
   const order = await tx.order.findFirst({
     where: { id: orderId, tenant_id: tenantId },
     include: {

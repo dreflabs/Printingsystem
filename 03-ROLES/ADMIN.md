@@ -1,5 +1,12 @@
 # ADMIN
 
+## Absensi
+
+- Melihat laporan absensi dan melakukan import fingerprint sesuai permission.
+- Self-attendance bersifat opsional dan hanya aktif bila Owner menandai akun
+  Admin sebagai pegawai yang wajib absen.
+- Admin tidak mengubah kebijakan absensi tenant.
+
 Mengelola order, pembayaran, pickup, notifikasi WA konsumen, **dan seluruh jalannya produksi harian** (tugas yang sebelumnya dipegang role Supervisor — role Supervisor sudah dihapus dan digabung ke Admin). Input stok material fisik adalah tugas Gudang, bukan Admin.
 
 ## Hak Akses — Order, Pembayaran & Konsumen

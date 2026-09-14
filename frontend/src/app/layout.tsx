@@ -59,15 +59,15 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#0492B2",
-  colorScheme: "dark",
+  colorScheme: "light",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="id"
-      className={`${inter.variable} h-full antialiased dark`}
-      style={{ colorScheme: "dark" }}
+      className={`${inter.variable} h-full antialiased`}
+      style={{ colorScheme: "light" }}
     >
       <body className="min-h-full flex flex-col">
         <ToastProvider>{children}</ToastProvider>

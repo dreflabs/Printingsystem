@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     );
 
   const user = await prisma.user.findFirst({
-    where: { id: userId, tenant_id: kiosk.tenantId, active: true },
+    where: { id: userId, tenant_id: kiosk.tenantId, active: true, attendance_eligible: true },
     select: { id: true, name: true, kiosk_pin_hash: true },
   });
   if (!user || !user.kiosk_pin_hash)

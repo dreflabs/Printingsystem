@@ -124,11 +124,12 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
 
 // ─── Step 1: Pelanggan & order ───────────────────────────────────────────────
 function Step1({
-  form, onChange, customers,
+  form, onChange, customers, role,
 }: {
   form: OrderForm;
   onChange: (k: keyof OrderForm, v: string | number) => void;
   customers: CustomerRow[];
+  role: string;
 }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -182,12 +183,12 @@ function Step1({
               {suggestions.map((c) => (
                 <div
                   key={c.id}
-                  className="px-4 py-2 hover:bg-background cursor-pointer flex justify-between items-center border-b border-border last:border-0"
+                  className="px-4 py-2 hover:bg-elevated cursor-pointer flex justify-between items-center border-b border-border last:border-0"
                   onClick={() => selectCustomer(c)}
                 >
                   <div>
                     <div className="text-sm font-medium text-primary">{c.name}</div>
-                    <div className="text-xs text-muted">{c.phone || "No HP tidak ada"}</div>
+                    {role !== "designer_sales" && <div className="text-xs text-muted">{c.phone || "No HP tidak ada"}</div>}
                   </div>
                   {c.type !== "Umum" && (
                     <span className="text-[10px] bg-accent-teal/20 text-accent-teal px-2 py-0.5 rounded-full">{c.type}</span>
@@ -201,10 +202,11 @@ function Step1({
           )}
         </div>
         <Input
-          label="Nomor HP"
-          placeholder="08xx-xxxx-xxxx"
+          label={role === "designer_sales" ? "Kontak pemesan (HP / email) *" : "Nomor HP"}
+          placeholder={role === "designer_sales" ? "Tulis sekali; tidak ditampilkan kembali" : "08xx-xxxx-xxxx"}
           value={form.customerPhone}
           onChange={(e) => onChange("customerPhone", e.target.value)}
+          hint={role === "designer_sales" ? "Kontak disimpan untuk Admin, lalu disembunyikan dari Designer." : undefined}
         />
       </div>
 
@@ -228,7 +230,7 @@ function Step1({
 
 // ─── Step 2: Item pesanan (multi) ────────────────────────────────────────────
 function ItemsStep({
-  form, products, materials, finishings, subtotal,
+  form, products, materials, finishings, subtotal, role,
   updateItem, addItem, removeItem,
 }: {
   form: OrderForm;
@@ -239,8 +241,10 @@ function ItemsStep({
   updateItem: (key: string, patch: Partial<ItemRow>) => void;
   addItem: () => void;
   removeItem: (key: string) => void;
+  role: string;
 }) {
   const [calcFor, setCalcFor] = useState<string | null>(null);
+  const canEditPrice = role !== "designer_sales";
 
   const productGroups = Object.entries(
     products.reduce<Record<string, Opt[]>>((acc, p) => {
@@ -316,13 +320,15 @@ function ItemsStep({
             </div>
           </div>
 
-          <Input
-            label="Harga item (Rp) *"
-            placeholder="mis. 450.000"
-            value={it.price}
-            onChange={(e) => updateItem(it.key, { price: formatRp(e.target.value), priceTouched: true })}
-            leftAddon={<span className="text-xs font-semibold">Rp</span>}
-          />
+          {canEditPrice && (
+            <Input
+              label="Harga item (Rp) *"
+              placeholder="mis. 450.000"
+              value={it.price}
+              onChange={(e) => updateItem(it.key, { price: formatRp(e.target.value), priceTouched: true })}
+              leftAddon={<span className="text-xs font-semibold">Rp</span>}
+            />
+          )}
           <DeadlineField
             label="Deadline item (opsional)"
             value={it.deadline}
@@ -341,8 +347,8 @@ function ItemsStep({
       </button>
 
       <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-sm">
-        <span className="text-muted">Subtotal ({form.items.length} item)</span>
-        <span className="font-bold text-primary">Rp {formatRp(String(subtotal))}</span>
+        <span className="text-muted">{canEditPrice ? `Subtotal (${form.items.length} item)` : "Harga"}</span>
+        <span className="font-bold text-primary">{canEditPrice ? `Rp ${formatRp(String(subtotal))}` : "Ditetapkan Admin Kasir"}</span>
       </div>
 
       <datalist id="order-finishing-list">
@@ -378,13 +384,21 @@ function Step3({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
-        <span className="text-sm text-muted">Harga Total Order</span>
-        <span className="text-lg font-black text-primary">Rp {formatRp(String(subtotal))}</span>
-      </div>
-      <p className="text-[11px] text-muted">Dihitung dari harga tiap item. DP minimum disarankan <b>50%</b>{suggestedDp > 0 && <> (Rp {formatRp(String(suggestedDp))})</>}.</p>
+      {role === "designer_sales" ? (
+        <div className="rounded-xl border border-status-yellow/30 bg-status-yellow/10 p-4">
+          <p className="text-status-yellow-text text-xs font-medium">Harga dan DP ditetapkan serta ditagihkan oleh Admin Kasir setelah brief desain selesai.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
+            <span className="text-sm text-muted">Harga Total Order</span>
+            <span className="text-lg font-black text-primary">Rp {formatRp(String(subtotal))}</span>
+          </div>
+          <p className="text-[11px] text-muted">Dihitung dari harga tiap item. DP minimum disarankan <b>50%</b>{suggestedDp > 0 && <> (Rp {formatRp(String(suggestedDp))})</>}.</p>
+        </>
+      )}
 
-      {(form.discountRp > 0 || form.discountPct > 0) && (
+      {role !== "designer_sales" && (form.discountRp > 0 || form.discountPct > 0) && (
         <div className="space-y-2">
           <Input
             label={form.discountPct > 0 ? `Diskon (Rp) — default pelanggan ${form.discountPct}%` : "Diskon (Rp)"}
@@ -540,8 +554,8 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
   }, [discountTouched, form.discountPct, subtotal]);
 
   function canNext() {
-    if (step === 0) return !!(form.customerName && form.orderType && form.deadline);
-    if (step === 1) return form.items.every((it) => it.productId && Number(it.qty) > 0 && parseRp(it.price) >= 0) && subtotal > 0;
+    if (step === 0) return !!(form.customerName && form.orderType && form.deadline && (role !== "designer_sales" || form.customerId || form.customerPhone.trim()));
+    if (step === 1) return form.items.every((it) => it.productId && Number(it.qty) > 0 && (role === "designer_sales" || parseRp(it.price) >= 0)) && (role === "designer_sales" || subtotal > 0);
     return true;
   }
 
@@ -591,7 +605,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
           setError(`Order ${res.data.orderCode} dibuat, tapi pencatatan DP gagal: ${pay.error}`);
           return;
         }
-        window.open(`/print/nota/${res.data.orderId}?noprint`, "_blank", "noopener");
+        window.open(`/print/nota/${encodeURIComponent(res.data.orderCode)}?noprint`, "_blank", "noopener");
       }
 
       onCreated?.(res.data.orderCode);
@@ -615,7 +629,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
             <h2 className="text-lg font-bold text-primary">Order Baru (Printing)</h2>
             <p className="text-xs text-muted">Langkah {step + 1} dari {STEPS.length}</p>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-primary transition-colors cursor-pointer">
+          <button aria-label="Tutup order baru" onClick={onClose} className="text-muted hover:text-primary transition-colors cursor-pointer">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -630,7 +644,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
               {error}
             </div>
           )}
-          {step === 0 && <Step1 form={form} onChange={handleFormChange} customers={customers} />}
+          {step === 0 && <Step1 form={form} onChange={handleFormChange} customers={customers} role={role} />}
           {step === 1 && (
             <ItemsStep
               form={form}
@@ -638,6 +652,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
               materials={materials}
               finishings={finishings}
               subtotal={subtotal}
+              role={role}
               updateItem={updateItem}
               addItem={addItem}
               removeItem={removeItem}
@@ -660,7 +675,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
               Lanjut
             </Button>
           ) : (
-            <Button variant="primary" size="sm" isLoading={isSubmitting} onClick={handleSubmit} disabled={subtotal <= 0}>
+            <Button variant="primary" size="sm" isLoading={isSubmitting} onClick={handleSubmit} disabled={role !== "designer_sales" && subtotal <= 0}>
               Buat Order
             </Button>
           )}

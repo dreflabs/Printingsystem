@@ -13,7 +13,7 @@ model Tenant {
   id                                String    @id @default(uuid())
   slug                              String    @unique // subdomain (e.g. majujayaprint)
   name                              String
-  logo_url                          String?   // URL/path gambar logo toko
+  logo_url                          String? // URL/path gambar logo toko
   plan                              String // STARTER/PRO/ENTERPRISE
   status                            String // TRIAL/ACTIVE/SUSPENDED/CHURNED
   trial_ends_at                     DateTime?
@@ -30,8 +30,8 @@ model Tenant {
   max_users                         Int?
   payroll_late_deduction_per_minute Decimal   @default(0) @db.Decimal(15, 2) // Rp potongan gaji per menit keterlambatan
   workspace_mode                    String    @default("SOLO") // SOLO / TEAM_SMALL / TEAM_FULL — hanya mengatur tampilan navigasi & beranda, BUKAN izin (izin tetap berbasis Role)
-  require_admin_production_release   Boolean   @default(false) // true = order CONFIRMED tidak auto-release; Admin harus menekan "Rilis ke Produksi" dulu
-  require_counter_confirmation       Boolean   @default(false) // true = SCAN 10 (serah terima) hanya boleh setelah SCAN 9 (barang dikonfirmasi di counter); order harus IN_TRANSIT, bukan langsung dari READY_FOR_PICKUP
+  require_admin_production_release  Boolean   @default(false) // true = order CONFIRMED tidak auto-release; Admin harus menekan "Rilis ke Produksi" dulu
+  require_counter_confirmation      Boolean   @default(false) // true = SCAN 10 (serah terima) hanya boleh setelah SCAN 9 (barang dikonfirmasi di counter); order harus IN_TRANSIT, bukan langsung dari READY_FOR_PICKUP
   // Siklus hidup churn → purge (lihat src/lib/tenant-lifecycle.ts)
   churned_at                        DateTime? // saat status jadi CHURNED
   retired_slug                      String? // slug asli sebelum diarsip; slug aktif di-rename saat churn agar namanya bebas dipakai pendaftar baru
@@ -126,17 +126,17 @@ model Invoice {
 }
 
 model SuperAdmin {
-  id                   String    @id @default(uuid())
-  name                 String
-  email                String    @unique
-  password_hash        String
-  role                 String // SUPER_ADMIN/SUPPORT/FINANCE
-  active               Boolean   @default(true)
-  failed_login_count   Int       @default(0)
-  locked_until         DateTime?
-  last_login_at        DateTime?
+  id                 String    @id @default(uuid())
+  name               String
+  email              String    @unique
+  password_hash      String
+  role               String // SUPER_ADMIN/SUPPORT/FINANCE
+  active             Boolean   @default(true)
+  failed_login_count Int       @default(0)
+  locked_until       DateTime?
+  last_login_at      DateTime?
   // Login Super Admin = email + password saja (MFA/OTP dihapus 2026-09-08).
-  created_at           DateTime  @default(now())
+  created_at         DateTime  @default(now())
 
   tenant_audit_logs   TenantAuditLog[]
   platform_audit_logs PlatformAuditLog[]
@@ -230,6 +230,9 @@ model User {
   role                 Role      @relation(fields: [role_id], references: [id])
   phone                String?
   active               Boolean   @default(true)
+  // true bila user wajib melakukan absensi pada tenant ini. Dipisahkan dari
+  // role agar Owner/Admin dapat merangkap pegawai tanpa membuat role baru.
+  attendance_eligible  Boolean   @default(false)
   last_login_at        DateTime?
   failed_login_count   Int       @default(0)
   locked_until         DateTime?
@@ -321,22 +324,22 @@ model UserMachine {
 // ─── MASTER DATA ──────────────────────────────────────────────────────────────
 
 model Customer {
-  id               String   @id @default(uuid())
-  tenant_id        String
-  tenant           Tenant   @relation(fields: [tenant_id], references: [id])
-  customer_code    String // CST-XXXXX
-  type             String   @default("Umum") // Umum, Makloon, B2B
-  name             String
-  phone            String?
-  email            String?
-  address          String?
-  company          String?
-  notes            String?
+  id                   String   @id @default(uuid())
+  tenant_id            String
+  tenant               Tenant   @relation(fields: [tenant_id], references: [id])
+  customer_code        String // CST-XXXXX
+  type                 String   @default("Umum") // Umum, Makloon, B2B
+  name                 String
+  phone                String?
+  email                String?
+  address              String?
+  company              String?
+  notes                String?
   default_discount_pct Decimal? @db.Decimal(5, 2) // persen diskon standing pelanggan (0–100); mengisi awal Order.discount (Rp) saat order dibuat
-  created_by       String
-  creator          User     @relation(fields: [created_by], references: [id])
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  created_by           String
+  creator              User     @relation(fields: [created_by], references: [id])
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
 
   orders              Order[]
   notification_events NotificationEvent[]
@@ -363,24 +366,24 @@ model Product {
 // ─── MACHINES & MATERIALS ─────────────────────────────────────────────────────
 
 model Machine {
-  id           String   @id @default(uuid())
-  tenant_id    String
-  tenant       Tenant   @relation(fields: [tenant_id], references: [id])
-  machine_code String // M-OUT-01
-  name         String
-  category     String // OUTDOOR/INDOOR/SUBLIMASI/A3/UV/DTF/BENDERA
-  status       String // ACTIVE/MAINTENANCE/INACTIVE
-  notes        String?
+  id                  String   @id @default(uuid())
+  tenant_id           String
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  machine_code        String // M-OUT-01
+  name                String
+  category            String // OUTDOOR/INDOOR/SUBLIMASI/A3/UV/DTF/BENDERA
+  status              String // ACTIVE/MAINTENANCE/INACTIVE
+  notes               String?
   default_operator_id String? // operator default; auto-release memakai dia + pin job (PRODUCTION_ASSIGNED)
   default_operator    User?    @relation("MachineDefaultOperator", fields: [default_operator_id], references: [id])
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
 
   materials            MachineMaterial[]
-  material_movements    MaterialMovement[]
-  production_jobs       ProductionJob[]
-  default_for_products  Product[]         @relation("ProductDefaultMachine")
-  user_machines         UserMachine[]
+  material_movements   MaterialMovement[]
+  production_jobs      ProductionJob[]
+  default_for_products Product[]          @relation("ProductDefaultMachine")
+  user_machines        UserMachine[]
 
   @@unique([tenant_id, machine_code])
 }
@@ -584,7 +587,8 @@ model DesignJob {
   designer_id     String?
   designer        User?    @relation(fields: [designer_id], references: [id])
   status          String
-  current_version Int      @default(1)
+  // Ringkasan versi global; deret versi aktual dimulai dari 1 per item/slot.
+  current_version Int      @default(0)
   approval_method String // WALK_IN/MAKLOON/WHATSAPP
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
@@ -609,12 +613,12 @@ model DesignVersion {
   content_type     String? // MIME
   preview_path     String?
   uploaded_by      String
-  uploader         User      @relation("UploadedBy", fields: [uploaded_by], references: [id])
-  uploaded_at      DateTime  @default(now())
+  uploader         User       @relation("UploadedBy", fields: [uploaded_by], references: [id])
+  uploaded_at      DateTime   @default(now())
   approval_status  String // PENDING/APPROVED/REJECTED
   approved_at      DateTime?
   approved_by      String?
-  approver         User?     @relation("ApprovedBy", fields: [approved_by], references: [id])
+  approver         User?      @relation("ApprovedBy", fields: [approved_by], references: [id])
   approval_method  String?
   approval_notes   String?
   rejection_reason String?
@@ -925,46 +929,49 @@ model AttendanceImport {
 }
 
 model AttendanceRecord {
-  id                 String            @id @default(uuid())
-  tenant_id          String
-  tenant             Tenant            @relation(fields: [tenant_id], references: [id])
-  import_id          String? // null = baris dibuat dari tombol istirahat Print Pilot, belum ada import fingerprint
-  import             AttendanceImport? @relation(fields: [import_id], references: [id])
-  user_id            String?
-  user               User?             @relation(fields: [user_id], references: [id])
-  employee_name      String
-  date               DateTime
-  check_in           DateTime?
-  check_out          DateTime?
-  check_in_status    String // ON_TIME/LATE/UNKNOWN
-  late_minutes       Int               @default(0)
-  break_start        DateTime?
-  break_end          DateTime?
-  break_duration_min Int               @default(0)
-  break_status       String? // NORMAL/EXCEEDED
-  warning_sent_at    DateTime?
-  owner_note         String?
+  id                   String            @id @default(uuid())
+  tenant_id            String
+  tenant               Tenant            @relation(fields: [tenant_id], references: [id])
+  import_id            String? // null = baris dibuat dari tombol istirahat Print Pilot, belum ada import fingerprint
+  import               AttendanceImport? @relation(fields: [import_id], references: [id])
+  user_id              String?
+  user                 User?             @relation(fields: [user_id], references: [id])
+  employee_name        String
+  // Hari kerja menurut timezone tenant, disimpan terpisah dari timestamp punch.
+  attendance_day       DateTime          @default(dbgenerated("CURRENT_DATE")) @db.Date
+  date                 DateTime
+  check_in             DateTime?
+  check_out            DateTime?
+  check_in_status      String // ON_TIME/LATE/UNKNOWN
+  late_minutes         Int               @default(0)
+  break_start          DateTime?
+  break_end            DateTime?
+  break_duration_min   Int               @default(0)
+  break_status         String? // NORMAL/EXCEEDED
+  warning_sent_at      DateTime?
+  owner_note           String?
   // Absen in-app (lihat 02-WORKFLOW/18-ABSENSI-IN-APP.md)
-  source              String   @default("MANUAL") // IN_APP | KIOSK | FINGERPRINT_IMPORT | MANUAL
-  check_in_method     String? // IN_APP | KIOSK | FINGERPRINT_IMPORT | MANUAL (per-punch)
-  check_out_method    String?
-  check_out_status    String? // ON_TIME | EARLY | AUTO_CLOSED
-  check_in_lat        Float?
-  check_in_lng        Float?
-  check_in_accuracy_m Float?
-  check_out_lat       Float?
-  check_out_lng       Float?
+  source               String            @default("MANUAL") // IN_APP | KIOSK | FINGERPRINT_IMPORT | MANUAL
+  check_in_method      String? // IN_APP | KIOSK | FINGERPRINT_IMPORT | MANUAL (per-punch)
+  check_out_method     String?
+  check_out_status     String? // ON_TIME | EARLY | AUTO_CLOSED
+  check_in_lat         Float?
+  check_in_lng         Float?
+  check_in_accuracy_m  Float?
+  check_out_lat        Float?
+  check_out_lng        Float?
   check_out_accuracy_m Float?
-  check_in_ip         String?
-  check_out_ip        String?
-  geo_flag            Boolean  @default(false) // ada punch di luar geofence
-  ip_flag             Boolean  @default(false) // ada punch di luar IP kantor
-  off_day             Boolean  @default(false) // absen di luar hari kerja
-  device_label        String? // ringkas User-Agent / nama kiosk
-  created_at         DateTime          @default(now())
+  check_in_ip          String?
+  check_out_ip         String?
+  geo_flag             Boolean           @default(false) // ada punch di luar geofence
+  ip_flag              Boolean           @default(false) // ada punch di luar IP kantor
+  off_day              Boolean           @default(false) // absen di luar hari kerja
+  device_label         String? // ringkas User-Agent / nama kiosk
+  created_at           DateTime          @default(now())
 
   selfies AttendanceSelfie[]
 
+  @@unique([tenant_id, user_id, attendance_day])
   @@index([tenant_id, date])
   @@index([user_id, date])
 }

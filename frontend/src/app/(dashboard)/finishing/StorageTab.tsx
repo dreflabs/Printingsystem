@@ -159,7 +159,7 @@ export function StorageTab() {
 
       {/* Panel manajemen lokasi rak */}
       {managing && canManage && (
-        <div className="bg-card/70 backdrop-blur-xl border border-accent-teal/30 rounded-2xl p-6 space-y-5">
+        <div className="bg-card border border-accent-teal/30 rounded-2xl p-6 space-y-5 shadow-card">
           <h2 className="text-base font-bold text-primary flex items-center gap-2">
             <Settings2 className="h-5 w-5 text-accent-teal" /> Kelola Lokasi Rak
           </h2>
@@ -316,13 +316,13 @@ export function StorageTab() {
           placeholder="Cari job/order di gudang (min. 3 karakter)..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full h-14 bg-card/70 backdrop-blur-xl border border-border rounded-2xl pl-12 pr-4 text-primary outline-none focus:border-accent-teal transition-all shadow-[0_4px_24px_rgba(0,0,0,0.4)]"
+          className="w-full h-14 bg-card border border-border rounded-2xl pl-12 pr-4 text-primary outline-none focus:border-accent-teal transition-all shadow-card"
         />
       </div>
 
       {/* Search Results */}
       {searchQuery.trim().length >= 3 && (
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
+        <div className="bg-card border border-border rounded-2xl shadow-card overflow-hidden">
           <div className="p-4 border-b border-border bg-elevated/50">
             <h3 className="text-sm font-bold text-primary">Hasil Pencarian ({searchResults.length})</h3>
           </div>
@@ -358,13 +358,13 @@ export function StorageTab() {
       )}
 
       {/* Storage Map */}
-      <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] p-6">
+      <div className="bg-card border border-border rounded-2xl shadow-card p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <Map className="h-5 w-5 text-accent-teal" />
             <h2 className="text-base font-bold text-primary">Peta Ketersediaan Rak</h2>
           </div>
-          <button onClick={loadLocs} className="p-2 text-muted hover:text-primary transition-colors rounded-lg hover:bg-elevated">
+          <button aria-label="Muat ulang lokasi penyimpanan" onClick={loadLocs} className="p-2 text-muted hover:text-primary transition-colors rounded-lg hover:bg-elevated">
             <ArrowRight className="h-4 w-4" />
           </button>
         </div>
@@ -463,6 +463,7 @@ function LocRow({
           />
           {dirty && (
             <button
+              aria-label={`Simpan kapasitas ${loc.name}`}
               onClick={() => onPatch(loc.id, { capacityMax: Number(cap) })}
               disabled={busy}
               className="p-1.5 rounded-md bg-accent-teal/15 text-accent-teal hover:bg-accent-teal/25 disabled:opacity-40"

@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
+  Clock3,
   ShoppingCart,
   Factory,
   Tag,
@@ -40,8 +41,11 @@ export const GROUPED_NAV: NavEntry[] = [
   { type: "link", label: "Dashboard", href: "/owner", icon: LayoutDashboard, roles: ["owner"] },
   { type: "link", label: "Dashboard", href: "/admin", icon: LayoutDashboard, roles: ["admin"] },
   { type: "link", label: "Dashboard Desainer", href: "/designer", icon: Palette, roles: ["designer_sales"] },
+  { type: "link", label: "Absensi Saya", href: "/designer#absensi", icon: Clock3, roles: ["designer_sales"] },
   { type: "link", label: "Dashboard Operator", href: "/operator", icon: Factory, roles: ["operator"] },
+  { type: "link", label: "Absensi Saya", href: "/operator#absensi", icon: Clock3, roles: ["operator"] },
   { type: "link", label: "Finishing & QC", href: "/finishing", icon: Package, roles: ["gudang"] },
+  { type: "link", label: "Absensi Saya", href: "/finishing#absensi", icon: Clock3, roles: ["gudang"] },
 
   {
     type: "group",

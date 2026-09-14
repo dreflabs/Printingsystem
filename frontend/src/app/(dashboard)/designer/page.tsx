@@ -99,9 +99,15 @@ function DesignRowActions({
   const owned = r.isOwnedByMe;
   const done = r.status === "APPROVED";
   const hasAnyDesign = r.items.some((i) => !!i.design);
-  const canUpload = owned && !done;
-  const canAcc = owned && !done && r.method !== "ONLINE" && r.items.some((i) => i.design && i.design.status !== "APPROVED");
-  const canRevisi = owned && hasAnyDesign && !done;
+  const hasUnfilledOrRejectedSlot = r.items.some((i) => !i.design || i.design.status === "REJECTED");
+  // Setelah upload, versi PENDING menunggu ACC. Upload berikutnya hanya boleh
+  // untuk slot yang masih kosong atau sudah REJECTED (hasil request revisi).
+  const canUpload = owned && !done && hasUnfilledOrRejectedSlot;
+  // File gabungan seluruh order juga dihitung sebagai kandidat approval melalui
+  // latestVersionStatus, karena mapping item dapat berasal dari order_item_id null.
+  const hasApprovalCandidate = r.latestVersionStatus === "PENDING" || r.items.some((i) => i.design?.status === "PENDING");
+  const canAcc = owned && !done && r.method !== "ONLINE" && hasApprovalCandidate;
+  const canRevisi = owned && hasAnyDesign;
 
   const primaryCls = "px-2.5 py-1 rounded-lg text-xs font-bold transition-all disabled:opacity-40";
   const ghost = "px-2.5 py-1 rounded-lg bg-elevated text-muted text-xs font-bold hover:text-primary transition-all inline-flex items-center gap-1";
@@ -160,7 +166,7 @@ function DesignRowActions({
             {r.items.length > 1 ? "Upload / ganti per item" : "Upload versi baru"}
           </DropdownMenuItem>
         )}
-        {(canRevisi || done) && (
+        {canRevisi && (
           <>
             <DropdownMenuDivider />
             <DropdownMenuItem icon={<RefreshCw className="h-4 w-4" />} onSelect={onRevisi} disabled={busy || !hasAnyDesign}>
@@ -208,6 +214,7 @@ function UploadModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
         fileName: file.name,
         contentType: file.type || null,
         size: file.size,
+        orderItemId: itemId || null,
       });
       if (!prep.success) throw new Error(prep.error);
 
@@ -235,13 +242,13 @@ function UploadModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
-      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-4">
+      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-modal space-y-4">
         <div className="flex justify-between items-center border-b border-border pb-3">
           <div>
             <h3 className="text-base font-bold text-primary">Upload Versi Desain</h3>
-            <p className="text-xs text-muted font-mono">{row.orderCode} · versi berikutnya: V{row.currentVersion + 1}</p>
+            <p className="text-xs text-muted font-mono">{row.orderCode} · nomor versi ditentukan otomatis per item</p>
           </div>
-          <button onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated disabled:opacity-40"><X className="h-5 w-5" /></button>
+          <button aria-label="Tutup modal" onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated disabled:opacity-40"><X className="h-5 w-5" /></button>
         </div>
 
         {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
@@ -327,13 +334,13 @@ function ReasonModal({ title, label, orderCode, onClose, onSubmit }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-4">
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal space-y-4">
         <div className="flex justify-between items-center border-b border-border pb-3">
           <div>
             <h3 className="text-base font-bold text-primary">{title}</h3>
             <p className="text-xs text-muted font-mono">{orderCode}</p>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
+          <button aria-label="Tutup pratinjau" onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
         </div>
         <div>
           <label className="text-xs text-muted font-medium mb-1 block">{label}</label>
@@ -343,6 +350,41 @@ function ReasonModal({ title, label, orderCode, onClose, onSubmit }: {
         <button disabled={busy || !reason.trim()} onClick={async () => { setBusy(true); await onSubmit(reason.trim()); setBusy(false); }}
           className="w-full h-10 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40">
           {busy ? "Memproses…" : "Kirim"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ApprovalModal({ row, onClose, onSubmit }: { row: Row; onClose: () => void; onSubmit: (notes: string) => Promise<void> }) {
+  const [approverName, setApproverName] = useState(row.customerName);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal space-y-4">
+        <div className="flex justify-between items-center border-b border-border pb-3">
+          <div>
+            <h3 className="text-base font-bold text-primary">Konfirmasi ACC Walk-in</h3>
+            <p className="text-xs text-muted font-mono">{row.orderCode}</p>
+          </div>
+          <button aria-label="Tutup konfirmasi ACC" onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated disabled:opacity-40"><X className="h-5 w-5" /></button>
+        </div>
+        <div>
+          <label className="text-xs text-muted font-medium mb-1 block">Nama konsumen yang menyetujui *</label>
+          <input value={approverName} onChange={(e) => setApproverName(e.target.value)} disabled={busy}
+            className="w-full h-10 rounded-xl bg-elevated border border-border text-xs text-primary px-3 outline-none focus:border-accent-teal" />
+        </div>
+        <div>
+          <label className="text-xs text-muted font-medium mb-1 block">Catatan persetujuan *</label>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} autoFocus
+            placeholder="Misal: konsumen menyetujui V1 di counter pada 14:30"
+            className="w-full min-h-[80px] rounded-xl bg-elevated border border-border text-xs text-primary p-3 outline-none focus:border-accent-teal resize-none" />
+        </div>
+        <button disabled={busy || !approverName.trim() || !note.trim()} onClick={async () => { setBusy(true); await onSubmit(`Konsumen: ${approverName.trim()}. ${note.trim()}`); setBusy(false); }}
+          className="w-full h-10 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40">
+          {busy ? "Memproses…" : "Simpan ACC"}
         </button>
       </div>
     </div>
@@ -364,7 +406,7 @@ function DesignDetailModal({ row, onClose }: { row: Row; onClose: () => void }) 
               {row.customerName} · jatuh tempo {fmtDeadline(row.deadline)}
             </p>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated">
+          <button aria-label="Tutup detail desain" onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -433,6 +475,7 @@ export default function DesignerDashboardPage() {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [uploadFor, setUploadFor] = useState<Row | null>(null);
   const [revisionFor, setRevisionFor] = useState<Row | null>(null);
+  const [approvalFor, setApprovalFor] = useState<Row | null>(null);
   const [detailFor, setDetailFor] = useState<Row | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
@@ -477,6 +520,17 @@ export default function DesignerDashboardPage() {
       <NewOrderModal open={showOrderModal} onClose={() => setShowOrderModal(false)} onCreated={() => load()} />
       {uploadFor && <UploadModal row={uploadFor} onClose={() => setUploadFor(null)} onDone={() => { setUploadFor(null); load(); }} />}
       {detailFor && <DesignDetailModal row={detailFor} onClose={() => setDetailFor(null)} />}
+      {approvalFor && (
+        <ApprovalModal
+          row={approvalFor}
+          onClose={() => setApprovalFor(null)}
+          onSubmit={async (notes) => {
+            const oid = approvalFor.orderId;
+            setApprovalFor(null);
+            await run(() => approveDesign(oid, { notes }));
+          }}
+        />
+      )}
       {revisionFor && (
         <ReasonModal
           title="Minta Revisi Desain"
@@ -510,24 +564,24 @@ export default function DesignerDashboardPage() {
 
       {error && <ErrorState message={error} onRetry={load} />}
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {KPI.map((k) => (
           <button
             key={k.label}
             onClick={() => setFilterStatus(filterStatus === k.filter ? null : k.filter)}
             className={cn(
-              "text-left bg-card/70 backdrop-blur-xl border rounded-2xl p-4 shadow-sm transition-all",
+              "text-left bg-card border rounded-2xl p-4 shadow-card transition-all",
               filterStatus === k.filter ? "border-accent-teal ring-2 ring-accent-teal/20" : "border-border hover:border-accent-teal/50"
             )}
           >
             <div className={cn("inline-flex p-2 rounded-xl mb-3", k.bg)}><k.icon className={cn("h-5 w-5", k.color)} /></div>
-            <p className={cn("text-4xl font-bold", k.color)}>{k.value}</p>
+            <p className={cn("text-3xl sm:text-4xl font-bold", k.color)}>{k.value}</p>
             <p className="text-xs text-muted mt-1 font-medium">{k.label}</p>
           </button>
         ))}
       </div>
 
-      <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-sm overflow-hidden space-y-4 p-5">
+      <div className="bg-card border border-border rounded-2xl shadow-card overflow-hidden space-y-4 p-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Palette className="h-5 w-5 text-accent-teal" />
@@ -537,6 +591,7 @@ export default function DesignerDashboardPage() {
           <div className="relative md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted pointer-events-none" />
             <input
+              aria-label="Cari kode atau konsumen"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cari kode / konsumen..."
@@ -568,7 +623,7 @@ export default function DesignerDashboardPage() {
 
               <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                 <StatusPill status={r.status} />
-                <span className="text-[10px] font-mono text-muted">V{r.currentVersion}</span>
+                <span className="text-[10px] font-mono text-muted">{r.latestVersionId ? `V${r.currentVersion}` : "Belum ada versi"}</span>
                 {r.items.length > 1 && (
                   <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold",
                     r.pendingCount === 0 ? "bg-status-green/15 text-status-green" : "bg-status-yellow/15 text-status-yellow-text")}>
@@ -597,7 +652,7 @@ export default function DesignerDashboardPage() {
                   onUpload={() => setUploadFor(r)}
                   onRevisi={() => setRevisionFor(r)}
                   onTake={() => run(() => takeDesignJob(r.orderId))}
-                  onAcc={() => run(() => approveDesign(r.orderId, {}))}
+                  onAcc={() => setApprovalFor(r)}
                 />
               </div>
             </div>
@@ -663,7 +718,7 @@ export default function DesignerDashboardPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <StatusPill status={r.status} />
-                      <span className="text-[10px] font-mono text-muted">V{r.currentVersion}</span>
+                      <span className="text-[10px] font-mono text-muted">{r.latestVersionId ? `V${r.currentVersion}` : "Belum ada versi"}</span>
                       {r.items.length > 1 && (
                         <span className={cn(
                           "px-1.5 py-0.5 rounded text-[10px] font-bold",
@@ -700,7 +755,7 @@ export default function DesignerDashboardPage() {
                       onUpload={() => setUploadFor(r)}
                       onRevisi={() => setRevisionFor(r)}
                       onTake={() => run(() => takeDesignJob(r.orderId))}
-                      onAcc={() => run(() => approveDesign(r.orderId, {}))}
+                      onAcc={() => setApprovalFor(r)}
                     />
                   </td>
                 </tr>

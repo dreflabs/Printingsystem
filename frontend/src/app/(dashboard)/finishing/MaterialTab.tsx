@@ -200,7 +200,7 @@ export function MaterialTab() {
         <p className="text-sm text-muted">Pemantauan stok bahan baku dan penyesuaian manual (opname).</p>
         <button 
           onClick={() => setShowModal(true)}
-          className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white rounded-lg text-sm font-bold shadow-lg shadow-accent-teal/20 hover:brightness-110 transition-all"
+          className="flex items-center gap-1.5 px-4 py-2 bg-accent-teal text-white rounded-lg text-sm font-bold shadow-sm hover:brightness-110 transition-all"
         >
           <Plus className="h-4 w-4" /> Tambah Material
         </button>
@@ -210,7 +210,7 @@ export function MaterialTab() {
 
       {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
 
-      <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col">
+      <div className="bg-card border border-border rounded-2xl shadow-card overflow-hidden flex flex-col">
         <div className="p-4 border-b border-border bg-elevated/30 flex items-center gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
@@ -222,7 +222,7 @@ export function MaterialTab() {
               className="w-full h-10 bg-card border border-border rounded-xl pl-10 pr-4 text-sm text-primary outline-none focus:border-accent-teal transition-all"
             />
           </div>
-          <button onClick={loadData} className="p-2 text-muted hover:text-primary transition-colors rounded-lg border border-border bg-card">
+          <button aria-label="Muat ulang material" onClick={loadData} className="p-2 text-muted hover:text-primary transition-colors rounded-lg border border-border bg-card">
             <ArrowRight className="h-4 w-4" />
           </button>
         </div>

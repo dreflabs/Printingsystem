@@ -129,7 +129,8 @@ async function main() {
         email: u.email,
         name: u.name,
         password_hash: defaultPassword,
-        role_id: getRoleId(u.role)
+        role_id: getRoleId(u.role),
+        attendance_eligible: ["owner", "designer_sales", "operator", "gudang"].includes(u.role),
       }
     })
   }

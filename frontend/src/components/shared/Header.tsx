@@ -45,7 +45,7 @@ export function Header({ userId, userName, role, onMenuClick, className }: Heade
     <header
       className={cn(
         "sticky top-0 z-20 flex items-center justify-between h-16 px-4 lg:px-6",
-        "bg-card/80 backdrop-blur-xl border-b border-border shadow-sm",
+        "bg-card border-b border-border shadow-card",
         className
       )}
     >

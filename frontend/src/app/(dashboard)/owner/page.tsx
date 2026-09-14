@@ -48,7 +48,7 @@ function ApprovalModal({
             <h3 className="text-base font-bold text-primary">{title}</h3>
             <p className="text-xs text-muted mt-1">{description}</p>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
+          <button aria-label="Tutup modal" onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"><X className="h-5 w-5" /></button>
         </div>
         <div className="bg-elevated rounded-xl p-4 space-y-2 border border-border">
           {details.map((d) => (

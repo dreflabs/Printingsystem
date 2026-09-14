@@ -98,7 +98,7 @@ export function LoginForm() {
       </div>
 
       {/* Form Card */}
-      <div className="bg-card/70 backdrop-blur-2xl border border-border rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+      <div className="bg-card border border-border rounded-3xl p-6 shadow-card relative overflow-hidden">
         <div className="relative">
           <h2 className="text-lg font-bold text-primary mb-4">Masuk ke Akun Anda</h2>
 

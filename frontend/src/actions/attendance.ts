@@ -9,12 +9,7 @@ import { parseCsv } from "@/lib/csv";
 import { sendWhatsApp } from "@/lib/wa";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
-
-// Batas jam masuk 09:15 WIB (ABSENSI-FINGERPRINT.md). Lewat ini = TERLAMBAT.
-const LATE_H = 9;
-const LATE_M = 15;
-const LATE_MIN_OF_DAY = LATE_H * 60 + LATE_M;
-const BREAK_MAX_MIN = 60;
+import { hhmmToMinutes } from "@/lib/attendance";
 
 const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
 
@@ -152,6 +147,9 @@ export async function commitAttendanceImport(input: {
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengimpor absensi.");
+    const attendanceSet = await prisma.tenantAttendanceSetting.upsert({
+      where: { tenant_id: tenant.id }, update: {}, create: { tenant_id: tenant.id },
+    });
 
     const { mapping: map, format } = input;
     if (map.name == null || map.date == null) return fail("Kolom Nama dan Tanggal wajib dipetakan.");
@@ -238,9 +236,10 @@ export async function commitAttendanceImport(input: {
       let lateMin = 0;
       if (d.checkIn) {
         const mod = d.checkIn.getHours() * 60 + d.checkIn.getMinutes();
-        if (mod > LATE_MIN_OF_DAY) {
+        const lateThreshold = hhmmToMinutes(attendanceSet.late_after) ?? 9 * 60 + 15;
+        if (mod > lateThreshold) {
           status = "LATE";
-          lateMin = mod - LATE_MIN_OF_DAY;
+          lateMin = mod - lateThreshold;
           lateCount++;
           lateEntries.push({
             name: d.name,
@@ -255,6 +254,7 @@ export async function commitAttendanceImport(input: {
         tenant_id: tenant.id,
         user_id: userId,
         employee_name: d.name,
+        attendance_day: new Date(d.day.getFullYear(), d.day.getMonth(), d.day.getDate()),
         date: d.day,
         check_in: d.checkIn,
         check_out: d.checkOut,
@@ -469,6 +469,9 @@ export async function getAttendanceReport(params?: { from?: string; to?: string;
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat laporan absensi.");
+    const attendanceSet = await prisma.tenantAttendanceSetting.upsert({
+      where: { tenant_id: tenant.id }, update: {}, create: { tenant_id: tenant.id },
+    });
 
     const where: Record<string, unknown> = { tenant_id: tenant.id };
     if (params?.importId) where.import_id = params.importId;
@@ -545,8 +548,8 @@ export async function getAttendanceReport(params?: { from?: string; to?: string;
       .sort((a, b) => b.lateDays - a.lateDays || a.name.localeCompare(b.name));
 
     return ok({
-      lateThreshold: `${String(LATE_H).padStart(2, "0")}:${String(LATE_M).padStart(2, "0")}`,
-      breakMaxMin: BREAK_MAX_MIN,
+      lateThreshold: attendanceSet.late_after,
+      breakMaxMin: attendanceSet.break_max_min,
       records: records.map((r) => ({
         recordId: r.id,
         userId: r.user_id,

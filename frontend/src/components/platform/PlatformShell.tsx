@@ -90,7 +90,7 @@ export function PlatformShell({
       <aside
         className={cn(
           "fixed top-0 left-0 z-40 h-full w-60 flex flex-col",
-          "bg-card/95 border-r border-border backdrop-blur-xl",
+          "bg-card border-r border-border shadow-card",
           "transition-transform duration-300 ease-in-out",
           open ? "translate-x-0" : "-translate-x-full",
           "lg:relative lg:translate-x-0 lg:flex",

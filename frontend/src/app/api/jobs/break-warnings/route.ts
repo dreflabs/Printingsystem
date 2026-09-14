@@ -8,15 +8,12 @@ export const dynamic = "force-dynamic";
  * POST/GET /api/jobs/break-warnings
  *
  * Pantau istirahat berjalan (ABSENSI-FINGERPRINT.md):
- *  - menit ke-45: WA ke pegawai — "Istirahat Anda berakhir dalam 15 menit."
- *  - lewat 60 menit & belum "Selesai Istirahat": status EXCEEDED + WA ke Owner.
+ *  - 15 menit sebelum batas tenant: WA ke pegawai.
+ *  - lewat batas tenant & belum "Selesai Istirahat": status EXCEEDED + WA ke Owner.
  * Dijalankan tiap beberapa menit oleh cron.
  *
  * Auth: header `Authorization: Bearer <JOBS_SECRET>`.
  */
-
-const WARN_AT_MIN = 45;
-const MAX_MIN = 60;
 
 function hhmm(d: Date): string {
   return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -25,9 +22,11 @@ function hhmm(d: Date): string {
 async function handle(): Promise<Response> {
   return runJob("break-warnings", async () => {
     const now = Date.now();
+    const settings = await prisma.tenantAttendanceSetting.findMany();
+    const byTenant = new Map(settings.map((s) => [s.tenant_id, s]));
 
     const active = await prisma.attendanceRecord.findMany({
-      where: { break_start: { not: null }, break_end: null },
+      where: { break_start: { not: null }, break_end: null, user: { attendance_eligible: true } },
       include: { user: { select: { name: true, phone: true } } },
     });
 
@@ -38,13 +37,15 @@ async function handle(): Promise<Response> {
     for (const rec of active) {
       if (!rec.break_start) continue;
       const elapsedMin = Math.floor((now - rec.break_start.getTime()) / 60000);
+      const maxMin = byTenant.get(rec.tenant_id)?.break_max_min ?? 60;
+      const warnAtMin = Math.max(1, maxMin - 15);
       const name = rec.user?.name ?? rec.employee_name;
 
-      if (elapsedMin >= WARN_AT_MIN && !rec.warning_sent_at) {
+      if (elapsedMin >= warnAtMin && !rec.warning_sent_at) {
         if (rec.user?.phone) {
           await sendWhatsApp({
             to: rec.user.phone,
-            body: "Istirahat Anda berakhir dalam 15 menit. Silakan kembali ke tempat kerja.",
+            body: `Istirahat Anda berakhir dalam 15 menit (batas ${maxMin} menit). Silakan kembali ke tempat kerja.`,
           });
         }
         await prisma.attendanceRecord.update({
@@ -54,7 +55,7 @@ async function handle(): Promise<Response> {
         warn45++;
       }
 
-      if (elapsedMin >= MAX_MIN && rec.break_status !== "EXCEEDED") {
+      if (elapsedMin >= maxMin && rec.break_status !== "EXCEEDED") {
         await prisma.attendanceRecord.update({
           where: { id: rec.id },
           data: { break_status: "EXCEEDED" },
@@ -62,7 +63,7 @@ async function handle(): Promise<Response> {
         if (rec.user?.phone) {
           await sendWhatsApp({
             to: rec.user.phone,
-            body: "Istirahat Anda sudah melebihi batas 1 jam. Segera kembali.",
+            body: `Istirahat Anda sudah melebihi batas ${maxMin} menit. Segera kembali.`,
           });
         }
         const list = exceededByTenant.get(rec.tenant_id) ?? [];
@@ -83,7 +84,7 @@ async function handle(): Promise<Response> {
           if (!o.phone) continue;
           await sendWhatsApp({
             to: o.phone,
-            body: `${e.name} sudah istirahat lebih dari 60 menit sejak ${e.since}.`,
+            body: `${e.name} sudah istirahat lebih dari ${byTenant.get(tenantId)?.break_max_min ?? 60} menit sejak ${e.since}.`,
           });
         }
       }

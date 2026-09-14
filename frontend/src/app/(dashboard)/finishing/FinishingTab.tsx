@@ -89,7 +89,7 @@ export function FinishingTab() {
 
       <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
         {kpi.map((k) => (
-          <div key={k.label} className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
+          <div key={k.label} className="bg-card border border-border rounded-2xl p-4 shadow-card">
             <div className={cn("inline-flex p-2 rounded-xl mb-3", k.bg)}>
               <k.icon className={cn("h-5 w-5", k.color)} />
             </div>
@@ -139,7 +139,7 @@ export function FinishingTab() {
           )}
         </div>
       ) : (
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-8 text-center">
+        <div className="bg-card border border-border rounded-2xl p-8 text-center shadow-card">
           <p className="text-muted">Tidak ada job finishing aktif saat ini.</p>
         </div>
       )}
@@ -152,7 +152,7 @@ export function FinishingTab() {
       </a>
 
       {storageReady.length > 0 && (
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
+        <div className="bg-card border border-border rounded-2xl shadow-card overflow-hidden">
           <div className="flex items-center gap-2 p-5 border-b border-border">
             <CheckCircle2 className="h-5 w-5 text-status-green" />
             <h2 className="text-base font-semibold text-primary">Siap Simpan ke Rak</h2>
@@ -186,7 +186,7 @@ export function FinishingTab() {
         </div>
       )}
 
-      <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
+      <div className="bg-card border border-border rounded-2xl shadow-card overflow-hidden">
         <div className="flex items-center gap-2 p-5 border-b border-border">
           <Wrench className="h-5 w-5 text-status-yellow-text" />
           <h2 className="text-base font-semibold text-primary">Antrian Finishing</h2>

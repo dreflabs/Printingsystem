@@ -124,7 +124,7 @@ export default function ShopIdentityPage() {
         <p className="text-sm text-muted mt-0.5">Dipakai di kepala nota / bukti transaksi yang dicetak.</p>
       </div>
 
-      <section className="rounded-2xl border border-border bg-card/70 p-4 space-y-4">
+      <section className="rounded-2xl border border-border bg-card p-4 space-y-4 shadow-card">
         <h2 className="text-sm font-bold text-primary flex items-center gap-2">
           <Store className="h-4 w-4 text-accent-teal" /> Data Toko
         </h2>
@@ -174,7 +174,7 @@ export default function ShopIdentityPage() {
         </p>
       </section>
 
-      <section className="rounded-2xl border border-border bg-card/70 p-4 space-y-3">
+      <section className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-card">
         <h2 className="text-sm font-bold text-primary flex items-center gap-2">
           <Factory className="h-4 w-4 text-accent-teal" /> Kebijakan Produksi &amp; Serah Terima
         </h2>

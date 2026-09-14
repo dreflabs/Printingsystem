@@ -25,7 +25,7 @@ function ReceiptModal({ open, transactionData, onClose }: { open: boolean, trans
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] flex flex-col items-center">
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal flex flex-col items-center">
         <div className="h-16 w-16 bg-status-green/20 rounded-full flex items-center justify-center mb-4">
           <CheckCircle2 className="h-8 w-8 text-status-green" />
         </div>
@@ -114,7 +114,7 @@ function PosPaymentModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.5)] space-y-5 max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-modal space-y-5 max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-bold text-primary">Pembayaran POS Kasir</h3>
 
         {/* Total Summary */}
@@ -427,7 +427,7 @@ export default function PosPage() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-2rem)] bg-base gap-4 pb-4">
+    <div className="flex flex-col min-h-[calc(100vh-2rem)] bg-base gap-4 pb-4">
       
       {/* TABS */}
       <div className="flex gap-2 p-1 bg-card border border-border rounded-xl w-fit max-w-full shadow-sm shrink-0 overflow-x-auto no-scrollbar">
@@ -438,7 +438,7 @@ export default function PosPage() {
         ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id as "KASIR" | "HISTORY" | "STOCK")}
             className={cn("px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 cursor-pointer transition-all",
               activeTab === tab.id ? "bg-accent-teal text-white shadow-md" : "text-muted hover:text-primary hover:bg-elevated"
             )}
@@ -540,7 +540,7 @@ export default function PosPage() {
                 value={voidReason}
                 onChange={(e) => setVoidReason(e.target.value)}
                 placeholder="Ketikan alasan minimal 5 karakter..."
-                className="w-full rounded-xl bg-background border border-border p-3 text-sm outline-none focus:border-status-red"
+                className="w-full rounded-xl bg-elevated border border-border p-3 text-sm outline-none focus:border-status-red"
                 rows={3}
               />
             </div>
@@ -578,19 +578,20 @@ export default function PosPage() {
       )}
 
       {activeTab === "KASIR" && (
-        <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
+        <div className="flex-1 flex flex-col lg:flex-row overflow-visible lg:overflow-hidden rounded-2xl border border-border bg-base shadow-lg">
           {/* LEFT PANEL - PRODUCTS */}
-          <div className="flex-none lg:flex-1 h-[60vh] lg:h-auto flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-border">
+            <div className="flex-none lg:flex-1 min-h-[28rem] lg:min-h-0 flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-border">
         {/* Top Bar */}
         <div className="p-4 border-b border-border bg-card flex gap-4 items-center shrink-0">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
             <input
               type="text"
+              aria-label="Cari produk"
               placeholder="Cari produk (F3)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-background border border-border rounded-xl outline-none focus:border-status-yellow focus:ring-1 focus:ring-status-yellow transition-all"
+              className="w-full pl-10 pr-4 py-2.5 bg-elevated border border-border rounded-xl outline-none focus:border-status-yellow focus:ring-1 focus:ring-status-yellow transition-all"
             />
           </div>
           <button 
@@ -621,7 +622,7 @@ export default function PosPage() {
         </div>
 
         {/* Product List */}
-        <div className="flex-1 overflow-y-auto p-4 bg-background">
+        <div className="flex-1 overflow-y-auto p-4 bg-elevated/40">
           <div className="flex flex-col gap-3">
             {filteredProducts.map(product => (
               <PosProductCard 
@@ -641,7 +642,7 @@ export default function PosPage() {
       </div>
 
       {/* RIGHT PANEL - CART */}
-      <div className="w-full lg:w-[380px] flex-none shrink-0 flex flex-col bg-card shadow-[0_-4px_24px_rgba(0,0,0,0.05)] lg:shadow-[-4px_0_24px_rgba(0,0,0,0.02)] z-10 min-h-[50vh] lg:min-h-0">
+      <div className="w-full lg:w-[380px] flex-none shrink-0 flex flex-col bg-card shadow-card z-10 min-h-[50vh] lg:min-h-0">
         {/* Customer Info */}
         <div className="p-4 border-b border-border shrink-0">
           <div className="flex items-center justify-between mb-3">
@@ -660,9 +661,10 @@ export default function PosPage() {
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
             <select
+              aria-label="Pilih pelanggan"
               value={selectedCustomerId}
               onChange={(e) => setSelectedCustomerId(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg outline-none focus:border-status-yellow text-sm appearance-none cursor-pointer"
+              className="w-full pl-9 pr-4 py-2 bg-elevated border border-border rounded-lg outline-none focus:border-status-yellow text-sm appearance-none cursor-pointer"
             >
               <option value="">Pelanggan Umum</option>
               {customers.map(c => (
@@ -675,7 +677,7 @@ export default function PosPage() {
         </div>
 
         {/* Cart Items */}
-        <div className="flex-1 overflow-y-auto bg-background/50">
+        <div className="flex-1 overflow-y-auto bg-elevated/30">
           {cart.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted p-8 text-center">
               <div className="h-24 w-24 rounded-full bg-elevated flex items-center justify-center mb-4 border border-dashed border-border">
@@ -700,7 +702,7 @@ export default function PosPage() {
         </div>
 
         {/* Summary & Checkout */}
-        <div className="p-4 border-t border-border bg-card shrink-0 shadow-[0_-4px_24px_rgba(0,0,0,0.02)]">
+        <div className="p-4 border-t border-border bg-card shrink-0 shadow-card">
           <div className="space-y-2 mb-4 text-sm">
             <div className="flex justify-between text-muted">
               <span>Subtotal</span>
@@ -732,7 +734,7 @@ export default function PosPage() {
         <div className="flex-1 bg-card border border-border rounded-2xl p-6 shadow-lg overflow-y-auto">
           <h2 className="text-xl font-bold text-primary mb-4 flex items-center gap-2"><ClipboardList className="h-5 w-5 text-accent-teal"/> Riwayat Transaksi Retail</h2>
           <div className="bg-elevated rounded-xl border border-border overflow-x-auto">
-             <div className="grid grid-cols-6 min-w-[700px] text-xs font-bold text-muted p-4 border-b border-border bg-background">
+             <div className="grid grid-cols-6 min-w-[700px] text-xs font-bold text-muted p-4 border-b border-border bg-elevated">
                <div>WAKTU</div>
                <div>NO. REF</div>
                <div>PELANGGAN</div>

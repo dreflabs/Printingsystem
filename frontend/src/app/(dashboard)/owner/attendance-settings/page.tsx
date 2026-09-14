@@ -103,7 +103,7 @@ export default function AttendanceSettingsPage() {
       </div>
 
       {/* Jam kerja */}
-      <section className="rounded-2xl border border-border bg-card/70 p-4 space-y-4">
+      <section className="rounded-2xl border border-border bg-card p-4 space-y-4 shadow-card">
         <h2 className="text-sm font-bold text-primary flex items-center gap-2"><Clock className="h-4 w-4 text-accent-teal" /> Jam Kerja</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <label className="space-y-1 text-xs font-semibold text-muted">Jam masuk
@@ -150,7 +150,7 @@ export default function AttendanceSettingsPage() {
       </section>
 
       {/* Lokasi */}
-      <section className="rounded-2xl border border-border bg-card/70 p-4 space-y-4">
+      <section className="rounded-2xl border border-border bg-card p-4 space-y-4 shadow-card">
         <h2 className="text-sm font-bold text-primary flex items-center gap-2"><MapPin className="h-4 w-4 text-accent-teal" /> Lokasi Kantor (Geofence)</h2>
         <ModeRow label="Mode geofence" value={s.geofenceMode} onChange={(v) => set("geofenceMode", v)} />
         {s.geofenceMode !== "OFF" && (
@@ -181,7 +181,7 @@ export default function AttendanceSettingsPage() {
       </section>
 
       {/* IP kantor */}
-      <section className="rounded-2xl border border-border bg-card/70 p-4 space-y-4">
+      <section className="rounded-2xl border border-border bg-card p-4 space-y-4 shadow-card">
         <h2 className="text-sm font-bold text-primary flex items-center gap-2"><Shield className="h-4 w-4 text-accent-teal" /> Jaringan Kantor (IP)</h2>
         <ModeRow label="Mode IP" value={s.ipMode} onChange={(v) => set("ipMode", v)} />
         {s.ipMode !== "OFF" && (
@@ -192,7 +192,7 @@ export default function AttendanceSettingsPage() {
       </section>
 
       {/* Selfie & jalur */}
-      <section className="rounded-2xl border border-border bg-card/70 p-4 space-y-3">
+      <section className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-card">
         <h2 className="text-sm font-bold text-primary flex items-center gap-2"><Camera className="h-4 w-4 text-accent-teal" /> Selfie &amp; Jalur Absen</h2>
         <Check label="Wajib selfie tiap absen" checked={s.selfieRequired} onChange={(v) => set("selfieRequired", v)} />
         <Check label="Izinkan absen dari HP pribadi pegawai" checked={s.personalDeviceEnabled} onChange={(v) => set("personalDeviceEnabled", v)} />
@@ -272,7 +272,7 @@ function KioskPanel() {
   };
 
   return (
-    <section className="rounded-2xl border border-border bg-card/70 p-4 space-y-4">
+    <section className="rounded-2xl border border-border bg-card p-4 space-y-4 shadow-card">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-primary flex items-center gap-2"><Tablet className="h-4 w-4 text-accent-teal" /> Perangkat Kiosk</h2>
         <a href="/kiosk" target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-accent-teal hover:underline">

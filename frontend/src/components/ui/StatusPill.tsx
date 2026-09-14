@@ -89,7 +89,7 @@ export function StatusPill({ status, className }: StatusPillProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all backdrop-blur-md",
+        "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] leading-4 font-semibold border transition-all",
         config.color,
         className
       )}

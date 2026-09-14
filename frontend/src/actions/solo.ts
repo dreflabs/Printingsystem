@@ -36,15 +36,15 @@ function stepFor(status: string, balance: number, jobCount: number): Step | null
       // belum punya Mesin Default). Harus dirilis manual dari detail order.
       return jobCount === 0
         ? { label: "Rilis ke produksi — pilih mesin di detail order", hint: "Dashboard → detail order → Assign ke Produksi", href: "/admin" }
-        : { label: "Mulai produksi (SCAN 1)", hint: "Scan QR job atau menu Mesin Produksi", href: "/scan" };
+        : { label: "Mulai produksi", hint: "Pindai QR job atau buka menu Mesin Produksi", href: "/scan" };
     case "PRODUCTION_ASSIGNED":
     case "PRODUCTION_QUEUED":
-      return { label: "Mulai produksi (SCAN 1)", hint: "Scan QR job atau menu Mesin Produksi", href: "/scan" };
+      return { label: "Mulai produksi", hint: "Pindai QR job atau buka menu Mesin Produksi", href: "/scan" };
     case "PRODUCTION_STARTED":
-      return { label: "Selesai produksi — isi qty & bahan (SCAN 2)", hint: "Menu Mesin Produksi", href: "/operator" };
+      return { label: "Selesaikan produksi — isi qty & bahan", hint: "Menu Mesin Produksi", href: "/operator" };
     case "PRODUCTION_COMPLETE":
     case "QC_PENDING":
-      return { label: "QC hasil cetak (SCAN 3)", hint: "Gudang & Finishing → tab QC", href: "/finishing" };
+      return { label: "Pemeriksaan kualitas hasil cetak", hint: "Gudang & Finishing → tab QC", href: "/finishing" };
     case "QC_PASSED":
       return { label: "Mulai finishing (SCAN 4)", hint: "Gudang & Finishing → tab Finishing", href: "/finishing" };
     case "FINISHING_STARTED":

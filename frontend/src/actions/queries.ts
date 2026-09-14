@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { can } from "@/lib/permissions";
 import { DEADLINE_SETTLED } from "@/lib/order-status";
 import { checkProductionReadiness, coveredDesignItemIds, type ReadinessItem } from "@/lib/production-readiness";
 import { safeError } from "@/lib/safe-error";
@@ -40,6 +41,11 @@ export async function getOperatorJobs() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    // Queue produksi adalah data khusus Operator. Admin/Owner memakai query
+    // dashboard produksi yang berbeda; jangan mengandalkan guard halaman saja.
+    if (!can(actor, "production.execute")) {
+      return fail("Hanya Operator yang boleh melihat antrian produksi.");
+    }
 
     const userMachines = await prisma.userMachine.findMany({
       where: { tenant_id: tenant.id, user_id: actor.id },
@@ -74,7 +80,7 @@ export async function getOperatorJobs() {
               versions: {
                 where: { approval_status: "APPROVED", NOT: { file_path: null } },
                 orderBy: { version_no: "desc" },
-                select: { id: true, order_item_id: true, file_name: true, file_path: true },
+                select: { id: true, order_item_id: true, file_name: true, file_path: true, approval_notes: true },
               },
             },
           },
@@ -127,6 +133,13 @@ export async function getOperatorJobs() {
 
     const shape = (j: (typeof mineRows)[number]) => {
       const allVers = j.order.design_jobs.flatMap((d) => d.versions);
+      // Hanya versi approved terbaru per slot yang boleh tampil ke Operator.
+      // Slot null = layout seluruh order; id = desain khusus item.
+      const latestApprovedBySlot = new Map<string, (typeof allVers)[number]>();
+      for (const v of allVers) {
+        const key = v.order_item_id ?? "__order__";
+        if (!latestApprovedBySlot.has(key)) latestApprovedBySlot.set(key, v);
+      }
       // Item yang relevan ke mesin job ini; fallback ke semua item non-retail.
       const forMachine = j.order.items.filter((it) => it.product?.default_machine_id === j.machine_id);
       const relevant = forMachine.length ? forMachine : j.order.items;
@@ -140,8 +153,8 @@ export async function getOperatorJobs() {
       // File cetak: versi APPROVED milik item relevan + versi berlingkup seluruh order.
       const relevantIds = new Set(relevant.map((it) => it.id));
       const seenVer = new Set<string>();
-      const files: { label: string; url: string; name: string | null }[] = [];
-      for (const v of allVers) {
+      const files: { label: string; url: string; name: string | null; notes: string | null }[] = [];
+      for (const v of latestApprovedBySlot.values()) {
         if (v.order_item_id != null && !relevantIds.has(v.order_item_id)) continue;
         if (seenVer.has(v.id)) continue;
         seenVer.add(v.id);
@@ -150,6 +163,7 @@ export async function getOperatorJobs() {
           label: it ? it.product?.name ?? it.description?.trim() ?? "Item" : "Seluruh order",
           url: `/api/design/${v.id}`,
           name: v.file_name ?? null,
+          notes: v.approval_notes ?? null,
         });
       }
       return {
@@ -270,6 +284,9 @@ export async function getDesignQueue() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    if (!can(actor, "design.upload") && !can(actor, "design.approve_walkin")) {
+      return fail("Anda tidak memiliki akses ke antrian desain.");
+    }
 
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -317,10 +334,12 @@ export async function getDesignQueue() {
           if (!latestBySlot.has(k)) latestBySlot.set(k, v); // versions sudah desc
         }
         const orderSlot = latestBySlot.get("__order__") ?? null;
-        const wholeOrderApproved = !!orderSlot && orderSlot.approval_status === "APPROVED" && !!(orderSlot.file_path || orderSlot.file_name);
         const designItems = d.order.items.map((it) => {
           const v = latestBySlot.get(it.id) ?? null;
-          const eff = v ?? (wholeOrderApproved ? orderSlot : null);
+          // File dengan order_item_id null berlaku untuk seluruh order, baik
+          // masih PENDING maupun sudah APPROVED. Status PENDING harus tetap
+          // diteruskan ke UI agar tombol ACC dapat muncul.
+          const eff = v ?? orderSlot;
           return {
             itemId: it.id,
             product: it.product?.name ?? it.description ?? "Item",
@@ -335,7 +354,7 @@ export async function getDesignQueue() {
                   fileName: eff.file_name ?? null,
                   fileUrl: eff.file_path ? `/api/design/${eff.id}` : null,
                   rejectionReason: eff.rejection_reason ?? null,
-                  wholeOrder: !v && wholeOrderApproved,
+                  wholeOrder: !v && !!orderSlot,
                 }
               : null,
           };
@@ -475,10 +494,10 @@ export async function getOwnerDashboard() {
       }),
       prisma.productionJob.findMany({ where: { ...T, status: { in: IN_PROGRESS } }, select: { status: true } }),
       prisma.attendanceRecord.findMany({
-        where: { ...T, date: { gte: startOfDay } },
+        where: { ...T, attendance_day: { gte: startOfDay }, user: { attendance_eligible: true } },
         select: { check_in_status: true, user_id: true, employee_name: true, check_in: true, break_status: true, break_end: true },
       }),
-      prisma.user.count({ where: { ...T, active: true } }),
+      prisma.user.count({ where: { ...T, active: true, attendance_eligible: true } }),
     ]);
 
     const yesterdayStart = new Date(startOfDay.getTime() - 24 * 3600 * 1000);
@@ -589,7 +608,11 @@ export async function getProductionOverview() {
       }),
       prisma.machine.findMany({ where: T, orderBy: { name: "asc" } }),
       prisma.material.findMany({ where: { ...T, active: true }, select: { id: true, name: true, current_stock: true, min_stock: true, unit_stock: true } }),
-      prisma.user.findMany({ where: { ...T, active: true, ...OPERATOR_ROLE }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      prisma.user.findMany({
+        where: { ...T, active: true, ...OPERATOR_ROLE },
+        select: { id: true, name: true, user_machines: { select: { machine_id: true } } },
+        orderBy: { name: "asc" },
+      }),
       // Order CONFIRMED yang gagal auto-release (data kurang) atau tertahan gatekeeper.
       prisma.order.findMany({
         where: { ...T, status: "CONFIRMED", auto_release_blocked: { not: null } },
@@ -680,6 +703,31 @@ export async function getProductionOverview() {
       parentJobId: j.parent_job_id,
     }));
 
+    // Queue tanpa Operator harus terlihat jelas oleh Admin agar tidak menjadi
+    // job yang "hilang" ketika belum ada UserMachine grant.
+    const eligibleMachineIds = new Set(operators.flatMap((o) => o.user_machines.map((um) => um.machine_id)));
+    const unassignedJobs = shaped
+      // Queue tanpa Operator = tidak ada Operator aktif yang memiliki grant
+      // mesin. Queue normal yang masih menunggu claim tidak menjadi alarm.
+      .filter((j) => j.status === "PRODUCTION_QUEUED" && j.operatorId == null && !eligibleMachineIds.has(j.machineId))
+      .sort((a, b) => {
+        const deadlineA = a.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY;
+        const deadlineB = b.deadline ? new Date(b.deadline).getTime() : Number.POSITIVE_INFINITY;
+        return (deadlineA - deadlineB) || a.orderCode.localeCompare(b.orderCode);
+      });
+
+    const loadByMachine = new Map<string, { active: number; queued: number; assigned: number; plannedQty: number }>();
+    for (const j of shaped) {
+      const load = loadByMachine.get(j.machineId) ?? { active: 0, queued: 0, assigned: 0, plannedQty: 0 };
+      if (["PRODUCTION_STARTED", "PRODUCTION_PAUSED"].includes(j.status)) load.active++;
+      if (j.status === "PRODUCTION_QUEUED") load.queued++;
+      if (j.status === "PRODUCTION_ASSIGNED") load.assigned++;
+      if (["PRODUCTION_QUEUED", "PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"].includes(j.status)) {
+        load.plannedQty += j.plannedQty;
+      }
+      loadByMachine.set(j.machineId, load);
+    }
+
     return ok({
       kpi: {
         queued: shaped.filter((j) => j.status === "PRODUCTION_QUEUED").length,
@@ -694,12 +742,14 @@ export async function getProductionOverview() {
       machines: machines.map((m) => ({
         id: m.id, code: m.machine_code, name: m.name, category: m.category, status: m.status,
         activeJob: activeByMachine.get(m.id) ?? null,
+        load: loadByMachine.get(m.id) ?? { active: 0, queued: 0, assigned: 0, plannedQty: 0 },
       })),
       jobs: shaped,
+      unassignedJobs,
       stuckOrders,
       reassignOptions: {
         machines: machines.filter((m) => m.status === "ACTIVE").map((m) => ({ id: m.id, name: m.name })),
-        operators,
+        operators: operators.map(({ id, name }) => ({ id, name })),
       },
       lowStock: materials
         .filter((m) => Number(m.current_stock) <= Number(m.min_stock))
@@ -1038,4 +1088,3 @@ export async function getOrderReceipt(codeOrId: string) {
     return fail(safeError(e, "Gagal memuat data nota."));
   }
 }
-

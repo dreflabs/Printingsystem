@@ -44,10 +44,10 @@ transaksi caller tepat setelah order jadi `CONFIRMED`:
    `CONFIRMED`, kembalikan `missing`.
 3. Cek semua mesin default ber-status `ACTIVE`. Kalau ada yang MAINTENANCE/INACTIVE
    → tidak auto-release (Admin yang arahkan).
-4. Buat 1 `ProductionJob` per item:
+4. Buat 1 `ProductionJob` per mesin (item dengan mesin default yang sama digabung):
    - `machine_id` = `product.default_machine_id`
-   - `operator_id` = **null** (operator klaim sendiri)
-   - `status` = `PRODUCTION_QUEUED`
+   - `operator_id` = default Operator aktif mesin, atau **null** bila belum ada
+   - `status` = `PRODUCTION_ASSIGNED` bila di-pin, atau `PRODUCTION_QUEUED` bila menunggu claim
 5. `order.status` → `PRODUCTION_ASSIGNED` (semantik order-level "masuk pipeline
    produksi" tidak berubah).
 6. Audit log: `action = ORDER_AUTO_RELEASED`, `actor = <pemicu>` (Admin yang catat
@@ -59,7 +59,7 @@ transaksi caller tepat setelah order jadi `CONFIRMED`:
 
 - Operator Dashboard menampilkan **antrian klaim**: job `PRODUCTION_QUEUED` yang
   `operator_id`-nya masih null (diurut prioritas → deadline → waktu buat).
-- **SCAN 1** (`startProduction`): kalau job `PRODUCTION_QUEUED` tanpa operator →
+- **Ambil & Mulai Produksi** (kode internal **SCAN 1**, `startProduction`): kalau job `PRODUCTION_QUEUED` tanpa operator →
   operator yang scan otomatis jadi `operator_id`-nya, status → `PRODUCTION_STARTED`.
 - Operator **boleh punya beberapa job aktif sekaligus** — tidak ada batas jumlah
   job `PRODUCTION_STARTED`/`PRODUCTION_PAUSED` per operator (lihat `05-PRODUCTION.md`

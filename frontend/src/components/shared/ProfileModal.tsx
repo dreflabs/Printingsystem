@@ -158,6 +158,7 @@ export function ProfileModal({
         <div className="flex items-center justify-between p-5 border-b border-border bg-elevated/50">
           <h2 className="text-lg font-bold text-primary">Pengaturan Akun</h2>
           <button 
+            aria-label="Tutup pengaturan akun"
             onClick={onClose}
             className="p-1.5 rounded-full hover:bg-base text-muted transition-colors cursor-pointer"
           >

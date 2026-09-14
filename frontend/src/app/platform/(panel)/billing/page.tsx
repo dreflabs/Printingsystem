@@ -299,7 +299,7 @@ function Shell({ title, onClose, children }: { title: string; onClose: () => voi
       <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal space-y-3">
         <div className="flex justify-between items-center">
           <h3 className="text-base font-bold text-primary">{title}</h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
+          <button aria-label="Tutup detail penagihan" onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
         </div>
         {children}
       </div>

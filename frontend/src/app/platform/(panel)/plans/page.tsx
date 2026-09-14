@@ -148,7 +148,7 @@ function PlanModal({ plan, onClose, onDone }: { plan: Plan | null; onClose: () =
       <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-modal space-y-3 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center">
           <h3 className="text-base font-bold text-primary">{plan ? "Ubah Paket" : "Paket Baru"}</h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
+          <button aria-label="Tutup detail paket" onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
         </div>
         {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
 

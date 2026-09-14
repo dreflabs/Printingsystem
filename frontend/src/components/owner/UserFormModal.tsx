@@ -96,7 +96,7 @@ export function UserFormModal({ onClose, onSave, isLoading, workspaceSlug }: Use
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-border bg-elevated/50">
           <h2 className="text-lg font-bold text-primary">Tambah Pegawai Baru</h2>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-base text-muted transition-colors">
+          <button aria-label="Tutup formulir pegawai" onClick={onClose} className="p-1.5 rounded-full hover:bg-base text-muted transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>

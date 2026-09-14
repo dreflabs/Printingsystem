@@ -12,8 +12,6 @@ import {
   type AttendanceToday,
 } from "@/actions/clock";
 
-const BREAK_MAX_MIN = 60;
-
 function hhmm(d: Date | string | null): string {
   if (!d) return "—";
   const x = typeof d === "string" ? new Date(d) : d;
@@ -194,7 +192,7 @@ export function AbsenCard() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-border bg-card/70 p-4 flex items-center gap-2 text-sm text-muted">
+      <div id="absensi" className="rounded-2xl border border-border bg-card/70 p-4 flex items-center gap-2 text-sm text-muted">
         <Loader2 className="h-4 w-4 animate-spin" /> Memuat absensi…
       </div>
     );
@@ -204,7 +202,7 @@ export function AbsenCard() {
   // Toko kiosk-only: kartu ini jadi baca-saja (semua aksi lewat perangkat kiosk).
   if (!data.settings.personalDeviceEnabled) {
     return (
-      <div className="rounded-2xl border border-border bg-card/70 p-4 text-sm">
+      <div id="absensi" className="rounded-2xl border border-border bg-card/70 p-4 text-sm">
         <p className="font-bold text-primary flex items-center gap-2"><Clock className="h-4 w-4 text-accent-teal" /> Absensi Hari Ini</p>
         <div className="mt-2 space-y-1 text-muted">
           <p>Masuk: <span className="font-semibold text-primary">{hhmm(data.checkIn)}</span>
@@ -220,10 +218,10 @@ export function AbsenCard() {
   const breakElapsed = data.break.breakStart
     ? Math.floor((now - new Date(data.break.breakStart).getTime()) / 60000)
     : 0;
-  const breakRemaining = Math.max(0, BREAK_MAX_MIN - breakElapsed);
+  const breakRemaining = Math.max(0, data.settings.breakMaxMin - breakElapsed);
 
   return (
-    <div className="rounded-2xl border border-border bg-card/70 backdrop-blur-xl shadow-sm overflow-hidden">
+    <div id="absensi" className="rounded-2xl border border-border bg-card shadow-card overflow-hidden scroll-mt-24">
       <div className="px-4 py-3 border-b border-border bg-elevated/40 flex items-center gap-2">
         <Clock className="h-4 w-4 text-accent-teal" />
         <span className="text-sm font-bold text-primary">Absensi Hari Ini</span>
@@ -272,7 +270,7 @@ export function AbsenCard() {
                   <div className="rounded-xl border border-status-yellow/30 bg-status-yellow/10 p-3 space-y-2">
                     <p className="text-xs text-status-yellow-text font-semibold flex items-center gap-1.5">
                       <Coffee className="h-3.5 w-3.5" /> Istirahat berjalan — {breakElapsed} menit
-                      {breakRemaining > 0 ? ` · sisa ${breakRemaining} menit` : " · sudah lewat 1 jam"}
+                      {breakRemaining > 0 ? ` · sisa ${breakRemaining} menit` : ` · sudah lewat ${data.settings.breakMaxMin} menit`}
                     </p>
                     <button
                       onClick={() => handleBreak("end")}
@@ -324,7 +322,7 @@ export function AbsenCard() {
               <span className="text-sm font-bold text-primary flex items-center gap-2">
                 <Camera className="h-4 w-4" /> Selfie {camFor === "IN" ? "Absen Masuk" : "Absen Pulang"}
               </span>
-              <button onClick={stopCam} className="p-1 rounded-full hover:bg-elevated text-muted">
+              <button aria-label="Tutup kamera absensi" onClick={stopCam} className="p-1 rounded-full hover:bg-elevated text-muted">
                 <X className="h-4 w-4" />
               </button>
             </div>

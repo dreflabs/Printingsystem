@@ -23,8 +23,8 @@ type ScanCtx = {
   plannedQty: number;
   actualQty: number;
   isAssignedOperator: boolean;
-  paidAmount: number;
-  balance: number;
+  paidAmount: number | null;
+  balance: number | null;
   fileUrl: string | null;
   fileName: string | null;
   files: { label: string; url: string; name: string | null }[];
@@ -195,7 +195,7 @@ export default function ScanPage() {
       </div>
 
       {state !== "found" && (
-        <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-card">
           {mode === "keyboard" ? (
             <div className="space-y-4">
               <div className="text-center">
@@ -211,7 +211,7 @@ export default function ScanPage() {
                 )}
                 {state === "scanning" && <p className="text-sm text-accent-teal font-semibold">Memproses...</p>}
                 {state === "error" && (
-                  <div className="flex items-center justify-center gap-2 text-status-red">
+                  <div role="alert" aria-live="assertive" className="flex items-center justify-center gap-2 text-status-red">
                     <AlertCircle className="h-4 w-4" />
                     <p className="text-sm font-semibold">{errorMsg || "Kode tidak dikenali."}</p>
                   </div>
@@ -222,6 +222,7 @@ export default function ScanPage() {
                 <p className="text-xs text-muted mb-2 text-center">Atau ketik manual:</p>
                 <div className="flex gap-2">
                   <input
+                    aria-label="Ketik kode job atau order"
                     value={scanInput}
                     onChange={(e) => setScanInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") runScan(scanInput); }}
@@ -250,12 +251,12 @@ export default function ScanPage() {
 
       {state === "found" && ctx && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3 bg-status-green/10 border border-status-green/30 rounded-2xl px-4 py-3">
+          <div role="status" aria-live="polite" className="flex items-center gap-3 bg-status-green/10 border border-status-green/30 rounded-2xl px-4 py-3">
             <CheckCircle2 className="h-5 w-5 text-status-green shrink-0" />
             <p className="text-sm font-semibold text-status-green">Job ditemukan</p>
           </div>
 
-          <div className="bg-card/70 backdrop-blur-xl border border-border rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden">
+          <div className="bg-card border border-border rounded-2xl shadow-card overflow-hidden">
             <div className="bg-gradient-to-r from-accent-teal/10 to-accent-teal/5 border-b border-border p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -280,6 +281,7 @@ export default function ScanPage() {
               ))}
             </div>
 
+            {ctx.paidAmount !== null && ctx.balance !== null && (
             <div className="mx-5 mb-5 bg-elevated rounded-xl p-4 flex justify-between items-center">
               <div>
                 <p className="text-xs text-muted flex items-center gap-1"><CreditCard className="h-3 w-3" /> Dibayar</p>
@@ -292,6 +294,7 @@ export default function ScanPage() {
                 </p>
               </div>
             </div>
+            )}
 
             {ctx.files.length > 0 && (
               <div className="mx-5 mb-5 space-y-2">
@@ -367,11 +370,11 @@ function ActionForm({
 }) {
   const [f, setF] = useState<Record<string, string>>({ actualQty: String(ctx.plannedQty || "") });
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
-  const field = "w-full h-10 rounded-lg bg-background border border-border text-primary text-sm px-3 outline-none focus:border-accent-teal";
+  const field = "w-full h-10 rounded-lg bg-elevated border border-border text-primary text-sm px-3 outline-none focus:border-accent-teal";
   const submitBtn = "w-full h-10 rounded-lg bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-50";
 
   const wrap = (children: React.ReactNode, payload: () => Record<string, unknown>, canSubmit = true) => (
-    <div className="mt-2 space-y-2 rounded-xl border border-border bg-background/50 p-3">
+    <div className="mt-2 space-y-2 rounded-xl border border-border bg-elevated/50 p-3">
       {children}
       <button disabled={busy || !canSubmit} onClick={() => onSubmit(payload())} className={submitBtn}>Kirim</button>
     </div>
@@ -457,7 +460,7 @@ function ActionForm({
     return wrap(
       <>
         {ctx.items.length > 0 && (
-          <div className="rounded-lg border border-border bg-background p-2 text-xs">
+          <div className="rounded-lg border border-border bg-elevated p-2 text-xs">
             <p className="font-semibold text-primary mb-1">Cek jumlah barang:</p>
             {ctx.items.map((it, i) => (
               <div key={i} className="flex justify-between text-muted">
@@ -472,12 +475,12 @@ function ActionForm({
           Jumlah &amp; kondisi barang sudah dicek, sesuai
         </label>
         <input className={field} placeholder="Nama penerima" value={f.receiverName ?? ""} onChange={(e) => set("receiverName", e.target.value)} />
-        {ctx.balance > 0 && (
+        {ctx.balance !== null && ctx.balance > 0 && (
           <input className={field} placeholder="Alasan override Owner (sisa tagihan belum lunas)" value={f.ownerOverrideReason ?? ""} onChange={(e) => set("ownerOverrideReason", e.target.value)} />
         )}
       </>,
       () => ({ receiverName: f.receiverName, ownerOverrideReason: f.ownerOverrideReason }),
-      !!f.receiverName?.trim() && f.qtyChecked === "1" && (ctx.balance <= 0 || !!f.ownerOverrideReason?.trim()),
+      !!f.receiverName?.trim() && f.qtyChecked === "1" && (ctx.balance === null || ctx.balance <= 0 || !!f.ownerOverrideReason?.trim()),
     );
 
   return null;

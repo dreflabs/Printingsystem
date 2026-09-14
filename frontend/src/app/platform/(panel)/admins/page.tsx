@@ -194,7 +194,7 @@ function CreateModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
       <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal space-y-3">
         <div className="flex justify-between items-center">
           <h3 className="text-base font-bold text-primary">Tambah Super Admin</h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary">
+          <button aria-label="Tutup modal admin" onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -254,7 +254,7 @@ function PasswordModal({ admin, onClose }: { admin: Admin; onClose: () => void }
       <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal space-y-3">
         <div className="flex justify-between items-center">
           <h3 className="text-base font-bold text-primary">Reset kata sandi</h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary">
+          <button aria-label="Tutup modal admin" onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary">
             <X className="h-5 w-5" />
           </button>
         </div>

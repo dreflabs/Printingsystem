@@ -67,6 +67,18 @@ Perubahan pengaturan **di-audit-log** (`ATTENDANCE_SETTING_UPDATED`, old→new).
 Tidak mengubah baris absensi yang sudah ada (status dihitung saat absen terjadi,
 disimpan, tidak dihitung ulang).
 
+### 2a. Eligibility pegawai (policy baru)
+
+Role dan kewajiban absensi adalah dua hal berbeda. Kolom `User.attendance_eligible`
+menentukan apakah akun wajib melakukan absen pribadi dan boleh dipilih pada kiosk.
+Default backfill untuk role operasional (Designer, Operator, Gudang) dan Owner
+adalah aktif; Admin dapat diaktifkan Owner bila juga bekerja sebagai pegawai/kasir.
+User nonaktif atau akun layanan harus non-eligible. Guard ini ditegakkan di server
+untuk HP, kiosk, istirahat, KPI, dan laporan; tombol UI bukan kontrol keamanan.
+
+Role gabungan menggunakan satu nilai eligibility yang sama. Super Admin yang sedang
+impersonate tidak boleh membuat punch yang tampak sebagai kehadiran Owner tenant.
+
 ---
 
 ## 3. Perubahan Schema
@@ -94,6 +106,10 @@ device_label          String?  // ringkas User-Agent / nama kiosk
 
 `check_in` / `check_out` / `check_in_status` / `late_minutes` / `break_*` /
 `owner_note` / `import_id` — **tidak berubah**. `import_id` tetap nullable.
+
+`attendance_day` menyimpan tanggal kerja menurut timezone tenant dan menjadi kunci
+unik bersama `tenant_id + user_id`. Timestamp `date` tetap dipertahankan untuk
+kompatibilitas laporan dan jejak historis.
 
 ### `AttendanceSelfie` — tabel baru (thumbnail di DB, bukan object storage)
 
@@ -166,7 +182,9 @@ Langkah:
 6. Geofence: `geofence_mode=ENFORCE` & jarak(haversine) > `radius + accuracyM` → tolak ("Anda di luar area kantor"); `FLAG` → set `geo_flag`.
 7. Selfie: `selfie_required` & tidak ada → tolak. Simpan → `AttendanceSelfie(kind=CHECK_IN)` setelah record dibuat.
 8. Hitung status: `now > late_after` → `check_in_status=LATE`, `late_minutes = menit(now − late_after)`; else `ON_TIME`. `off_day` jika weekday bukan di `workdays`.
-9. Upsert `AttendanceRecord` (isi baris istirahat hari ini jika sudah dibuat oleh `startBreak`; jika belum, create). `source="IN_APP"`, `check_in_method="IN_APP"`, simpan lat/lng/accuracy/ip/device_label.
+9. Upsert `AttendanceRecord` untuk `attendance_day` yang sama (record sudah pasti
+   memiliki `check_in`; `startBreak` tidak boleh membuat baris tanpa check-in).
+   `source="IN_APP"`, `check_in_method="IN_APP"`, simpan lat/lng/accuracy/ip/device_label.
 10. `logAction("ATTENDANCE_CLOCK_IN", ...)`. `revalidatePath` dashboard pegawai.
 11. Jika `LATE` → antre `NotificationEvent` WA ke Owner ("[Nama] terlambat masuk. Jam masuk: [jam]") — dikirim oleh cron `dispatch-notifications` yang sudah ada.
 
@@ -235,7 +253,7 @@ sesudah `auto_close_at` (mis. `5 0 * * *`).
 
 ## 7. Frontend
 
-### Kartu di dashboard pegawai (Operator / Finishing / Designer)
+### Kartu di dashboard pegawai
 
 Satu komponen `AbsenCard` yang menggabung absen + istirahat:
 
@@ -257,7 +275,11 @@ Satu komponen `AbsenCard` yang menggabung absen + istirahat:
 - Selfie: `getUserMedia({video})` → capture `<canvas>` → downscale ≤320px →
   `toDataURL("image/webp", 0.7)`. Kalau kamera ditolak & `selfie_required` →
   tombol nonaktif + instruksi.
-- Badge peringatan menit ke-45 istirahat (doc lama §37) di kartu yang sama.
+- Badge peringatan 15 menit sebelum `break_max_min` tenant di kartu yang sama.
+
+Mulai istirahat hanya tersedia setelah absen masuk dan sebelum absen pulang.
+Satu record per user per `attendance_day` dijaga oleh unique constraint dan guard
+server.
 - Kartu **tidak** muncul untuk peran yang tak butuh (spec lama §137: designer/
   operator/finishing tetap dapat kartu absen; owner/admin tidak).
 
@@ -361,3 +383,15 @@ bukan menimpa — sesuai kata "lampiran" di doc lama §63. (Perbaikan kecil pada
   (sekarang mode simulasi); daftarkan Scheduled Task `attendance-autoclose`.
 - Shift per pegawai, dan integrasi langsung ke mesin fingerprint (di luar scope —
   import CSV sudah menutupi).
+
+## 13. Perbaikan integritas dan policy (2026-09-15)
+
+- `User.attendance_eligible` memisahkan kewajiban absensi dari role dan dipakai
+  oleh HP, kiosk, KPI, dan pengelolaan pegawai.
+- `attendance_day` menyimpan hari kerja tenant dan memiliki unique guard per user
+  per hari; migrasi berhenti dengan pesan jelas bila ada duplikasi historis yang
+  harus direkonsiliasi lebih dulu.
+- Istirahat wajib didahului check-in, tidak boleh dimulai setelah checkout, dan
+  batasnya membaca `TenantAttendanceSetting.break_max_min`.
+- Warning istirahat, laporan, dan UI menggunakan batas tenant yang sama.
+- Punch saat impersonate diblokir agar tidak terlihat sebagai kehadiran Owner.

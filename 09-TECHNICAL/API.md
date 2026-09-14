@@ -171,8 +171,8 @@ Login gagal 5x berturut-turut → akun terkunci 15 menit (`locked_until`). 3x te
 | `POST /api/production-jobs` | Buat production job dari order yang CONFIRMED | Admin |
 | `POST /api/production-jobs/:id/assign` | Assign/reassign job ke mesin & operator. Maksimal 2x reassign per Job ID dalam 24 jam oleh Admin — percobaan ke-3 otomatis ditolak (403) dan butuh endpoint approval Owner terpisah (lihat `02-WORKFLOW/05-PRODUCTION.md` "Aturan Tegas — Reassignment Berulang") | Admin (maks. 2x/24 jam), Owner (tanpa batas) |
 | `GET /api/production-jobs/:id` | Detail job | Admin, Owner, Operator yang di-assign, Gudang (sesuai tahap) |
-| `POST /api/production-jobs/:id/scan/start` | SCAN 1 — mulai produksi (validasi: operator di-assign & status `PRODUCTION_ASSIGNED`) | Operator (yang di-assign) |
-| `POST /api/production-jobs/:id/scan/complete` | SCAN 2 — selesai produksi, input `actual_qty`, `waste_qty` (+ alasan jika >0) | Operator (yang di-assign) |
+| `POST /api/production-jobs/:id/scan/start` | Ambil & Mulai Produksi (kode internal SCAN 1) — validasi operator dan status job | Operator (yang di-assign / berhak atas mesin) |
+| `POST /api/production-jobs/:id/scan/complete` | Selesaikan Produksi (kode internal SCAN 2) — input `actual_qty`, `waste_qty` (+ alasan jika >0) | Operator (yang di-assign) |
 | `POST /api/production-jobs/:id/pause` | Jeda produksi (validasi status `PRODUCTION_STARTED`), `pause_reason` wajib | Operator (yang di-assign) |
 | `POST /api/production-jobs/:id/resume` | Lanjutkan produksi setelah jeda (validasi status `PRODUCTION_PAUSED`) | Operator (yang di-assign) |
 | `POST /api/production-jobs/:id/rework/report` | Laporkan kebutuhan rework (dari QC FAIL) | Gudang (via qc endpoint), Operator (penjelasan tambahan) |
@@ -198,7 +198,7 @@ Login gagal 5x berturut-turut → akun terkunci 15 menit (`locked_until`). 3x te
 | Endpoint | Deskripsi | Role |
 |----------|-----------|------|
 | `GET /api/qc/queue` | Antrian job berstatus `QC_PENDING` | Gudang, Admin, Owner |
-| `POST /api/production-jobs/:id/qc` | SCAN 3 — submit hasil QC (checklist, PASS/FAIL, foto) | Gudang |
+| `POST /api/production-jobs/:id/qc` | Pemeriksaan Kualitas (kode internal SCAN 3) — submit hasil QC (checklist, PASS/FAIL, foto) | Gudang |
 | `GET /api/qc-records/:id` | Detail record QC | Gudang, Admin, Owner |
 
 Validasi server: FAIL wajib disertai kategori masalah + deskripsi (min 20 karakter). PASS tidak butuh approval tambahan dan langsung memindahkan job ke antrian finishing.
@@ -298,4 +298,3 @@ State machine RETAIL: `NEW_RETAIL_ORDER → RETAIL_PAYMENT_COMPLETED → CLOSED`
 - Semua endpoint yang menerima input numerik (qty, harga, waste) divalidasi terhadap aturan di `09-TECHNICAL/VALIDATION-RULES.md` sebelum menyentuh database.
 - Endpoint scan (`/scan/*`, `/storage/*confirm*`) menerima `job_code` atau `location_code` sebagai identitas — QR hanya membawa identitas, bukan otorisasi (lihat `02-WORKFLOW/13-QR-SCAN-FLOW.md`); server tetap memvalidasi ulang assignment/role/status setiap request.
 - Endpoint list mendukung pagination (`?page=&page_size=`), dan filter spesifik per domain (lihat dokumen workflow terkait untuk daftar filter yang dibutuhkan UI).
-

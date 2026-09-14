@@ -53,9 +53,9 @@ function endOfToday(): Date {
   d.setDate(d.getDate() + 1);
   return d;
 }
-function todayRecord(userId: string) {
+function todayRecord(userId: string, tenantId: string) {
   return prisma.attendanceRecord.findFirst({
-    where: { user_id: userId, date: { gte: startOfToday(), lt: endOfToday() } },
+    where: { tenant_id: tenantId, user_id: userId, attendance_day: { gte: startOfToday(), lt: endOfToday() } },
     orderBy: { created_at: "desc" },
   });
 }
@@ -72,7 +72,7 @@ export interface ClockInResult {
 export async function performClockIn(ctx: PunchContext): Promise<ClockInResult> {
   const { tenantId, user, setting: set, method, ip, deviceLabel, input } = ctx;
 
-  const existing = await todayRecord(user.id);
+  const existing = await todayRecord(user.id, tenantId);
   if (existing?.check_in) throw new PunchError("Anda sudah absen masuk hari ini.");
 
   const now = new Date();
@@ -131,6 +131,7 @@ export async function performClockIn(ctx: PunchContext): Promise<ClockInResult> 
             tenant_id: tenantId,
             user_id: user.id,
             employee_name: user.name,
+            attendance_day: startOfToday(),
             date: startOfToday(),
             ...base,
           },
@@ -161,12 +162,17 @@ export interface ClockOutResult {
 export async function performClockOut(ctx: PunchContext): Promise<ClockOutResult> {
   const { tenantId, user, setting: set, method, ip, input } = ctx;
 
-  const rec = await todayRecord(user.id);
+  const rec = await todayRecord(user.id, tenantId);
   if (!rec || !rec.check_in) throw new PunchError("Anda belum absen masuk hari ini.");
   if (rec.check_out) throw new PunchError("Anda sudah absen pulang hari ini.");
   if (rec.break_start && !rec.break_end) throw new PunchError("Selesaikan istirahat dulu sebelum absen pulang.");
 
   const now = new Date();
+
+  if (set.ip_mode !== "OFF") {
+    const okIp = ipAllowed(ip, set.ip_allowlist);
+    if (!okIp && set.ip_mode === "ENFORCE") throw new PunchError("Absen hanya bisa dari jaringan kantor.");
+  }
 
   const geo = evaluateGeofence(set, input.lat, input.lng, input.accuracyM);
   if (geo.outside && set.geofence_mode === "ENFORCE") {
@@ -182,6 +188,7 @@ export async function performClockOut(ctx: PunchContext): Promise<ClockOutResult
   if (input.selfie && !selfie) throw new PunchError("Foto selfie tidak valid. Ulangi pengambilan foto.");
 
   const status = checkOutInfo(now, set.work_end);
+  const checkoutIpFlag = set.ip_mode !== "OFF" && !ipAllowed(ip, set.ip_allowlist);
 
   await prisma.$transaction(async (tx) => {
     await tx.attendanceRecord.update({
@@ -195,6 +202,7 @@ export async function performClockOut(ctx: PunchContext): Promise<ClockOutResult
         check_out_accuracy_m: input.accuracyM ?? null,
         check_out_ip: ip,
         geo_flag: rec.geo_flag || geo.outside,
+        ip_flag: rec.ip_flag || checkoutIpFlag,
       },
     });
     if (selfie) {

@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, UserPlus, KeyRound, UserX, UserCheck, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Trash2, X, Pencil, MoreVertical, Eye, EyeOff, ClipboardList, Cpu, AlertTriangle } from "lucide-react";
+import { Users, UserPlus, KeyRound, UserX, UserCheck, CheckCircle2, ShieldAlert, Search, LockKeyhole, Unlock, Trash2, X, Pencil, MoreVertical, Eye, EyeOff, ClipboardList, Cpu, AlertTriangle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserFormModal, CredentialRevealDialog } from "@/components/owner/UserFormModal";
 import { MachineAssignmentModal } from "@/components/owner/MachineAssignmentModal";
 import { ConfirmDialog, DropdownMenu, DropdownMenuItem, DropdownMenuDivider, RoleBadge, ROLE_META, roleLabel } from "@/components/ui";
 import {
   getTenantUsers, createEmployee, toggleEmployeeStatus, resetEmployeePassword,
-  unlockEmployeeAccount, getEmployeeDeleteImpact, deleteEmployee, updateUserRoles,
+  unlockEmployeeAccount, getEmployeeDeleteImpact, deleteEmployee, updateUserRoles, setAttendanceEligibility,
 } from "@/actions/user-management";
 import { getMyWorkspace } from "@/actions/profile";
 import { setEmployeeBaseSalary } from "@/actions/payroll";
@@ -114,6 +114,14 @@ export default function OwnerUsersPage() {
         }
       },
     });
+  };
+
+  const handleToggleAttendance = async (userId: string, current: boolean) => {
+    const result = await setAttendanceEligibility(userId, !current);
+    setActionMessage(result.success
+      ? { type: "success", text: !current ? "Kewajiban absensi diaktifkan." : "Kewajiban absensi dinonaktifkan." }
+      : { type: "error", text: result.error ?? "Gagal mengubah kewajiban absensi." });
+    if (result.success) loadUsers();
   };
 
   const handleUnlock = async (userId: string, name: string) => {
@@ -264,7 +272,7 @@ export default function OwnerUsersPage() {
                 <th className="px-6 py-4">
                   <div className="flex items-center gap-2">
                     Gaji Pokok
-                    <button onClick={() => setHideSalary(!hideSalary)} className="p-1 hover:bg-elevated rounded-md text-muted hover:text-primary transition-colors" title={hideSalary ? "Tampilkan Gaji" : "Sembunyikan Gaji"}>
+                    <button aria-label={hideSalary ? "Tampilkan gaji" : "Sembunyikan gaji"} onClick={() => setHideSalary(!hideSalary)} className="p-1 hover:bg-elevated rounded-md text-muted hover:text-primary transition-colors" title={hideSalary ? "Tampilkan Gaji" : "Sembunyikan Gaji"}>
                       {hideSalary ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                     </button>
                   </div>
@@ -429,6 +437,7 @@ export default function OwnerUsersPage() {
                               </span>
                             )}
                             <button
+                              aria-label={`Ubah gaji ${user.name}`}
                               onClick={() => setSalaryDrafts(prev => ({ ...prev, [user.id]: String(user.base_salary ?? "") }))}
                               className="p-1.5 text-muted hover:text-accent-teal opacity-0 group-hover:opacity-100 transition-opacity rounded hover:bg-elevated"
                               title="Ubah Gaji"
@@ -459,6 +468,12 @@ export default function OwnerUsersPage() {
                           }
                         >
                           Riwayat Kinerja
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          icon={user.attendance_eligible ? <UserCheck className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                          onSelect={() => handleToggleAttendance(user.id, !!user.attendance_eligible)}
+                        >
+                          {user.attendance_eligible ? "Jadikan Opsional Absen" : "Wajibkan Absensi"}
                         </DropdownMenuItem>
 
                         {user.role.name !== "owner" && (
@@ -620,7 +635,7 @@ function RoleEditModal({
       <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-xl space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="text-base font-bold text-primary">Ubah Peran — {target.name}</h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
+          <button aria-label="Tutup modal pengguna" onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
         </div>
         <p className="text-xs text-muted">
           {isOwner
@@ -710,7 +725,7 @@ function DeleteEmployeeModal({
           <h3 className="text-base font-bold text-status-red flex items-center gap-2">
             <Trash2 className="h-4 w-4" /> Hapus Pegawai
           </h3>
-          <button onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary disabled:opacity-40"><X className="h-5 w-5" /></button>
+          <button aria-label="Tutup modal pengguna" onClick={onClose} disabled={busy} className="p-1 rounded-lg text-muted hover:text-primary disabled:opacity-40"><X className="h-5 w-5" /></button>
         </div>
 
         {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}

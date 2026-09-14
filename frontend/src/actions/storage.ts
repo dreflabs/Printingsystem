@@ -10,9 +10,8 @@ import { allLiveJobsReached, DEAD_JOB_STATUS } from "@/lib/order-progress";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 import { buildLocationCode, defaultLocationName, buildStorageLocations } from "@/lib/starter-data";
-
-const isGudang = (r: string[]) => r.includes("gudang");
-const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
+import { can, canAny } from "@/lib/permissions";
+import { requireEntitlement } from "@/lib/entitlements";
 
 /** Buang prefix "LOC:" dari hasil scan Location QR. */
 function cleanLocationCode(v: string): string {
@@ -91,7 +90,8 @@ export async function createStorageLocation(data: {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh menambah lokasi rak.");
+    await requireEntitlement(tenant.id, "storage");
+    if (!can(actor, "storage.configure")) return fail("Hanya Owner/Admin yang boleh menambah lokasi rak.");
 
     const simple = !data.zone?.trim();
     if (simple && !data.name?.trim()) return fail("Nama lokasi wajib diisi.");
@@ -139,7 +139,8 @@ export async function updateStorageLocation(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengubah lokasi rak.");
+    await requireEntitlement(tenant.id, "storage");
+    if (!can(actor, "storage.configure")) return fail("Hanya Owner/Admin yang boleh mengubah lokasi rak.");
 
     const loc = await prisma.storageLocation.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!loc) return fail("Lokasi tidak ditemukan.");
@@ -173,7 +174,8 @@ export async function seedDefaultStorageLayout() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh membuat layout rak.");
+    await requireEntitlement(tenant.id, "storage");
+    if (!can(actor, "storage.configure")) return fail("Hanya Owner/Admin yang boleh membuat layout rak.");
 
     // Layout-nya dipakai bersama dengan pendaftaran tenant baru (lib/starter-data),
     // supaya rak bawaan dan rak hasil tombol ini selalu identik.
@@ -211,7 +213,8 @@ export async function assignStorageLocation(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.roles)) return fail("Hanya role Gudang yang boleh menyimpan ke storage.");
+    await requireEntitlement(tenant.id, "storage");
+    if (!can(actor, "storage.store")) return fail("Hanya role Gudang yang boleh menyimpan ke storage.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -311,7 +314,8 @@ export async function reportStorageIncident(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.roles) && !isAdmin(actor.roles)) return fail("Hanya Gudang atau Owner/Admin yang boleh melaporkan insiden.");
+    await requireEntitlement(tenant.id, "storage");
+    if (!canAny(actor, "storage.report_incident", "storage.configure")) return fail("Hanya Gudang atau Owner/Admin yang boleh melaporkan insiden.");
     if (!input.notes?.trim()) return fail("Catatan insiden wajib diisi.");
 
     await prisma.$transaction(async (tx) => {
@@ -352,7 +356,8 @@ export async function confirmItemAtCounter(jobCode: string): Promise<ActionResul
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.roles)) return fail("Hanya role Gudang yang boleh konfirmasi barang di counter.");
+    await requireEntitlement(tenant.id, "storage");
+    if (!can(actor, "storage.move_to_counter")) return fail("Hanya role Gudang yang boleh konfirmasi barang di counter.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -426,7 +431,7 @@ export async function releaseOrder(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("admin") && !actor.roles.includes("owner")) {
+    if (!can(actor, "pickup.release")) {
       return fail("Hanya Admin/Owner yang boleh melakukan release final.");
     }
     if (!input.receiverName?.trim()) return fail("Nama penerima wajib diisi.");
@@ -455,7 +460,7 @@ export async function releaseOrder(
 
       const lunas = Number(order.balance) <= 0;
       if (!lunas) {
-        if (!actor.roles.includes("owner") || !input.ownerOverrideReason?.trim()) {
+        if (!can(actor, "pickup.release_override") || !input.ownerOverrideReason?.trim()) {
           throw new Error(
             `Masih ada sisa tagihan Rp ${Number(order.balance).toLocaleString("id-ID")}. Butuh pelunasan atau override Owner.`
           );
@@ -588,4 +593,3 @@ export async function searchStorageItems(query: string) {
     return fail(safeError(e, "Gagal mencari barang."));
   }
 }
-

@@ -15,6 +15,7 @@ import {
   type ClockOutResult,
 } from "@/lib/attendance-punch";
 import { safeError } from "@/lib/safe-error";
+import { requireAttendanceEligible } from "@/lib/attendance-policy";
 import { ok, fail, type ActionResult } from "@/types";
 
 /**
@@ -25,8 +26,6 @@ import { ok, fail, type ActionResult } from "@/types";
  * klien tidak pernah mengirim timestamp. Data absensi tidak bisa diedit/dihapus
  * siapa pun — Owner hanya menambah catatan.
  */
-
-const BREAK_MAX_MIN = 60;
 
 function startOfToday(): Date {
   const d = new Date();
@@ -55,21 +54,25 @@ export interface BreakStatus {
   doneToday: boolean;
 }
 
-async function todayRecord(userId: string) {
+async function todayRecord(userId: string, tenantId: string) {
   return prisma.attendanceRecord.findFirst({
-    where: { user_id: userId, date: { gte: startOfToday(), lt: endOfToday() } },
+    where: { tenant_id: tenantId, user_id: userId, attendance_day: { gte: startOfToday(), lt: endOfToday() } },
     orderBy: { created_at: "desc" },
   });
 }
 
 export async function getMyBreakStatus(): Promise<ActionResult<BreakStatus>> {
   try {
+    const tenant = await requireTenant();
     const actor = await requireUser();
-    const rec = await todayRecord(actor.id);
+    await requireAttendanceEligible(tenant.id, actor);
+    const set = await tenantSetting(tenant.id);
+    const maxMin = set.break_max_min;
+    const rec = await todayRecord(actor.id, tenant.id);
     if (!rec) {
       return ok({
         recordId: null, onBreak: false, breakStart: null, breakEnd: null,
-        breakDurationMin: 0, breakStatus: null, elapsedMin: 0, remainingMin: BREAK_MAX_MIN, doneToday: false,
+        breakDurationMin: 0, breakStatus: null, elapsedMin: 0, remainingMin: maxMin, doneToday: false,
       });
     }
     const onBreak = !!rec.break_start && !rec.break_end;
@@ -84,7 +87,7 @@ export async function getMyBreakStatus(): Promise<ActionResult<BreakStatus>> {
       breakDurationMin: rec.break_duration_min,
       breakStatus: rec.break_status,
       elapsedMin,
-      remainingMin: Math.max(0, BREAK_MAX_MIN - elapsedMin),
+      remainingMin: Math.max(0, maxMin - elapsedMin),
       doneToday: !!rec.break_start && !!rec.break_end,
     });
   } catch (e) {
@@ -102,7 +105,9 @@ export async function startBreak(): Promise<ActionResult<{ recordId: string; bre
     if (!set.personal_device_enabled)
       return fail("Absen dari HP pribadi dinonaktifkan. Catat istirahat lewat perangkat kiosk.");
 
-    const existing = await todayRecord(actor.id);
+    const existing = await todayRecord(actor.id, tenant.id);
+    if (!existing?.check_in) return fail("Absen masuk terlebih dahulu sebelum memulai istirahat.");
+    if (existing.check_out) return fail("Istirahat tidak dapat dimulai setelah absen pulang.");
     if (existing?.break_start && !existing.break_end) return fail("Anda sedang istirahat.");
     if (existing?.break_start && existing.break_end) return fail("Jatah istirahat hari ini sudah dipakai.");
 
@@ -117,8 +122,9 @@ export async function startBreak(): Promise<ActionResult<{ recordId: string; bre
             tenant_id: tenant.id,
             user_id: actor.id,
             employee_name: actor.name,
+            attendance_day: startOfToday(),
             date: startOfToday(),
-            check_in_status: "UNKNOWN",
+            check_in_status: "ON_TIME",
             break_start: now,
             break_status: "NORMAL",
           },
@@ -128,6 +134,8 @@ export async function startBreak(): Promise<ActionResult<{ recordId: string; bre
     revalidatePath("/operator");
     revalidatePath("/finishing");
     revalidatePath("/designer");
+    revalidatePath("/admin");
+    revalidatePath("/owner");
     return ok({ recordId: rec.id, breakStart: now });
   } catch (e) {
     console.error("startBreak:", e);
@@ -137,14 +145,18 @@ export async function startBreak(): Promise<ActionResult<{ recordId: string; bre
 
 export async function endBreak(): Promise<ActionResult<{ durationMin: number; status: string }>> {
   try {
+    const tenant = await requireTenant();
     const actor = await requireUser();
-    const rec = await todayRecord(actor.id);
+    await requireAttendanceEligible(tenant.id, actor);
+    const set = await tenantSetting(tenant.id);
+    const rec = await todayRecord(actor.id, tenant.id);
     if (!rec || !rec.break_start) return fail("Anda belum memulai istirahat.");
+    if (!rec.check_in) return fail("Absen masuk terlebih dahulu sebelum menyelesaikan istirahat.");
     if (rec.break_end) return fail("Istirahat sudah diselesaikan.");
 
     const now = new Date();
     const durationMin = Math.max(0, Math.round((now.getTime() - rec.break_start.getTime()) / 60000));
-    const status = durationMin > BREAK_MAX_MIN ? "EXCEEDED" : "NORMAL";
+    const status = durationMin > set.break_max_min ? "EXCEEDED" : "NORMAL";
 
     await prisma.attendanceRecord.update({
       where: { id: rec.id },
@@ -154,6 +166,8 @@ export async function endBreak(): Promise<ActionResult<{ durationMin: number; st
     revalidatePath("/operator");
     revalidatePath("/finishing");
     revalidatePath("/designer");
+    revalidatePath("/admin");
+    revalidatePath("/owner");
     return ok({ durationMin, status });
   } catch (e) {
     console.error("endBreak:", e);
@@ -189,6 +203,7 @@ export interface AttendanceToday {
     personalDeviceEnabled: boolean;
     workStart: string;
     workEnd: string;
+    breakMaxMin: number;
   };
 }
 
@@ -204,8 +219,9 @@ export async function getMyAttendanceToday(): Promise<ActionResult<AttendanceTod
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireAttendanceEligible(tenant.id, actor);
     const [rec, set, breakRes] = await Promise.all([
-      todayRecord(actor.id),
+      todayRecord(actor.id, tenant.id),
       tenantSetting(tenant.id),
       getMyBreakStatus(),
     ]);
@@ -213,7 +229,7 @@ export async function getMyAttendanceToday(): Promise<ActionResult<AttendanceTod
       ? breakRes.data
       : {
           recordId: null, onBreak: false, breakStart: null, breakEnd: null,
-          breakDurationMin: 0, breakStatus: null, elapsedMin: 0, remainingMin: BREAK_MAX_MIN, doneToday: false,
+          breakDurationMin: 0, breakStatus: null, elapsedMin: 0, remainingMin: set.break_max_min, doneToday: false,
         };
     return ok({
       checkedIn: !!rec?.check_in,
@@ -233,6 +249,7 @@ export async function getMyAttendanceToday(): Promise<ActionResult<AttendanceTod
         personalDeviceEnabled: set.personal_device_enabled,
         workStart: set.work_start,
         workEnd: set.work_end,
+        breakMaxMin: set.break_max_min,
       },
     });
   } catch (e) {
@@ -245,6 +262,7 @@ export async function clockIn(input: ClockPunchInput = {}): Promise<ActionResult
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireAttendanceEligible(tenant.id, actor);
     const set = await tenantSetting(tenant.id);
     if (!set.personal_device_enabled)
       return fail("Absen dari HP pribadi dinonaktifkan. Gunakan perangkat kiosk di kantor.");
@@ -262,6 +280,8 @@ export async function clockIn(input: ClockPunchInput = {}): Promise<ActionResult
     revalidatePath("/operator");
     revalidatePath("/finishing");
     revalidatePath("/designer");
+    revalidatePath("/admin");
+    revalidatePath("/owner");
     return ok(res);
   } catch (e) {
     if (e instanceof PunchError) return fail(e.message);
@@ -274,6 +294,7 @@ export async function clockOut(input: ClockPunchInput = {}): Promise<ActionResul
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireAttendanceEligible(tenant.id, actor);
     const set = await tenantSetting(tenant.id);
     if (!set.personal_device_enabled)
       return fail("Absen dari HP pribadi dinonaktifkan. Gunakan perangkat kiosk di kantor.");
@@ -291,6 +312,8 @@ export async function clockOut(input: ClockPunchInput = {}): Promise<ActionResul
     revalidatePath("/operator");
     revalidatePath("/finishing");
     revalidatePath("/designer");
+    revalidatePath("/admin");
+    revalidatePath("/owner");
     return ok(res);
   } catch (e) {
     if (e instanceof PunchError) return fail(e.message);

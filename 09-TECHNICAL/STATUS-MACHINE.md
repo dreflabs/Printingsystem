@@ -11,7 +11,7 @@ disimpan di `Order.status`, tapi di record anak:
 | Sub-proses | Di mana state-nya |
 |---|---|
 | Pengerjaan & approval desain | `DesignJob.status` + `DesignVersion.approval_status` (PENDING/DESIGNING/WAITING_APPROVAL/APPROVED/REJECTED). **Desain per item**: `DesignVersion.order_item_id` (NULL = file layout berlingkup seluruh order). `DesignJob` baru `APPROVED` — dan order baru boleh maju — kalau SETIAP item non-retail sudah punya versi APPROVED ber-file (`coveredDesignItemIds`). Operator dapat file desain item yang jadi tanggungan job-nya. |
-| Produksi per item, jeda, rework | `ProductionJob.status` (PRODUCTION_QUEUED/ASSIGNED/STARTED/PAUSED/COMPLETE/QC_PASSED/FINISHING_STARTED/FINISHING_COMPLETE/STORED/IN_TRANSIT/PICKED_UP · FAILED_REWORK · SUPERSEDED = job rework yang sudah digantikan) |
+| Produksi per mesin, jeda, rework | `ProductionJob.status` (PRODUCTION_QUEUED/ASSIGNED/STARTED/PAUSED/COMPLETE/QC_PASSED/FINISHING_STARTED/FINISHING_COMPLETE/STORED/IN_TRANSIT/PICKED_UP · FAILED_REWORK · SUPERSEDED = job rework yang sudah digantikan). Item dengan mesin default sama berada dalam satu job. |
 | Hasil QC | `QcRecord` (PASS/FAIL + kategori + rework_decision) |
 | Finishing per job | `FinishingJob.status` |
 | Penyimpanan & insiden rak | `StorageItem.status` (STORED/INCIDENT/IN_TRANSIT/RELEASED) |
@@ -33,11 +33,11 @@ itu ada di record anak).
 | `DESIGNING` | Upload versi desain pertama (non-makloon) | Designer (`uploadDesignVersion`) |
 | `WAITING_PAYMENT` | `approveDesign` saat `paid_amount < dp_required`; makloon: langsung dari upload | Designer / Admin / sistem |
 | `CONFIRMED` | `approveDesign` saat DP sudah terpenuhi · `addPayment` saat DP tercapai · `decideDiscount` (approve) saat DP baru tercapai | Admin / sistem |
-| `PRODUCTION_ASSIGNED` | **Auto-release** (`autoReleaseToProduction`, Completeness Gate lolos) **atau** `assignProductionJob` manual (item tanpa mesin default / mesin MAINTENANCE / override). Job dibuat 1 per item — `PRODUCTION_QUEUED` (auto, belum ada operator) atau `PRODUCTION_ASSIGNED` (manual, operator di-pin). | sistem / Admin |
-| `PRODUCTION_STARTED` | SCAN 1 — operator klaim/mulai job pertama | Operator (`startProduction`) |
-| `QC_PENDING` | SCAN 2 — **semua** job order sudah `PRODUCTION_COMPLETE` (`advanceOrderWhenAllJobs`) | sistem |
-| `QC_PASSED` | SCAN 3 PASS — semua job `QC_PASSED` | Gudang (`submitQC`) |
-| `QC_REWORK_PENDING` | SCAN 3 FAIL — job jadi `FAILED_REWORK` | Gudang |
+| `PRODUCTION_ASSIGNED` | **Auto-release** (`autoReleaseToProduction`, Completeness Gate lolos) **atau** `assignProductionJob` manual (item tanpa mesin default / mesin MAINTENANCE / override). Job dibuat 1 per mesin — `PRODUCTION_QUEUED` (auto, belum ada operator) atau `PRODUCTION_ASSIGNED` (manual, operator di-pin). | sistem / Admin |
+| `PRODUCTION_STARTED` | **Ambil & Mulai Produksi** (kode internal SCAN 1) — operator klaim/mulai job pertama | Operator (`startProduction`) |
+| `QC_PENDING` | **Selesaikan Produksi** (kode internal SCAN 2) — **semua** job order sudah `PRODUCTION_COMPLETE` (`advanceOrderWhenAllJobs`) | sistem |
+| `QC_PASSED` | **Pemeriksaan Kualitas (QC)** lulus (kode internal SCAN 3) — semua job `QC_PASSED` | Gudang (`submitQC`) |
+| `QC_REWORK_PENDING` | **Pemeriksaan Kualitas (QC)** gagal (kode internal SCAN 3) — job jadi `FAILED_REWORK` | Gudang |
 | `PRODUCTION_ASSIGNED` (lagi) | `decideRework` APPROVED/REJECTED → child/reprint job dibuat, job lama → `SUPERSEDED` (keluar dari antrian rework & tak lagi menahan kemajuan order), order balik ke pipeline | Owner |
 | `ON_HOLD` | `decideRework` HOLD | Owner |
 | `FINISHING_STARTED` | SCAN 4 — semua job `FINISHING_STARTED` | Gudang |
@@ -78,9 +78,9 @@ DRAFT ──upload desain──▶ DESIGNING ──approveDesign──▶ WAITIN
   │                                                       DP sudah cukup) ──────────┤
   ▼                                                                                 ▼
 CONFIRMED ──auto-release / assign manual──▶ PRODUCTION_ASSIGNED
-   PRODUCTION_ASSIGNED ─SCAN1─▶ PRODUCTION_STARTED ─SCAN2(semua job)─▶ QC_PENDING
-   QC_PENDING ─SCAN3 PASS─▶ QC_PASSED
-             └─SCAN3 FAIL─▶ QC_REWORK_PENDING ─decideRework APPROVE/REJECT─▶ PRODUCTION_ASSIGNED
+   PRODUCTION_ASSIGNED ─Ambil & Mulai Produksi─▶ PRODUCTION_STARTED ─Selesaikan Produksi (semua job)─▶ QC_PENDING
+   QC_PENDING ─Pemeriksaan Kualitas PASS─▶ QC_PASSED
+             └─Pemeriksaan Kualitas FAIL─▶ QC_REWORK_PENDING ─decideRework APPROVE/REJECT─▶ PRODUCTION_ASSIGNED
                                               └─HOLD─▶ ON_HOLD
    QC_PASSED ─SCAN4─▶ FINISHING_STARTED ─SCAN5─▶ FINISHING_COMPLETE
    FINISHING_COMPLETE ─SCAN6+7─▶ STORED ─(langsung)─▶ READY_FOR_PICKUP

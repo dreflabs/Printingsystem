@@ -4,10 +4,11 @@
 
 ```
 Desain APPROVED + syarat pembayaran terpenuhi + Completeness Gate lolos
-  → Sistem OTOMATIS buat Production Job per item (PRODUCTION_QUEUED)
-     — mesin dari product.default_machine_id, belum ada operator, tanpa approval Admin
-  → Operator ambil job dari antrian mesinnya → scan mulai (PRODUCTION_STARTED)
-  → Operator scan selesai produksi, input actual qty & waste (PRODUCTION_COMPLETE)
+  → Sistem OTOMATIS buat Production Job per mesin
+     — item dengan mesin default yang sama digabung; job di-pin ke default Operator aktif
+       atau masuk PRODUCTION_QUEUED bila belum ada Operator
+  → Operator ter-pin mulai job, atau Operator ber-grant mesin ambil job dari antrian
+  → Operator menyelesaikan produksi, input actual qty & waste (PRODUCTION_COMPLETE)
 ```
 
 Jalur manual (fallback): kalau ada item tanpa mesin default, mesin default sedang

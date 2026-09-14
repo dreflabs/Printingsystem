@@ -36,7 +36,7 @@ function ReassignModal({ job, opts, onClose, onDone }: {
       <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-modal space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="text-base font-bold text-primary">Reassign {job.jobCode}</h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
+          <button aria-label="Tutup detail produksi" onClick={onClose} className="p-1 rounded-lg text-muted hover:text-primary"><X className="h-5 w-5" /></button>
         </div>
         <p className="text-xs text-muted">Saat ini: {job.machineName} · {job.operatorName}. Maks 2× / 24 jam untuk Admin; ke-3 wajib Owner.</p>
         {err && <div className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</div>}
@@ -170,6 +170,34 @@ export default function ProductionPage() {
         </div>
       )}
 
+      {d && d.unassignedJobs.length > 0 && (
+        <div className="bg-card border border-status-red/40 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldAlert className="h-5 w-5 text-status-red" />
+            <h2 className="text-base font-bold text-primary">Queue Tanpa Operator</h2>
+            <span className="ml-auto text-xs font-bold text-status-red bg-status-red/10 px-2 py-0.5 rounded-full border border-status-red/30">{d.unassignedJobs.length}</span>
+          </div>
+          <p className="text-xs text-muted mb-3">Job sudah siap diproduksi, tetapi mesin tersebut belum memiliki Operator aktif dengan akses yang sesuai.</p>
+          <div className="space-y-2">
+            {d.unassignedJobs.map((j) => (
+              <div key={j.jobCode} className="flex flex-wrap items-center gap-3 rounded-xl bg-elevated border border-border px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-mono font-bold text-primary">{j.jobCode} <span className="text-muted font-sans">· {j.orderCode}</span></p>
+                  <p className="text-[11px] text-muted mt-0.5">{j.machineName} · {j.customerName} · Qty {j.plannedQty}</p>
+                </div>
+                <span className="text-[10px] text-muted whitespace-nowrap">deadline {fmtDate(j.deadline)}</span>
+                <button
+                  onClick={() => setReassignJob(j)}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg bg-accent-teal text-white hover:brightness-110 whitespace-nowrap"
+                >
+                  Tugaskan Operator
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         {kpis.map((k) => (
           <button
@@ -214,6 +242,11 @@ export default function ProductionPage() {
                 <div className="mt-3 bg-elevated/20 p-2.5 rounded-xl text-center border border-dashed border-border/50">
                   <p className="text-xs text-muted">Idle</p>
                 </div>
+              )}
+              {m.load && (
+                <p className="mt-2 text-[10px] text-muted">
+                  Beban: {m.load.active} aktif · {m.load.queued} antre · {m.load.assigned} ditugaskan
+                </p>
               )}
             </div>
           ))}

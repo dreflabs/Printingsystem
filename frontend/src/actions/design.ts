@@ -15,11 +15,13 @@ import {
 import { storageReady, presignPutUrl, isTenantKey } from "@/lib/storage";
 import { randomUUID } from "crypto";
 import { autoReleaseToProduction } from "@/lib/auto-release";
+import { checkProductionReadiness, coveredDesignItemIds, type ReadinessItem } from "@/lib/production-readiness";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
 const isAdmin = (role: string[]) => role.includes("admin") || role.includes("owner");
 const canDesign = (role: string[]) => isAdmin(role) || role.includes("designer_sales");
+const DESIGN_MUTABLE_ORDER_STATUSES = ["DRAFT", "DESIGNING", "WAITING_APPROVAL", "WAITING_PAYMENT"];
 
 async function nextJobCode(tx: Prisma.TransactionClient, tenantId: string): Promise<string> {
   const now = new Date();
@@ -103,7 +105,7 @@ async function designCoverage(
  */
 export async function createDesignUploadUrl(
   orderId: string,
-  input: { fileName: string; contentType?: string | null; size: number }
+  input: { fileName: string; contentType?: string | null; size: number; orderItemId?: string | null }
 ): Promise<ActionResult<{ uploadUrl: string; objectKey: string }>> {
   try {
     const tenant = await requireTenant();
@@ -127,12 +129,50 @@ export async function createDesignUploadUrl(
 
     const job = await prisma.designJob.findFirst({
       where: { order_id: orderId, tenant_id: tenant.id },
-      select: { id: true, current_version: true },
+      select: { id: true, designer_id: true, status: true, approval_method: true, order: { select: { status: true } } },
     });
     if (!job) return fail("Job desain tidak ditemukan untuk order ini.");
+    if (!DESIGN_MUTABLE_ORDER_STATUSES.includes(job.order.status)) {
+      return fail("Desain tidak dapat diubah setelah order masuk produksi.");
+    }
+    if (!isAdmin(actor.roles) && job.designer_id !== actor.id) {
+      return fail("Claim job ini terlebih dahulu sebelum mengunggah desain.");
+    }
+    if (!["PENDING", "DESIGNING"].includes(job.status)) {
+      return fail("Job desain tidak sedang menerima versi baru.");
+    }
 
-    const nextVer = job.current_version + 1;
-    const objectKey = `tenants/${tenant.id}/design/${job.id}/v${nextVer}-${randomUUID().slice(0, 8)}.${ext}`;
+    // Nomor versi mengikuti slot item yang sama dengan uploadDesignVersion:
+    // null = seluruh order, id = item tertentu. current_version adalah ringkasan
+    // global dan tidak boleh dipakai untuk menebak versi item berikutnya.
+    const itemId = input.orderItemId?.trim() || null;
+    if (itemId) {
+      const item = await prisma.orderItem.findFirst({
+        where: { id: itemId, order_id: orderId, tenant_id: tenant.id },
+        select: { id: true, retail_product_id: true },
+      });
+      if (!item) return fail("Item pesanan tidak ditemukan di order ini.");
+      if (item.retail_product_id) return fail("Item retail tidak butuh desain.");
+    }
+    const latest = await prisma.designVersion.findFirst({
+      where: { design_job_id: job.id, order_item_id: itemId },
+      orderBy: { version_no: "desc" },
+      select: { approval_status: true },
+    });
+    if (job.approval_method === "ONLINE" && latest?.approval_status === "PENDING") {
+      return fail("Versi Online ini masih menunggu approval Admin. Tunggu keputusan atau minta revisi resmi terlebih dahulu.");
+    }
+    if (job.approval_method !== "MAKLOON" && latest?.approval_status === "PENDING") {
+      return fail("Versi ini masih menunggu ACC. Setujui atau minta revisi resmi sebelum upload versi baru.");
+    }
+    if (latest?.approval_status === "APPROVED") {
+      return fail("Slot ini sudah memiliki desain approved. Minta revisi resmi sebelum mengganti file.");
+    }
+    // Nomor versi resmi dialokasikan saat record DesignVersion dibuat. Object
+    // key tidak memuat nomor versi agar upload paralel tidak pernah membuat
+    // nama file storage yang menyesatkan; folder slot tetap menjaga organisasi.
+    const slotKey = itemId ?? "order";
+    const objectKey = `tenants/${tenant.id}/design/${job.id}/${slotKey}/${randomUUID()}.${ext}`;
     const uploadUrl = await presignPutUrl(objectKey);
 
     return ok({ uploadUrl, objectKey });
@@ -149,7 +189,7 @@ export async function createDesignUploadUrl(
 export async function uploadDesignVersion(
   orderId: string,
   input: UploadDesignVersionInput
-): Promise<ActionResult<{ versionNo: number; approvalStatus: string; itemId: string | null; fullyCovered: boolean }>> {
+): Promise<ActionResult<{ versionNo: number; approvalStatus: string; itemId: string | null; fullyCovered: boolean; autoReleasedJobs: string[] }>> {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
@@ -176,6 +216,25 @@ export async function uploadDesignVersion(
       });
       if (!job) throw new Error("Job desain tidak ditemukan.");
 
+      // Serialisasi allocator versi per DesignJob. Object key sudah UUID acak;
+      // lock ini memastikan dua upload paralel tetap mendapat nomor record yang
+      // berbeda ketika sama-sama membaca versi terakhir.
+      await tx.$queryRaw`SELECT id FROM "DesignJob" WHERE id = ${job.id} FOR UPDATE`;
+
+      const order = await tx.order.findFirst({
+        where: { id: orderId, tenant_id: tenant.id },
+        select: { status: true },
+      });
+      if (!order || !DESIGN_MUTABLE_ORDER_STATUSES.includes(order.status)) {
+        throw new Error("Desain tidak dapat diubah setelah order masuk produksi.");
+      }
+      if (!isAdmin(actor.roles) && job.designer_id !== actor.id) {
+        throw new Error("Claim job ini terlebih dahulu sebelum mengunggah desain.");
+      }
+      if (!["PENDING", "DESIGNING"].includes(job.status)) {
+        throw new Error("Job desain tidak sedang menerima versi baru.");
+      }
+
       // Validasi item sasaran (kalau ada).
       const itemId = input.orderItemId?.trim() || null;
       if (itemId) {
@@ -192,9 +251,18 @@ export async function uploadDesignVersion(
         where: { design_job_id: job.id, order_item_id: itemId },
         orderBy: { version_no: "desc" },
       });
+      const makloon = job.approval_method === "MAKLOON";
+      if (job.approval_method === "ONLINE" && last?.approval_status === "PENDING") {
+        throw new Error("Versi Online ini masih menunggu approval Admin. Tunggu keputusan atau minta revisi resmi terlebih dahulu.");
+      }
+      if (!makloon && last?.approval_status === "PENDING") {
+        throw new Error("Versi ini masih menunggu ACC. Setujui atau minta revisi resmi sebelum upload versi baru.");
+      }
+      if (last?.approval_status === "APPROVED") {
+        throw new Error("Slot ini sudah memiliki desain approved. Minta revisi resmi sebelum mengganti file.");
+      }
       const versionNo = (last?.version_no ?? 0) + 1;
 
-      const makloon = job.approval_method === "MAKLOON";
       const approvalStatus = makloon ? "APPROVED" : "PENDING";
 
       await tx.designVersion.create({
@@ -232,11 +300,25 @@ export async function uploadDesignVersion(
         data: { current_version: top?.version_no ?? versionNo, status: jobStatus },
       });
 
+      let autoReleasedJobs: string[] = [];
       if (makloon && cov.fullyCovered) {
-        await tx.order.updateMany({
-          where: { id: orderId, tenant_id: tenant.id, status: { in: ["DRAFT", "DESIGNING", "WAITING_APPROVAL"] } },
-          data: { status: "WAITING_PAYMENT" },
+        const ord = await tx.order.findFirst({
+          where: { id: orderId, tenant_id: tenant.id },
+          select: { status: true, total: true, dp_required: true, paid_amount: true },
         });
+        if (ord && ["DRAFT", "DESIGNING", "WAITING_APPROVAL", "WAITING_PAYMENT"].includes(ord.status)) {
+          const total = Number(ord.total);
+          const dpRequired = Number(ord.dp_required ?? Math.round(total * 0.5));
+          const dpMet = Number(ord.paid_amount) + 1e-6 >= dpRequired;
+          await tx.order.update({
+            where: { id: orderId },
+            data: { status: dpMet ? "CONFIRMED" : "WAITING_PAYMENT" },
+          });
+          if (dpMet) {
+            const release = await autoReleaseToProduction(tx, tenant.id, orderId);
+            autoReleasedJobs = release.jobCodes;
+          }
+        }
       } else {
         await tx.order.updateMany({
           where: { id: orderId, tenant_id: tenant.id, status: { in: ["DRAFT"] } },
@@ -244,12 +326,19 @@ export async function uploadDesignVersion(
         });
       }
 
-      return { versionNo, approvalStatus, itemId, fullyCovered: cov.fullyCovered };
+      return { versionNo, approvalStatus, itemId, fullyCovered: cov.fullyCovered, autoReleasedJobs };
     });
 
     await logAction(actor.id, "DESIGN_VERSION_UPLOADED", "Order", orderId, null, result);
+    if (result.autoReleasedJobs.length > 0) {
+      await logAction(actor.id, "ORDER_AUTO_RELEASED", "Order", orderId, null, {
+        job_codes: result.autoReleasedJobs,
+        trigger: "MAKLOON_DESIGN_UPLOADED",
+      });
+    }
     revalidatePath("/designer");
     revalidatePath("/admin");
+    if (result.autoReleasedJobs.length > 0) revalidatePath("/operator");
     return ok(result);
   } catch (e) {
     console.error("uploadDesignVersion:", e);
@@ -288,6 +377,20 @@ export async function approveDesign(
       if (method === "ONLINE" && !isAdmin(actor.roles)) {
         throw new Error("Persetujuan desain ONLINE harus dilakukan oleh Admin.");
       }
+      const approvalNotes = input.notes?.trim() ?? "";
+      if (method !== "MAKLOON" && approvalNotes.length < 5) {
+        throw new Error("Catatan bukti persetujuan wajib diisi (min. 5 karakter).");
+      }
+      if (!isAdmin(actor.roles) && job.designer_id !== actor.id) {
+        throw new Error("Hanya PIC Designer yang boleh menyetujui job ini.");
+      }
+      const order = await tx.order.findFirst({
+        where: { id: orderId, tenant_id: tenant.id },
+        select: { status: true },
+      });
+      if (!order || !DESIGN_MUTABLE_ORDER_STATUSES.includes(order.status) && order.status !== "CONFIRMED") {
+        throw new Error("Approval desain tidak dapat dilakukan setelah produksi dimulai.");
+      }
 
       // Versi terbaru per slot (job + order_item_id).
       const all = await tx.designVersion.findMany({
@@ -325,7 +428,7 @@ export async function approveDesign(
             approved_at: new Date(),
             approved_by: actor.id,
             approval_method: method,
-            approval_notes: input.notes || v.approval_notes,
+            approval_notes: approvalNotes || v.approval_notes,
           },
         });
       }
@@ -365,7 +468,7 @@ export async function approveDesign(
     await logAction(actor.id, "DESIGN_APPROVED", "Order", orderId, null, {
       approved_count: result.approvedCount,
       fully_approved: result.fullyApproved,
-      notes: input.notes,
+      notes: input.notes?.trim() || null,
     });
     if (result.release.released) {
       await logAction(actor.id, "ORDER_AUTO_RELEASED", "Order", orderId, null, {
@@ -408,6 +511,16 @@ export async function requestDesignRevision(
         where: { order_id: orderId, tenant_id: tenant.id },
       });
       if (!job) throw new Error("Job desain tidak ditemukan.");
+      if (!isAdmin(actor.roles) && job.designer_id !== actor.id) {
+        throw new Error("Hanya PIC Designer yang boleh meminta revisi job ini.");
+      }
+      const order = await tx.order.findFirst({
+        where: { id: orderId, tenant_id: tenant.id },
+        select: { status: true },
+      });
+      if (!order || !DESIGN_MUTABLE_ORDER_STATUSES.includes(order.status)) {
+        throw new Error("Revisi setelah produksi harus melalui alur correction/reprint Admin.");
+      }
 
       const all = await tx.designVersion.findMany({
         where: { design_job_id: job.id },
@@ -513,8 +626,18 @@ export async function assignProductionJob(
     if (assignments.length === 0) return fail("Minimal 1 assignment produksi.");
 
     const result = await retryOnUnique(() => prisma.$transaction(async (tx) => {
-      const order = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
+      const order = await tx.order.findFirst({
+        where: { id: orderId, tenant_id: tenant.id },
+        include: {
+          customer: { select: { name: true, phone: true, email: true } },
+          items: {
+            where: { retail_product_id: null },
+            include: { product: { select: { unit: true, default_machine_id: true } } },
+          },
+        },
+      });
       if (!order) throw new Error("Order tidak ditemukan.");
+      if (order.status !== "CONFIRMED") throw new Error("Order belum berstatus CONFIRMED.");
 
       const job = await tx.designJob.findFirst({
         where: { order_id: orderId, tenant_id: tenant.id },
@@ -531,11 +654,57 @@ export async function assignProductionJob(
         throw new Error("DP belum terpenuhi — order belum bisa masuk produksi.");
       }
 
+      const approvedVersions = await tx.designVersion.findMany({
+        where: { tenant_id: tenant.id, design_job: { order_id: orderId }, approval_status: "APPROVED" },
+        select: { order_item_id: true, approval_status: true, file_path: true, file_name: true },
+      });
+      const readinessItems: ReadinessItem[] = order.items.map((it) => ({
+        id: it.id,
+        label: it.description || "Item cetak",
+        productId: it.product_id,
+        productUnit: it.product?.unit ?? null,
+        defaultMachineId: it.product?.default_machine_id ?? null,
+        quantity: it.quantity,
+        size: it.size,
+        materialId: it.material_id,
+        unitPrice: Number(it.unit_price),
+        totalPrice: Number(it.total_price),
+        deadline: it.deadline,
+      }));
+      const readiness = checkProductionReadiness({
+        status: order.status,
+        orderType: order.order_type,
+        customerId: order.customer_id,
+        customerName: order.customer?.name ?? null,
+        customerContact: order.customer?.phone || order.customer?.email || null,
+        deadline: order.deadline,
+        discount: Number(order.discount),
+        discountApprovedBy: order.discount_approved_by,
+        paidAmount: Number(order.paid_amount),
+        dpRequired,
+        designApproved: job.status === "APPROVED",
+        designReadyItemIds: coveredDesignItemIds(approvedVersions, readinessItems.map((it) => it.id)),
+        items: readinessItems,
+      });
+      if (!readiness.ok) {
+        throw new Error(`Order belum lolos completeness gate: ${readiness.missing.join("; ")}`);
+      }
+
       const machineIds = [...new Set(assignments.map((a) => a.machineId))];
       const operatorIds = [...new Set(assignments.map((a) => a.operatorId))];
       const [machines, operators] = await Promise.all([
         tx.machine.findMany({ where: { id: { in: machineIds }, tenant_id: tenant.id } }),
-        tx.user.findMany({ where: { id: { in: operatorIds }, tenant_id: tenant.id } }),
+        tx.user.findMany({
+          where: {
+            id: { in: operatorIds },
+            tenant_id: tenant.id,
+            active: true,
+            OR: [
+              { role: { name: "operator" } },
+              { extra_roles: { some: { role: { name: "operator" } } } },
+            ],
+          },
+        }),
       ]);
       if (machines.length !== machineIds.length) throw new Error("Ada mesin yang tidak valid.");
       if (operators.length !== operatorIds.length) throw new Error("Ada operator yang tidak valid.");
@@ -603,10 +772,14 @@ export async function takeDesignJob(orderId: string): Promise<ActionResult<{ suc
         throw new Error("Job ini sudah diambil oleh designer lain.");
       }
 
-      await tx.designJob.update({
-        where: { id: job.id },
+      if (!["PENDING", "DESIGNING"].includes(job.status)) {
+        throw new Error("Job ini sudah tidak tersedia untuk diambil.");
+      }
+      const claimed = await tx.designJob.updateMany({
+        where: { id: job.id, tenant_id: tenant.id, designer_id: null, status: { in: ["PENDING", "DESIGNING"] } },
         data: { designer_id: actor.id },
       });
+      if (claimed.count !== 1) throw new Error("Job ini sudah diambil oleh designer lain.");
       return { success: true };
     });
 

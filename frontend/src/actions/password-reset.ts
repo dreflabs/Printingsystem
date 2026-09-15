@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, fail, type ActionResult } from "@/types";
 import { validateTenantPassword } from "@/lib/password-policy";
 import { rateLimit } from "@/lib/rate-limit";
+import { sendEmail } from "@/lib/mail";
 
 /**
  * Self-serve password reset. Restricted to Owner accounts by design — employees
@@ -23,14 +24,13 @@ function sha256(v: string) {
   return crypto.createHash("sha256").update(v).digest("hex");
 }
 
-function deliverResetLink(email: string, link: string) {
-  // Belum ada provider email. Di dev, tautan ditulis ke konsol server; di produksi
-  // JANGAN bocorkan ke log — kirim lewat provider transaksional saat sudah ada.
-  if (process.env.NODE_ENV === "production") {
-    console.error(`[password-reset] Provider email belum dikonfigurasi — reset untuk ${email} tidak terkirim.`);
-    return;
-  }
-  console.log(`\n[password-reset] Reset link for ${email}:\n  ${link}\n`);
+async function deliverResetLink(email: string, link: string) {
+  const result = await sendEmail({
+    to: email,
+    subject: "Reset password Print Pilot",
+    body: `Gunakan tautan berikut untuk membuat password baru (berlaku 15 menit):\n\n${link}\n\nJika Anda tidak meminta reset, abaikan email ini.`,
+  });
+  if (!result.ok) console.error(`[password-reset] Pengiriman gagal: ${result.error ?? "provider tidak tersedia"}`);
 }
 
 export async function requestPasswordReset(
@@ -85,7 +85,7 @@ export async function requestPasswordReset(
         }),
       ]);
 
-      deliverResetLink(normalized, `${APP_URL}/reset-password?token=${raw}`);
+      await deliverResetLink(normalized, `${APP_URL}/reset-password?token=${raw}`);
     }
 
     return ok(null);

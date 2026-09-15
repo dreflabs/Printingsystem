@@ -1,5 +1,6 @@
 import * as crypto from "crypto";
 import { prisma } from "./prisma";
+import type { Prisma } from "@prisma/client";
 
 function auditSecret(): string {
   const s = process.env.AUDIT_SECRET;
@@ -59,33 +60,54 @@ export async function logAction(
       field(notes ?? null),
     ].join("|");
 
-    await prisma.$transaction(async (tx) => {
-      // Advisory lock per-tenant: penulisan audit yang bersamaan mengantre
-      // (bukan abort-retry) sehingga rantai hash tidak pernah bercabang / hilang.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"audit:" + user.tenant_id}))`;
-
-      const lastLog = await tx.auditLog.findFirst({
-        where: { tenant_id: user.tenant_id },
-        orderBy: { created_at: "desc" },
-        select: { hash: true },
-      });
-      const previousHash = lastLog?.hash ?? null;
-      await tx.auditLog.create({
-        data: {
-          tenant_id: user.tenant_id,
-          actor_id: actorId,
-          action,
-          entity_type: entityType,
-          entity_id: entityId,
-          old_value_json: oldVal,
-          new_value_json: newVal,
-          notes,
-          hash: generateHash(dataPayload, previousHash),
-          previous_hash: previousHash,
-        },
-      });
-    });
+    await prisma.$transaction((tx) => logActionInTransaction(tx, {
+      tenantId: user.tenant_id,
+      actorId,
+      action,
+      entityType,
+      entityId,
+      oldValueJson,
+      newValueJson,
+      notes,
+    }));
   } catch (error) {
     console.error("[AUDIT ERROR] Gagal mencatat aksi:", error);
   }
+}
+
+/**
+ * Tulis event audit di transaction bisnis yang sama. Gunakan untuk perubahan
+ * uang/stok agar transaksi tidak dapat commit ketika audit wajib gagal.
+ */
+export async function logActionInTransaction(
+  tx: Prisma.TransactionClient,
+  input: { tenantId: string; actorId: string; action: string; entityType: string; entityId: string; oldValueJson?: unknown; newValueJson?: unknown; notes?: string }
+) {
+  const oldVal = input.oldValueJson ? JSON.stringify(input.oldValueJson) : null;
+  const newVal = input.newValueJson ? JSON.stringify(input.newValueJson) : null;
+  const dataPayload = [
+    field(input.actorId), field(input.action), field(input.entityType), field(input.entityId),
+    field(oldVal), field(newVal), field(input.notes ?? null),
+  ].join("|");
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"audit:" + input.tenantId}))`;
+  const lastLog = await tx.auditLog.findFirst({
+    where: { tenant_id: input.tenantId },
+    orderBy: { created_at: "desc" },
+    select: { hash: true },
+  });
+  const previousHash = lastLog?.hash ?? null;
+  await tx.auditLog.create({
+    data: {
+      tenant_id: input.tenantId,
+      actor_id: input.actorId,
+      action: input.action,
+      entity_type: input.entityType,
+      entity_id: input.entityId,
+      old_value_json: oldVal,
+      new_value_json: newVal,
+      notes: input.notes,
+      hash: generateHash(dataPayload, previousHash),
+      previous_hash: previousHash,
+    },
+  });
 }

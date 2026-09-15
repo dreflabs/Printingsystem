@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
-import { logAction } from "@/lib/logger";
+import { logAction, logActionInTransaction } from "@/lib/logger";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
@@ -198,6 +198,15 @@ export async function cancelOrder(
         },
       });
 
+      await logActionInTransaction(tx, {
+        tenantId: tenant.id,
+        actorId: actor.id,
+        action: "ORDER_CANCELLED",
+        entityType: "Order",
+        entityId: order.id,
+        newValueJson: { reason: input.reason.trim(), dp_forfeited: dpForfeited, refund_amount: refundAmount, refund_method: input.refundMethod },
+      });
+
       // Hentikan job produksi (material yang sudah keluar TETAP tercatat)
       await tx.productionJob.updateMany({
         where: { order_id: orderId, status: { notIn: ["PICKED_UP", "CANCELLED"] } },
@@ -224,12 +233,6 @@ export async function cancelOrder(
       return { orderStatus: "CANCELLED" as const, dpForfeited, refundAmount };
     });
 
-    await logAction(actor.id, "ORDER_CANCELLED", "Order", orderId, null, {
-      reason: input.reason,
-      dp_forfeited: result.dpForfeited,
-      refund_amount: result.refundAmount,
-      refund_method: input.refundMethod,
-    });
     revalidatePath("/admin");
     revalidatePath("/owner");
     return ok(result);

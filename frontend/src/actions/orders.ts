@@ -5,7 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireMutableActor, requireUser } from "@/lib/actor";
-import { logAction } from "@/lib/logger";
+import { logAction, logActionInTransaction } from "@/lib/logger";
 import { retryOnUnique } from "@/lib/retry";
 import { autoReleaseToProduction } from "@/lib/auto-release";
 import { safeError } from "@/lib/safe-error";
@@ -474,21 +474,27 @@ export async function addPayment(
           ? await autoReleaseToProduction(tx, tenant.id, order.id)
           : { released: false, jobCodes: [], missing: [] };
 
+      await logActionInTransaction(tx, {
+        tenantId: tenant.id,
+        actorId: actor.id,
+        action: "PAYMENT_ADDED",
+        entityType: "Order",
+        entityId: order.id,
+        newValueJson: { amount: input.amount, method: input.method, paid_amount: paidAmount, balance },
+      });
+      if (release.released) {
+        await logActionInTransaction(tx, {
+          tenantId: tenant.id,
+          actorId: actor.id,
+          action: "ORDER_AUTO_RELEASED",
+          entityType: "Order",
+          entityId: order.id,
+          newValueJson: { job_codes: release.jobCodes, trigger: "PAYMENT_ADDED" },
+        });
+      }
+
       return { paymentId: payment.id, paidAmount, balance, status, dpMet, fullyPaid: balance <= 0, release };
     });
-
-    await logAction(actor.id, "PAYMENT_ADDED", "Order", orderId, null, {
-      amount: input.amount,
-      method: input.method,
-      paid_amount: result.paidAmount,
-      balance: result.balance,
-    });
-    if (result.release.released) {
-      await logAction(actor.id, "ORDER_AUTO_RELEASED", "Order", orderId, null, {
-        job_codes: result.release.jobCodes,
-        trigger: "PAYMENT_ADDED",
-      });
-    }
 
     revalidatePath("/admin");
     revalidatePath("/operator");

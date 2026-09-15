@@ -272,3 +272,5 @@ Tahap lanjutan yang sudah masuk kode:
 - **Produksi:** batas job aktif per mesin untuk mencegah overload mesin.
 
 Belum selesai dan tetap menjadi backlog: rate limit terdistribusi, refund approval object/credit note, HPP dan substitusi material lanjutan, load balancing/shift, custom role/outlet scope, dan separation-of-duties penuh. Migrasi baru belum diterapkan ke database lokal karena PostgreSQL lokal tidak tersedia saat verifikasi.
+
+Catatan rollout: email verification tidak dipaksa pada fase beta/trial. Gate hanya aktif eksplisit dengan `REQUIRE_EMAIL_VERIFICATION=true` saat product release.

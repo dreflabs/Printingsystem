@@ -130,3 +130,7 @@ Perbaikan berikut telah diterapkan:
 - `password-reset` tetap memakai TTL 15 menit, kebijakan password terpusat, dan conditional update atomic.
 
 Hal yang masih perlu diselesaikan pada tahap berikutnya: rate limit terdistribusi berbasis Redis/edge, audit event auth anonim, health check provider email, serta sinkronisasi dokumen onboarding/trial dengan konfigurasi bisnis final.
+
+## Kebijakan beta/trial
+
+Atas keputusan produk, verifikasi email dibuat **opt-in** selama fase uji coba. Registrasi langsung dapat dipakai ketika `REQUIRE_EMAIL_VERIFICATION` tidak bernilai `true`. Saat product release, set `REQUIRE_EMAIL_VERIFICATION=true` bersama konfigurasi provider email untuk mengaktifkan gate verifikasi.

@@ -110,7 +110,10 @@ export async function registerTenant(
         subdomain: "3–30 karakter, huruf kecil/angka.",
       });
 
-    const verificationRequired = process.env.NODE_ENV === "production" && process.env.REQUIRE_EMAIL_VERIFICATION !== "false";
+    // Selama beta/trial verifikasi email sengaja dimatikan. Aktifkan eksplisit
+    // saat product release melalui REQUIRE_EMAIL_VERIFICATION=true agar deploy
+    // staging/production awal tidak tiba-tiba menahan akun baru.
+    const verificationRequired = process.env.REQUIRE_EMAIL_VERIFICATION === "true";
     if (verificationRequired && !process.env.MAIL_PROVIDER_TOKEN) {
       return fail("Pendaftaran sementara belum tersedia karena provider email belum dikonfigurasi.");
     }

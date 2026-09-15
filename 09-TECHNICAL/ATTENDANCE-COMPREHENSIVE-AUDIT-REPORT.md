@@ -242,3 +242,9 @@ Status yang direkomendasikan adalah **Conditional Go**:
 - [schema Prisma absensi](../frontend/prisma/schema.prisma)
 - [permissions.ts](../frontend/src/lib/permissions.ts)
 - [payroll.ts](../frontend/src/actions/payroll.ts)
+
+## Implementasi tahap lanjutan — 16 September 2026
+
+- Timezone tenant ditambahkan pada `TenantAttendanceSetting` dengan default `Asia/Jakarta`; tanggal kerja, batas terlambat, dan jam pulang memakai timezone tenant.
+- Clock-in dan clock-out sekarang memakai advisory lock per tenant/user/hari di dalam transaksi sehingga klik ganda atau dua request bersamaan tidak dapat membuat/mengubah punch yang saling bertabrakan.
+- Impor dan payroll tetap memerlukan penyelarasan timezone penuh untuk timestamp fingerprint, cut-off periode payroll, serta uji integrasi database production.

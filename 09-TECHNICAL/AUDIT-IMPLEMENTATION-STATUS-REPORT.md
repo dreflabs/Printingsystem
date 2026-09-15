@@ -260,3 +260,15 @@ Prioritas yang belum memiliki bukti penutupan end-to-end adalah:
 ## Kesimpulan
 
 Audit Print Pilot sudah luas dan fondasi kontrol utama sudah masuk remote. Pekerjaan yang paling mendesak sekarang bukan menambah role baru, melainkan menutup integritas uang, kesiapan payroll absensi, konsistensi unit material, dan authentication tenant. Perubahan lokal unit material serta dua laporan untracked perlu diperlakukan sebagai kandidat rilis terpisah, bukan dianggap sudah tersedia di server.
+
+## Pembaruan implementasi — 16 September 2026
+
+Tahap lanjutan yang sudah masuk kode:
+
+- **Keuangan:** ledger refund printing, row lock payment/cancel, validasi overpayment, audit event finansial transactional.
+- **Absensi:** timezone tenant, atomic clock-in/out, permission import/report/settings, guard attendance eligible, batas laporan periode.
+- **Authentication tenant:** provider email abstraction production, token reset 15 menit atomic, password policy terpusat, email verification signup single-use/TTL/rate limit serta route verifikasi.
+- **Material:** formula dan pasangan unit, pricing/cost snapshot, validasi produksi dan stock usage.
+- **Produksi:** batas job aktif per mesin untuk mencegah overload mesin.
+
+Belum selesai dan tetap menjadi backlog: rate limit terdistribusi, refund approval object/credit note, HPP dan substitusi material lanjutan, load balancing/shift, custom role/outlet scope, dan separation-of-duties penuh. Migrasi baru belum diterapkan ke database lokal karena PostgreSQL lokal tidak tersedia saat verifikasi.

@@ -160,6 +160,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         if (!user || !user.active) return null;
 
+        // Self-serve owner signup must finish email verification first. Existing
+        // accounts are backfilled by the migration; a null value is therefore a
+        // deliberate pending-verification state, not a legacy account.
+        if (!user.email_verified_at) return null;
+
         // Kunci akun sementara setelah percobaan gagal berturut-turut.
         if (user.locked_until && user.locked_until > new Date()) return null;
 

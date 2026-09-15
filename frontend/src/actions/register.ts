@@ -1,6 +1,7 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { ok, fail, type ActionResult } from "@/types/actions";
 import {
@@ -8,6 +9,7 @@ import {
 } from "@/lib/starter-data";
 import { validateTenantPassword } from "@/lib/password-policy";
 import { rateLimit } from "@/lib/rate-limit";
+import { sendEmail } from "@/lib/mail";
 
 const DEFAULT_ROLES = ["owner", "admin", "designer_sales", "operator", "gudang"] as const;
 const TRIAL_DAYS = 14;
@@ -68,6 +70,7 @@ export type RegisterTenantResult = {
   slug: string;
   ownerUsername: string;
   tenantId: string;
+  verificationRequired: boolean;
 };
 
 function slugify(v: string) {
@@ -78,8 +81,9 @@ function slugify(v: string) {
  * Public self-serve signup. Creates Tenant + owner User + trial subscription +
  * onboarding marker in one transaction.
  *
- * NOTE: email is NOT verified (no mail provider wired yet). When one is added,
- * gate this behind a verified-token check and re-add the VERIFIED onboarding step.
+ * New production signups must verify the owner email before the first login.
+ * Existing tenants are backfilled as verified by the migration so this does not
+ * interrupt established workspaces.
  */
 export async function registerTenant(
   input: RegisterTenantInput
@@ -106,6 +110,11 @@ export async function registerTenant(
         subdomain: "3–30 karakter, huruf kecil/angka.",
       });
 
+    const verificationRequired = process.env.NODE_ENV === "production" && process.env.REQUIRE_EMAIL_VERIFICATION !== "false";
+    if (verificationRequired && !process.env.MAIL_PROVIDER_TOKEN) {
+      return fail("Pendaftaran sementara belum tersedia karena provider email belum dikonfigurasi.");
+    }
+
     const existing = await prisma.tenant.findUnique({ where: { slug } });
     if (existing) return fail("Subdomain sudah dipakai. Coba yang lain.", { subdomain: "Sudah dipakai." });
 
@@ -114,6 +123,10 @@ export async function registerTenant(
     const planKey = resolvePlanKey(input.plan);
     const planDef = PLAN_CATALOG[planKey];
     const workspaceMode = resolveWorkspaceMode(input.teamSize);
+    const verificationRaw = verificationRequired ? crypto.randomBytes(32).toString("hex") : null;
+    const verificationHash = verificationRaw
+      ? crypto.createHash("sha256").update(verificationRaw).digest("hex")
+      : null;
 
     const result = await prisma.$transaction(async (tx) => {
       // Roles are global (no tenant_id) — ensure the standard set exists.
@@ -179,6 +192,7 @@ export async function registerTenant(
           name: ownerName,
           username: usernameBase,
           email,
+          email_verified_at: verificationRequired ? null : new Date(),
           password_hash,
           role_id: roleIds["owner"],
           phone,
@@ -212,8 +226,6 @@ export async function registerTenant(
       // Owner menyesuaikan di /owner/attendance-settings.
       await tx.tenantAttendanceSetting.create({ data: { tenant_id: tenant.id } });
 
-      // Catatan: email belum diverifikasi (belum ada provider email) — jangan
-      // tandai VERIFIED. Tambahkan langkah itu saat verifikasi email diaktifkan.
       await tx.onboardingStep.create({
         data: { tenant_id: tenant.id, step: "WIZARD_DONE" },
       });
@@ -227,10 +239,33 @@ export async function registerTenant(
         },
       });
 
-      return { slug, ownerUsername: usernameBase, tenantId: tenant.id };
+      if (verificationHash && verificationRaw) {
+        await tx.emailVerificationToken.create({
+          data: {
+            user_id: owner.id,
+            token_hash: verificationHash,
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+        });
+      }
+
+      return { slug, ownerUsername: usernameBase, tenantId: tenant.id, verificationRequired, verificationRaw };
     });
 
-    return ok(result);
+    if (result.verificationRequired && result.verificationRaw) {
+      const link = `${process.env.APP_URL?.replace(/\/$/, "") || "http://localhost:3000"}/verify-email?token=${result.verificationRaw}`;
+      const mailed = await sendEmail({
+        to: email,
+        subject: "Verifikasi email Print Pilot",
+        body: `Klik tautan berikut untuk mengaktifkan akun Print Pilot Anda (berlaku 24 jam):\n\n${link}\n\nJika Anda tidak membuat akun ini, abaikan email ini.`,
+      });
+      if (!mailed.ok) {
+        console.error("register email verification delivery failed:", mailed.error);
+        return fail("Workspace berhasil dibuat, tetapi email verifikasi belum dapat dikirim. Hubungi dukungan untuk mengirim ulang.");
+      }
+    }
+
+    return ok({ slug: result.slug, ownerUsername: result.ownerUsername, tenantId: result.tenantId, verificationRequired: result.verificationRequired });
   } catch (e) {
     console.error("registerTenant failed:", e);
     return fail("Gagal membuat workspace. Silakan coba lagi.");

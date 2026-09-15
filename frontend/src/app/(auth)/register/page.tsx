@@ -67,6 +67,7 @@ function RegisterWizard() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ownerUsername, setOwnerUsername] = useState("");
+  const [verificationRequired, setVerificationRequired] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -81,7 +82,7 @@ function RegisterWizard() {
   });
 
   const pw = formData.password;
-  const pwHasLen = pw.length >= 8;
+  const pwHasLen = pw.length >= 12;
   const pwHasMix = /[a-zA-Z]/.test(pw) && /[0-9]/.test(pw);
   const pwStrong = pwHasLen && pwHasMix;
   const pwMatch = pw.length > 0 && pw === formData.passwordConfirm;
@@ -122,14 +123,16 @@ function RegisterWizard() {
       return;
     }
     setOwnerUsername(res.data.ownerUsername);
+    setVerificationRequired(res.data.verificationRequired);
     setFormData((f) => ({ ...f, subdomain: res.data.slug }));
-    // Auto-login ke workspace baru — tak perlu ketik ulang kredensial.
-    await signIn("credentials", {
-      redirect: false,
-      workspace: res.data.slug,
-      username: res.data.ownerUsername,
-      password: formData.password,
-    });
+    if (!res.data.verificationRequired) {
+      await signIn("credentials", {
+        redirect: false,
+        workspace: res.data.slug,
+        username: res.data.ownerUsername,
+        password: formData.password,
+      });
+    }
     setIsLoading(false);
     setStep(3);
   };
@@ -272,7 +275,7 @@ function RegisterWizard() {
                     {formData.password.length > 0 && (
                       <ul className="text-[11px] space-y-1 -mt-1">
                         <li className={cn("flex items-center gap-1.5", pwHasLen ? "text-status-green" : "text-muted")}>
-                          <CheckCircle2 className="h-3 w-3" /> Minimal 8 karakter
+                          <CheckCircle2 className="h-3 w-3" /> Minimal 12 karakter
                         </li>
                         <li className={cn("flex items-center gap-1.5", pwHasMix ? "text-status-green" : "text-muted")}>
                           <CheckCircle2 className="h-3 w-3" /> Mengandung huruf dan angka
@@ -449,13 +452,13 @@ function RegisterWizard() {
                     <div className="absolute inset-0 bg-status-green/20 rounded-full animate-ping opacity-50" />
                     <CheckCircle2 className="h-10 w-10 text-status-green" />
                   </div>
-                  <h2 className="text-2xl font-bold text-primary mb-2">Workspace Berhasil Dibuat!</h2>
+                  <h2 className="text-2xl font-bold text-primary mb-2">
+                    {verificationRequired ? "Cek Email untuk Mengaktifkan Workspace" : "Workspace Berhasil Dibuat!"}
+                  </h2>
                   <p className="text-muted text-sm max-w-sm mb-4">
-                    Selamat datang di Print Pilot. Workspace Anda aktif di{" "}
-                    <span className="text-accent-teal font-mono font-bold">
-                      {formData.subdomain}.printpilot.id
-                    </span>{" "}
-                    (masa uji coba 14 hari).
+                    {verificationRequired
+                      ? "Kami mengirim tautan verifikasi ke email owner. Akun baru dapat masuk setelah tautan tersebut diklik."
+                      : <>Selamat datang di Print Pilot. Workspace Anda aktif di{" "}<span className="text-accent-teal font-mono font-bold">{formData.subdomain}.printpilot.id</span>{" "}(masa uji coba 14 hari).</>}
                   </p>
                   <div className="mb-8 rounded-xl border border-border bg-elevated px-4 py-3 text-xs text-muted max-w-sm space-y-1 text-left">
                     <p>
@@ -470,10 +473,10 @@ function RegisterWizard() {
                   </div>
 
                   <a
-                    href="/owner"
+                    href={verificationRequired ? "/login" : "/owner"}
                     className="h-12 px-8 rounded-xl bg-primary text-base font-bold flex items-center gap-2 text-white hover:scale-105 transition-transform"
                   >
-                    Buka Dashboard <ChevronRight className="h-4 w-4" />
+                    {verificationRequired ? "Ke halaman masuk" : "Buka Dashboard"} <ChevronRight className="h-4 w-4" />
                   </a>
                 </div>
               )}

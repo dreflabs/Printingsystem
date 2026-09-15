@@ -95,30 +95,17 @@ export async function startBreak(): Promise<ActionResult<{ recordId: string; bre
     if (!set.personal_device_enabled)
       return fail("Absen dari HP pribadi dinonaktifkan. Catat istirahat lewat perangkat kiosk.");
 
-    const existing = await todayRecord(actor.id, tenant.id, set.timezone);
-    if (!existing?.check_in) return fail("Absen masuk terlebih dahulu sebelum memulai istirahat.");
-    if (existing.check_out) return fail("Istirahat tidak dapat dimulai setelah absen pulang.");
-    if (existing?.break_start && !existing.break_end) return fail("Anda sedang istirahat.");
-    if (existing?.break_start && existing.break_end) return fail("Jatah istirahat hari ini sudah dipakai.");
-
     const now = new Date();
-    const rec = existing
-      ? await prisma.attendanceRecord.update({
-          where: { id: existing.id },
-          data: { break_start: now, break_status: "NORMAL", warning_sent_at: null },
-        })
-      : await prisma.attendanceRecord.create({
-          data: {
-            tenant_id: tenant.id,
-            user_id: actor.id,
-            employee_name: actor.name,
-            attendance_day: tenantDayDate(now, set.timezone),
-            date: now,
-            check_in_status: "ON_TIME",
-            break_start: now,
-            break_status: "NORMAL",
-          },
-        });
+    const attendanceDay = tenantDayDate(now, set.timezone);
+    const rec = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`attendance:${tenant.id}:${actor.id}:${attendanceDay.toISOString()}`}))`;
+      const existing = await tx.attendanceRecord.findFirst({ where: { tenant_id: tenant.id, user_id: actor.id, attendance_day: attendanceDay }, orderBy: { created_at: "desc" } });
+      if (!existing?.check_in) throw new Error("Absen masuk terlebih dahulu sebelum memulai istirahat.");
+      if (existing.check_out) throw new Error("Istirahat tidak dapat dimulai setelah absen pulang.");
+      if (existing.break_start && !existing.break_end) throw new Error("Anda sedang istirahat.");
+      if (existing.break_start && existing.break_end) throw new Error("Jatah istirahat hari ini sudah dipakai.");
+      return tx.attendanceRecord.update({ where: { id: existing.id }, data: { break_start: now, break_status: "NORMAL", warning_sent_at: null } });
+    });
 
     await logAction(actor.id, "BREAK_STARTED", "AttendanceRecord", rec.id, null, { at: now.toISOString() });
     revalidatePath("/operator");
@@ -139,18 +126,18 @@ export async function endBreak(): Promise<ActionResult<{ durationMin: number; st
     const actor = await requireUser();
     await requireAttendanceEligible(tenant.id, actor);
     const set = await tenantSetting(tenant.id);
-    const rec = await todayRecord(actor.id, tenant.id, set.timezone);
-    if (!rec || !rec.break_start) return fail("Anda belum memulai istirahat.");
-    if (!rec.check_in) return fail("Absen masuk terlebih dahulu sebelum menyelesaikan istirahat.");
-    if (rec.break_end) return fail("Istirahat sudah diselesaikan.");
-
     const now = new Date();
-    const durationMin = Math.max(0, Math.round((now.getTime() - rec.break_start.getTime()) / 60000));
-    const status = durationMin > set.break_max_min ? "EXCEEDED" : "NORMAL";
-
-    await prisma.attendanceRecord.update({
-      where: { id: rec.id },
-      data: { break_end: now, break_duration_min: durationMin, break_status: status },
+    const attendanceDay = tenantDayDate(now, set.timezone);
+    const { rec, durationMin, status } = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`attendance:${tenant.id}:${actor.id}:${attendanceDay.toISOString()}`}))`;
+      const rec = await tx.attendanceRecord.findFirst({ where: { tenant_id: tenant.id, user_id: actor.id, attendance_day: attendanceDay }, orderBy: { created_at: "desc" } });
+      if (!rec || !rec.break_start) throw new Error("Anda belum memulai istirahat.");
+      if (!rec.check_in) throw new Error("Absen masuk terlebih dahulu sebelum menyelesaikan istirahat.");
+      if (rec.break_end) throw new Error("Istirahat sudah diselesaikan.");
+      const durationMin = Math.max(0, Math.round((now.getTime() - rec.break_start.getTime()) / 60000));
+      const status = durationMin > set.break_max_min ? "EXCEEDED" : "NORMAL";
+      await tx.attendanceRecord.update({ where: { id: rec.id }, data: { break_end: now, break_duration_min: durationMin, break_status: status } });
+      return { rec, durationMin, status };
     });
     await logAction(actor.id, "BREAK_ENDED", "AttendanceRecord", rec.id, null, { durationMin, status });
     revalidatePath("/operator");

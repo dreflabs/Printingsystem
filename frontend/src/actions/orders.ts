@@ -408,6 +408,7 @@ export async function addPayment(
     if (!Number.isSafeInteger(input.amount) || !(input.amount > 0)) return fail("Nominal pembayaran harus berupa rupiah bulat dan lebih dari 0.");
     if (!["CASH", "TRANSFER", "QRIS"].includes(input.method)) return fail("Metode pembayaran tidak valid.");
     if (input.reference && input.reference.trim().length > 120) return fail("Referensi pembayaran terlalu panjang.");
+    if (input.method === "TRANSFER" && !input.reference?.trim()) return fail("Referensi transfer wajib diisi.");
 
     const result = await prisma.$transaction(async (tx) => {
       // Serialisasi penerimaan uang per order. Tanpa row lock, dua kasir dapat
@@ -535,6 +536,9 @@ export async function decideDiscount(
       if (DISCOUNT_LOCKED_ORDER_STATUSES.has(order.status)) {
         throw new Error(`Diskon tidak dapat diputuskan setelah order berstatus ${order.status}. Gunakan alur correction/financial approval.`);
       }
+      if (Number(order.paid_amount) > 0) {
+        throw new Error("Diskon tidak dapat diputuskan setelah pembayaran diterima. Gunakan alur refund/credit approval.");
+      }
       const existingProductionJobs = await tx.productionJob.count({
         where: { tenant_id: tenant.id, order_id: order.id },
       });
@@ -631,6 +635,7 @@ export async function requestDiscount(
     const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
     if (!order) return fail("Order tidak ditemukan.");
     if (["CLOSED", "CANCELLED"].includes(order.status)) return fail("Diskon tidak bisa diajukan pada order yang sudah selesai/batal.");
+    if (Number(order.paid_amount) > 0) return fail("Diskon tidak dapat diajukan setelah pembayaran diterima. Gunakan alur refund/credit approval.");
     if (Number(order.discount) > 0 && order.discount_approved_by) {
       return fail("Order ini sudah punya diskon yang disetujui. Buat koreksi untuk mengubahnya.");
     }

@@ -75,7 +75,11 @@ export async function processRetailOrder(
 
     const items = input.items?.filter((i) => i.quantity > 0) ?? [];
     if (items.length === 0) return fail("Keranjang kosong.");
+    if (items.some((i) => !Number.isSafeInteger(i.quantity) || i.quantity <= 0)) return fail("Jumlah item harus berupa bilangan bulat positif.");
     if (items.some((i) => i.unitPrice < 0)) return fail("Harga item tidak valid.");
+    if (!["CASH", "TRANSFER", "QRIS"].includes(input.payment?.method)) return fail("Metode pembayaran tidak valid.");
+    if (!Number.isSafeInteger(input.payment?.amountPaid) || input.payment.amountPaid <= 0) return fail("Nominal pembayaran tidak valid.");
+    if (input.payment.method === "TRANSFER" && !input.payment.reference?.trim()) return fail("Referensi transfer wajib diisi.");
 
     const discount = Math.max(0, Math.round(input.discount ?? 0));
 
@@ -248,7 +252,7 @@ export async function processRetailOrder(
 export interface VoidRetailOrderInput {
   reason: string;
   /** metode pengembalian dana: CASH/TRANSFER/QRIS */
-  refundMethod?: string;
+  refundMethod?: "CASH" | "TRANSFER" | "QRIS";
 }
 
 /**
@@ -270,6 +274,7 @@ export async function voidRetailOrder(
     if (!input.reason?.trim() || input.reason.trim().length < 5) {
       return fail("Alasan pembatalan wajib diisi (min. 5 karakter).");
     }
+    if (input.refundMethod && !["CASH", "TRANSFER", "QRIS"].includes(input.refundMethod)) return fail("Metode refund tidak valid.");
 
     const result = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findFirst({

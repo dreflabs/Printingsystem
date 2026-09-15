@@ -117,3 +117,14 @@ Login platform dicatat ke platform audit, tetapi request reset, reset berhasil/g
 - Pemeriksaan statis terhadap auth, middleware, register, password reset, session, dan dokumentasi keamanan telah dilakukan.
 - Server development sebelumnya dapat dijalankan pada `127.0.0.1:3000`; smoke request pada sesi audit ini tidak dilakukan karena proses server sudah berhenti.
 - Temuan di atas berasal dari perilaku kode dan perbandingan langsung dengan dokumen, bukan asumsi UI.
+
+## Implementasi tahap lanjutan — 16 September 2026
+
+Perbaikan berikut telah diterapkan:
+
+- `User.email_verified_at` dan `EmailVerificationToken` ditambahkan. Migrasi membackfill akun lama sebagai verified agar tidak memutus akses tenant existing.
+- Registrasi produksi membutuhkan provider email dan mengirim token verifikasi hashed, single-use, TTL 24 jam. Login tenant menolak Owner baru yang belum verified.
+- Route `/verify-email` mengonsumsi token secara atomic dan tersedia alur kirim ulang dengan rate limit.
+- `password-reset` tetap memakai TTL 15 menit, kebijakan password terpusat, dan conditional update atomic.
+
+Hal yang masih perlu diselesaikan pada tahap berikutnya: rate limit terdistribusi berbasis Redis/edge, audit event auth anonim, health check provider email, serta sinkronisasi dokumen onboarding/trial dengan konfigurasi bisnis final.

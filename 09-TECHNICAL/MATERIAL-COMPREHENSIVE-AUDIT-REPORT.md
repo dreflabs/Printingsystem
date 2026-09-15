@@ -227,3 +227,9 @@ Rekomendasi profesional: pemakaian wajib untuk job yang memakai material, dengan
 
 Audit ini tidak mengubah kode, database, atau data lokal. Laporan inbound sebelumnya tetap berlaku untuk detail bug min/step dan perbaikannya: [MATERIAL-INBOUND-QUANTITY-INPUT-AUDIT-REPORT.md](/Users/drefan/Projects/PRINT%20PILOT/09-TECHNICAL/MATERIAL-INBOUND-QUANTITY-INPUT-AUDIT-REPORT.md).
 
+
+## Implementasi tahap lanjutan — 16 September 2026
+
+Allowlist ProductMaterial dan MachineMaterial sekarang menjadi gate server-side untuk order, auto-release, start, dan finish produksi. Job wajib memiliki bahan utama yang direncanakan, material harus aktif dan kompatibel dengan mesin, serta pemakaian/waste dikonversi ke unit stok dengan presisi enam desimal. Harga item dan `pricing_unit`/`cost_unit` disnapshot saat order dibuat.
+
+Gap lanjutan tetap: fallback/substitusi formal setelah produksi berjalan, tarif efektif per material untuk HPP, dan rekonsiliasi biaya aktual-vs-snapshot pada laporan margin.

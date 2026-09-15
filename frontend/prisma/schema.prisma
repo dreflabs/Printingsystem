@@ -233,6 +233,8 @@ model User {
   name                 String
   username             String
   email                String
+  // null sampai owner menyelesaikan tautan verifikasi self-serve signup.
+  email_verified_at    DateTime?
   password_hash        String
   avatar_url           String?
   role_id              String
@@ -306,6 +308,7 @@ model User {
   imported_attendance    AttendanceImport[]
   attendance_records     AttendanceRecord[]
   password_reset_tokens  PasswordResetToken[]
+  email_verification_tokens EmailVerificationToken[]
   payroll_records        PayrollRecord[]
 
   @@unique([tenant_id, username])
@@ -1311,4 +1314,19 @@ model PasswordResetToken {
   created_at DateTime  @default(now())
 
   @@index([user_id])
+}
+
+// Token verifikasi email owner saat self-serve signup. Hanya hash token yang
+// disimpan; token mentah dikirim sekali melalui email dan berlaku singkat.
+model EmailVerificationToken {
+  id         String    @id @default(uuid())
+  user_id    String
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token_hash String    @unique
+  expires_at DateTime
+  used_at    DateTime?
+  created_at DateTime  @default(now())
+
+  @@index([user_id])
+  @@index([expires_at])
 }

@@ -63,10 +63,8 @@ export interface ClockInResult {
 export async function performClockIn(ctx: PunchContext): Promise<ClockInResult> {
   const { tenantId, user, setting: set, method, ip, deviceLabel, input } = ctx;
 
-  const existing = await todayRecord(user.id, tenantId, set.timezone);
-  if (existing?.check_in) throw new PunchError("Anda sudah absen masuk hari ini.");
-
   const now = new Date();
+  const attendanceDay = tenantDayDate(now, set.timezone);
 
   const startMin = hhmmToMinutes(set.work_start);
   if (startMin != null && tenantMinutesOfDay(now, set.timezone) < startMin - set.earliest_clock_in_min) {
@@ -100,6 +98,15 @@ export async function performClockIn(ctx: PunchContext): Promise<ClockInResult> 
   const offDay = !isWorkdayForTenant(now, set.workdays, set.timezone);
 
   const rec = await prisma.$transaction(async (tx) => {
+    // Serialize punches for the same tenant/user/day. This closes the race in
+    // which two tabs both read “belum absen” before either INSERT commits.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`attendance:${tenantId}:${user.id}:${attendanceDay.toISOString()}`}))`;
+    const existing = await tx.attendanceRecord.findFirst({
+      where: { tenant_id: tenantId, user_id: user.id, attendance_day: attendanceDay },
+      orderBy: { created_at: "desc" },
+    });
+    if (existing?.check_in) throw new PunchError("Anda sudah absen masuk hari ini.");
+
     const base = {
       check_in: now,
       check_in_status: status,
@@ -122,7 +129,7 @@ export async function performClockIn(ctx: PunchContext): Promise<ClockInResult> 
             tenant_id: tenantId,
             user_id: user.id,
             employee_name: user.name,
-            attendance_day: tenantDayDate(now, set.timezone),
+            attendance_day: attendanceDay,
             date: now,
             ...base,
           },
@@ -159,6 +166,7 @@ export async function performClockOut(ctx: PunchContext): Promise<ClockOutResult
   if (rec.break_start && !rec.break_end) throw new PunchError("Selesaikan istirahat dulu sebelum absen pulang.");
 
   const now = new Date();
+  const attendanceDay = tenantDayDate(now, set.timezone);
 
   if (set.ip_mode !== "OFF") {
     const okIp = ipAllowed(ip, set.ip_allowlist);
@@ -181,9 +189,18 @@ export async function performClockOut(ctx: PunchContext): Promise<ClockOutResult
   const status = checkOutInfoForTenant(now, set.work_end, set.timezone);
   const checkoutIpFlag = set.ip_mode !== "OFF" && !ipAllowed(ip, set.ip_allowlist);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.attendanceRecord.update({
-      where: { id: rec.id },
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`attendance:${tenantId}:${user.id}:${attendanceDay.toISOString()}`}))`;
+    const fresh = await tx.attendanceRecord.findFirst({
+      where: { tenant_id: tenantId, user_id: user.id, attendance_day: attendanceDay },
+      orderBy: { created_at: "desc" },
+    });
+    if (!fresh || !fresh.check_in) throw new PunchError("Anda belum absen masuk hari ini.");
+    if (fresh.check_out) throw new PunchError("Anda sudah absen pulang hari ini.");
+    if (fresh.break_start && !fresh.break_end) throw new PunchError("Selesaikan istirahat dulu sebelum absen pulang.");
+
+    const updated = await tx.attendanceRecord.update({
+      where: { id: fresh.id },
       data: {
         check_out: now,
         check_out_status: status,
@@ -192,20 +209,21 @@ export async function performClockOut(ctx: PunchContext): Promise<ClockOutResult
         check_out_lng: input.lng ?? null,
         check_out_accuracy_m: input.accuracyM ?? null,
         check_out_ip: ip,
-        geo_flag: rec.geo_flag || geo.outside,
-        ip_flag: rec.ip_flag || checkoutIpFlag,
+        geo_flag: fresh.geo_flag || geo.outside,
+        ip_flag: fresh.ip_flag || checkoutIpFlag,
       },
     });
     if (selfie) {
       await tx.attendanceSelfie.create({
-        data: { tenant_id: tenantId, record_id: rec.id, kind: "CHECK_OUT", mime: selfie.mime, bytes: selfie.buffer },
+        data: { tenant_id: tenantId, record_id: updated.id, kind: "CHECK_OUT", mime: selfie.mime, bytes: selfie.buffer },
       });
     }
+    return updated;
   });
 
-  await logAction(user.id, "ATTENDANCE_CLOCK_OUT", "AttendanceRecord", rec.id, null, { method, status });
+  await logAction(user.id, "ATTENDANCE_CLOCK_OUT", "AttendanceRecord", updated.id, null, { method, status });
 
-  return { recordId: rec.id, checkOut: now, status };
+  return { recordId: updated.id, checkOut: now, status };
 }
 
 async function notifyOwnersLate(tenantId: string, name: string, at: Date, lateMin: number) {

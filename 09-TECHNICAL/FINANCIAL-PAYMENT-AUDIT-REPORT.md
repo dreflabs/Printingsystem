@@ -182,3 +182,16 @@ Hash chain, actor, tenant, dan event finansial utama tersedia. Kelemahan terpent
 
 Alur pembayaran sudah memiliki kontrol dasar yang baik, tetapi belum layak dianggap final untuk uang nyata sebelum ledger refund cetak, serialisasi payment, aturan diskon setelah pembayaran, dan jaminan audit event diperbaiki. Temuan overpayment lokal harus ditandai dan diselesaikan melalui koreksi finansial resmi; jangan diedit langsung di database.
 
+
+## Implementasi tahap lanjutan — 16 September 2026
+
+Temuan P1 yang sudah diperbaiki:
+
+- Pembatalan order cetak membuat Payment negatif sebagai ledger refund, memperbarui `paid_amount`/`balance`, dan mencatat metode refund.
+- `addPayment()` dan pembatalan mengunci baris Order di transaksi sehingga dua kasir tidak dapat melewati saldo yang sama.
+- Nominal payment harus integer Rupiah positif; metode dibatasi; transfer wajib memiliki reference.
+- Pengajuan/keputusan diskon setelah payment pertama sekarang ditolak dan diarahkan ke alur refund/credit approval.
+- Event pembayaran dan pembatalan ditulis dengan `logActionInTransaction` di transaksi domain yang sama.
+- POS memvalidasi jumlah, nominal pembayaran, metode, dan reference transfer di server.
+
+Yang masih terbuka: entitas `RefundRequest` dengan status REQUESTED/APPROVED/PAID, credit note untuk koreksi selisih, rekonsiliasi terjadwal dan metrik net cash, serta distributed idempotency key untuk integrasi pembayaran eksternal.

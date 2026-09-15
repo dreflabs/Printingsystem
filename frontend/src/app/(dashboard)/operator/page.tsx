@@ -30,6 +30,8 @@ type Job = {
   firstItemSize: string | null;
   firstItemQty: number;
   suggestedMaterialId: string | null;
+  allowedMaterialIds: string[];
+  plannedMaterialIds: string[];
   fileUrl: string | null;
   fileName: string | null;
   files: { label: string; url: string; name: string | null; notes: string | null }[];
@@ -342,6 +344,11 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
   const setRow = (key: number, patch: Partial<MatRow>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const matById = (id: string) => materials.find((m) => m.id === id);
+  const allowedMaterials = job.plannedMaterialIds.length > 0
+    ? materials.filter((m) => job.plannedMaterialIds.includes(m.id))
+    : job.allowedMaterialIds.length > 0
+      ? materials.filter((m) => job.allowedMaterialIds.includes(m.id))
+    : materials;
 
   const rejectN = Number(rejectQty) || 0;
   const rejectFinal = rejectReason === "Lainnya" ? rejectCustom.trim() : rejectReason;
@@ -428,7 +435,7 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
           Bahan dipakai
           <InfoTip text="Berapa banyak bahan HABIS untuk job ini (satuan di kanan kotak). ⚠️ Angka ini langsung memotong stok — isi sejujurnya, jangan asal." />
         </p>
-        {materials.length === 0 && (
+        {allowedMaterials.length === 0 && (
           <p className="text-[11px] text-status-yellow-text">Belum ada master material — tambahkan di Katalog dulu.</p>
         )}
         {rows.map((r, i) => {
@@ -439,7 +446,7 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px]">
                 <select className={fInp} value={r.materialId} onChange={(e) => setRow(r.key, { materialId: e.target.value })}>
                   <option value="">Pilih material…</option>
-                  {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  {allowedMaterials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
                 <div className="relative">
                   <input

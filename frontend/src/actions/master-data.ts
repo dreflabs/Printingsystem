@@ -213,9 +213,36 @@ export async function getPrintingProducts() {
     const products = await prisma.product.findMany({
       where: { tenant_id: tenant.id, active: true },
       orderBy: { name: "asc" },
+      include: {
+        material_options: {
+          where: { tenant_id: tenant.id, active: true, material: { active: true } },
+          orderBy: [{ sort_order: "asc" }, { material: { name: "asc" } }],
+          select: {
+            material_id: true,
+            is_default: true,
+            role: true,
+            sort_order: true,
+            material: { select: { id: true, name: true, material_code: true } },
+          },
+        },
+      },
     });
 
-    return { success: true, data: products.map(plainPrinting) };
+    return {
+      success: true,
+      data: products.map((p) => plainPrinting({
+        ...p,
+        material_options: p.material_options.map((option) => ({
+          material_id: option.material_id,
+          is_default: option.is_default,
+          role: option.role,
+          sort_order: option.sort_order,
+          id: option.material.id,
+          name: option.material.name,
+          material_code: option.material.material_code,
+        })),
+      })),
+    };
   } catch (error: unknown) {
     console.error("Error fetching printing products:", error);
     return { success: false, error: error instanceof Error ? error.message : "Terjadi kesalahan." };
@@ -229,6 +256,7 @@ export async function createPrintingProduct(data: {
   base_price?: number | null;
   default_material_id?: string | null;
   default_machine_id?: string | null;
+  material_ids?: string[];
 }) {
   try {
     const tenant = await requireTenant();
@@ -238,16 +266,41 @@ export async function createPrintingProduct(data: {
     const unit = PRINTING_UNITS.includes((data.unit ?? "").toUpperCase() as (typeof PRINTING_UNITS)[number])
       ? (data.unit as string).toUpperCase()
       : "PCS";
-    const product = await prisma.product.create({
-      data: {
-        tenant_id: tenant.id,
-        name: data.name.trim(),
-        category: (data.category?.trim() || "LAINNYA").toUpperCase(),
-        unit,
-        base_price: data.base_price != null && data.base_price > 0 ? data.base_price : null,
-        default_material_id: data.default_material_id || null,
-        default_machine_id: data.default_machine_id || null,
-      },
+    const product = await prisma.$transaction(async (tx) => {
+      const defaultMaterialId = data.default_material_id || null;
+      const materialIds = Array.from(new Set((data.material_ids ?? (defaultMaterialId ? [defaultMaterialId] : [])).filter(Boolean)));
+      if (defaultMaterialId && !materialIds.includes(defaultMaterialId)) {
+        throw new Error("Material default harus termasuk dalam daftar material produk.");
+      }
+      if (materialIds.length > 0) {
+        const materialCount = await tx.material.count({
+          where: { id: { in: materialIds }, tenant_id: tenant.id, active: true },
+        });
+        if (materialCount !== materialIds.length) throw new Error("Daftar material mengandung bahan yang tidak valid atau nonaktif.");
+      }
+      const created = await tx.product.create({
+        data: {
+          tenant_id: tenant.id,
+          name: data.name.trim(),
+          category: (data.category?.trim() || "LAINNYA").toUpperCase(),
+          unit,
+          base_price: data.base_price != null && data.base_price > 0 ? data.base_price : null,
+          default_material_id: defaultMaterialId,
+          default_machine_id: data.default_machine_id || null,
+        },
+      });
+      if (materialIds.length > 0) {
+        await tx.productMaterial.createMany({
+          data: materialIds.map((materialId, index) => ({
+            tenant_id: tenant.id,
+            product_id: created.id,
+            material_id: materialId,
+            is_default: materialId === defaultMaterialId,
+            sort_order: index,
+          })),
+        });
+      }
+      return created;
     });
     revalidatePath("/admin/products");
     return ok(plainPrinting(product));
@@ -266,6 +319,7 @@ export async function updatePrintingProduct(
     base_price?: number | null;
     default_material_id?: string | null;
     default_machine_id?: string | null;
+    material_ids?: string[];
     active?: boolean;
   }
 ) {
@@ -289,12 +343,120 @@ export async function updatePrintingProduct(
     if (data.default_machine_id !== undefined) patch.default_machine_id = data.default_machine_id || null;
     if (data.active != null) patch.active = data.active;
 
-    const product = await prisma.product.update({ where: { id }, data: patch });
+    const product = await prisma.$transaction(async (tx) => {
+      const nextDefault = data.default_material_id !== undefined
+        ? data.default_material_id || null
+        : existing.default_material_id;
+      const requestedMaterialIds = data.material_ids !== undefined
+        ? Array.from(new Set(data.material_ids.filter(Boolean)))
+        : null;
+      const effectiveMaterialIds = requestedMaterialIds ?? (nextDefault ? [nextDefault] : []);
+      if (nextDefault && !effectiveMaterialIds.includes(nextDefault)) {
+        throw new Error("Material default harus termasuk dalam daftar material produk.");
+      }
+      if (effectiveMaterialIds.length > 0) {
+        const materialCount = await tx.material.count({
+          where: { id: { in: effectiveMaterialIds }, tenant_id: tenant.id, active: true },
+        });
+        if (materialCount !== effectiveMaterialIds.length) throw new Error("Daftar material mengandung bahan yang tidak valid atau nonaktif.");
+      }
+      const updated = await tx.product.update({ where: { id }, data: patch });
+      if (requestedMaterialIds !== null) {
+        await tx.productMaterial.deleteMany({ where: { tenant_id: tenant.id, product_id: id } });
+        if (requestedMaterialIds.length > 0) {
+          await tx.productMaterial.createMany({
+            data: requestedMaterialIds.map((materialId, index) => ({
+              tenant_id: tenant.id,
+              product_id: id,
+              material_id: materialId,
+              is_default: materialId === nextDefault,
+              sort_order: index,
+            })),
+          });
+        }
+      } else if (nextDefault) {
+        await tx.productMaterial.updateMany({
+          where: { tenant_id: tenant.id, product_id: id },
+          data: { is_default: false },
+        });
+        await tx.productMaterial.upsert({
+          where: { tenant_id_product_id_material_id: { tenant_id: tenant.id, product_id: id, material_id: nextDefault } },
+          create: { tenant_id: tenant.id, product_id: id, material_id: nextDefault, is_default: true },
+          update: { active: true, is_default: true },
+        });
+      } else if (data.default_material_id !== undefined) {
+        await tx.productMaterial.updateMany({
+          where: { tenant_id: tenant.id, product_id: id },
+          data: { is_default: false },
+        });
+      }
+      return updated;
+    });
     revalidatePath("/admin/products");
     return ok(plainPrinting(product));
   } catch (e) {
     console.error("updatePrintingProduct:", e);
     return fail(safeError(e, "Gagal memperbarui produk cetak."));
+  }
+}
+
+/**
+ * Set the explicit material allowlist for one printing product. Empty lists
+ * are allowed so an incomplete product can be configured before first order;
+ * the order server action rejects products without an active mapping.
+ */
+export async function setProductMaterials(
+  productId: string,
+  data: { materialIds: string[]; defaultMaterialId?: string | null }
+) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengatur material produk.");
+
+    const product = await prisma.product.findFirst({
+      where: { id: productId, tenant_id: tenant.id },
+      select: { id: true },
+    });
+    if (!product) return fail("Produk tidak ditemukan.");
+
+    const materialIds = Array.from(new Set(data.materialIds.filter(Boolean)));
+    const defaultMaterialId = data.defaultMaterialId || null;
+    if (defaultMaterialId && !materialIds.includes(defaultMaterialId)) {
+      return fail("Material default harus termasuk dalam daftar material produk.");
+    }
+    if (materialIds.length > 0) {
+      const count = await prisma.material.count({
+        where: { tenant_id: tenant.id, id: { in: materialIds }, active: true },
+      });
+      if (count !== materialIds.length) return fail("Daftar material mengandung bahan yang tidak valid atau nonaktif.");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.productMaterial.deleteMany({ where: { tenant_id: tenant.id, product_id: productId } });
+      if (materialIds.length > 0) {
+        await tx.productMaterial.createMany({
+          data: materialIds.map((materialId, index) => ({
+            tenant_id: tenant.id,
+            product_id: productId,
+            material_id: materialId,
+            is_default: materialId === defaultMaterialId,
+            sort_order: index,
+          })),
+        });
+      }
+      await tx.product.update({
+        where: { id: productId },
+        data: { default_material_id: defaultMaterialId },
+      });
+    });
+
+    revalidatePath("/admin/products");
+    revalidatePath("/admin");
+    return ok({ productId, materialIds, defaultMaterialId });
+  } catch (e) {
+    console.error("setProductMaterials:", e);
+    return fail(safeError(e, "Gagal menyimpan material produk."));
   }
 }
 
@@ -761,4 +923,3 @@ export async function deleteMachine(id: string) {
     return fail(safeError(e, "Gagal menghapus mesin."));
   }
 }
-

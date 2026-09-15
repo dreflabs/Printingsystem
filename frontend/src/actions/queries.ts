@@ -5,7 +5,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { can } from "@/lib/permissions";
 import { DEADLINE_SETTLED } from "@/lib/order-status";
-import { checkProductionReadiness, coveredDesignItemIds, type ReadinessItem } from "@/lib/production-readiness";
+import { checkProductionReadiness, coveredDesignItemIds, latestDesignVersionsBySlot, type ReadinessItem } from "@/lib/production-readiness";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 
@@ -70,7 +70,17 @@ export async function getOperatorJobs() {
               size: true,
               finishing: true,
               material_id: true,
-              product: { select: { name: true, default_machine_id: true, unit: true } },
+              product: {
+                select: {
+                  name: true,
+                  default_machine_id: true,
+                  unit: true,
+                  material_options: {
+                    where: { tenant_id: tenant.id, active: true, material: { active: true } },
+                    select: { material_id: true },
+                  },
+                },
+              },
               material: { select: { name: true } },
             },
           },
@@ -78,9 +88,8 @@ export async function getOperatorJobs() {
           design_jobs: {
             select: {
               versions: {
-                where: { approval_status: "APPROVED", NOT: { file_path: null } },
                 orderBy: { version_no: "desc" },
-                select: { id: true, order_item_id: true, file_name: true, file_path: true, approval_notes: true },
+                select: { id: true, order_item_id: true, file_name: true, file_path: true, approval_notes: true, approval_status: true, version_no: true, uploaded_at: true },
               },
             },
           },
@@ -136,7 +145,7 @@ export async function getOperatorJobs() {
       // Hanya versi approved terbaru per slot yang boleh tampil ke Operator.
       // Slot null = layout seluruh order; id = desain khusus item.
       const latestApprovedBySlot = new Map<string, (typeof allVers)[number]>();
-      for (const v of allVers) {
+      for (const v of latestDesignVersionsBySlot(allVers).filter((version) => version.approval_status === "APPROVED" && !!version.file_path)) {
         const key = v.order_item_id ?? "__order__";
         if (!latestApprovedBySlot.has(key)) latestApprovedBySlot.set(key, v);
       }
@@ -150,6 +159,9 @@ export async function getOperatorJobs() {
         material: it.material?.name ?? null,
         finishing: it.finishing?.trim() || null,
       }));
+      const allowedMaterialIds = Array.from(new Set(
+        relevant.flatMap((it) => it.product?.material_options.map((option) => option.material_id) ?? [])
+      ));
       // File cetak: versi APPROVED milik item relevan + versi berlingkup seluruh order.
       const relevantIds = new Set(relevant.map((it) => it.id));
       const seenVer = new Set<string>();
@@ -176,6 +188,8 @@ export async function getOperatorJobs() {
         firstItemSize: relevant.find((it) => it.size)?.size ?? null,
         firstItemQty: relevant[0]?.quantity ?? j.planned_qty,
         suggestedMaterialId: relevant.find((it) => it.material_id)?.material_id ?? null,
+        allowedMaterialIds,
+        plannedMaterialIds: Array.from(new Set(relevant.map((it) => it.material_id).filter((id): id is string => !!id))),
         priority: j.priority,
         plannedQty: j.planned_qty,
         actualQty: j.actual_qty,
@@ -360,30 +374,37 @@ export async function getDesignQueue() {
           };
         });
         const pendingCount = designItems.filter((i) => !i.design || i.design.status !== "APPROVED").length;
+        const approvedItemCount = designItems.length - pendingCount;
+        const pendingItemLabels = designItems
+          .filter((i) => !i.design || i.design.status !== "APPROVED")
+          .map((i) => [i.product, i.size, i.description, i.material, i.finishing].filter(Boolean).join(" · "));
         return {
-        orderId: d.order_id,
-        isOwnedByMe: d.designer_id === actor.id,
-        isUnassigned: d.designer_id === null,
-        orderCode: d.order.order_code,
-        orderStatus: d.order.status,
-        customerName: d.order.customer?.name ?? "-",
-        designerId: d.designer_id,
-        designer: d.designer?.name ?? "Belum Diambil",
-        method: d.approval_method,
-        status: d.status,
-        currentVersion: d.current_version,
-        latestVersionStatus: d.versions[0]?.approval_status ?? null,
-        latestVersionId: d.versions[0]?.id ?? null,
-        latestRejectionReason: d.versions[0]?.rejection_reason ?? null,
-        latestFileName: d.versions[0]?.file_name ?? null,
-        latestFileUrl: d.versions[0]?.file_path ? `/api/design/${d.versions[0]!.id}` : null,
-        deadline: d.order.deadline,
-        // Brief & spesifikasi dari Admin — supaya Designer tahu yang harus dikerjakan.
-        notes: d.order.notes ?? null,
-        // Item + status file desain masing-masing (untuk combo order beda desain).
-        items: designItems,
-        pendingCount,
-      };
+          orderId: d.order_id,
+          isOwnedByMe: d.designer_id === actor.id,
+          isUnassigned: d.designer_id === null,
+          orderCode: d.order.order_code,
+          orderStatus: d.order.status,
+          customerName: d.order.customer?.name ?? "-",
+          designerId: d.designer_id,
+          designer: d.designer?.name ?? "Belum Diambil",
+          method: d.approval_method,
+          status: d.status,
+          currentVersion: d.current_version,
+          latestVersionStatus: d.versions[0]?.approval_status ?? null,
+          latestVersionId: d.versions[0]?.id ?? null,
+          latestRejectionReason: d.versions[0]?.rejection_reason ?? null,
+          latestFileName: d.versions[0]?.file_name ?? null,
+          latestFileUrl: d.versions[0]?.file_path ? `/api/design/${d.versions[0]!.id}` : null,
+          deadline: d.order.deadline,
+          // Brief & spesifikasi dari Admin — supaya Designer tahu yang harus dikerjakan.
+          notes: d.order.notes ?? null,
+          // Item + status file desain masing-masing (untuk combo order beda desain).
+          items: designItems,
+          pendingCount,
+          approvedItemCount,
+          designItemCount: designItems.length,
+          pendingItemLabels,
+        };
       })
     );
   } catch (e) {
@@ -619,8 +640,21 @@ export async function getProductionOverview() {
         orderBy: { deadline: "asc" },
         include: {
           customer: { select: { name: true, phone: true, email: true } },
-          items: { include: { product: { select: { unit: true, default_machine_id: true } } } },
-          design_jobs: { select: { status: true, versions: { select: { order_item_id: true, approval_status: true, file_path: true, file_name: true } } } },
+          items: {
+            include: {
+              product: {
+                select: {
+                  unit: true,
+                  default_machine_id: true,
+                  material_options: {
+                    where: { tenant_id: tenant.id, active: true, material: { active: true } },
+                    select: { material_id: true },
+                  },
+                },
+              },
+            },
+          },
+          design_jobs: { select: { status: true, versions: { select: { order_item_id: true, approval_status: true, file_path: true, file_name: true, version_no: true, uploaded_at: true } } } },
         },
       }),
     ]);
@@ -646,6 +680,7 @@ export async function getProductionOverview() {
             quantity: i.quantity,
             size: i.size,
             materialId: i.material_id,
+            allowedMaterialIds: i.product?.material_options.map((option) => option.material_id) ?? [],
             unitPrice: num(i.unit_price),
             totalPrice: num(i.total_price),
           }));
@@ -846,7 +881,23 @@ export async function getOrderDetail(orderId: string) {
         customer: true,
         creator: { select: { name: true } },
         designer: { select: { name: true } },
-        items: { include: { product: { select: { name: true, unit: true, default_machine_id: true } }, retail_product: { select: { name: true } }, material: { select: { name: true } } } },
+        items: {
+          include: {
+            product: {
+              select: {
+                name: true,
+                unit: true,
+                default_machine_id: true,
+                material_options: {
+                  where: { tenant_id: tenant.id, active: true, material: { active: true } },
+                  select: { material_id: true },
+                },
+              },
+            },
+            retail_product: { select: { name: true } },
+            material: { select: { name: true } },
+          },
+        },
         payments: { orderBy: { paid_at: "asc" }, include: { receiver: { select: { name: true } } } },
         design_jobs: { include: { versions: { orderBy: { version_no: "asc" } } } },
         production_jobs: { include: { machine: { select: { name: true } }, operator: { select: { name: true } } } },
@@ -874,6 +925,7 @@ export async function getOrderDetail(orderId: string) {
         quantity: i.quantity,
         size: i.size,
         materialId: i.material_id,
+        allowedMaterialIds: i.product?.material_options.map((option) => option.material_id) ?? [],
         unitPrice: num(i.unit_price),
         totalPrice: num(i.total_price),
       }));

@@ -11,6 +11,7 @@ import { advanceOrderWhenAllJobs } from "@/lib/order-progress";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 import { can, canAny } from "@/lib/permissions";
+import { latestDesignVersionsBySlot } from "@/lib/production-readiness";
 
 /**
  * Admin/Owner menekan "Rilis ke Produksi" untuk order yang tertahan gatekeeper
@@ -115,7 +116,17 @@ export async function getScanContext(code: string) {
       where: { order_id: order.id, retail_product_id: null },
       select: {
         id: true, description: true, quantity: true, size: true,
-        product: { select: { name: true, default_machine_id: true } },
+        material_id: true,
+        product: {
+          select: {
+            name: true,
+            default_machine_id: true,
+            material_options: {
+              where: { tenant_id: tenant.id, active: true, material: { active: true } },
+              select: { material_id: true },
+            },
+          },
+        },
       },
     });
     // File cetak: versi APPROVED milik item pada mesin job ini + versi seluruh-order.
@@ -123,19 +134,24 @@ export async function getScanContext(code: string) {
       where: {
         tenant_id: tenant.id,
         design_job: { order_id: order.id },
-        approval_status: "APPROVED",
-        NOT: { file_path: null },
       },
       orderBy: { version_no: "desc" },
-      select: { id: true, order_item_id: true, file_name: true },
+      select: { id: true, order_item_id: true, file_name: true, file_path: true, version_no: true, uploaded_at: true, approval_status: true },
     });
+    const latestApprovedVers = latestDesignVersionsBySlot(approvedVers)
+      .filter((version) => version.approval_status === "APPROVED" && !!version.file_path);
     const jobItemIds = new Set(
       orderItems.filter((it) => it.product?.default_machine_id === job.machine_id).map((it) => it.id)
     );
     const scopedItemIds = jobItemIds.size > 0 ? jobItemIds : new Set(orderItems.map((it) => it.id));
+    const scopedItems = orderItems.filter((item) => scopedItemIds.has(item.id));
+    const allowedMaterialIds = Array.from(new Set(
+      scopedItems.flatMap((item) => item.product?.material_options.map((option) => option.material_id) ?? [])
+    ));
+    const plannedMaterialIds = Array.from(new Set(scopedItems.map((item) => item.material_id).filter((id): id is string => !!id)));
     const seenVer = new Set<string>();
     const files: { label: string; url: string; name: string | null }[] = [];
-    for (const v of approvedVers) {
+    for (const v of latestApprovedVers) {
       if (v.order_item_id != null && !scopedItemIds.has(v.order_item_id)) continue;
       if (seenVer.has(v.id)) continue;
       seenVer.add(v.id);
@@ -200,6 +216,8 @@ export async function getScanContext(code: string) {
         quantity: i.quantity,
         size: i.size ?? null,
       })),
+      allowedMaterialIds,
+      plannedMaterialIds,
       availableActions: actions,
     });
   } catch (e) {
@@ -365,24 +383,40 @@ export async function bounceDesignFromProduction(
         throw new Error("Job ini sudah dipegang operator lain.");
       }
 
-      const jobs = await tx.productionJob.findMany({ where: { order_id: job.order_id } });
+      const jobs = await tx.productionJob.findMany({ where: { tenant_id: tenant.id, order_id: job.order_id } });
       const started = jobs.find((j) => !PRE_START_JOB.includes(j.status));
       if (started) {
         throw new Error(`Produksi sudah berjalan (${started.job_code} · ${started.status}) — gunakan jalur QC/rework.`);
       }
 
-      const design = await tx.designJob.findFirst({ where: { order_id: job.order_id, tenant_id: tenant.id } });
+      const design = await tx.designJob.findUnique({
+        where: { tenant_id_order_id: { tenant_id: tenant.id, order_id: job.order_id } },
+      });
       if (!design) throw new Error("Job desain tidak ditemukan.");
 
       // Hapus semua job produksi order ini (semua masih pra-mulai → aman dihapus).
-      await tx.productionJob.deleteMany({ where: { order_id: job.order_id } });
+      await tx.productionJob.deleteMany({ where: { tenant_id: tenant.id, order_id: job.order_id } });
 
-      const version = await tx.designVersion.findFirst({
-        where: { design_job_id: design.id, version_no: design.current_version },
+      // current_version adalah ringkasan global. Untuk order multi-item, V1
+      // dapat muncul di beberapa slot, jadi selalu bounce versi terbaru per
+      // slot (termasuk slot whole-order dengan order_item_id = NULL).
+      const versions = await tx.designVersion.findMany({
+        where: { tenant_id: tenant.id, design_job_id: design.id },
+        orderBy: [{ version_no: "desc" }, { uploaded_at: "desc" }],
+        select: { id: true, order_item_id: true },
       });
-      if (version) {
-        await tx.designVersion.update({
-          where: { id: version.id },
+      const seenSlots = new Set<string>();
+      const latestVersionIds = versions
+        .filter((version) => {
+          const slot = version.order_item_id ?? "__order__";
+          if (seenSlots.has(slot)) return false;
+          seenSlots.add(slot);
+          return true;
+        })
+        .map((version) => version.id);
+      if (latestVersionIds.length > 0) {
+        await tx.designVersion.updateMany({
+          where: { tenant_id: tenant.id, id: { in: latestVersionIds } },
           data: {
             approval_status: "REJECTED",
             rejection_reason: `[Dikembalikan Operator] ${reason}`,
@@ -564,8 +598,43 @@ export async function finishProduction(
       });
       if (claim.count === 0) throw new Error("Job sudah diselesaikan lewat panggilan lain.");
 
+      const orderItems = await tx.orderItem.findMany({
+        where: { tenant_id: tenant.id, order_id: job.order_id, retail_product_id: null },
+        select: { product_id: true, material_id: true },
+      });
+      const productIds = Array.from(new Set(orderItems.map((item) => item.product_id).filter((id): id is string => !!id)));
+      const mappedMaterials = productIds.length > 0
+        ? await tx.productMaterial.findMany({
+            where: {
+              tenant_id: tenant.id,
+              product_id: { in: productIds },
+              active: true,
+              material: { active: true },
+            },
+            select: { material_id: true },
+          })
+        : [];
+      const allowedMaterialIds = new Set([
+        ...mappedMaterials.map((row) => row.material_id),
+        ...orderItems.filter((item) => !item.product_id).map((item) => item.material_id).filter((id): id is string => !!id),
+      ]);
+      const plannedMaterialIds = new Set(orderItems.map((item) => item.material_id).filter((id): id is string => !!id));
+      if (mappedMaterials.length > 0) {
+        for (const item of orderItems) {
+          if (item.product_id && item.material_id && !allowedMaterialIds.has(item.material_id)) {
+            throw new Error("Material pada order tidak lagi kompatibel dengan konfigurasi produk.");
+          }
+        }
+      }
+
       const lowStock: string[] = [];
       for (const m of input.materials) {
+        if (plannedMaterialIds.size > 0 && !plannedMaterialIds.has(m.materialId)) {
+          throw new Error("Material yang dipakai harus mengikuti material pada order item. Gunakan alur override untuk substitusi.");
+        }
+        if (plannedMaterialIds.size === 0 && mappedMaterials.length > 0 && !allowedMaterialIds.has(m.materialId)) {
+          throw new Error("Material yang dipakai tidak diizinkan untuk produk pada job ini.");
+        }
         const material = await tx.material.findFirst({ where: { id: m.materialId, tenant_id: tenant.id } });
         if (!material) throw new Error("Material tidak ditemukan.");
 

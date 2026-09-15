@@ -58,7 +58,13 @@ const INITIAL_FORM: OrderForm = {
 
 
 type Opt = { value: string; label: string };
-type ProductOpt = Opt & { category: string; unit: string; basePrice: number | null };
+type ProductOpt = Opt & {
+  category: string;
+  unit: string;
+  basePrice: number | null;
+  defaultMaterialId: string | null;
+  allowedMaterials: Opt[];
+};
 type CustomerRow = { id: string; name: string; phone: string | null; type: string; defaultDiscountPct: number };
 
 const STEPS = [
@@ -230,12 +236,11 @@ function Step1({
 
 // ─── Step 2: Item pesanan (multi) ────────────────────────────────────────────
 function ItemsStep({
-  form, products, materials, finishings, subtotal, role,
+  form, products, finishings, subtotal, role,
   updateItem, addItem, removeItem,
 }: {
   form: OrderForm;
   products: ProductOpt[];
-  materials: Opt[];
   finishings: string[];
   subtotal: number;
   updateItem: (key: string, patch: Partial<ItemRow>) => void;
@@ -264,6 +269,10 @@ function ItemsStep({
       )}
 
       {form.items.map((it, i) => (
+        (() => {
+          const selectedProduct = products.find((p) => p.value === it.productId);
+          const materialOptions = selectedProduct?.allowedMaterials ?? [];
+          return (
         <div key={it.key} className="rounded-2xl border border-border bg-base p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-black uppercase tracking-wider text-muted">Item {i + 1}</span>
@@ -282,7 +291,14 @@ function ItemsStep({
             label="Produk *"
             placeholder="Pilih jenis produk..."
             value={it.productId}
-            onChange={(e) => updateItem(it.key, { productId: e.target.value, priceTouched: false })}
+            onChange={(e) => {
+              const nextProduct = products.find((p) => p.value === e.target.value);
+              updateItem(it.key, {
+                productId: e.target.value,
+                materialId: nextProduct?.defaultMaterialId ?? "",
+                priceTouched: false,
+              });
+            }}
             groups={productGroups}
           />
 
@@ -303,11 +319,17 @@ function ItemsStep({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               label="Material / Bahan"
-              placeholder="Pilih bahan..."
+              placeholder={selectedProduct ? "Pilih bahan untuk produk..." : "Pilih produk dulu..."}
               value={it.materialId}
               onChange={(e) => updateItem(it.key, { materialId: e.target.value })}
-              options={materials}
+              options={materialOptions}
+              disabled={!selectedProduct || materialOptions.length === 0}
             />
+            {selectedProduct && materialOptions.length === 0 && (
+              <p className="text-[11px] text-status-yellow-text sm:col-span-2">
+                Material produk belum dikonfigurasi. Admin perlu mengatur allowlist di Katalog Produk.
+              </p>
+            )}
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-muted">Finishing</label>
               <input
@@ -336,6 +358,8 @@ function ItemsStep({
             optional
           />
         </div>
+          );
+        })()
       ))}
 
       <button
@@ -486,7 +510,6 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
   const [discountTouched, setDiscountTouched] = useState(false);
 
   const [products, setProducts] = useState<ProductOpt[]>([]);
-  const [materials, setMaterials] = useState<Opt[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [finishings, setFinishings] = useState<string[]>([]);
 
@@ -505,9 +528,17 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
         return;
       }
       setProducts(res.data.products.map((p) => ({
-        value: p.id, label: p.name, category: p.category || "Lainnya", unit: p.unit, basePrice: p.basePrice ?? null,
+        value: p.id,
+        label: p.name,
+        category: p.category || "Lainnya",
+        unit: p.unit,
+        basePrice: p.basePrice ?? null,
+        defaultMaterialId: p.default_material_id ?? null,
+        allowedMaterials: p.material_options.map((m) => ({
+          value: m.id,
+          label: `${m.material_code} · ${m.name}`,
+        })),
       })));
-      setMaterials(res.data.materials.map((m) => ({ value: m.id, label: `${m.material_code} · ${m.name}` })));
       setCustomers(res.data.customers as CustomerRow[]);
       setFinishings(res.data.finishings ?? []);
     });
@@ -649,7 +680,6 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
             <ItemsStep
               form={form}
               products={products}
-              materials={materials}
               finishings={finishings}
               subtotal={subtotal}
               role={role}

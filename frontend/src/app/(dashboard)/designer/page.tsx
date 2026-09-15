@@ -60,6 +60,9 @@ type Row = {
   deadline: string | Date | null;
   notes: string | null;
   pendingCount: number;
+  approvedItemCount: number;
+  designItemCount: number;
+  pendingItemLabels: string[];
   items: {
     itemId: string;
     product: string;
@@ -83,6 +86,19 @@ const fmtDeadline = (d: string | Date | null) =>
 
 /** Nama file layak tampil = punya ekstensi (bukan uuid / object key). */
 const looksLikeFilename = (s: string | null) => !!s && /\.[a-z0-9]{2,5}$/i.test(s.trim());
+
+const itemSummary = (row: Row) => {
+  const first = row.items[0];
+  if (!first) return `${row.designItemCount} item`;
+  const firstLabel = [first.product, first.size].filter(Boolean).join(" · ");
+  return row.designItemCount > 1 ? `${row.designItemCount} item · ${firstLabel}` : `${firstLabel} · ${first.quantity} pcs`;
+};
+
+const pendingSummary = (row: Row) => {
+  const visible = row.pendingItemLabels.slice(0, 2);
+  const remaining = row.pendingItemLabels.length - visible.length;
+  return `${visible.join(", ")}${remaining > 0 ? ` +${remaining} lainnya` : ""}`;
+};
 
 /** Kolom Aksi: 1 tombol utama sesuai konteks + menu ⋯ untuk sisanya. */
 function DesignRowActions({
@@ -262,16 +278,16 @@ function UploadModal({ row, onClose, onDone }: { row: Row; onClose: () => void; 
               disabled={busy}
               className="w-full h-10 rounded-xl bg-elevated border border-border text-xs text-primary px-3 outline-none focus:border-accent-teal disabled:opacity-60"
             >
-              {row.items.map((it) => (
+              {row.items.map((it, index) => (
                 <option key={it.itemId} value={it.itemId}>
-                  {it.product}{it.size ? ` · ${it.size}` : ""} · {it.quantity} pcs
+                  Item {index + 1} — {it.product}{it.size ? ` · ${it.size}` : ""}{it.description ? ` · ${it.description}` : ""}{it.material ? ` · ${it.material}` : ""}{it.finishing ? ` · ${it.finishing}` : ""} · {it.quantity} pcs
                   {it.design?.status === "APPROVED" ? "  ✓ ada" : it.design ? "  • revisi" : ""}
                 </option>
               ))}
               <option value="">— 1 file untuk SEMUA item (layout gabungan)</option>
             </select>
             <p className="text-[11px] text-muted mt-1">
-              {row.items.filter((i) => i.design?.status === "APPROVED").length}/{row.items.length} item sudah punya desain final.
+              {row.approvedItemCount}/{row.designItemCount} item sudah punya desain final. Upload setiap item sampai seluruhnya ACC.
             </p>
           </div>
         )}
@@ -437,7 +453,7 @@ function DesignDetailModal({ row, onClose }: { row: Row; onClose: () => void }) 
                   return (
                   <li key={i} className="rounded-xl border border-border bg-elevated/40 p-3">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-primary">{it.product}</p>
+                      <p className="text-sm font-semibold text-primary">Item {i + 1} — {it.product}</p>
                       <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold", badge.c)}>{badge.t}</span>
                     </div>
                     {it.description && <p className="text-xs text-muted mt-0.5">{it.description}</p>}
@@ -471,6 +487,7 @@ function DesignDetailModal({ row, onClose }: { row: Row; onClose: () => void }) 
 export default function DesignerDashboardPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [uploadFor, setUploadFor] = useState<Row | null>(null);
@@ -492,10 +509,27 @@ export default function DesignerDashboardPage() {
 
   async function run(fn: () => Promise<{ success: boolean; error?: string }>) {
     setBusy(true);
+    setNotice(null);
     const res = await fn();
     setBusy(false);
     if (!res.success) { setError(res.error ?? "Aksi gagal."); return; }
     await load();
+  }
+
+  async function approveAndReport(orderId: string, notes: string) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    const res = await approveDesign(orderId, { notes });
+    setBusy(false);
+    if (!res.success) {
+      setError(res.error ?? "Aksi gagal.");
+      return;
+    }
+    await load();
+    if (!res.data.fullyApproved && res.data.pendingItems.length > 0) {
+      setNotice(`ACC tersimpan untuk versi yang dipilih. ${res.data.pendingItems.length} item masih menunggu desain/ACC: ${res.data.pendingItems.join(", ")}.`);
+    }
   }
 
   const pending = rows.filter((r) => r.status === "PENDING").length;
@@ -527,7 +561,7 @@ export default function DesignerDashboardPage() {
           onSubmit={async (notes) => {
             const oid = approvalFor.orderId;
             setApprovalFor(null);
-            await run(() => approveDesign(oid, { notes }));
+            await approveAndReport(oid, notes);
           }}
         />
       )}
@@ -563,6 +597,11 @@ export default function DesignerDashboardPage() {
       <AbsenCard />
 
       {error && <ErrorState message={error} onRetry={load} />}
+      {notice && (
+        <div className="rounded-xl border border-status-yellow/30 bg-status-yellow/10 px-4 py-3 text-xs text-status-yellow-text">
+          {notice}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {KPI.map((k) => (
@@ -609,8 +648,15 @@ export default function DesignerDashboardPage() {
                   <p className="font-semibold text-primary truncate">{r.customerName}</p>
                   <p className="text-[11px] text-muted truncate">
                     <button onClick={() => setDetailFor(r)} className="font-mono text-accent-teal">#{r.orderCode.slice(-4)}</button>
-                    {r.items[0] && ` · ${r.items[0].product}${r.items[0].size ? ` ${r.items[0].size}` : ""} · ${r.items[0].quantity} pcs`}
-                    {r.items.length > 1 ? ` +${r.items.length - 1} item` : ""}
+                    {r.items[0] && (
+                      <button
+                        onClick={() => setDetailFor(r)}
+                        className="ml-1 max-w-[calc(100%-2rem)] truncate text-left text-[11px] text-muted hover:text-accent-teal hover:underline"
+                        title={r.designItemCount > 1 ? `Lihat ${r.designItemCount} item` : undefined}
+                      >
+                        {itemSummary(r)}{r.designItemCount > 1 ? " · Lihat item" : ""}
+                      </button>
+                    )}
                   </p>
                 </div>
                 <span className={cn(
@@ -623,11 +669,21 @@ export default function DesignerDashboardPage() {
 
               <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                 <StatusPill status={r.status} />
-                <span className="text-[10px] font-mono text-muted">{r.latestVersionId ? `V${r.currentVersion}` : "Belum ada versi"}</span>
-                {r.items.length > 1 && (
-                  <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold",
+                <span className="text-[10px] font-mono text-muted">
+                  {r.latestVersionId ? (r.designItemCount > 1 ? `V${r.currentVersion} per item` : `V${r.currentVersion}`) : "Belum ada versi"}
+                </span>
+                {r.designItemCount > 1 && (
+                  <button
+                    onClick={() => setDetailFor(r)}
+                    title="Lihat status setiap item"
+                    className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold hover:underline",
                     r.pendingCount === 0 ? "bg-status-green/15 text-status-green" : "bg-status-yellow/15 text-status-yellow-text")}>
-                    {r.items.length - r.pendingCount}/{r.items.length} item
+                    {r.approvedItemCount}/{r.designItemCount} ACC
+                  </button>
+                )}
+                {r.pendingItemLabels.length > 0 && r.designItemCount > 1 && (
+                  <span className="w-full max-h-[2.5em] overflow-hidden text-[10px] leading-5 text-status-yellow-text" title={r.pendingItemLabels.join(", ")}>
+                    Menunggu: {pendingSummary(r)}
                   </span>
                 )}
               </div>
@@ -690,11 +746,13 @@ export default function DesignerDashboardPage() {
                   <td className="px-4 py-3">
                     <span className="font-medium text-primary">{r.customerName}</span>
                     {r.items[0] && (
-                      <span className="block text-[10px] text-muted truncate max-w-[180px]">
-                        {r.items[0].product}
-                        {r.items[0].size ? ` · ${r.items[0].size}` : ""} · {r.items[0].quantity} pcs
-                        {r.items.length > 1 ? ` +${r.items.length - 1}` : ""}
-                      </span>
+                      <button
+                        onClick={() => setDetailFor(r)}
+                        className="block max-w-[190px] text-left text-[10px] text-muted truncate hover:text-accent-teal hover:underline"
+                        title={r.designItemCount > 1 ? `Lihat ${r.designItemCount} item` : undefined}
+                      >
+                        {itemSummary(r)}{r.designItemCount > 1 ? " · Lihat item" : ""}
+                      </button>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -718,14 +776,19 @@ export default function DesignerDashboardPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <StatusPill status={r.status} />
-                      <span className="text-[10px] font-mono text-muted">{r.latestVersionId ? `V${r.currentVersion}` : "Belum ada versi"}</span>
-                      {r.items.length > 1 && (
-                        <span className={cn(
+                      <span className="text-[10px] font-mono text-muted">
+                        {r.latestVersionId ? (r.designItemCount > 1 ? `V${r.currentVersion} per item` : `V${r.currentVersion}`) : "Belum ada versi"}
+                      </span>
+                      {r.designItemCount > 1 && (
+                        <button
+                          onClick={() => setDetailFor(r)}
+                          title="Lihat status setiap item"
+                          className={cn(
                           "px-1.5 py-0.5 rounded text-[10px] font-bold",
                           r.pendingCount === 0 ? "bg-status-green/15 text-status-green" : "bg-status-yellow/15 text-status-yellow-text"
                         )}>
-                          {r.items.length - r.pendingCount}/{r.items.length} item
-                        </span>
+                          {r.approvedItemCount}/{r.designItemCount} ACC
+                        </button>
                       )}
                     </div>
                     {looksLikeFilename(r.latestFileName) && r.latestFileUrl && (

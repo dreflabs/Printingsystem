@@ -21,6 +21,32 @@ const APPROVAL_METHOD: Record<OrderTypeInput, string> = {
   makloon: "MAKLOON",
 };
 
+const PAYMENT_BLOCKED_ORDER_STATUSES = new Set([
+  "CANCELLED",
+  "CLOSED",
+  "FINAL_AUDIT_COMPLETE",
+  "PICKED_UP",
+]);
+
+const DISCOUNT_LOCKED_ORDER_STATUSES = new Set([
+  "PRODUCTION_ASSIGNED",
+  "PRODUCTION_STARTED",
+  "PRODUCTION_PAUSED",
+  "PRODUCTION_COMPLETE",
+  "QC_PENDING",
+  "QC_PASSED",
+  "FINISHING_STARTED",
+  "FINISHING_COMPLETE",
+  "STORAGE_PENDING",
+  "STORED",
+  "READY_FOR_PICKUP",
+  "IN_TRANSIT",
+  "PICKED_UP",
+  "CANCELLED",
+  "CLOSED",
+  "FINAL_AUDIT_COMPLETE",
+]);
+
 export interface PrintingOrderItemInput {
   productId?: string | null;
   description?: string;
@@ -112,7 +138,8 @@ export async function createPrintingOrder(
 
     const items = (input.items ?? []).filter((i) => i.quantity > 0);
     if (items.length === 0) return fail("Order harus punya minimal 1 item.");
-    if (items.some((i) => i.unitPrice < 0)) return fail("Harga item tidak valid.");
+    if (items.some((i) => !Number.isInteger(i.quantity) || i.quantity <= 0)) return fail("Jumlah item harus bilangan bulat lebih dari 0.");
+    if (items.some((i) => !Number.isFinite(Number(i.unitPrice)) || i.unitPrice < 0)) return fail("Harga item tidak valid.");
 
     // Deadline wajib untuk order cetak — dipakai gate auto-release + prioritas antrian operator.
     if (!input.deadline) return fail("Deadline order wajib diisi.");
@@ -146,6 +173,25 @@ export async function createPrintingOrder(
     }
 
     const result = await retryOnUnique(() => prisma.$transaction(async (tx) => {
+      // Semua referensi dari client harus diverifikasi ulang di boundary server.
+      // FK ID saja tidak cukup karena Product/Material/User tidak memakai
+      // composite foreign key tenant_id.
+      if (input.designerId) {
+        const designer = await tx.user.findFirst({
+          where: {
+            id: input.designerId,
+            tenant_id: tenant.id,
+            active: true,
+            OR: [
+              { role: { name: "designer_sales" } },
+              { extra_roles: { some: { role: { name: "designer_sales" } } } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (!designer) throw new Error("Designer PIC tidak valid atau tidak aktif.");
+      }
+
       // 1. Customer
       let customerId: string | null = null;
       if ("id" in input.customer) {
@@ -175,12 +221,38 @@ export async function createPrintingOrder(
       let subtotal = 0;
       for (const i of items) {
         let unitPrice = Math.max(0, Math.round(Number(i.unitPrice) || 0));
+        const product = i.productId
+          ? await tx.product.findFirst({
+              where: { id: i.productId, tenant_id: tenant.id, active: true },
+              select: { unit: true, base_price: true },
+            })
+          : null;
+        if (i.productId && !product) throw new Error("Produk tidak valid atau tidak aktif.");
+        if (i.productId) {
+          const allowed = await tx.productMaterial.findMany({
+            where: {
+              tenant_id: tenant.id,
+              product_id: i.productId,
+              active: true,
+              material: { active: true },
+            },
+            select: { material_id: true },
+          });
+          if (allowed.length === 0) {
+            throw new Error("Material produk belum dikonfigurasi. Atur material yang diizinkan di Katalog Produk.");
+          }
+          if (!i.materialId || !allowed.some((option) => option.material_id === i.materialId)) {
+            throw new Error("Material tidak diizinkan untuk produk yang dipilih.");
+          }
+        } else if (i.materialId) {
+          const material = await tx.material.findFirst({
+            where: { id: i.materialId, tenant_id: tenant.id, active: true },
+            select: { id: true },
+          });
+          if (!material) throw new Error("Bahan tidak valid atau tidak aktif.");
+        }
         if (designerRestricted) {
           if (!i.productId) throw new Error("Designer wajib memilih produk dari katalog.");
-          const product = await tx.product.findFirst({
-            where: { id: i.productId, tenant_id: tenant.id, active: true },
-            select: { unit: true, base_price: true },
-          });
           const basePrice = Number(product?.base_price ?? 0);
           if (!product || !(basePrice > 0)) throw new Error("Produk belum memiliki harga katalog aktif.");
           if (product.unit === "M2") {
@@ -190,6 +262,19 @@ export async function createPrintingOrder(
           } else {
             unitPrice = Math.round(basePrice);
           }
+        } else if (i.productId && !can(actor, "quote.edit_price")) {
+          const basePrice = Number(product?.base_price ?? 0);
+          const expected = product?.unit === "M2"
+            ? (() => {
+                const area = ((Number(i.width) || 0) / 100) * ((Number(i.height) || 0) / 100);
+                return area > 0 ? Math.round(basePrice * area) : 0;
+              })()
+            : Math.round(basePrice);
+          if (!(expected > 0) || unitPrice !== expected) {
+            throw new Error("Harga harus mengikuti katalog. Override harga memerlukan permission quote.edit_price.");
+          }
+        } else if (!i.productId && !can(actor, "quote.edit_price")) {
+          throw new Error("Item custom dengan harga manual memerlukan permission quote.edit_price.");
         }
         resolvedItems.push({ ...i, unitPrice });
         subtotal += unitPrice * Math.max(1, Number(i.quantity) || 1);
@@ -227,6 +312,9 @@ export async function createPrintingOrder(
         const size =
           i.width && i.height ? `${i.width}x${i.height}` : i.width ? `${i.width}` : null;
         const itemDeadline = i.deadline ? new Date(i.deadline) : null;
+        if (i.deadline && (!itemDeadline || Number.isNaN(itemDeadline.getTime()))) {
+          throw new Error("Format deadline item tidak valid.");
+        }
         await tx.orderItem.create({
           data: {
             tenant_id: tenant.id,
@@ -322,6 +410,12 @@ export async function addPayment(
         where: { id: orderId, tenant_id: tenant.id },
       });
       if (!order) throw new Error("Order tidak ditemukan.");
+      if (PAYMENT_BLOCKED_ORDER_STATUSES.has(order.status)) {
+        throw new Error(`Order berstatus ${order.status} tidak menerima pembayaran baru.`);
+      }
+      if (input.amount > Number(order.balance) + 1e-6) {
+        throw new Error("Nominal pembayaran melebihi sisa tagihan.");
+      }
 
       const payment = await tx.payment.create({
         data: {
@@ -337,7 +431,7 @@ export async function addPayment(
       });
 
       const agg = await tx.payment.aggregate({
-        where: { order_id: order.id, status: "CONFIRMED" },
+        where: { tenant_id: tenant.id, order_id: order.id, status: "CONFIRMED" },
         _sum: { amount: true },
       });
       const paidAmount = Number(agg._sum.amount ?? 0);
@@ -424,6 +518,15 @@ export async function decideDiscount(
       if (!order) throw new Error("Order tidak ditemukan.");
       if (Number(order.discount) <= 0) throw new Error("Order ini tidak punya diskon.");
       if (order.discount_approved_by) throw new Error("Diskon sudah diputuskan.");
+      if (DISCOUNT_LOCKED_ORDER_STATUSES.has(order.status)) {
+        throw new Error(`Diskon tidak dapat diputuskan setelah order berstatus ${order.status}. Gunakan alur correction/financial approval.`);
+      }
+      const existingProductionJobs = await tx.productionJob.count({
+        where: { tenant_id: tenant.id, order_id: order.id },
+      });
+      if (existingProductionJobs > 0) {
+        throw new Error("Diskon tidak dapat diubah setelah ProductionJob dibuat. Gunakan alur correction/financial approval.");
+      }
 
       const subtotal = Number(order.subtotal);
       let discount = Number(order.discount);
@@ -555,7 +658,23 @@ export async function getOrderFormData() {
       prisma.product.findMany({
         where: { tenant_id: tenant.id, active: true },
         orderBy: { name: "asc" },
-        select: { id: true, name: true, category: true, unit: true, base_price: true, default_material_id: true },
+        select: {
+          id: true,
+          name: true,
+          category: true,
+          unit: true,
+          base_price: true,
+          default_material_id: true,
+          material_options: {
+            where: { tenant_id: tenant.id, active: true, material: { active: true } },
+            orderBy: [{ sort_order: "asc" }, { material: { name: "asc" } }],
+            select: {
+              material_id: true,
+              is_default: true,
+              material: { select: { id: true, name: true, material_code: true, type: true, unit_usage: true, unit_custom: true } },
+            },
+          },
+        },
       }),
       prisma.material.findMany({
         where: { tenant_id: tenant.id, active: true },
@@ -563,7 +682,14 @@ export async function getOrderFormData() {
         select: { id: true, name: true, material_code: true, type: true, unit_usage: true, unit_custom: true },
       }),
       prisma.user.findMany({
-        where: { tenant_id: tenant.id, active: true, role: { name: "designer_sales" } },
+        where: {
+          tenant_id: tenant.id,
+          active: true,
+          OR: [
+            { role: { name: "designer_sales" } },
+            { extra_roles: { some: { role: { name: "designer_sales" } } } },
+          ],
+        },
         orderBy: { name: "asc" },
         select: { id: true, name: true },
       }),
@@ -590,6 +716,15 @@ export async function getOrderFormData() {
         unit: p.unit,
         basePrice: canViewQuote && p.base_price != null ? Number(p.base_price) : null,
         default_material_id: p.default_material_id,
+        material_options: p.material_options.map((option) => ({
+          id: option.material.id,
+          name: option.material.name,
+          material_code: option.material.material_code,
+          type: option.material.type,
+          unit_usage: option.material.unit_usage,
+          unit_custom: option.material.unit_custom,
+          is_default: option.is_default,
+        })),
       })),
       materials,
       designers,

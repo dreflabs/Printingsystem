@@ -16,7 +16,7 @@ import {
 import { storageReady, presignPutUrl, isTenantKey } from "@/lib/storage";
 import { randomUUID } from "crypto";
 import { autoReleaseToProduction } from "@/lib/auto-release";
-import { checkProductionReadiness, coveredDesignItemIds, type ReadinessItem } from "@/lib/production-readiness";
+import { checkProductionReadiness, coveredDesignItemIds, latestDesignVersionsBySlot, type ReadinessItem } from "@/lib/production-readiness";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 
@@ -41,8 +41,8 @@ export async function getDesignJob(orderId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    const job = await prisma.designJob.findFirst({
-      where: { order_id: orderId, tenant_id: tenant.id },
+    const job = await prisma.designJob.findUnique({
+      where: { tenant_id_order_id: { tenant_id: tenant.id, order_id: orderId } },
       include: { versions: { orderBy: { version_no: "asc" } } },
     });
     if (!job) return fail("Job desain tidak ditemukan untuk order ini.");
@@ -104,12 +104,13 @@ async function designCoverage(
   });
   const nonRetailItemIds = items.map((i) => i.id);
   const approved = await tx.designVersion.findMany({
-    where: { design_job: { order_id: orderId }, tenant_id: tenantId, approval_status: "APPROVED" },
-    select: { order_item_id: true, file_path: true, file_name: true },
+    where: { design_job: { order_id: orderId }, tenant_id: tenantId },
+    select: { order_item_id: true, file_path: true, file_name: true, version_no: true, uploaded_at: true, approval_status: true },
   });
-  const wholeOrder = approved.some((v) => v.order_item_id == null && (v.file_path || v.file_name));
+  const latest = latestDesignVersionsBySlot(approved);
+  const wholeOrder = latest.some((v) => v.order_item_id == null && (v.file_path || v.file_name));
   const per = new Set(
-    approved.filter((v) => v.order_item_id != null && (v.file_path || v.file_name)).map((v) => v.order_item_id as string)
+    latest.filter((v) => v.order_item_id != null && (v.file_path || v.file_name)).map((v) => v.order_item_id as string)
   );
   const coveredItemIds = wholeOrder ? [...nonRetailItemIds] : nonRetailItemIds.filter((id) => per.has(id));
   return {
@@ -148,8 +149,8 @@ export async function createDesignUploadUrl(
       return fail(`File terlalu besar. Maksimum ${Math.round(DESIGN_MAX_UPLOAD_BYTES / 1024 / 1024)} MB.`);
     }
 
-    const job = await prisma.designJob.findFirst({
-      where: { order_id: orderId, tenant_id: tenant.id },
+    const job = await prisma.designJob.findUnique({
+      where: { tenant_id_order_id: { tenant_id: tenant.id, order_id: orderId } },
       select: { id: true, designer_id: true, status: true, approval_method: true, order: { select: { status: true } } },
     });
     if (!job) return fail("Job desain tidak ditemukan untuk order ini.");
@@ -232,8 +233,8 @@ export async function uploadDesignVersion(
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const job = await tx.designJob.findFirst({
-        where: { order_id: orderId, tenant_id: tenant.id },
+      const job = await tx.designJob.findUnique({
+        where: { tenant_id_order_id: { tenant_id: tenant.id, order_id: orderId } },
       });
       if (!job) throw new Error("Job desain tidak ditemukan.");
 
@@ -389,8 +390,8 @@ export async function approveDesign(
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const job = await tx.designJob.findFirst({
-        where: { order_id: orderId, tenant_id: tenant.id },
+      const job = await tx.designJob.findUnique({
+        where: { tenant_id_order_id: { tenant_id: tenant.id, order_id: orderId } },
       });
       if (!job) throw new Error("Job desain tidak ditemukan.");
 
@@ -427,7 +428,7 @@ export async function approveDesign(
       });
 
       const targets = latestPerSlot.filter((v) => {
-        if (v.approval_status === "APPROVED") return false;
+        if (v.approval_status !== "PENDING") return false;
         if (input.itemId != null) return v.order_item_id === input.itemId;
         return true;
       });
@@ -442,6 +443,18 @@ export async function approveDesign(
         ) {
           throw new Error("Hanya designer pembuat atau Admin yang boleh menyetujui.");
         }
+        // Hanya satu versi aktif per slot. Versi approved lama tetap tersimpan
+        // untuk histori, tetapi tidak boleh lagi muncul sebagai file produksi.
+        await tx.designVersion.updateMany({
+          where: {
+            tenant_id: tenant.id,
+            design_job_id: job.id,
+            order_item_id: v.order_item_id,
+            approval_status: "APPROVED",
+            id: { not: v.id },
+          },
+          data: { approval_status: "SUPERSEDED" },
+        });
         await tx.designVersion.update({
           where: { id: v.id },
           data: {
@@ -528,8 +541,8 @@ export async function requestDesignRevision(
     if (!input.reason?.trim()) return fail("Alasan revisi wajib diisi.");
 
     const result = await prisma.$transaction(async (tx) => {
-      const job = await tx.designJob.findFirst({
-        where: { order_id: orderId, tenant_id: tenant.id },
+      const job = await tx.designJob.findUnique({
+        where: { tenant_id_order_id: { tenant_id: tenant.id, order_id: orderId } },
       });
       if (!job) throw new Error("Job desain tidak ditemukan.");
       if (!isAdmin(actor.roles) && job.designer_id !== actor.id) {
@@ -560,6 +573,17 @@ export async function requestDesignRevision(
       if (targets.length === 0) throw new Error("Tidak ada versi desain untuk direvisi.");
 
       for (const v of targets) {
+        // Putuskan coverage versi approved lama pada slot yang direvisi. Tanpa
+        // ini, helper readiness masih dapat menganggap file lama aktif.
+        await tx.designVersion.updateMany({
+          where: {
+            tenant_id: tenant.id,
+            design_job_id: job.id,
+            order_item_id: v.order_item_id,
+            approval_status: "APPROVED",
+          },
+          data: { approval_status: "SUPERSEDED" },
+        });
         await tx.designVersion.update({
           where: { id: v.id },
           data: { approval_status: "REJECTED", rejection_reason: input.reason.trim() },
@@ -664,15 +688,26 @@ export async function assignProductionJob(
           customer: { select: { name: true, phone: true, email: true } },
           items: {
             where: { retail_product_id: null },
-            include: { product: { select: { unit: true, default_machine_id: true } } },
+            include: {
+              product: {
+                select: {
+                  unit: true,
+                  default_machine_id: true,
+                  material_options: {
+                    where: { tenant_id: tenant.id, active: true, material: { active: true } },
+                    select: { material_id: true },
+                  },
+                },
+              },
+            },
           },
         },
       });
       if (!order) throw new Error("Order tidak ditemukan.");
       if (order.status !== "CONFIRMED") throw new Error("Order belum berstatus CONFIRMED.");
 
-      const job = await tx.designJob.findFirst({
-        where: { order_id: orderId, tenant_id: tenant.id },
+      const job = await tx.designJob.findUnique({
+        where: { tenant_id_order_id: { tenant_id: tenant.id, order_id: orderId } },
       });
       if (!job || job.status !== "APPROVED") throw new Error("Desain belum disetujui.");
 
@@ -687,8 +722,8 @@ export async function assignProductionJob(
       }
 
       const approvedVersions = await tx.designVersion.findMany({
-        where: { tenant_id: tenant.id, design_job: { order_id: orderId }, approval_status: "APPROVED" },
-        select: { order_item_id: true, approval_status: true, file_path: true, file_name: true },
+        where: { tenant_id: tenant.id, design_job: { order_id: orderId } },
+        select: { order_item_id: true, approval_status: true, file_path: true, file_name: true, version_no: true, uploaded_at: true },
       });
       const readinessItems: ReadinessItem[] = order.items.map((it) => ({
         id: it.id,
@@ -699,6 +734,7 @@ export async function assignProductionJob(
         quantity: it.quantity,
         size: it.size,
         materialId: it.material_id,
+        allowedMaterialIds: it.product?.material_options.map((option) => option.material_id) ?? [],
         unitPrice: Number(it.unit_price),
         totalPrice: Number(it.total_price),
         deadline: it.deadline,
@@ -816,8 +852,8 @@ export async function takeDesignJob(orderId: string): Promise<ActionResult<{ suc
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const job = await tx.designJob.findFirst({
-        where: { order_id: orderId, tenant_id: tenant.id },
+      const job = await tx.designJob.findUnique({
+        where: { tenant_id_order_id: { tenant_id: tenant.id, order_id: orderId } },
       });
       if (!job) throw new Error("Job desain tidak ditemukan.");
       if (job.designer_id) {

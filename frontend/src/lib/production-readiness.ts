@@ -18,6 +18,8 @@ export interface ReadinessItem {
   quantity: number;
   size: string | null;
   materialId: string | null;
+  /** Active ProductMaterial ids; empty means product compatibility is unconfigured. */
+  allowedMaterialIds?: string[];
   unitPrice: number;
   totalPrice: number;
   /** override deadline item — dipakai auto-release untuk prioritas per job, diabaikan gate. */
@@ -45,20 +47,55 @@ export interface ReadinessInput {
   items: ReadinessItem[];
 }
 
+export interface DesignVersionLike {
+  order_item_id: string | null;
+  approval_status: string;
+  file_path: string | null;
+  file_name: string | null;
+  version_no?: number;
+  uploaded_at?: Date | string;
+}
+
+/**
+ * Pilih satu versi terbaru per slot desain. Slot null berarti seluruh order;
+ * slot berisi id berarti item tertentu. Semua consumer produksi memakai helper
+ * ini agar versi lama tidak ikut dianggap sebagai file aktif.
+ */
+export function latestDesignVersionsBySlot<T extends DesignVersionLike>(versions: T[]): T[] {
+  const latest = new Map<string, T>();
+  for (const version of versions) {
+    const slot = version.order_item_id ?? "__order__";
+    const previous = latest.get(slot);
+    if (!previous) {
+      latest.set(slot, version);
+      continue;
+    }
+    const currentNo = version.version_no ?? 0;
+    const previousNo = previous.version_no ?? 0;
+    const currentTime = version.uploaded_at ? new Date(version.uploaded_at).getTime() : 0;
+    const previousTime = previous.uploaded_at ? new Date(previous.uploaded_at).getTime() : 0;
+    if (currentNo > previousNo || (currentNo === previousNo && currentTime > previousTime)) {
+      latest.set(slot, version);
+    }
+  }
+  return [...latest.values()];
+}
+
 /**
  * Dari daftar DesignVersion → set id item yang desainnya sudah final & APPROVED.
  * Versi `order_item_id == null` yang APPROVED dianggap menutup SEMUA item
  * (kompat data lama + file layout gabungan).
  */
 export function coveredDesignItemIds(
-  versions: { order_item_id: string | null; approval_status: string; file_path: string | null; file_name: string | null }[],
+  versions: DesignVersionLike[],
   itemIds: string[]
 ): string[] {
   const hasFile = (v: { approval_status: string; file_path: string | null; file_name: string | null }) =>
     v.approval_status === "APPROVED" && !!(v.file_path || v.file_name);
-  const wholeOrder = versions.some((v) => v.order_item_id == null && hasFile(v));
+  const latest = latestDesignVersionsBySlot(versions);
+  const wholeOrder = latest.some((v) => v.order_item_id == null && hasFile(v));
   if (wholeOrder) return [...itemIds];
-  const per = new Set(versions.filter((v) => v.order_item_id != null && hasFile(v)).map((v) => v.order_item_id as string));
+  const per = new Set(latest.filter((v) => v.order_item_id != null && hasFile(v)).map((v) => v.order_item_id as string));
   return itemIds.filter((id) => per.has(id));
 }
 
@@ -119,6 +156,11 @@ export function checkProductionReadiness(input: ReadinessInput): ReadinessResult
     if (!it.productId && !it.label.trim()) gaps.push("produk/deskripsi");
     if (!(it.quantity > 0)) gaps.push("jumlah");
     if (!it.materialId) gaps.push("bahan");
+    if (it.productId && (!it.allowedMaterialIds || it.allowedMaterialIds.length === 0)) {
+      gaps.push("material produk belum dikonfigurasi");
+    } else if (it.productId && it.materialId && !it.allowedMaterialIds?.includes(it.materialId)) {
+      gaps.push("material tidak cocok dengan produk");
+    }
     if (!(it.unitPrice > 0) || !(it.totalPrice > 0)) gaps.push("harga");
     if ((it.productUnit ?? "PCS") !== "PCS" && !it.size?.trim()) gaps.push("ukuran");
     if (gaps.length > 0) {

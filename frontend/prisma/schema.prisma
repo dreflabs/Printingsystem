@@ -77,6 +77,7 @@ model Tenant {
   kiosk_devices          KioskDevice[]
   payroll_periods        PayrollPeriod[]
   payroll_records        PayrollRecord[]
+  product_materials      ProductMaterial[]
 }
 
 model SubscriptionPlan {
@@ -348,19 +349,20 @@ model Customer {
 }
 
 model Product {
-  id                  String      @id @default(uuid())
+  id                  String            @id @default(uuid())
   tenant_id           String
-  tenant              Tenant      @relation(fields: [tenant_id], references: [id])
+  tenant              Tenant            @relation(fields: [tenant_id], references: [id])
   name                String
   category            String
-  unit                String      @default("PCS") // PCS/M2/METER/LEMBAR/RIM — dasar hitung harga
-  base_price          Decimal?    @db.Decimal(15, 2) // harga per `unit`; null = harga selalu manual per order
+  unit                String            @default("PCS") // PCS/M2/METER/LEMBAR/RIM — dasar hitung harga
+  base_price          Decimal?          @db.Decimal(15, 2) // harga per `unit`; null = harga selalu manual per order
   default_material_id String?
-  default_material    Material?   @relation(fields: [default_material_id], references: [id])
+  default_material    Material?         @relation(fields: [default_material_id], references: [id])
   default_machine_id  String?
-  default_machine     Machine?    @relation("ProductDefaultMachine", fields: [default_machine_id], references: [id])
-  active              Boolean     @default(true)
+  default_machine     Machine?          @relation("ProductDefaultMachine", fields: [default_machine_id], references: [id])
+  active              Boolean           @default(true)
   order_items         OrderItem[]
+  material_options    ProductMaterial[]
 }
 
 // ─── MACHINES & MATERIALS ─────────────────────────────────────────────────────
@@ -413,8 +415,33 @@ model Material {
   material_movements MaterialMovement[]
   default_for        Product[]
   order_items        OrderItem[]
+  product_options    ProductMaterial[]
 
   @@unique([tenant_id, material_code])
+}
+
+// Explicit product-to-material allowlist. A material can serve many products,
+// but a product only exposes materials mapped here to the order and production
+// flows. `is_default` must be unique per product at the application boundary.
+model ProductMaterial {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  product_id  String
+  product     Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  material_id String
+  material    Material @relation(fields: [material_id], references: [id], onDelete: Cascade)
+  role        String   @default("PRIMARY") // PRIMARY/FINISHING/OPTIONAL
+  is_default  Boolean  @default(false)
+  active      Boolean  @default(true)
+  sort_order  Int      @default(0)
+  notes       String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([tenant_id, product_id, material_id])
+  @@index([tenant_id, product_id, active])
+  @@index([tenant_id, material_id, active])
 }
 
 model MachineMaterial {
@@ -594,6 +621,9 @@ model DesignJob {
   updated_at      DateTime @updatedAt
 
   versions DesignVersion[]
+
+  // Satu order hanya memiliki satu design job; versi per item disimpan di DesignVersion.
+  @@unique([tenant_id, order_id])
 }
 
 model DesignVersion {
@@ -615,7 +645,7 @@ model DesignVersion {
   uploaded_by      String
   uploader         User       @relation("UploadedBy", fields: [uploaded_by], references: [id])
   uploaded_at      DateTime   @default(now())
-  approval_status  String // PENDING/APPROVED/REJECTED
+  approval_status  String // PENDING/APPROVED/REJECTED/SUPERSEDED
   approved_at      DateTime?
   approved_by      String?
   approver         User?      @relation("ApprovedBy", fields: [approved_by], references: [id])

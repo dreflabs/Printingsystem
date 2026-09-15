@@ -30,10 +30,22 @@ Setiap item mengisi:
 - Deskripsi tambahan
 - Ukuran/dimensi
 - Jumlah
-- Bahan (pilih dari daftar material yang relevan dengan produk)
+- Bahan (pilih hanya dari allowlist material yang dikonfigurasi untuk produk)
 - Finishing (laminasi, pemotongan, dll — opsional)
 - Harga satuan
 - Total harga item
+
+### Aturan material per produk
+
+Setiap produk cetak memiliki daftar **Material yang Diizinkan** pada Katalog Produk.
+Saat Admin atau Designer memilih produk, form hanya menampilkan material aktif yang
+terdaftar pada allowlist tersebut. Material default terpilih otomatis. Jika produk
+belum memiliki mapping material, order ditahan dan tidak menggunakan daftar semua
+material tenant sebagai fallback.
+
+Server mengulang validasi pasangan `product_id` + `material_id` sebelum membuat
+`OrderItem`. Perubahan material setelah order masuk produksi memakai alur override
+material dengan alasan dan audit log.
 
 **Harga total order** = jumlah semua item + dikurangi diskon (jika ada, harus approval Owner).
 

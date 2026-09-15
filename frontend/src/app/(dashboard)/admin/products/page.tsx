@@ -20,9 +20,11 @@ type Retail = {
 type Printing = {
   id: string; name: string; category: string; unit: string;
   base_price: number | null; default_material_id: string | null; default_machine_id: string | null; active: boolean;
+  material_options: { id: string; name: string; material_code: string; material_id: string; is_default: boolean; role: string; sort_order: number }[];
 };
 type Machine = { id: string; machine_code: string; name: string; category: string; status: string; notes: string | null; default_operator_id: string | null; default_operator_name: string | null };
-type MatOpt = { id: string; name: string };
+type MatOpt = { id: string; name: string; active?: boolean };
+type DeletableItem = Retail | Printing | Machine;
 
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 const inp = "w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal";
@@ -101,6 +103,7 @@ function PrintingModal({
   const [unit, setUnit] = useState(editing?.unit ?? "M2");
   const [basePrice, setBasePrice] = useState(editing?.base_price != null ? String(editing.base_price) : "");
   const [materialId, setMaterialId] = useState(editing?.default_material_id ?? "");
+  const [materialIds, setMaterialIds] = useState<string[]>(editing?.material_options.map((m) => m.material_id) ?? []);
   const [machineId, setMachineId] = useState(editing?.default_machine_id ?? "");
   const [active, setActive] = useState(editing?.active ?? true);
   const [busy, setBusy] = useState(false);
@@ -116,6 +119,7 @@ function PrintingModal({
       base_price: basePrice ? Number(basePrice) : null,
       default_material_id: materialId || null,
       default_machine_id: machineId || null,
+      material_ids: materialIds,
     };
     const res = editing
       ? await updatePrintingProduct(editing.id, { ...payload, active })
@@ -144,10 +148,39 @@ function PrintingModal({
       </Grid2>
       <p className="text-[10px] text-muted -mt-2">Harga dasar dipakai untuk mengisi otomatis &quot;Harga Total&quot; saat buat order (tetap bisa diubah). Kosongkan kalau harga selalu ditentukan manual.</p>
       <Field label="Material Default (opsional)">
-        <select className={inp} value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
+        <select className={inp} value={materialId} onChange={(e) => {
+          const next = e.target.value;
+          setMaterialId(next);
+          if (next && !materialIds.includes(next)) setMaterialIds((ids) => [...ids, next]);
+        }}>
           <option value="">—</option>
           {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
+      </Field>
+      <Field label="Material yang Diizinkan untuk Produk">
+        <div className="max-h-44 overflow-y-auto rounded-xl border border-border bg-elevated p-3 space-y-2">
+          {materials.length === 0 ? (
+            <p className="text-xs text-muted">Belum ada master material aktif.</p>
+          ) : materials.map((m) => (
+            <label key={m.id} className="flex items-center gap-2 text-xs text-primary">
+              <input
+                type="checkbox"
+                checked={materialIds.includes(m.id)}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setMaterialIds((ids) => ids.includes(m.id) ? ids : [...ids, m.id]);
+                  } else {
+                    setMaterialIds((ids) => ids.filter((id) => id !== m.id));
+                    if (materialId === m.id) setMaterialId("");
+                  }
+                }}
+              />
+              <span>{m.name}</span>
+              {materialId === m.id && <span className="text-[10px] text-accent-teal font-bold">DEFAULT</span>}
+            </label>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted mt-1">Hanya material yang dicentang yang akan muncul pada form order produk ini.</p>
       </Field>
       <Field label="Mesin Default">
         <select className={inp} value={machineId} onChange={(e) => setMachineId(e.target.value)}>
@@ -273,7 +306,7 @@ export default function AdminProductsPage() {
   const [retailModal, setRetailModal] = useState<{ open: boolean; editing: Retail | null }>({ open: false, editing: null });
   const [printingModal, setPrintingModal] = useState<{ open: boolean; editing: Printing | null }>({ open: false, editing: null });
   const [machineModal, setMachineModal] = useState<{ open: boolean; editing: Machine | null }>({ open: false, editing: null });
-  const [confirmDel, setConfirmDel] = useState<{ type: Tab; item: any } | null>(null);
+  const [confirmDel, setConfirmDel] = useState<{ type: Tab; item: DeletableItem } | null>(null);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>("ALL");
   const [error, setError] = useState<string | null>(null);
 
@@ -284,7 +317,7 @@ export default function AdminProductsPage() {
     if (r.success) setRetail(r.data as Retail[]);
     if (p.success) setPrinting(p.data as Printing[]);
     if (mac.success) setMachines(mac.data as Machine[]);
-    if (m.success) setMaterials((m.data as { id: string; name: string }[]).map((x) => ({ id: x.id, name: x.name })));
+    if (m.success) setMaterials((m.data as { id: string; name: string; active: boolean }[]).filter((x) => x.active).map((x) => ({ id: x.id, name: x.name, active: x.active })));
     if (c.success) setCats(c.data);
     if (!p.success) setError(p.error ?? null);
   }, []);
@@ -394,7 +427,7 @@ export default function AdminProductsPage() {
                 <tr><th className="px-5 py-4">SKU</th><th className="px-5 py-4">Produk & Kategori</th><th className="px-5 py-4">Harga</th><th className="px-5 py-4">Stok</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
               )}
               {tab === "printing" && (
-                <tr><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Harga Dasar</th><th className="px-5 py-4">Material Default</th><th className="px-5 py-4">Mesin Default</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
+                <tr><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Harga Dasar</th><th className="px-5 py-4">Material Produk</th><th className="px-5 py-4">Mesin Default</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
               )}
               {tab === "machine" && (
                 <tr><th className="px-5 py-4">Kode</th><th className="px-5 py-4">Nama</th><th className="px-5 py-4">Kategori</th><th className="px-5 py-4">Operator Default</th><th className="px-5 py-4">Status</th><th className="px-5 py-4 text-right">Aksi</th></tr>
@@ -421,7 +454,12 @@ export default function AdminProductsPage() {
                   <td className="px-5 py-4 font-semibold text-primary">{p.name}</td>
                   <td className="px-5 py-4 text-muted text-xs">{p.category}</td>
                   <td className="px-5 py-4 font-mono text-xs">{p.base_price != null ? `${rupiah(p.base_price)} / ${p.unit === "M2" ? "m²" : p.unit.toLowerCase()}` : <span className="bg-muted/10 text-muted px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider">Harga Manual</span>}</td>
-                  <td className="px-5 py-4 text-muted text-xs">{matName(p.default_material_id)}</td>
+                  <td className="px-5 py-4 text-muted text-xs">
+                    <div>{matName(p.default_material_id)}</div>
+                    <div className={cn("text-[10px] mt-1", p.material_options.length === 0 ? "text-status-yellow-text" : "text-muted")}>
+                      {p.material_options.length === 0 ? "Belum dikonfigurasi" : `${p.material_options.length} material diizinkan`}
+                    </div>
+                  </td>
                   <td className="px-5 py-4 text-muted text-xs">{p.default_machine_id ? machName(p.default_machine_id) : <span className="text-status-yellow-text">belum diset</span>}</td>
                   <td className="px-5 py-4"><Badge active={p.active} /></td>
                   <td className="px-5 py-4 text-right">

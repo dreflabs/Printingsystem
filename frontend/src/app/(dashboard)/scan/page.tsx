@@ -29,6 +29,8 @@ type ScanCtx = {
   fileName: string | null;
   files: { label: string; url: string; name: string | null }[];
   items: { description: string; quantity: number; size: string | null }[];
+  allowedMaterialIds: string[];
+  plannedMaterialIds: string[];
   availableActions: { action: string; label: string }[];
 };
 type MaterialOpt = { id: string; name: string };
@@ -394,7 +396,12 @@ function ActionForm({
         </div>
         <select className={field} value={f.materialId ?? ""} onChange={(e) => set("materialId", e.target.value)}>
           <option value="">Pilih material dipakai…</option>
-          {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          {(ctx.plannedMaterialIds.length > 0
+            ? materials.filter((m) => ctx.plannedMaterialIds.includes(m.id))
+            : ctx.allowedMaterialIds.length > 0
+              ? materials.filter((m) => ctx.allowedMaterialIds.includes(m.id))
+              : materials
+          ).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
         <input className={field} type="number" placeholder="Jumlah pemakaian material" value={f.usageQty ?? ""} onChange={(e) => set("usageQty", e.target.value)} />
         {materials.length === 0 && <p className="text-[11px] text-status-yellow-text">Belum ada master material — tambahkan dulu di Katalog.</p>}

@@ -8,6 +8,8 @@
 
 Membuat desain, mengelola versi desain, dan memproses approval desain konsumen walk-in dan makloon.
 
+Untuk order dengan beberapa item, Designer memilih item target pada setiap upload, memastikan identitas produk/ukuran/bahan/finishing benar, lalu melengkapi approval sampai seluruh item menunjukkan status final. Order code menjadi identitas utama ketika satu konsumen memiliki beberapa order.
+
 ## Hak Akses
 | Modul | Akses |
 |-------|-------|

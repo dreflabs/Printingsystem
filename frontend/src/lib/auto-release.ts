@@ -74,20 +74,33 @@ export async function autoReleaseToProduction(
     where: { id: orderId, tenant_id: tenantId },
     include: {
       customer: { select: { name: true, phone: true, email: true } },
-      items: { include: { product: { select: { unit: true, default_machine_id: true } } } },
+      items: {
+        include: {
+          product: {
+            select: {
+              unit: true,
+              default_machine_id: true,
+              material_options: {
+                where: { tenant_id: tenantId, active: true, material: { active: true } },
+                select: { material_id: true },
+              },
+            },
+          },
+        },
+      },
       design_jobs: { select: { status: true } },
     },
   });
   if (!order) return { released: false, jobCodes: [], missing: ["Order tidak ditemukan"] };
   if (order.status !== "CONFIRMED") return { released: false, jobCodes: [], missing: [] };
 
-  const existing = await tx.productionJob.count({ where: { order_id: orderId } });
+  const existing = await tx.productionJob.count({ where: { tenant_id: tenantId, order_id: orderId } });
   if (existing > 0) return { released: false, jobCodes: [], missing: [] };
 
   const designApproved = order.design_jobs.some((d) => d.status === "APPROVED");
   const approvedVersions = await tx.designVersion.findMany({
-    where: { design_job: { order_id: orderId }, approval_status: "APPROVED" },
-    select: { order_item_id: true, approval_status: true, file_path: true, file_name: true },
+    where: { tenant_id: tenantId, design_job: { order_id: orderId } },
+    select: { order_item_id: true, approval_status: true, file_path: true, file_name: true, version_no: true, uploaded_at: true },
   });
   const nonRetailItemIds = order.items.filter((it) => !it.retail_product_id).map((it) => it.id);
   const designReadyItemIds = coveredDesignItemIds(approvedVersions, nonRetailItemIds);
@@ -106,6 +119,7 @@ export async function autoReleaseToProduction(
       quantity: it.quantity,
       size: it.size,
       materialId: it.material_id,
+      allowedMaterialIds: it.product?.material_options.map((option) => option.material_id) ?? [],
       unitPrice: Number(it.unit_price),
       totalPrice: Number(it.total_price),
       deadline: it.deadline ?? null,

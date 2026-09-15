@@ -14,23 +14,34 @@ import {
 } from "@/actions/storage";
 import { getSessionUser } from "@/actions/session";
 import { useToast } from "@/components/ui";
-import { Prisma } from "@prisma/client";
+import { outputUnitLabel } from "@/lib/output-units";
 
-type LocWithItems = Prisma.StorageLocationGetPayload<{
-  include: {
-    stored_items: {
-      include: { job: { include: { order: { include: { customer: { select: { name: true } } } } } } }
-    }
-  }
-}>[];
+type StorageJobInfo = {
+  job_code: string;
+  order: { order_code: string; customer: { name: string } | null };
+};
+type StorageItemRow = {
+  id: string;
+  quantity: number;
+  output_quantity: number | null;
+  output_unit: string | null;
+  status: string;
+  job: StorageJobInfo;
+};
+type LocWithItems = Array<{
+  id: string;
+  name: string;
+  location_code: string;
+  capacity_max: number;
+  capacity_current: number;
+  active: boolean;
+  stored_items: StorageItemRow[];
+}>;
 
-type StorageItemSearch = Prisma.StorageItemGetPayload<{
-  include: {
-    location: true;
-    transit_location: true;
-    job: { include: { order: { include: { customer: { select: { name: true } } } } } }
-  }
-}>[];
+type StorageItemSearch = Array<StorageItemRow & {
+  location: { name: string };
+  transit_location: { name: string } | null;
+}>;
 
 type StorageIncident = {
   id: string;
@@ -38,6 +49,8 @@ type StorageIncident = {
   orderCode: string;
   customerName: string;
   quantity: number;
+  outputQuantity: number | null;
+  outputUnit: string | null;
   location: string;
   notes: string | null;
   reportedAt: string | Date | null;
@@ -200,7 +213,7 @@ export function StorageTab() {
       {incidents.length > 0 && (
         <div className="bg-card border border-status-red/30 rounded-2xl shadow-card overflow-hidden">
           <div className="flex items-center gap-2 p-5 border-b border-border bg-status-red/5"><AlertTriangle className="h-5 w-5 text-status-red" /><h2 className="text-base font-bold text-primary">Incident Storage</h2><span className="rounded-full bg-status-red/10 px-2 py-0.5 text-[10px] font-bold text-status-red">{incidents.length}</span></div>
-          <div className="divide-y divide-border/50">{incidents.map((incident) => <div key={incident.id} className="p-4 space-y-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-bold text-primary">{incident.jobCode} · {incident.orderCode}</p><p className="text-xs text-muted">{incident.customerName} · {incident.quantity} pcs · {incident.location}</p><p className="text-xs text-status-red mt-1">{incident.notes || "Tidak ada catatan"}</p></div><span className="text-[11px] text-muted">Dilaporkan oleh {incident.reportedBy}</span></div>{canManage ? <div className="flex flex-wrap items-end gap-2"><label className="text-[11px] text-muted">Keputusan<select value={incidentResolution[incident.id] || "RESOLVED"} onChange={(e) => setIncidentResolution((p) => ({ ...p, [incident.id]: e.target.value }))} className="mt-1 block h-9 rounded-lg border border-border bg-elevated px-2 text-xs text-primary"><option value="RESOLVED">Barang ditemukan/aman — buka kembali</option><option value="REPLACEMENT_REQUIRED">Perlu barang pengganti — tetap blokir</option><option value="CANCELLED">Dibatalkan — tetap blokir</option></select></label><label className="flex-1 min-w-[220px] text-[11px] text-muted">Catatan penyelesaian<input value={incidentNotes[incident.id] || ""} onChange={(e) => setIncidentNotes((p) => ({ ...p, [incident.id]: e.target.value }))} placeholder="Hasil pemeriksaan dan tindakan" className="mt-1 h-9 w-full rounded-lg border border-border bg-elevated px-3 text-xs text-primary" /></label><button disabled={busy} onClick={() => resolveIncident(incident)} className="h-9 rounded-lg bg-accent-teal px-3 text-xs font-bold text-white disabled:opacity-40">Simpan keputusan</button></div> : <p className="text-xs text-status-yellow-text">Menunggu keputusan Owner/Admin.</p>}</div>)}</div>
+          <div className="divide-y divide-border/50">{incidents.map((incident) => <div key={incident.id} className="p-4 space-y-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-bold text-primary">{incident.jobCode} · {incident.orderCode}</p><p className="text-xs text-muted">{incident.customerName} · {incident.outputQuantity ?? incident.quantity} {outputUnitLabel(incident.outputUnit)} · {incident.location}</p><p className="text-xs text-status-red mt-1">{incident.notes || "Tidak ada catatan"}</p></div><span className="text-[11px] text-muted">Dilaporkan oleh {incident.reportedBy}</span></div>{canManage ? <div className="flex flex-wrap items-end gap-2"><label className="text-[11px] text-muted">Keputusan<select value={incidentResolution[incident.id] || "RESOLVED"} onChange={(e) => setIncidentResolution((p) => ({ ...p, [incident.id]: e.target.value }))} className="mt-1 block h-9 rounded-lg border border-border bg-elevated px-2 text-xs text-primary"><option value="RESOLVED">Barang ditemukan/aman — buka kembali</option><option value="REPLACEMENT_REQUIRED">Perlu barang pengganti — tetap blokir</option><option value="CANCELLED">Dibatalkan — tetap blokir</option></select></label><label className="flex-1 min-w-[220px] text-[11px] text-muted">Catatan penyelesaian<input value={incidentNotes[incident.id] || ""} onChange={(e) => setIncidentNotes((p) => ({ ...p, [incident.id]: e.target.value }))} placeholder="Hasil pemeriksaan dan tindakan" className="mt-1 h-9 w-full rounded-lg border border-border bg-elevated px-3 text-xs text-primary" /></label><button disabled={busy} onClick={() => resolveIncident(incident)} className="h-9 rounded-lg bg-accent-teal px-3 text-xs font-bold text-white disabled:opacity-40">Simpan keputusan</button></div> : <p className="text-xs text-status-yellow-text">Menunggu keputusan Owner/Admin.</p>}</div>)}</div>
         </div>
       )}
 
@@ -390,7 +403,7 @@ export function StorageTab() {
                     </span>
                   </div>
                   <p className="text-sm font-bold text-primary">{item.job.order.order_code} · {item.job.order.customer?.name}</p>
-                  <p className="text-xs text-muted mt-0.5">Qty: {item.quantity} pcs</p>
+                  <p className="text-xs text-muted mt-0.5">Qty: {item.output_quantity ?? item.quantity} {outputUnitLabel(item.output_unit)}</p>
                 </div>
                 <div className="text-right flex flex-col items-end gap-1">
                   <div className="flex items-center gap-1.5 text-xs font-bold bg-elevated px-3 py-1.5 rounded-lg border border-border text-primary">
@@ -464,7 +477,7 @@ export function StorageTab() {
                       {loc.stored_items.slice(0, 3).map(item => (
                         <div key={item.id} className="flex justify-between items-center text-xs">
                           <span className="font-mono text-muted truncate max-w-[120px]">{item.job.job_code}</span>
-                          <span className="text-primary font-medium">{item.quantity} pcs</span>
+                          <span className="text-primary font-medium">{item.output_quantity ?? item.quantity} {outputUnitLabel(item.output_unit)}</span>
                         </div>
                       ))}
                       {loc.stored_items.length > 3 && (

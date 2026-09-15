@@ -26,6 +26,8 @@ type Material = {
   min_stock: number;
   conversion_factor: number;
   standard_cost: number;
+  usable_width_mm: number | null;
+  effective_length: number | null;
 };
 
 
@@ -44,6 +46,8 @@ function MaterialModal({ editing, groups, onClose, onDone }: { editing: Material
   const [conv, setConv] = useState(String(editing?.conversion_factor ?? 1));
   const [minStock, setMinStock] = useState(String(editing?.min_stock ?? 10));
   const [cost, setCost] = useState(String(editing?.standard_cost ?? 0));
+  const [usableWidth, setUsableWidth] = useState(String(editing?.usable_width_mm ?? ""));
+  const [effectiveLength, setEffectiveLength] = useState(String(editing?.effective_length ?? ""));
 
   const [group, setGroup] = useState(editing?.group_name ?? "");
   const [specs, setSpecs] = useState(editing?.specifications ?? "");
@@ -66,6 +70,8 @@ function MaterialModal({ editing, groups, onClose, onDone }: { editing: Material
       unit_custom: usingCustom ? unitCustom.trim().toUpperCase() : null,
       conversion_factor: Number(conv), is_shared: false,
       min_stock: Number(minStock), standard_cost: Number(cost),
+      usable_width_mm: usableWidth.trim() ? Number(usableWidth) : null,
+      effective_length: effectiveLength.trim() ? Number(effectiveLength) : null,
       group_name: group, specifications: specs, purpose: type === "INK" ? "CONSUMABLE" : purpose,
       machine_ids: machineIds,
     };
@@ -120,6 +126,21 @@ function MaterialModal({ editing, groups, onClose, onDone }: { editing: Material
               <input type="number" required min="0" value={cost} onChange={(e) => setCost(e.target.value)} className="w-full h-11 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal" />
             </div>
           </div>
+
+          {resolvedStock === "ROLL" && (
+            <div className="grid grid-cols-2 gap-4 rounded-xl border border-accent-teal/20 bg-accent-teal/5 p-3">
+              <div>
+                <label className="text-xs font-medium text-muted mb-1 block">Lebar efektif (mm)</label>
+                <input type="number" min="0.01" step="0.01" value={usableWidth} onChange={(e) => setUsableWidth(e.target.value)} placeholder="mis. 3200" className="w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary" />
+                <p className="text-[10px] text-muted mt-1">Dipakai untuk validasi dan HPP media roll.</p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted mb-1 block">Panjang efektif (meter)</label>
+                <input type="number" min="0.01" step="0.01" value={effectiveLength} onChange={(e) => setEffectiveLength(e.target.value)} placeholder="mis. 50" className="w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary" />
+                <p className="text-[10px] text-muted mt-1">Opsional jika panjang roll diketahui.</p>
+              </div>
+            </div>
+          )}
           
           <div className="grid grid-cols-2 gap-4">
             <div>

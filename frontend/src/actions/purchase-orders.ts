@@ -9,6 +9,7 @@ import { can } from "@/lib/permissions";
 import { logAction } from "@/lib/logger";
 import { safeError } from "@/lib/safe-error";
 import { validateMaterialInboundQuantity } from "@/lib/material-quantity";
+import { movementCostAmount, weightedAverageCost } from "@/lib/material-costing";
 import { ok, fail } from "@/types";
 
 type PurchaseItemInput = { materialId: string; quantity: number; unitCost: number; notes?: string };
@@ -136,13 +137,14 @@ export async function receivePurchaseOrder(poItemId: string, quantity: number, d
       const material = await tx.material.findFirst({ where: { id: item.material_id, tenant_id: tenant.id, active: true } });
       if (!material) throw new Error("Material tidak ditemukan atau nonaktif.");
       const before = Number(material.current_stock); const after = before + normalizedQuantity;
-      await tx.material.update({ where: { id: material.id }, data: { current_stock: after } });
+      const nextCost = weightedAverageCost(before, Number(material.standard_cost), normalizedQuantity, Number(item.unit_cost));
+      await tx.material.update({ where: { id: material.id }, data: { current_stock: after, standard_cost: nextCost } });
       const nextReceived = Number(item.received_qty) + normalizedQuantity;
       await tx.purchaseOrderItem.update({ where: { id: item.id }, data: { received_qty: nextReceived } });
       const allItems = await tx.purchaseOrderItem.findMany({ where: { purchase_order_id: item.purchase_order_id }, select: { ordered_qty: true, received_qty: true } });
       const complete = allItems.every((row) => Number(row.received_qty) >= Number(row.ordered_qty) - 0.000001);
       await tx.purchaseOrder.update({ where: { id: item.purchase_order_id }, data: { status: complete ? "RECEIVED" : "PARTIAL" } });
-      await tx.materialMovement.create({ data: { tenant_id: tenant.id, material_id: material.id, movement_type: "IN", quantity_usage: 0, quantity_stock_change: normalizedQuantity, before_stock: before, after_stock: after, supplier: item.purchase_order.supplier.name, supplier_id: item.purchase_order.supplier.id, unit_cost: item.unit_cost, reference_no: data?.referenceNo?.trim() || item.purchase_order.po_number, purchase_order_id: item.purchase_order_id, purchase_order_item_id: item.id, received_at: receivedAt, performed_by: actor.id, reason: data?.notes?.trim() || `Penerimaan ${item.purchase_order.po_number}` } });
+      await tx.materialMovement.create({ data: { tenant_id: tenant.id, material_id: material.id, movement_type: "IN", quantity_usage: 0, quantity_stock_change: normalizedQuantity, before_stock: before, after_stock: after, supplier: item.purchase_order.supplier.name, supplier_id: item.purchase_order.supplier.id, unit_cost: item.unit_cost, cost_amount: movementCostAmount(normalizedQuantity, Number(item.unit_cost)), reference_no: data?.referenceNo?.trim() || item.purchase_order.po_number, purchase_order_id: item.purchase_order_id, purchase_order_item_id: item.id, received_at: receivedAt, performed_by: actor.id, reason: data?.notes?.trim() || `Penerimaan ${item.purchase_order.po_number}` } });
       return { poNumber: item.purchase_order.po_number, material: material.name, received: normalizedQuantity, after, status: complete ? "RECEIVED" : "PARTIAL" };
     });
     await logAction(actor.id, "PURCHASE_ORDER_RECEIVED", "PurchaseOrderItem", poItemId, null, result);

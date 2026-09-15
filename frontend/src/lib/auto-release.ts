@@ -1,6 +1,7 @@
 import { validateMachineMaterials } from "@/lib/production-materials";
 import type { Prisma } from "@prisma/client";
 import { checkProductionReadiness, coveredDesignItemIds, type ReadinessItem } from "@/lib/production-readiness";
+import { resolveOutputUnit } from "@/lib/output-units";
 
 export interface AutoReleaseResult {
   released: boolean;
@@ -216,11 +217,15 @@ export async function autoReleaseToProduction(
   // Gabungkan item per mesin default → 1 job per mesin, qty dijumlah.
   // Deadline job = yang PALING AWAL di antara item-itemnya (fallback deadline order).
   const qtyByMachine = new Map<string, number>();
+  const outputUnitsByMachine = new Map<string, string[]>();
   const deadlineByMachine = new Map<string, Date | null>();
   const orderDeadline = order.deadline ? new Date(order.deadline) : null;
   for (const it of items) {
     const mid = it.defaultMachineId as string;
     qtyByMachine.set(mid, (qtyByMachine.get(mid) ?? 0) + it.quantity);
+    const units = outputUnitsByMachine.get(mid) ?? [];
+    units.push(it.productUnit ?? "PCS");
+    outputUnitsByMachine.set(mid, units);
     const d = it.deadline ? new Date(it.deadline) : orderDeadline;
     const cur = deadlineByMachine.has(mid) ? deadlineByMachine.get(mid)! : undefined;
     if (cur === undefined) deadlineByMachine.set(mid, d);
@@ -247,6 +252,8 @@ export async function autoReleaseToProduction(
         priority: priorityFromDeadline(jobDeadline),
         deadline: jobDeadline,
         planned_qty: plannedQty,
+        planned_output_quantity: plannedQty,
+        output_unit: resolveOutputUnit(outputUnitsByMachine.get(machineId) ?? []),
         items: { create: items.filter(it => it.defaultMachineId === machineId).map(it => ({ tenant_id: tenantId, order_item_id: it.id, material_id: it.materialId })) },
       },
     });

@@ -14,6 +14,8 @@ import { ok, fail, type ActionResult } from "@/types";
 import { can, canAny } from "@/lib/permissions";
 import { latestDesignVersionsBySlot } from "@/lib/production-readiness";
 import { requireOperationalCheckIn } from "@/lib/attendance-policy";
+import { resolveOutputUnit } from "@/lib/output-units";
+import { movementCostAmount } from "@/lib/material-costing";
 
 /**
  * Admin/Owner menekan "Rilis ke Produksi" untuk order yang tertahan gatekeeper
@@ -615,6 +617,14 @@ export async function finishProduction(
 
       const plan = await getJobMaterialPlan(tx, tenant.id, job);
       validateUsageIds(plan.plannedIds, plan.consumableIds, input.materials.map(m => m.materialId));
+      const scopedOutputItems = await tx.productionJobItem.findMany({
+        where: { tenant_id: tenant.id, job_id: job.id },
+        select: { order_item: { select: { product: { select: { unit: true } } } } },
+      });
+      const outputUnit = resolveOutputUnit(scopedOutputItems.map((item) => item.order_item.product?.unit));
+      const outputQuantity = (outputUnit === "M2" || outputUnit === "METER") && input.actualArea && input.actualArea > 0
+        ? input.actualArea
+        : input.actualQty;
       const lowStock: string[] = [];
       // Stable ordering avoids deadlocks when jobs consume the same materials.
       for (const m of [...input.materials].sort((a, b) => a.materialId.localeCompare(b.materialId))) {
@@ -652,6 +662,8 @@ export async function finishProduction(
             quantity_stock_change: quantities.used.negated(),
             before_stock: before,
             after_stock: afterUsage,
+            unit_cost: material.standard_cost,
+            cost_amount: movementCostAmount(Number(quantities.used), Number(material.standard_cost)),
             performed_by: actor.id,
             reason: `Pemakaian produksi ${job.job_code}`,
           },
@@ -668,6 +680,8 @@ export async function finishProduction(
               quantity_stock_change: quantities.wasted.negated(),
               before_stock: afterUsage,
               after_stock: after,
+              unit_cost: material.standard_cost,
+              cost_amount: movementCostAmount(Number(quantities.wasted), Number(material.standard_cost)),
               performed_by: actor.id,
               reason: m.wasteReason!.trim(),
             },
@@ -682,6 +696,8 @@ export async function finishProduction(
           status: "PRODUCTION_COMPLETE",
           actual_end: new Date(),
           actual_qty: input.actualQty,
+          output_quantity: outputQuantity,
+          output_unit: outputUnit,
           actual_area: input.actualArea && input.actualArea > 0 ? input.actualArea : null,
           reprint_qty: input.reprintQty && input.reprintQty > 0 ? Math.round(input.reprintQty) : 0,
           waste_qty: input.wasteQty ?? 0,
@@ -928,6 +944,9 @@ export async function decideRework(
           status: "PRODUCTION_ASSIGNED",
           priority: job.priority,
           planned_qty: job.planned_qty,
+          planned_output_quantity: job.planned_output_quantity ?? job.planned_qty,
+          output_unit: job.output_unit,
+          output_quantity: null,
           items: { create: (await tx.productionJobItem.findMany({ where: { tenant_id: tenant.id, job_id: job.id } })).map(it => ({ tenant_id: tenant.id, order_item_id: it.order_item_id, material_id: it.material_id })) },
           parent_job_id: input.decision === "APPROVED" ? job.id : null,
           rework_count: input.decision === "APPROVED" ? (job.rework_count ?? 0) + 1 : 0,

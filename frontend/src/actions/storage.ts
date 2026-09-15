@@ -13,6 +13,7 @@ import { buildLocationCode, defaultLocationName, buildStorageLocations } from "@
 import { can, canAny } from "@/lib/permissions";
 import { requireEntitlement } from "@/lib/entitlements";
 import { requireOperationalCheckIn } from "@/lib/attendance-policy";
+import { resolveOutputUnit } from "@/lib/output-units";
 
 /** Buang prefix "LOC:" dari hasil scan Location QR. */
 function cleanLocationCode(v: string): string {
@@ -210,7 +211,7 @@ export async function seedDefaultStorageLayout() {
 export async function assignStorageLocation(
   jobCode: string,
   locationCode: string,
-  input?: { quantity?: number }
+  input?: { quantity?: number; outputQuantity?: number }
 ): Promise<ActionResult<{ locationCode: string; orderStatus: string; notified: boolean }>> {
   try {
     const tenant = await requireTenant();
@@ -219,6 +220,7 @@ export async function assignStorageLocation(
     if (!can(actor, "storage.store")) return fail("Hanya role Gudang yang boleh menyimpan ke storage.");
     await requireOperationalCheckIn(tenant.id, actor);
     if (input?.quantity != null && (!Number.isSafeInteger(input.quantity) || input.quantity <= 0)) return fail("Jumlah barang di storage harus lebih dari 0.");
+    if (input?.outputQuantity != null && (!Number.isFinite(input.outputQuantity) || input.outputQuantity <= 0)) return fail("Jumlah output storage harus lebih dari 0.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -250,12 +252,21 @@ export async function assignStorageLocation(
       }
 
       const quantity = input?.quantity ?? job.actual_qty ?? job.planned_qty;
+      const jobItems = await tx.productionJobItem.findMany({
+        where: { tenant_id: tenant.id, job_id: job.id },
+        select: { order_item: { select: { product: { select: { unit: true } } } } },
+      });
+      const outputUnit = job.output_unit ?? resolveOutputUnit(jobItems.map((item) => item.order_item.product?.unit));
+      const outputQuantity = input?.outputQuantity ?? job.output_quantity ?? job.actual_qty ?? job.planned_qty;
       await tx.storageItem.create({
         data: {
           tenant_id: tenant.id,
           job_id: job.id,
           location_id: loc.id,
           quantity,
+          output_quantity: outputQuantity,
+          output_unit: outputUnit,
+          package_count: 1,
           status: "STORED",
           stored_by: actor.id,
         },
@@ -378,6 +389,8 @@ export async function getStorageIncidents() {
       orderCode: item.job.order.order_code,
       customerName: item.job.order.customer?.name ?? "-",
       quantity: item.quantity,
+      outputQuantity: item.output_quantity == null ? null : Number(item.output_quantity),
+      outputUnit: item.output_unit,
       location: `${item.location.location_code} · ${item.location.name}`,
       notes: item.incident_notes,
       reportedAt: item.incident_reported_at,
@@ -655,14 +668,24 @@ export async function getStorageLocationsWithItems() {
     const locs = await prisma.storageLocation.findMany({
       where: { tenant_id: tenant.id },
       orderBy: [{ floor: "desc" }, { zone: "asc" }, { rack: "asc" }, { slot: "asc" }],
-      include: {
+      select: {
+        id: true, name: true, location_code: true, capacity_max: true, capacity_current: true, active: true,
         stored_items: {
           where: { status: "STORED" },
-          include: { job: { include: { order: { include: { customer: { select: { name: true } } } } } } },
+          select: {
+            id: true, quantity: true, output_quantity: true, output_unit: true, status: true,
+            job: { select: { job_code: true, order: { select: { order_code: true, customer: { select: { name: true } } } } } },
+          },
         },
       },
     });
-    return ok(locs);
+    return ok(locs.map((location) => ({
+      ...location,
+      stored_items: location.stored_items.map((item) => ({
+        ...item,
+        output_quantity: item.output_quantity == null ? null : Number(item.output_quantity),
+      })),
+    })));
   } catch (e) {
     console.error("getStorageLocationsWithItems:", e);
     return fail(safeError(e, "Gagal memuat peta gudang."));
@@ -688,14 +711,18 @@ export async function searchStorageItems(query: string) {
           ],
         },
       },
-      include: {
-        location: true,
-        transit_location: true,
-        job: { include: { order: { include: { customer: { select: { name: true } } } } } },
+      select: {
+        id: true, quantity: true, output_quantity: true, output_unit: true, status: true,
+        location: { select: { name: true } },
+        transit_location: { select: { name: true } },
+        job: { select: { job_code: true, order: { select: { order_code: true, customer: { select: { name: true } } } } } },
       },
       take: 20,
     });
-    return ok(items);
+    return ok(items.map((item) => ({
+      ...item,
+      output_quantity: item.output_quantity == null ? null : Number(item.output_quantity),
+    })));
   } catch (e) {
     console.error("searchStorageItems:", e);
     return fail(safeError(e, "Gagal mencari barang."));

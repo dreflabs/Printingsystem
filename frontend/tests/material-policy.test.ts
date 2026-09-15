@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stockUsage, validateUsageIds } from "../src/lib/production-materials";
-import { calculatePrintingUnitPrice, validateMaterialUnitPair } from "../src/lib/catalog-constants";
+import { calculatePrintingUnitPrice, validateMaterialConversionFactor, validateMaterialUnitPair } from "../src/lib/catalog-constants";
+import { resolveOutputUnit } from "../src/lib/output-units";
+import { movementCostAmount, weightedAverageCost } from "../src/lib/material-costing";
 
 test("printing prices use the selected product unit", () => {
   assert.equal(calculatePrintingUnitPrice("M2", 15000, 200, 300), 90000);
@@ -17,6 +19,27 @@ test("material unit pairs reject incompatible units and require custom names", (
   assert.throws(() => validateMaterialUnitPair("ROLL", "GRAM"), /tidak didukung/);
   assert.throws(() => validateMaterialUnitPair("PAKET", "PAKET"), /custom/);
   assert.deepEqual(validateMaterialUnitPair("PAKET", "PAKET", "PAKET"), { stock: "PAKET", usage: "PAKET", custom: "PAKET" });
+});
+
+test("same material units require an explicit one-to-one conversion", () => {
+  assert.equal(validateMaterialConversionFactor("ROLL", "METER", 50), 50);
+  assert.equal(validateMaterialConversionFactor("PCS", "PCS", 1), 1);
+  assert.throws(() => validateMaterialConversionFactor("PCS", "PCS", 2), /faktor konversi harus 1/);
+  assert.throws(() => validateMaterialConversionFactor("ROLL", "METER", 0), /lebih dari 0/);
+});
+
+test("job output unit is derived from its product units", () => {
+  assert.equal(resolveOutputUnit(["M2", "M2"]), "M2");
+  assert.equal(resolveOutputUnit(["METER", null]), "METER");
+  assert.equal(resolveOutputUnit(["PCS", "LEMBAR"]), "MIXED");
+  assert.equal(resolveOutputUnit([]), "PCS");
+});
+
+test("material HPP uses weighted average and movement cost snapshots", () => {
+  assert.equal(weightedAverageCost(100, 10, 50, 16), 12);
+  assert.equal(weightedAverageCost(100, 10, 50, null), 10);
+  assert.equal(movementCostAmount(-0.125, 20000), 2500);
+  assert.equal(movementCostAmount(-1, null), null);
 });
 
 test("roll-meter conversion preserves usage and waste with six decimals", () => {

@@ -9,9 +9,10 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
-import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES, validateMaterialUnitPair } from "@/lib/catalog-constants";
+import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES, validateMaterialUnitPair, validateMaterialConversionFactor } from "@/lib/catalog-constants";
 import { can } from "@/lib/permissions";
 import { validateMaterialInboundQuantity } from "@/lib/material-quantity";
+import { movementCostAmount, weightedAverageCost } from "@/lib/material-costing";
 
 const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
 /** null/undefined/0 → null; 0<n≤100 → n; selain itu → "invalid". */
@@ -469,6 +470,8 @@ export async function getMaterials() {
         min_stock: Number(m.min_stock),
         current_stock: Number(m.current_stock),
         standard_cost: Number(m.standard_cost),
+        usable_width_mm: m.usable_width_mm == null ? null : Number(m.usable_width_mm),
+        effective_length: m.effective_length == null ? null : Number(m.effective_length),
         machine_ids: m.machines.map((x) => x.machine_id),
       }))
     );
@@ -508,6 +511,7 @@ export async function getMaterialMovementHistory(materialId?: string) {
       afterStock: Number(row.after_stock),
       supplier: row.supplier,
       unitCost: row.unit_cost == null ? null : Number(row.unit_cost),
+      costAmount: row.cost_amount == null ? null : Number(row.cost_amount),
       referenceNo: row.reference_no,
       receivedAt: row.received_at,
       performedBy: row.performer.name,
@@ -536,6 +540,8 @@ export async function createMaterial(data: {
   min_stock: number;
   current_stock: number;
   standard_cost: number;
+  usable_width_mm?: number | null;
+  effective_length?: number | null;
   is_shared?: boolean;
   machine_ids?: string[];
 }) {
@@ -567,6 +573,8 @@ export async function createMaterial(data: {
           min_stock: data.min_stock,
           current_stock: data.current_stock,
           standard_cost: data.standard_cost,
+          usable_width_mm: data.usable_width_mm ?? null,
+          effective_length: data.effective_length ?? null,
           is_shared: data.is_shared ?? false,
           added_by: actor.id,
         },
@@ -608,6 +616,8 @@ export async function updateMaterial(
     conversion_factor?: number;
     min_stock?: number;
     standard_cost?: number;
+    usable_width_mm?: number | null;
+    effective_length?: number | null;
     is_shared?: boolean;
     active?: boolean;
     machine_ids?: string[];
@@ -623,7 +633,7 @@ export async function updateMaterial(
     const { machine_ids, ...fields } = data;
     await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Material" WHERE id = ${id} AND tenant_id = ${tenant.id} FOR UPDATE`;
-      await validateMaterialSetup(tx, tenant.id, { ...existing, ...data, conversion_factor: Number(data.conversion_factor ?? existing.conversion_factor), min_stock: Number(data.min_stock ?? existing.min_stock), standard_cost: Number(data.standard_cost ?? existing.standard_cost), current_stock: Number(existing.current_stock) });
+      await validateMaterialSetup(tx, tenant.id, { ...existing, ...data, conversion_factor: Number(data.conversion_factor ?? existing.conversion_factor), min_stock: Number(data.min_stock ?? existing.min_stock), standard_cost: Number(data.standard_cost ?? existing.standard_cost), current_stock: Number(existing.current_stock), usable_width_mm: data.usable_width_mm ?? (existing.usable_width_mm == null ? null : Number(existing.usable_width_mm)), effective_length: data.effective_length ?? (existing.effective_length == null ? null : Number(existing.effective_length)) });
       const changingUnits = (data.unit_stock !== undefined && data.unit_stock !== existing.unit_stock) || (data.unit_usage !== undefined && data.unit_usage !== existing.unit_usage) || (data.conversion_factor !== undefined && data.conversion_factor !== Number(existing.conversion_factor));
       if (changingUnits && (Number(existing.current_stock) !== 0 || await tx.materialMovement.count({ where: { tenant_id: tenant.id, material_id: id } }) || await tx.orderItem.count({ where: { tenant_id: tenant.id, material_id: id } }))) throw new Error("Satuan/konversi material yang sudah digunakan tidak dapat diubah. Buat material baru agar histori stok tetap konsisten.");
       if (data.active === false || data.purpose === "CONSUMABLE" || data.type === "INK") {
@@ -673,8 +683,11 @@ export async function adjustMaterialStock(
       const before = Number(material.current_stock);
       const after = data.newStock;
       const delta = after - before;
+      const nextCost = data.unitCost != null && after > 0
+        ? weightedAverageCost(before, Number(material.standard_cost), Math.max(0, delta), data.unitCost)
+        : Number(material.standard_cost);
 
-      await tx.material.update({ where: { id: materialId }, data: { current_stock: after } });
+      await tx.material.update({ where: { id: materialId }, data: { current_stock: after, ...(data.unitCost != null ? { standard_cost: nextCost } : {}) } });
       await tx.materialMovement.create({
         data: {
           tenant_id: tenant.id,
@@ -686,6 +699,7 @@ export async function adjustMaterialStock(
           after_stock: after,
           supplier: data.supplier || null,
           unit_cost: data.unitCost ?? null,
+          cost_amount: movementCostAmount(delta, data.unitCost),
           performed_by: actor.id,
           reason: data.reason.trim(),
         },
@@ -735,7 +749,8 @@ export async function receiveMaterialStock(
 
       const before = Number(material.current_stock);
       const after = before + quantity;
-      await tx.material.update({ where: { id: material.id }, data: { current_stock: after } });
+      const nextCost = weightedAverageCost(before, Number(material.standard_cost), quantity, data.unitCost);
+      await tx.material.update({ where: { id: material.id }, data: { current_stock: after, standard_cost: nextCost } });
       await tx.materialMovement.create({
         data: {
           tenant_id: tenant.id,
@@ -747,6 +762,7 @@ export async function receiveMaterialStock(
           after_stock: after,
           supplier: data.supplier?.trim() || null,
           unit_cost: data.unitCost ?? null,
+          cost_amount: movementCostAmount(quantity, data.unitCost),
           reference_no: data.referenceNo?.trim() || null,
           received_at: receivedAt,
           performed_by: actor.id,
@@ -932,10 +948,14 @@ export async function deleteMachine(id: string) {
   }
 }
 
-async function validateMaterialSetup(tx: Prisma.TransactionClient, tenantId: string, data: { type?: string; purpose?: string; unit_stock?: string; unit_usage?: string; unit_custom?: string | null; conversion_factor: number; min_stock: number; current_stock: number; standard_cost: number; machine_ids?: string[] }) {
+async function validateMaterialSetup(tx: Prisma.TransactionClient, tenantId: string, data: { type?: string; purpose?: string; unit_stock?: string; unit_usage?: string; unit_custom?: string | null; conversion_factor: number; min_stock: number; current_stock: number; standard_cost: number; usable_width_mm?: number | null; effective_length?: number | null; machine_ids?: string[] }) {
   if (!data.type || !["MEDIA", "INK", "OTHER"].includes(data.type)) throw new Error("Tipe material tidak valid.");
   if (data.purpose && !["PRIMARY", "CONSUMABLE"].includes(data.purpose)) throw new Error("Fungsi material tidak valid.");
   validateMaterialUnitPair(data.unit_stock ?? "", data.unit_usage ?? "", data.unit_custom);
+  validateMaterialConversionFactor(data.unit_stock ?? "", data.unit_usage ?? "", data.conversion_factor);
+  for (const [value, label] of [[data.usable_width_mm, "Lebar efektif media"], [data.effective_length, "Panjang efektif roll"]] as const) {
+    if (value != null && (!Number.isFinite(value) || value <= 0)) throw new Error(`${label} harus lebih dari 0.`);
+  }
   if (![data.conversion_factor, data.min_stock, data.current_stock, data.standard_cost].every(Number.isFinite) || data.conversion_factor <= 0 || data.min_stock < 0 || data.standard_cost < 0) throw new Error("Angka material tidak valid; konversi harus positif.");
   const ids = [...new Set(data.machine_ids ?? [])];
   if (ids.length !== (data.machine_ids ?? []).length || ids.length !== await tx.machine.count({ where: { tenant_id: tenantId, id: { in: ids } } })) throw new Error("Daftar mesin tidak valid untuk toko ini.");

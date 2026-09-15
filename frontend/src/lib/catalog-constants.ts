@@ -49,6 +49,16 @@ export function validateMaterialUnitPair(unitStock: string, unitUsage: string, u
   return { stock, usage, custom: null };
 }
 
+/** Unit yang sama tidak boleh memiliki skala tersembunyi. Faktor disimpan
+ * terpisah karena faktor 50 pada ROLL→METER memiliki dimensi yang jelas. */
+export function validateMaterialConversionFactor(unitStock: string, unitUsage: string, factor: number) {
+  if (!Number.isFinite(factor) || factor <= 0) throw new Error("Faktor konversi harus lebih dari 0.");
+  if (unitStock.trim().toUpperCase() === unitUsage.trim().toUpperCase() && Math.abs(factor - 1) > 1e-9) {
+    throw new Error("Jika satuan stok dan pemakaian sama, faktor konversi harus 1.");
+  }
+  return factor;
+}
+
 export function printingUnitLabel(unit: string) {
   const labels: Record<string, string> = { PCS: "pcs", M2: "m²", METER: "meter", LEMBAR: "lembar", RIM: "rim" };
   return labels[unit] ?? unit.toLowerCase();

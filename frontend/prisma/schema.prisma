@@ -435,6 +435,8 @@ model Material {
   unit_usage        String // METER/LEMBAR/ML/GRAM/PCS/CUSTOM
   unit_custom       String?
   conversion_factor Decimal  @db.Decimal(10, 2)
+  usable_width_mm  Decimal? @db.Decimal(10, 2) // lebar efektif media roll
+  effective_length Decimal? @db.Decimal(18, 6) // panjang efektif per roll bila diketahui
   is_shared         Boolean  @default(false)
   min_stock         Decimal  @db.Decimal(10, 2)
   current_stock     Decimal  @db.Decimal(18, 6)
@@ -513,6 +515,7 @@ model MaterialMovement {
   supplier_id           String?
   supplier_ref          Supplier?      @relation("SupplierMovements", fields: [supplier_id], references: [id], onDelete: SetNull)
   unit_cost             Decimal?       @db.Decimal(15, 2)
+  cost_amount           Decimal?       @db.Decimal(18, 2)
   reference_no          String?
   purchase_order_id     String?
   purchase_order        PurchaseOrder? @relation(fields: [purchase_order_id], references: [id], onDelete: SetNull)
@@ -832,7 +835,10 @@ model ProductionJob {
   actual_end    DateTime?
   deadline      DateTime? // dari OrderItem.deadline (fallback Order.deadline) saat auto-release
   planned_qty   Int
+  planned_output_quantity Decimal? @db.Decimal(18, 6)
+  output_unit   String? // PCS/M2/METER/LEMBAR/RIM/MIXED
   actual_qty    Int             @default(0)
+  output_quantity Decimal?      @db.Decimal(18, 6)
   actual_area   Decimal?        @db.Decimal(12, 3) // m² / meter tercetak (produk non-PCS)
   reprint_qty   Int             @default(0)
   waste_qty     Int             @default(0) // potong reject (pcs) — sisa bahan/offcut ada di MaterialMovement WASTE
@@ -942,6 +948,9 @@ model StorageItem {
   location_id          String
   location             StorageLocation  @relation("Location", fields: [location_id], references: [id])
   quantity             Int
+  output_quantity      Decimal?         @db.Decimal(18, 6)
+  output_unit          String?          // unit barang jadi; tidak selalu PCS
+  package_count        Int              @default(1) // kapasitas lokasi dihitung per paket
   status               String // STORED/IN_TRANSIT/RELEASED/INCIDENT
   stored_by            String
   storer               User             @relation("StoredBy", fields: [stored_by], references: [id])

@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/actor";
 import { can } from "@/lib/permissions";
 import { logAction } from "@/lib/logger";
 import { safeError } from "@/lib/safe-error";
+import { validateMaterialInboundQuantity } from "@/lib/material-quantity";
 import { ok, fail } from "@/types";
 
 type PurchaseItemInput = { materialId: string; quantity: number; unitCost: number; notes?: string };
@@ -80,22 +81,29 @@ export async function createPurchaseOrder(data: { supplierId: string; expectedDa
     if (!data.supplierId) return fail("Supplier wajib dipilih.");
     if (!Array.isArray(data.items) || data.items.length === 0) return fail("Minimal satu material harus dipilih.");
     const dedupe = new Set<string>();
+    const items: PurchaseItemInput[] = [];
     for (const item of data.items) {
       if (dedupe.has(item.materialId)) return fail("Material tidak boleh diulang dalam satu purchase order.");
       dedupe.add(item.materialId);
-      if (!Number.isFinite(item.quantity) || item.quantity <= 0) return fail("Jumlah order material harus lebih dari 0.");
+      let quantity: number;
+      try {
+        quantity = validateMaterialInboundQuantity(item.quantity, "Jumlah order material");
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : "Jumlah order material tidak valid.");
+      }
       if (!Number.isFinite(item.unitCost) || item.unitCost < 0) return fail("Harga beli material tidak valid.");
+      items.push({ ...item, quantity });
     }
     const expectedDate = dateOnly(data.expectedDate);
     const [supplier, materials] = await Promise.all([
       prisma.supplier.findFirst({ where: { id: data.supplierId, tenant_id: tenant.id, active: true } }),
-      prisma.material.findMany({ where: { tenant_id: tenant.id, active: true, id: { in: data.items.map((i) => i.materialId) } }, select: { id: true } }),
+      prisma.material.findMany({ where: { tenant_id: tenant.id, active: true, id: { in: items.map((i) => i.materialId) } }, select: { id: true } }),
     ]);
     if (!supplier) return fail("Supplier tidak ditemukan atau nonaktif.");
-    if (materials.length !== data.items.length) return fail("Ada material yang tidak ditemukan atau nonaktif.");
+    if (materials.length !== items.length) return fail("Ada material yang tidak ditemukan atau nonaktif.");
     const dateKey = new Date().toISOString().slice(0, 10).replaceAll("-", "");
     const poNumber = `PO-${dateKey}-${randomUUID().slice(0, 6).toUpperCase()}`;
-    const po = await prisma.purchaseOrder.create({ data: { tenant_id: tenant.id, po_number: poNumber, supplier_id: supplier.id, status: "SUBMITTED", expected_date: expectedDate, notes: data.notes?.trim() || null, created_by: actor.id, items: { create: data.items.map((item) => ({ tenant_id: tenant.id, material_id: item.materialId, ordered_qty: item.quantity, unit_cost: item.unitCost, notes: item.notes?.trim() || null })) } } });
+    const po = await prisma.purchaseOrder.create({ data: { tenant_id: tenant.id, po_number: poNumber, supplier_id: supplier.id, status: "SUBMITTED", expected_date: expectedDate, notes: data.notes?.trim() || null, created_by: actor.id, items: { create: items.map((item) => ({ tenant_id: tenant.id, material_id: item.materialId, ordered_qty: item.quantity, unit_cost: item.unitCost, notes: item.notes?.trim() || null })) } } });
     await logAction(actor.id, "PURCHASE_ORDER_CREATED", "PurchaseOrder", po.id, null, { po_number: poNumber, supplier_id: supplier.id, item_count: data.items.length });
     revalidatePath("/finishing");
     return ok({ id: po.id, poNumber });
@@ -110,7 +118,12 @@ export async function receivePurchaseOrder(poItemId: string, quantity: number, d
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!can(actor, "purchase.receive")) return fail("Anda tidak memiliki akses menerima purchase order.");
-    if (!Number.isFinite(quantity) || quantity <= 0) return fail("Jumlah penerimaan harus lebih dari 0.");
+    let normalizedQuantity: number;
+    try {
+      normalizedQuantity = validateMaterialInboundQuantity(quantity, "Jumlah penerimaan");
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : "Jumlah penerimaan tidak valid.");
+    }
     const receivedAt = dateOnly(data?.receivedAt) ?? new Date();
     const result = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "PurchaseOrderItem" WHERE id = ${poItemId} AND tenant_id = ${tenant.id} FOR UPDATE`;
@@ -118,19 +131,19 @@ export async function receivePurchaseOrder(poItemId: string, quantity: number, d
       if (!item) throw new Error("Item purchase order tidak ditemukan.");
       if (["CANCELLED", "RECEIVED", "DRAFT"].includes(item.purchase_order.status)) throw new Error("Purchase order tidak dapat menerima barang pada status ini.");
       const remaining = Number(item.ordered_qty) - Number(item.received_qty);
-      if (quantity > remaining + 0.000001) throw new Error(`Jumlah melebihi sisa PO (${remaining}).`);
+      if (normalizedQuantity > remaining + 0.000001) throw new Error(`Jumlah melebihi sisa PO (${remaining}).`);
       await tx.$queryRaw`SELECT id FROM "Material" WHERE id = ${item.material_id} AND tenant_id = ${tenant.id} FOR UPDATE`;
       const material = await tx.material.findFirst({ where: { id: item.material_id, tenant_id: tenant.id, active: true } });
       if (!material) throw new Error("Material tidak ditemukan atau nonaktif.");
-      const before = Number(material.current_stock); const after = before + quantity;
+      const before = Number(material.current_stock); const after = before + normalizedQuantity;
       await tx.material.update({ where: { id: material.id }, data: { current_stock: after } });
-      const nextReceived = Number(item.received_qty) + quantity;
+      const nextReceived = Number(item.received_qty) + normalizedQuantity;
       await tx.purchaseOrderItem.update({ where: { id: item.id }, data: { received_qty: nextReceived } });
       const allItems = await tx.purchaseOrderItem.findMany({ where: { purchase_order_id: item.purchase_order_id }, select: { ordered_qty: true, received_qty: true } });
       const complete = allItems.every((row) => Number(row.received_qty) >= Number(row.ordered_qty) - 0.000001);
       await tx.purchaseOrder.update({ where: { id: item.purchase_order_id }, data: { status: complete ? "RECEIVED" : "PARTIAL" } });
-      await tx.materialMovement.create({ data: { tenant_id: tenant.id, material_id: material.id, movement_type: "IN", quantity_usage: 0, quantity_stock_change: quantity, before_stock: before, after_stock: after, supplier: item.purchase_order.supplier.name, supplier_id: item.purchase_order.supplier.id, unit_cost: item.unit_cost, reference_no: data?.referenceNo?.trim() || item.purchase_order.po_number, purchase_order_id: item.purchase_order_id, purchase_order_item_id: item.id, received_at: receivedAt, performed_by: actor.id, reason: data?.notes?.trim() || `Penerimaan ${item.purchase_order.po_number}` } });
-      return { poNumber: item.purchase_order.po_number, material: material.name, received: quantity, after, status: complete ? "RECEIVED" : "PARTIAL" };
+      await tx.materialMovement.create({ data: { tenant_id: tenant.id, material_id: material.id, movement_type: "IN", quantity_usage: 0, quantity_stock_change: normalizedQuantity, before_stock: before, after_stock: after, supplier: item.purchase_order.supplier.name, supplier_id: item.purchase_order.supplier.id, unit_cost: item.unit_cost, reference_no: data?.referenceNo?.trim() || item.purchase_order.po_number, purchase_order_id: item.purchase_order_id, purchase_order_item_id: item.id, received_at: receivedAt, performed_by: actor.id, reason: data?.notes?.trim() || `Penerimaan ${item.purchase_order.po_number}` } });
+      return { poNumber: item.purchase_order.po_number, material: material.name, received: normalizedQuantity, after, status: complete ? "RECEIVED" : "PARTIAL" };
     });
     await logAction(actor.id, "PURCHASE_ORDER_RECEIVED", "PurchaseOrderItem", poItemId, null, result);
     revalidatePath("/finishing"); revalidatePath("/admin");

@@ -226,7 +226,7 @@ function MaterialReceiptModal({ materials, onClose, onDone }: { materials: Mater
             {selected && <p className="text-[11px] text-muted mt-1">Stok saat ini: {selected.current_stock} {selected.unit_stock}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-xs text-muted">Jumlah masuk *<input required type="number" min="0.000001" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="mt-1 w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary" /></label>
+            <label className="text-xs text-muted">Jumlah masuk ({selected?.unit_stock ?? "satuan"}) *<input required type="number" min="0" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="mt-1 w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary" /></label>
             <label className="text-xs text-muted">Tanggal terima *<input required type="date" value={receivedAt} onChange={(e) => setReceivedAt(e.target.value)} className="mt-1 w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary" /></label>
           </div>
           <div className="grid grid-cols-2 gap-3">

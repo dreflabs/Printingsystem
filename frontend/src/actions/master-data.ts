@@ -11,6 +11,7 @@ import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES } from "@/lib/catalog-constants";
 import { can } from "@/lib/permissions";
+import { validateMaterialInboundQuantity } from "@/lib/material-quantity";
 
 const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
 /** null/undefined/0 → null; 0<n≤100 → n; selain itu → "invalid". */
@@ -709,7 +710,12 @@ export async function receiveMaterialStock(
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!can(actor, "material.receive")) return fail("Hanya Gudang/Owner yang boleh mencatat stok masuk.");
-    if (!Number.isFinite(data.quantity) || data.quantity <= 0) return fail("Jumlah stok masuk harus lebih dari 0.");
+    let quantity: number;
+    try {
+      quantity = validateMaterialInboundQuantity(data.quantity, "Jumlah stok masuk");
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : "Jumlah stok masuk tidak valid.");
+    }
     if (data.unitCost != null && (!Number.isFinite(data.unitCost) || data.unitCost < 0)) return fail("Harga beli tidak valid.");
 
     const receivedAt = data.receivedAt ? new Date(`${data.receivedAt}T12:00:00`) : new Date();
@@ -721,7 +727,7 @@ export async function receiveMaterialStock(
       if (!material) throw new Error("Material tidak ditemukan atau sudah nonaktif.");
 
       const before = Number(material.current_stock);
-      const after = before + data.quantity;
+      const after = before + quantity;
       await tx.material.update({ where: { id: material.id }, data: { current_stock: after } });
       await tx.materialMovement.create({
         data: {
@@ -729,7 +735,7 @@ export async function receiveMaterialStock(
           material_id: material.id,
           movement_type: "IN",
           quantity_usage: 0,
-          quantity_stock_change: data.quantity,
+          quantity_stock_change: quantity,
           before_stock: before,
           after_stock: after,
           supplier: data.supplier?.trim() || null,
@@ -740,11 +746,11 @@ export async function receiveMaterialStock(
           reason: data.notes?.trim() || "Penerimaan bahan",
         },
       });
-      return { before, after, quantity: data.quantity };
+      return { before, after, quantity };
     });
 
     await logAction(actor.id, "MATERIAL_RECEIVED", "Material", materialId, null, {
-      quantity: data.quantity,
+      quantity,
       supplier: data.supplier,
       reference_no: data.referenceNo,
     });

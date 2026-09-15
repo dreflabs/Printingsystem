@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { registerTenant } from "@/actions/register";
+import { SAAS_PLANS } from "@/lib/saas-catalog";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function InputField({ label, icon: Icon, ...props }: any) {
@@ -158,7 +159,7 @@ function RegisterWizard() {
             <div className="mb-10">
               <h1 className="text-3xl font-bold text-primary mb-2">Mulai Gratis.</h1>
               <span className="inline-block mb-3 px-2.5 py-1 rounded-full bg-accent-teal/10 text-accent-teal text-xs font-bold">
-                Paket {plan === "pro" ? "Pro — Rp 599rb/bln" : "Starter — Rp 299rb/bln"} setelah trial
+                Paket {plan === "pro" ? `${SAAS_PLANS.pro.name} — Rp ${Math.round(SAAS_PLANS.pro.price_monthly / 1000)}rb/bln` : `${SAAS_PLANS.starter.name} — Rp ${Math.round(SAAS_PLANS.starter.price_monthly / 1000)}rb/bln`} setelah trial
               </span>
               <p className="text-muted text-sm">
                 Siapkan workspace percetakan Anda dalam 3 langkah.

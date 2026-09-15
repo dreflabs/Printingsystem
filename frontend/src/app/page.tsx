@@ -13,6 +13,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { PriceCalculator } from "@/components/marketing/PriceCalculator";
+import { SAAS_PLANS } from "@/lib/saas-catalog";
 
 const SITE_URL = process.env.APP_URL || "https://printpilot.id";
 
@@ -64,8 +65,8 @@ function StructuredData() {
         publisher: { "@id": `${SITE_URL}/#organization` },
         brand: { "@type": "Brand", name: "Print Pilot" },
         offers: [
-          { "@type": "Offer", name: "Starter", price: "299000", priceCurrency: "IDR", url: `${SITE_URL}/register?plan=starter` },
-          { "@type": "Offer", name: "Pro", price: "599000", priceCurrency: "IDR", url: `${SITE_URL}/register?plan=pro` },
+          { "@type": "Offer", name: SAAS_PLANS.starter.name, price: String(SAAS_PLANS.starter.price_monthly), priceCurrency: "IDR", url: `${SITE_URL}/register?plan=starter` },
+          { "@type": "Offer", name: SAAS_PLANS.pro.name, price: String(SAAS_PLANS.pro.price_monthly), priceCurrency: "IDR", url: `${SITE_URL}/register?plan=pro` },
           { "@type": "Offer", name: "Enterprise", priceCurrency: "IDR", url: `${SITE_URL}/kontak` },
         ],
       },
@@ -272,7 +273,7 @@ export default function MarketingPage() {
                 <h3 className="text-xl font-bold text-primary mb-2">Starter</h3>
                 <p className="text-sm text-muted mb-6">Cocok untuk percetakan baru</p>
                 <div className="mb-6">
-                  <span className="text-4xl font-extrabold text-primary">Rp 299rb</span>
+                  <span className="text-4xl font-extrabold text-primary">Rp {Math.round(SAAS_PLANS.starter.price_monthly / 1000)}rb</span>
                   <span className="text-muted">/bln</span>
                 </div>
                 <ul className="space-y-4 mb-8 flex-1">
@@ -295,7 +296,7 @@ export default function MarketingPage() {
                 <h3 className="text-xl font-bold text-primary mb-2">Pro</h3>
                 <p className="text-sm text-muted mb-6">Untuk percetakan berkembang</p>
                 <div className="mb-6">
-                  <span className="text-4xl font-extrabold text-primary">Rp 599rb</span>
+                  <span className="text-4xl font-extrabold text-primary">Rp {Math.round(SAAS_PLANS.pro.price_monthly / 1000)}rb</span>
                   <span className="text-muted">/bln</span>
                 </div>
                 <ul className="space-y-4 mb-8 flex-1">

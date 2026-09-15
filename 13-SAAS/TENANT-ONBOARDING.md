@@ -8,8 +8,8 @@ Onboarding dirancang agar mandiri (*self-service*) tanpa campur tangan tim sales
 
 ### Langkah 1: Registrasi Dasar (di Landing Page `printpilot.id`)
 - **Input:** Nama Lengkap Pemilik, Email, Nomor WhatsApp Aktif, Password.
-- **Aksi:** Sistem mengirim OTP 6 digit ke Email/WA.
-- **Validasi:** User memasukkan OTP untuk memverifikasi akun.
+- **Beta:** Registrasi langsung dapat digunakan tanpa verifikasi email wajib (`REQUIRE_EMAIL_VERIFICATION=false`).
+- **Release:** Jika provider email sudah siap, sistem mengirim tautan verifikasi sekali pakai dan login baru memerlukan email terverifikasi.
 
 ### Langkah 2: Setup Identitas Toko
 Setelah verifikasi sukses, user masuk ke Wizard Setup:
@@ -28,7 +28,7 @@ Agar sistem tidak kosong melompong, wizard meminta data krusial:
 
 ### Langkah 5: Selesai & Go Live
 - User diarahkan ke **Owner Dashboard** di subdomain mereka sendiri (misal: `https://majujayaprint.printpilot.id/owner`).
-- Akan muncul banner peringatan masa Trial 7 Hari.
+- Akan muncul banner peringatan masa Trial 14 Hari.
 
 ---
 

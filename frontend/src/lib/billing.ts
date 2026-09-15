@@ -82,16 +82,31 @@ export async function generateInvoicesForPeriod(opts: {
     }
     seq += 1;
     const number = prefix + String(seq).padStart(5, "0");
-    await prisma.invoice.create({
-      data: {
-        tenant_id: s.tenant.id,
-        subscription_id: s.id,
-        invoice_number: number,
-        amount,
-        status: "PENDING",
-        due_date: dueDate,
-      },
-    });
+    try {
+      await prisma.invoice.create({
+        data: {
+          tenant_id: s.tenant.id,
+          subscription_id: s.id,
+          invoice_number: number,
+          billing_period: yyyymm,
+          period_start: start,
+          period_end: new Date(start.getFullYear(), start.getMonth() + 1, 1),
+          amount,
+          currency: "IDR",
+          status: "PENDING",
+          due_date: dueDate,
+          idempotency_key: `manual:${s.tenant.id}:${yyyymm}`,
+        },
+      });
+    } catch (e) {
+      // A concurrent cron/manual run may have won the unique tenant+period or
+      // idempotency race. Treat that as an idempotent skip, rethrow everything
+      // else so database failures remain visible.
+      if ((e as { code?: string }).code !== "P2002") throw e;
+      skipped.push({ slug: s.tenant.slug, reason: "sudah dibuat oleh proses lain" });
+      already.add(s.tenant.id);
+      continue;
+    }
     already.add(s.tenant.id);
     created.push({ slug: s.tenant.slug, number, amount });
   }

@@ -43,18 +43,19 @@ export async function getTenantEntitlements(tenantId: string): Promise<TenantEnt
         where: { status: "ACTIVE" },
         orderBy: { started_at: "desc" },
         take: 1,
-        select: { plan: { select: { max_users: true, max_orders_per_month: true, features_json: true, slug: true } } },
+        select: { plan: { select: { max_users: true, max_orders_per_month: true, features_json: true, slug: true, active: true } } },
       },
     },
   });
   if (!tenant) throw new Error("Tenant tidak ditemukan.");
   const plan = tenant.subscription_plans[0]?.plan;
+  const activePlan = plan?.active ? plan : undefined;
   const legacy = LEGACY_PLAN_DEFAULTS[tenant.plan.toUpperCase()] ?? LEGACY_PLAN_DEFAULTS.STARTER;
   return {
     plan: tenant.plan,
-    maxUsers: tenant.max_users ?? plan?.max_users ?? legacy.maxUsers,
-    maxOrdersPerMonth: plan?.max_orders_per_month ?? legacy.maxOrdersPerMonth,
-    features: plan ? parseFeatures(plan.features_json) : legacy.features,
+    maxUsers: tenant.max_users ?? activePlan?.max_users ?? legacy.maxUsers,
+    maxOrdersPerMonth: activePlan?.max_orders_per_month ?? legacy.maxOrdersPerMonth,
+    features: activePlan ? parseFeatures(activePlan.features_json) : legacy.features,
   };
 }
 

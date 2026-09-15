@@ -10,36 +10,10 @@ import {
 import { validateTenantPassword } from "@/lib/password-policy";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/mail";
+import { planFeaturesJson, resolveSelfServePlan, SAAS_PLANS, TRIAL_DAYS } from "@/lib/saas-catalog";
 
 const DEFAULT_ROLES = ["owner", "admin", "designer_sales", "operator", "gudang"] as const;
-const TRIAL_DAYS = 14;
 const BCRYPT_ROUNDS = 12;
-
-/** Katalog paket yang bisa dipilih sendiri lewat form pendaftaran (Enterprise = via Sales, bukan self-serve). */
-const PLAN_CATALOG = {
-  starter: {
-    name: "Starter",
-    slug: "starter",
-    price_monthly: 299000,
-    max_users: 5,
-    max_orders_per_month: 200,
-    features_json: JSON.stringify(["dashboard", "kanban", "qc"]),
-    tenantPlan: "STARTER",
-  },
-  pro: {
-    name: "Pro",
-    slug: "pro",
-    price_monthly: 599000,
-    max_users: 15,
-    max_orders_per_month: null,
-    features_json: JSON.stringify(["dashboard", "kanban", "qc", "storage", "whatsapp_unlimited", "audit_trail"]),
-    tenantPlan: "PRO",
-  },
-} as const;
-type PlanKey = keyof typeof PLAN_CATALOG;
-function resolvePlanKey(v: unknown): PlanKey {
-  return v === "pro" ? "pro" : "starter";
-}
 
 export type RegisterTenantInput = {
   ownerName: string;
@@ -123,8 +97,8 @@ export async function registerTenant(
 
     const password_hash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
     const usernameBase = slugify(email.split("@")[0]) || "owner";
-    const planKey = resolvePlanKey(input.plan);
-    const planDef = PLAN_CATALOG[planKey];
+    const planKey = resolveSelfServePlan(input.plan);
+    const planDef = SAAS_PLANS[planKey];
     const workspaceMode = resolveWorkspaceMode(input.teamSize);
     const verificationRaw = verificationRequired ? crypto.randomBytes(32).toString("hex") : null;
     const verificationHash = verificationRaw
@@ -152,7 +126,7 @@ export async function registerTenant(
           price_monthly: planDef.price_monthly,
           max_users: planDef.max_users,
           max_orders_per_month: planDef.max_orders_per_month,
-          features_json: planDef.features_json,
+          features_json: planFeaturesJson(planKey),
         },
       });
 

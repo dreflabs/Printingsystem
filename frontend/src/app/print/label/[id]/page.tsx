@@ -1,92 +1,123 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { Printer } from "lucide-react";
+import { useParams, useSearchParams } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
+import { Printer, Loader2 } from "lucide-react";
+import { getJobLabel } from "@/actions/queries";
+
+type Label = Extract<Awaited<ReturnType<typeof getJobLabel>>, { success: true }>["data"];
 
 export default function PrintLabelPage() {
   const params = useParams();
-  const id = params.id as string;
-  const [mounted, setMounted] = useState(false);
+  const search = useSearchParams();
+  const autoPrint = search.get("noprint") === null;
+  const id = decodeURIComponent((params.id as string) ?? "");
+  const [label, setLabel] = useState<Label | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setMounted(true);
-    // Auto print when loaded
-    const timer = setTimeout(() => {
-      window.print();
-    }, 500);
-    return () => clearTimeout(timer);
-  }, []);
+    let alive = true;
+    getJobLabel(id).then((res) => {
+      if (!alive) return;
+      if (res.success) {
+        setLabel(res.data);
+        if (autoPrint) setTimeout(() => window.print(), 600);
+      } else setError(res.error);
+    });
+    return () => { alive = false; };
+  }, [id, autoPrint]);
 
-  if (!mounted) return null;
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-elevated p-6">
+        <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-6 py-4 text-sm text-status-red">
+          {error} <span className="font-mono">({id})</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!label) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-elevated">
+        <Loader2 className="h-6 w-6 animate-spin text-muted" />
+      </div>
+    );
+  }
+
+  const fmt = (d: string | Date | null) =>
+    d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
   return (
     <div className="w-full flex justify-center bg-elevated min-h-screen pt-10 print:bg-white print:pt-0">
-      {/* Tombol Print Manual (Sembunyi saat print) */}
-      <button 
-        onClick={() => window.print()} 
-        className="fixed top-4 right-4 print:hidden flex items-center gap-2 bg-accent-teal text-white px-4 py-2 rounded-lg font-bold shadow-lg hover:bg-accent-teal/90"
+      <button
+        onClick={() => window.print()}
+        className="fixed top-4 right-4 print:hidden flex items-center gap-2 bg-accent-teal text-white px-4 py-2 rounded-lg font-bold shadow-lg hover:brightness-110"
       >
         <Printer className="h-5 w-5" /> Cetak Sekarang
       </button>
 
-      {/* Area Stiker Thermal (Ukuran 100mm x 150mm) */}
+      {/* Stiker thermal 100mm x 150mm */}
       <div className="w-[100mm] h-[150mm] bg-white text-black p-4 border border-gray-300 print:border-none shadow-xl print:shadow-none relative">
-        {/* Header Percetakan */}
         <div className="text-center border-b-2 border-black pb-2 mb-3">
-          <h1 className="text-xl font-extrabold uppercase">Print Pilot</h1>
-          <p className="text-[10px] font-medium">Jl. Pahlawan No. 123, Bandung - 08123456789</p>
+          <h1 className="text-xl font-extrabold uppercase leading-tight">{label.company.name}</h1>
+          {label.company.phone && <p className="text-[10px] font-medium">{label.company.phone}</p>}
         </div>
 
-        {/* QR Code Placeholder (Using simple borders for mockup) */}
-        <div className="flex justify-center mb-3">
-          <div className="w-24 h-24 border-4 border-black p-1 flex flex-wrap gap-1 items-center justify-center relative">
-            <div className="w-3 h-3 bg-black absolute top-1 left-1" />
-            <div className="w-3 h-3 bg-black absolute top-1 right-1" />
-            <div className="w-3 h-3 bg-black absolute bottom-1 left-1" />
-            {/* Pattern */}
-            <div className="w-full h-full flex flex-wrap gap-0.5">
-              {[...Array(49)].map((_, i) => (
-                <div key={i} className={`w-2 h-2 ${Math.random() > 0.5 ? 'bg-black' : 'bg-transparent'}`} />
-              ))}
+        <div className="flex justify-center mb-2">
+          <QRCodeSVG value={label.jobCode} size={150} level="M" marginSize={2} />
+        </div>
+
+        <div className="text-center font-mono font-bold text-lg mb-1 tracking-wider">{label.jobCode}</div>
+        <div className="text-center font-mono text-xs text-gray-600 mb-3">Order: {label.orderCode}</div>
+
+        <div className="space-y-1.5 text-sm border-t-2 border-dashed border-black pt-3">
+          <div className="flex justify-between gap-2">
+            <span className="font-semibold shrink-0">Pelanggan:</span>
+            <span className="text-right">{label.customerName}</span>
+          </div>
+          {label.items.slice(0, 3).map((it, i) => (
+            <div key={i} className="border-t border-gray-200 pt-1.5">
+              <div className="flex justify-between gap-2">
+                <span className="font-semibold shrink-0">Produk:</span>
+                <span className="text-right font-bold">{it.description}</span>
+              </div>
+              {it.size && (
+                <div className="flex justify-between gap-2">
+                  <span className="font-semibold shrink-0">Ukuran:</span>
+                  <span className="text-right">{it.size}</span>
+                </div>
+              )}
+              <div className="flex justify-between gap-2">
+                <span className="font-semibold shrink-0">Qty:</span>
+                <span className="text-right font-bold">{it.quantity} pcs</span>
+              </div>
+              {it.finishing && (
+                <div className="flex justify-between gap-2">
+                  <span className="font-semibold shrink-0">Finishing:</span>
+                  <span className="text-right">{it.finishing}</span>
+                </div>
+              )}
             </div>
+          ))}
+          <div className="flex justify-between gap-2 border-t-2 border-black pt-1.5 mt-1">
+            <span className="font-bold shrink-0">TOTAL QTY:</span>
+            <span className="text-right font-bold text-lg">{label.quantity} pcs</span>
           </div>
-        </div>
-
-        <div className="text-center font-mono font-bold text-lg mb-4 tracking-wider">
-          {id}
-        </div>
-
-        <div className="space-y-2 text-sm border-t-2 border-dashed border-black pt-3">
-          <div className="flex justify-between">
-            <span className="font-semibold">Pelanggan:</span>
-            <span>Bpk. Anton</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Produk:</span>
-            <span className="font-bold">Spanduk Outdoor</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Ukuran:</span>
-            <span>3 x 1 M</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Qty:</span>
-            <span className="font-bold text-lg">2 Pcs</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Finishing:</span>
-            <span>Mata Ayam</span>
+          <div className="flex justify-between gap-2">
+            <span className="font-semibold shrink-0">Deadline:</span>
+            <span className="text-right">{fmt(label.deadline)}</span>
           </div>
         </div>
 
         <div className="absolute bottom-4 left-4 right-4 text-center border-t border-black pt-2">
           <p className="text-[10px] font-bold">Harap periksa barang sebelum diterima.</p>
-          <p className="text-[8px]">Dicetak pada: {new Date().toLocaleString('id-ID')}</p>
+          <p className="text-[8px]">Dicetak: {new Date(label.printedAt).toLocaleString("id-ID")}</p>
         </div>
       </div>
-      
-      <style dangerouslySetInnerHTML={{__html: `
+
+      <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           @page { margin: 0; size: 100mm 150mm; }
           body { -webkit-print-color-adjust: exact; }

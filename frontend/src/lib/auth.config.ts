@@ -2,6 +2,16 @@ import type { NextAuthConfig } from "next-auth";
 
 export const authConfig = {
   providers: [],
+  // Aplikasi di-host sendiri di belakang reverse proxy (Traefik/Coolify), jadi
+  // host permintaan datang lewat X-Forwarded-Host. Tanpa ini Auth.js menolak
+  // permintaan di mode produksi dengan `UntrustedHost`, dan gejalanya
+  // menyesatkan: login gagal seolah kata sandinya salah.
+  //
+  // WAJIB di sini, bukan di auth.ts: middleware membuat instance NextAuth
+  // sendiri dari authConfig ini. Ditaruh di auth.ts saja, jalur credentials
+  // lolos tapi pembacaan sesi di middleware tetap ditolak — sesi seolah
+  // langsung hilang setelah login berhasil.
+  trustHost: true,
   pages: {
     signIn: "/login",
   },
@@ -9,14 +19,34 @@ export const authConfig = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as any).role;
+        token.role = user.role;
+        // Simpan semua role (utama + tambahan) sebagai array
+        token.roles = user.roles ?? (user.role ? [user.role] : []);
+        token.platform = user.platform ?? false;
+        token.subLevel = user.subLevel ?? null;
+        token.platformLoginAt = user.platformLoginAt ?? null;
+        token.pwChangedAt = user.pwChangedAt ?? 0;
+        token.mustChangePassword = user.mustChangePassword ?? false;
+        // Simpan tenant info di JWT agar context tenant tersedia tanpa subdomain
+        token.tenantId = (user as { tenantId?: string }).tenantId ?? null;
+        token.tenantSlug = (user as { tenantSlug?: string }).tenantSlug ?? null;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string;
-        (session.user as any).role = token.role;
+        if (token.id) session.user.id = token.id;
+        session.user.role = token.role;
+        // Ekspos array role di session untuk cek multi-role
+        session.user.roles = token.roles ?? (token.role ? [token.role] : []);
+        session.user.platform = token.platform ?? false;
+        session.user.subLevel = token.subLevel ?? null;
+        session.user.platformLoginAt = token.platformLoginAt ?? null;
+        session.user.pwChangedAt = token.pwChangedAt ?? 0;
+        session.user.mustChangePassword = token.mustChangePassword ?? false;
+        // Ekspos tenant info di session
+        (session.user as unknown as Record<string, unknown>).tenantId = (token.tenantId as string | null) ?? null;
+        (session.user as unknown as Record<string, unknown>).tenantSlug = (token.tenantSlug as string | null) ?? null;
       }
       return session;
     },

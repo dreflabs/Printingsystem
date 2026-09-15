@@ -67,7 +67,7 @@ export function Modal({
       <div
         className={cn(
           "relative w-full rounded-2xl border border-border bg-card",
-          "shadow-[0_8px_48px_rgba(0,0,0,0.6)] backdrop-blur-xl",
+          "shadow-modal",
           "flex flex-col max-h-[90vh]",
           sizeClasses[size],
           className

@@ -30,10 +30,22 @@ Setiap item mengisi:
 - Deskripsi tambahan
 - Ukuran/dimensi
 - Jumlah
-- Bahan (pilih dari daftar material yang relevan dengan produk)
+- Bahan (pilih hanya dari allowlist material yang dikonfigurasi untuk produk)
 - Finishing (laminasi, pemotongan, dll — opsional)
 - Harga satuan
 - Total harga item
+
+### Aturan material per produk
+
+Setiap produk cetak memiliki daftar **Material yang Diizinkan** pada Katalog Produk.
+Saat Admin atau Designer memilih produk, form hanya menampilkan material aktif yang
+terdaftar pada allowlist tersebut. Material default terpilih otomatis. Jika produk
+belum memiliki mapping material, order ditahan dan tidak menggunakan daftar semua
+material tenant sebagai fallback.
+
+Server mengulang validasi pasangan `product_id` + `material_id` sebelum membuat
+`OrderItem`. Perubahan material setelah order masuk produksi memakai alur override
+material dengan alasan dan audit log.
 
 **Harga total order** = jumlah semua item + dikurangi diskon (jika ada, harus approval Owner).
 
@@ -59,12 +71,22 @@ Status order berubah ke WAITING_PAYMENT setelah desain APPROVED.
 
 ---
 
-## Langkah 5 — Konfirmasi Order
+## Langkah 5 — Konfirmasi Order → Auto-Release ke Produksi
 
 Setelah DP diterima dan dikonfirmasi Admin:
 - Status berubah ke CONFIRMED
-- Order masuk antrian produksi
-- Admin bisa assign job ke mesin dan operator
+- Sistem langsung menjalankan **Completeness Gate**. Kalau semua syarat wajib
+  terpenuhi (DP, desain APPROVED + file final, diskon tidak menggantung, identitas
+  pemesan, deadline, tiap item lengkap, tiap produk punya mesin default) → sistem
+  **otomatis** membuat Production Job per mesin (status `PRODUCTION_QUEUED`) tanpa
+  approval Admin.
+- **Admin tidak perlu menekan tombol apa pun** untuk meneruskan order ke Operator.
+- Kalau gate belum lolos, order tetap CONFIRMED dan alasannya tampil di dashboard
+  Admin; tombol **"Assign ke Produksi"** manual tetap tersedia sebagai jalur
+  fallback (mis. item custom tanpa mesin default, atau mesin default MAINTENANCE).
+- Operator mengambil job dari antrian mesinnya sendiri melalui **Ambil & Mulai Produksi** (kode internal SCAN 1 = klaim + mulai).
+
+Detail: `02-WORKFLOW/17-AUTO-RELEASE-PRODUKSI.md`.
 
 ---
 
@@ -82,7 +104,8 @@ Setelah DP diterima dan dikonfirmasi Admin:
 ## Multiple Job per Order
 
 Jika satu order punya beberapa item produk yang butuh mesin berbeda:
-- Sistem buat **Production Job terpisah** per item
+- Sistem buat **Production Job terpisah** per mesin
+- Item yang memakai mesin default sama digabung dalam satu job dan jumlah rencananya dijumlahkan
 - Masing-masing job berjalan di mesin yang sesuai secara paralel atau berurutan
 - Semua job dalam satu order harus selesai sebelum order bisa masuk ke Pickup
 

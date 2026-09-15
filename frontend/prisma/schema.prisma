@@ -10,27 +10,37 @@ datasource db {
 // ─── SAAS & MULTI-TENANCY ─────────────────────────────────────────────────────
 
 model Tenant {
-  id                      String    @id @default(uuid())
-  slug                    String    @unique // subdomain (e.g. majujayaprint)
-  name                    String
-  plan                    String // STARTER/PRO/ENTERPRISE
-  status                  String // TRIAL/ACTIVE/SUSPENDED/CHURNED
-  trial_ends_at           DateTime?
-  subscription_started_at DateTime?
-  current_period_start    DateTime?
-  current_period_end      DateTime?
-  billing_email           String?
-  owner_name              String?
-  owner_phone             String?
-  custom_domain           String?
-  wa_provider             String?
-  wa_api_key              String? // [ENCRYPTED]
-  max_users               Int?
-  created_at              DateTime  @default(now())
-  updated_at              DateTime  @updatedAt
+  id                                String    @id @default(uuid())
+  slug                              String    @unique // subdomain (e.g. majujayaprint)
+  name                              String
+  logo_url                          String? // URL/path gambar logo toko
+  plan                              String // STARTER/PRO/ENTERPRISE
+  status                            String // TRIAL/ACTIVE/SUSPENDED/CHURNED
+  trial_ends_at                     DateTime?
+  subscription_started_at           DateTime?
+  current_period_start              DateTime?
+  current_period_end                DateTime?
+  billing_email                     String?
+  owner_name                        String?
+  owner_phone                       String?
+  address                           String? // alamat toko untuk nota/invoice
+  custom_domain                     String?
+  wa_provider                       String?
+  wa_api_key                        String? // [ENCRYPTED]
+  max_users                         Int?
+  payroll_late_deduction_per_minute Decimal   @default(0) @db.Decimal(15, 2) // Rp potongan gaji per menit keterlambatan
+  workspace_mode                    String    @default("SOLO") // SOLO / TEAM_SMALL / TEAM_FULL — hanya mengatur tampilan navigasi & beranda, BUKAN izin (izin tetap berbasis Role)
+  require_admin_production_release  Boolean   @default(false) // true = order CONFIRMED tidak auto-release; Admin harus menekan "Rilis ke Produksi" dulu
+  require_counter_confirmation      Boolean   @default(false) // true = SCAN 10 (serah terima) hanya boleh setelah SCAN 9 (barang dikonfirmasi di counter); order harus IN_TRANSIT, bukan langsung dari READY_FOR_PICKUP
+  // Siklus hidup churn → purge (lihat src/lib/tenant-lifecycle.ts)
+  churned_at                        DateTime? // saat status jadi CHURNED
+  retired_slug                      String? // slug asli sebelum diarsip; slug aktif di-rename saat churn agar namanya bebas dipakai pendaftar baru
+  created_at                        DateTime  @default(now())
+  updated_at                        DateTime  @updatedAt
 
   // Relations
   users                  User[]
+  user_machines          UserMachine[]
   subscription_plans     TenantSubscription[]
   invoices               Invoice[]
   tenant_audit_logs      TenantAuditLog[]
@@ -41,6 +51,11 @@ model Tenant {
   materials              Material[]
   machine_materials      MachineMaterial[]
   material_movements     MaterialMovement[]
+  suppliers              Supplier[]
+  purchase_orders        PurchaseOrder[]
+  purchase_order_items   PurchaseOrderItem[]
+  material_stocktakes    MaterialStocktake[]
+  material_stocktake_items MaterialStocktakeItem[]
   orders                 Order[]
   order_items            OrderItem[]
   retail_products        RetailProduct[]
@@ -55,6 +70,7 @@ model Tenant {
   payments               Payment[]
   pickup_records         PickupRecord[]
   notification_events    NotificationEvent[]
+  operational_alerts     OperationalAlert[]
   audits                 Audit[]
   audit_items            AuditItem[]
   audit_logs             AuditLog[]
@@ -62,6 +78,12 @@ model Tenant {
   deadline_alerts        DeadlineAlert[]
   attendance_imports     AttendanceImport[]
   attendance_records     AttendanceRecord[]
+  attendance_selfies     AttendanceSelfie[]
+  attendance_setting     TenantAttendanceSetting?
+  kiosk_devices          KioskDevice[]
+  payroll_periods        PayrollPeriod[]
+  payroll_records        PayrollRecord[]
+  product_materials      ProductMaterial[]
 }
 
 model SubscriptionPlan {
@@ -100,27 +122,67 @@ model Invoice {
   subscription_id   String
   subscription      TenantSubscription @relation(fields: [subscription_id], references: [id])
   invoice_number    String             @unique // INV-YYYYMM-XXXXX
+  billing_period    String             // YYYYMM; one invoice per tenant per period
+  period_start      DateTime?
+  period_end        DateTime?
   amount            Decimal            @db.Decimal(15, 2)
+  currency          String             @default("IDR")
   status            String // PENDING/PAID/FAILED/WAIVED
   due_date          DateTime
   paid_at           DateTime?
   payment_method    String?
   payment_reference String?
+  external_order_id String?
+  gateway_transaction_id String?
+  idempotency_key   String?
   pdf_path          String?
   created_at        DateTime           @default(now())
+
+  @@unique([tenant_id, billing_period])
+  @@unique([idempotency_key])
 }
 
 model SuperAdmin {
-  id            String    @id @default(uuid())
-  name          String
-  email         String    @unique
-  password_hash String
-  role          String // SUPER_ADMIN/SUPPORT/FINANCE
-  active        Boolean   @default(true)
-  last_login_at DateTime?
-  created_at    DateTime  @default(now())
+  id                 String    @id @default(uuid())
+  name               String
+  email              String    @unique
+  password_hash      String
+  role               String // SUPER_ADMIN/SUPPORT/FINANCE
+  active             Boolean   @default(true)
+  failed_login_count Int       @default(0)
+  locked_until       DateTime?
+  last_login_at      DateTime?
+  // Naik setiap password berubah; dipakai untuk mencabut JWT platform lama.
+  password_changed_at DateTime  @default(now())
+  // Login Super Admin = email + password saja (MFA/OTP dihapus 2026-09-08).
+  created_at         DateTime  @default(now())
 
-  tenant_audit_logs TenantAuditLog[]
+  tenant_audit_logs   TenantAuditLog[]
+  platform_audit_logs PlatformAuditLog[]
+}
+
+/// Jejak audit tingkat-platform: aksi Super Admin yang TIDAK terikat satu tenant
+/// (login, kelola akun Super Admin lain) plus salinan aksi tenant-scoped supaya
+/// tetap terbaca setelah tenant-nya di-purge (TenantAuditLog ikut hilang).
+/// Ditulis best-effort oleh src/lib/platform-audit.ts — tidak pernah melempar.
+model PlatformAuditLog {
+  id              String      @id @default(uuid())
+  actor_id        String? // SuperAdmin id; null = SYSTEM (cron)
+  actor           SuperAdmin? @relation(fields: [actor_id], references: [id])
+  actor_name      String // snapshot nama saat aksi (tetap terbaca kalau akun dihapus)
+  actor_sub_level String? // SUPER_ADMIN/SUPPORT/FINANCE saat aksi
+  action          String // LOGIN_OTP_SENT, LOGIN_SUCCESS, LOGIN_FAILED, SUPER_ADMIN_CREATED, TENANT_PURGED, dst
+  target_type     String? // "Tenant" | "SuperAdmin" | null
+  target_id       String?
+  target_label    String? // slug tenant / email admin — tetap terbaca setelah target dihapus
+  detail_json     String?
+  ip              String?
+  user_agent      String?
+  created_at      DateTime    @default(now())
+
+  @@index([created_at])
+  @@index([actor_id])
+  @@index([action])
 }
 
 model TenantAuditLog {
@@ -143,12 +205,35 @@ model OnboardingStep {
   completed_at DateTime @default(now())
 }
 
+/// Nisan tenant yang sudah di-purge permanen. Satu baris ringan yang disimpan
+/// SETELAH seluruh data tenant dihapus — untuk jejak audit & akuntansi.
+/// Dibuat oleh purgeTenant() di src/lib/tenant-lifecycle.ts.
+model RetiredTenant {
+  id            String   @id // = id Tenant asli (bukan @default — diisi eksplisit)
+  original_slug String // slug asli tenant (retired_slug bila ada, jika tidak slug saat itu)
+  name          String
+  plan          String
+  owner_name    String?
+  owner_email   String?
+  status_before String // status tenant tepat sebelum purge (biasanya CHURNED)
+  created_at    DateTime // created_at Tenant asli
+  churned_at    DateTime // saat tenant jadi CHURNED
+  purged_at     DateTime @default(now())
+  churn_reason  String?
+  counts_json   String? // { users, orders, customers } saat purge
+  files_json    String? // path file yang perlu dibersihkan dari blob store (kalau sudah ada)
+
+  @@index([original_slug])
+  @@index([purged_at])
+}
+
 // ─── ROLES & USERS ────────────────────────────────────────────────────────────
 
 model Role {
-  id    String @id @default(uuid())
-  name  String @unique // owner, admin, designer_sales, operator, gudang
-  users User[]
+  id         String     @id @default(uuid())
+  name       String     @unique // owner, admin, designer_sales, operator, gudang
+  users      User[]
+  user_roles UserRole[]
 }
 
 model User {
@@ -158,26 +243,49 @@ model User {
   name                 String
   username             String
   email                String
+  // null sampai owner menyelesaikan tautan verifikasi self-serve signup.
+  email_verified_at    DateTime?
   password_hash        String
   avatar_url           String?
   role_id              String
   role                 Role      @relation(fields: [role_id], references: [id])
   phone                String?
   active               Boolean   @default(true)
+  // true bila user wajib melakukan absensi pada tenant ini. Dipisahkan dari
+  // role agar Owner/Admin dapat merangkap pegawai tanpa membuat role baru.
+  attendance_eligible  Boolean   @default(false)
   last_login_at        DateTime?
   failed_login_count   Int       @default(0)
   locked_until         DateTime?
   must_change_password Boolean   @default(false)
+  password_changed_at  DateTime? // dinaikkan tiap ganti password → sesi lama (JWT) yang terbit sebelumnya ditolak
+  base_salary          Decimal?  @db.Decimal(15, 2) // gaji pokok bulanan; null = belum diset, tidak ikut payroll run
+  kiosk_pin_hash       String? // bcrypt PIN 4–6 digit untuk absen via perangkat kiosk (opsional)
   deactivated_at       DateTime?
   deactivated_by       String? // self-reference if needed, omitted FK for simplicity
   created_at           DateTime  @default(now())
   updated_at           DateTime  @updatedAt
 
+  // Multi-role support: extra_roles stores additional roles beyond the primary role
+  extra_roles UserRole[]
+
+  // Operator-specific: machines they are assigned to
+  user_machines UserMachine[]
+
+  // Mesin yang memakai user ini sebagai operator default (auto-release memilih dia)
+  default_for_machines Machine[] @relation("MachineDefaultOperator")
+
   // Relations (inverse side)
   created_customers      Customer[]
   added_materials        Material[]
   material_movements     MaterialMovement[]
+  stocktakes_created     MaterialStocktake[]   @relation("StocktakeCreatedBy")
+  stocktakes_submitted   MaterialStocktake[]   @relation("StocktakeSubmittedBy")
+  stocktakes_approved    MaterialStocktake[]   @relation("StocktakeApprovedBy")
+  stocktake_counts       MaterialStocktakeItem[] @relation("StocktakeCountedBy")
+  assigned_machines      UserMachine[]         @relation("MachineAssignedBy")
   created_orders         Order[]               @relation("OrderCreatedBy")
+  created_purchase_orders PurchaseOrder[]      @relation("PurchaseOrderCreatedBy")
   designed_orders        Order[]               @relation("OrderDesigner")
   discount_approved      Order[]               @relation("DiscountApprovedBy")
   dp_override_by_orders  Order[]               @relation("DpOverrideBy")
@@ -188,6 +296,8 @@ model User {
   uploaded_designs       DesignVersion[]       @relation("UploadedBy")
   approved_designs       DesignVersion[]       @relation("ApprovedBy")
   production_jobs        ProductionJob[]
+  qc_assigned_jobs       ProductionJob[]   @relation("QCAssignee")
+  finishing_assigned_jobs ProductionJob[]  @relation("FinishingAssignee")
   qc_inspections         QcRecord[]            @relation("Inspector")
   rework_decisions       QcRecord[]            @relation("ReworkDecidedBy")
   finishing_jobs         FinishingJob[]
@@ -195,9 +305,11 @@ model User {
   transit_items          StorageItem[]         @relation("TransitBy")
   released_items         StorageItem[]         @relation("ReleasedBy")
   incident_reports       StorageItem[]         @relation("IncidentReportedBy")
+  resolved_incidents     StorageItem[]         @relation("IncidentResolvedBy")
   payments_received      Payment[]
   pickup_releases        PickupRecord[]
   resent_notifications   NotificationEvent[]
+  acknowledged_alerts    OperationalAlert[]    @relation("AlertAcknowledgedBy")
   audits_performed       Audit[]               @relation("AuditedBy")
   audits_approved        Audit[]               @relation("AuditApprovedBy")
   audit_logs             AuditLog[]
@@ -205,30 +317,60 @@ model User {
   approved_corrections   Correction[]          @relation("CorrectionApprovedBy")
   imported_attendance    AttendanceImport[]
   attendance_records     AttendanceRecord[]
+  password_reset_tokens  PasswordResetToken[]
+  email_verification_tokens EmailVerificationToken[]
+  payroll_records        PayrollRecord[]
 
   @@unique([tenant_id, username])
   @@unique([tenant_id, email])
 }
 
+// Join table: User ↔ Role (many-to-many, for extra roles beyond primary role)
+model UserRole {
+  id      String @id @default(uuid())
+  user_id String
+  user    User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role_id String
+  role    Role   @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, role_id])
+}
+
+// Join table: Operator ↔ Machine (many-to-many, owner-assigned)
+model UserMachine {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id])
+  user_id     String
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  machine_id  String
+  machine     Machine  @relation(fields: [machine_id], references: [id], onDelete: Cascade)
+  assigned_by String
+  assigner    User     @relation("MachineAssignedBy", fields: [assigned_by], references: [id])
+  assigned_at DateTime @default(now())
+
+  @@unique([user_id, machine_id])
+}
+
 // ─── MASTER DATA ──────────────────────────────────────────────────────────────
 
 model Customer {
-  id            String   @id @default(uuid())
-  tenant_id     String
-  tenant        Tenant   @relation(fields: [tenant_id], references: [id])
-  customer_code String // CST-XXXXX
-  type          String   @default("Umum") // Umum, Makloon, B2B
-  name          String
-  phone         String?
-  email         String?
-  address       String?
-  company       String?
-  notes         String?
-  default_discount Decimal? @db.Decimal(15, 2)
-  created_by    String
-  creator       User     @relation(fields: [created_by], references: [id])
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  tenant_id            String
+  tenant               Tenant   @relation(fields: [tenant_id], references: [id])
+  customer_code        String // CST-XXXXX
+  type                 String   @default("Umum") // Umum, Makloon, B2B
+  name                 String
+  phone                String?
+  email                String?
+  address              String?
+  company              String?
+  notes                String?
+  default_discount_pct Decimal? @db.Decimal(5, 2) // persen diskon standing pelanggan (0–100); mengisi awal Order.discount (Rp) saat order dibuat
+  created_by           String
+  creator              User     @relation(fields: [created_by], references: [id])
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
 
   orders              Order[]
   notification_events NotificationEvent[]
@@ -237,34 +379,44 @@ model Customer {
 }
 
 model Product {
-  id                  String      @id @default(uuid())
+  id                  String            @id @default(uuid())
   tenant_id           String
-  tenant              Tenant      @relation(fields: [tenant_id], references: [id])
+  tenant              Tenant            @relation(fields: [tenant_id], references: [id])
   name                String
   category            String
+  unit                String            @default("PCS") // PCS/M2/METER/LEMBAR/RIM — dasar hitung harga
+  base_price          Decimal?          @db.Decimal(15, 2) // harga per `unit`; null = harga selalu manual per order
   default_material_id String?
-  default_material    Material?   @relation(fields: [default_material_id], references: [id])
-  active              Boolean     @default(true)
+  default_material    Material?         @relation(fields: [default_material_id], references: [id])
+  default_machine_id  String?
+  default_machine     Machine?          @relation("ProductDefaultMachine", fields: [default_machine_id], references: [id])
+  active              Boolean           @default(true)
   order_items         OrderItem[]
+  material_options    ProductMaterial[]
 }
 
 // ─── MACHINES & MATERIALS ─────────────────────────────────────────────────────
 
 model Machine {
-  id           String   @id @default(uuid())
-  tenant_id    String
-  tenant       Tenant   @relation(fields: [tenant_id], references: [id])
-  machine_code String // M-OUT-01
-  name         String
-  category     String // OUTDOOR/INDOOR/SUBLIMASI/A3/UV/DTF/BENDERA
-  status       String // ACTIVE/MAINTENANCE/INACTIVE
-  notes        String?
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
+  id                  String   @id @default(uuid())
+  tenant_id           String
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  machine_code        String // M-OUT-01
+  name                String
+  category            String // OUTDOOR/INDOOR/SUBLIMASI/A3/UV/DTF/BENDERA
+  status              String // ACTIVE/MAINTENANCE/INACTIVE
+  notes               String?
+  default_operator_id String? // operator default; auto-release memakai dia + pin job (PRODUCTION_ASSIGNED)
+  default_operator    User?    @relation("MachineDefaultOperator", fields: [default_operator_id], references: [id])
+  max_active_jobs     Int?     // batas job aktif per mesin; null = tidak dibatasi
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
 
-  materials          MachineMaterial[]
-  material_movements MaterialMovement[]
-  production_jobs    ProductionJob[]
+  materials            MachineMaterial[]
+  material_movements   MaterialMovement[]
+  production_jobs      ProductionJob[]
+  default_for_products Product[]          @relation("ProductDefaultMachine")
+  user_machines        UserMachine[]
 
   @@unique([tenant_id, machine_code])
 }
@@ -275,14 +427,17 @@ model Material {
   tenant            Tenant   @relation(fields: [tenant_id], references: [id])
   material_code     String
   name              String
-  type              String // MEDIA/INK
+  group_name        String? // Tenant-defined family, e.g. Flexi Banner
+  specifications    String? // GSM, roll width, coating
+  purpose           String   @default("PRIMARY") // PRIMARY/CONSUMABLE
+  type              String // MEDIA/INK/OTHER
   unit_stock        String // ROLL/METER/LEMBAR/LITER/KG/RIM/BOTOL/PCS/CUSTOM
   unit_usage        String // METER/LEMBAR/ML/GRAM/PCS/CUSTOM
   unit_custom       String?
   conversion_factor Decimal  @db.Decimal(10, 2)
   is_shared         Boolean  @default(false)
   min_stock         Decimal  @db.Decimal(10, 2)
-  current_stock     Decimal  @db.Decimal(10, 2)
+  current_stock     Decimal  @db.Decimal(18, 6)
   standard_cost     Decimal  @db.Decimal(15, 2)
   added_by          String
   adder             User     @relation(fields: [added_by], references: [id])
@@ -292,10 +447,39 @@ model Material {
 
   machines           MachineMaterial[]
   material_movements MaterialMovement[]
+  stocktake_items    MaterialStocktakeItem[]
   default_for        Product[]
   order_items        OrderItem[]
+  product_options    ProductMaterial[]
+  job_items          ProductionJobItem[]
+  purchase_order_items PurchaseOrderItem[]
 
   @@unique([tenant_id, material_code])
+}
+
+// Explicit product-to-material allowlist. A material can serve many products,
+// but a product only exposes materials mapped here to the order and production
+// flows. `is_default` must be unique per product at the application boundary.
+model ProductMaterial {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  product_id  String
+  product     Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  material_id String
+  material    Material @relation(fields: [material_id], references: [id], onDelete: Cascade)
+  unit_price  Decimal? @db.Decimal(15, 2) // null = use Product.base_price
+  role        String   @default("PRIMARY") // PRIMARY/FINISHING/OPTIONAL
+  is_default  Boolean  @default(false)
+  active      Boolean  @default(true)
+  sort_order  Int      @default(0)
+  notes       String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([tenant_id, product_id, material_id])
+  @@index([tenant_id, product_id, active])
+  @@index([tenant_id, material_id, active])
 }
 
 model MachineMaterial {
@@ -321,16 +505,126 @@ model MaterialMovement {
   job_id                String?
   job                   ProductionJob? @relation(fields: [job_id], references: [id])
   movement_type         String // IN/OUT/WASTE/ADJUSTMENT
-  quantity_usage        Decimal        @db.Decimal(10, 2)
-  quantity_stock_change Decimal        @db.Decimal(10, 2)
-  before_stock          Decimal        @db.Decimal(10, 2)
-  after_stock           Decimal        @db.Decimal(10, 2)
+  quantity_usage        Decimal        @db.Decimal(18, 6)
+  quantity_stock_change Decimal        @db.Decimal(18, 6)
+  before_stock          Decimal        @db.Decimal(18, 6)
+  after_stock           Decimal        @db.Decimal(18, 6)
   supplier              String?
+  supplier_id           String?
+  supplier_ref          Supplier?      @relation("SupplierMovements", fields: [supplier_id], references: [id], onDelete: SetNull)
   unit_cost             Decimal?       @db.Decimal(15, 2)
+  reference_no          String?
+  purchase_order_id     String?
+  purchase_order        PurchaseOrder? @relation(fields: [purchase_order_id], references: [id], onDelete: SetNull)
+  purchase_order_item_id String?
+  purchase_order_item   PurchaseOrderItem? @relation(fields: [purchase_order_item_id], references: [id], onDelete: SetNull)
+  received_at           DateTime       @default(now())
   performed_by          String
   performer             User           @relation(fields: [performed_by], references: [id])
   reason                String?
   created_at            DateTime       @default(now())
+}
+
+model Supplier {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  notes       String?
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  purchase_orders PurchaseOrder[]
+  movements       MaterialMovement[] @relation("SupplierMovements")
+
+  @@unique([tenant_id, code])
+  @@index([tenant_id, active, name])
+}
+
+model PurchaseOrder {
+  id            String   @id @default(uuid())
+  tenant_id     String
+  tenant        Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  po_number     String
+  supplier_id   String
+  supplier      Supplier @relation(fields: [supplier_id], references: [id])
+  status        String   @default("DRAFT") // DRAFT/SUBMITTED/PARTIAL/RECEIVED/CANCELLED
+  order_date    DateTime @default(now())
+  expected_date DateTime?
+  notes         String?
+  created_by    String
+  creator       User     @relation("PurchaseOrderCreatedBy", fields: [created_by], references: [id])
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  items     PurchaseOrderItem[]
+  movements MaterialMovement[]
+
+  @@unique([tenant_id, po_number])
+  @@index([tenant_id, status, order_date])
+}
+
+model PurchaseOrderItem {
+  id               String        @id @default(uuid())
+  tenant_id        String
+  tenant           Tenant        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  purchase_order_id String
+  purchase_order   PurchaseOrder  @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
+  material_id      String
+  material         Material      @relation(fields: [material_id], references: [id])
+  ordered_qty      Decimal       @db.Decimal(18, 6)
+  received_qty     Decimal       @default(0) @db.Decimal(18, 6)
+  unit_cost        Decimal       @db.Decimal(15, 2)
+  notes            String?
+  movements        MaterialMovement[]
+
+  @@index([tenant_id, purchase_order_id])
+  @@index([tenant_id, material_id])
+}
+
+model MaterialStocktake {
+  id           String   @id @default(uuid())
+  tenant_id    String
+  tenant       Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  status       String   @default("DRAFT") // DRAFT/SUBMITTED/APPROVED/CANCELLED
+  notes        String?
+  created_by   String
+  creator      User     @relation("StocktakeCreatedBy", fields: [created_by], references: [id])
+  submitted_by String?
+  submitter    User?    @relation("StocktakeSubmittedBy", fields: [submitted_by], references: [id])
+  approved_by  String?
+  approver     User?    @relation("StocktakeApprovedBy", fields: [approved_by], references: [id])
+  created_at   DateTime @default(now())
+  submitted_at DateTime?
+  approved_at  DateTime?
+  items        MaterialStocktakeItem[]
+
+  @@index([tenant_id, status, created_at])
+}
+
+model MaterialStocktakeItem {
+  id            String            @id @default(uuid())
+  tenant_id     String
+  tenant        Tenant            @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  stocktake_id  String
+  stocktake     MaterialStocktake @relation(fields: [stocktake_id], references: [id], onDelete: Cascade)
+  material_id   String
+  material      Material          @relation(fields: [material_id], references: [id])
+  system_stock  Decimal           @db.Decimal(18, 6)
+  counted_stock Decimal?
+  variance      Decimal?
+  notes         String?
+  counted_by    String?
+  counter       User?             @relation("StocktakeCountedBy", fields: [counted_by], references: [id])
+  counted_at    DateTime?
+
+  @@unique([stocktake_id, material_id])
+  @@index([tenant_id, material_id])
 }
 
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
@@ -364,6 +658,9 @@ model Order {
   balance                  Decimal   @db.Decimal(15, 2)
   deadline                 DateTime?
   notes                    String?
+  // Alasan order CONFIRMED belum turun ke produksi (JSON array string), atau
+  // "AWAITING_ADMIN_RELEASE" bila tertahan gatekeeper. null = tidak tertahan / sudah rilis.
+  auto_release_blocked     String?
   cancelled_at             DateTime?
   cancelled_by             String?
   canceller                User?     @relation("OrderCancelledBy", fields: [cancelled_by], references: [id])
@@ -406,8 +703,14 @@ model OrderItem {
   material_id       String?
   material          Material?      @relation(fields: [material_id], references: [id])
   finishing         String?
+  deadline          DateTime? // override deadline per item; kosong = ikut Order.deadline
   unit_price        Decimal        @db.Decimal(15, 2)
   total_price       Decimal        @db.Decimal(15, 2)
+
+  material_snapshot Json?
+  pricing_snapshot  Json?
+  production_items ProductionJobItem[]
+  design_versions DesignVersion[]
 }
 
 // ─── RETAIL & POS ─────────────────────────────────────────────────────────────
@@ -459,33 +762,44 @@ model DesignJob {
   tenant          Tenant   @relation(fields: [tenant_id], references: [id])
   order_id        String
   order           Order    @relation(fields: [order_id], references: [id])
-  designer_id     String
-  designer        User     @relation(fields: [designer_id], references: [id])
+  designer_id     String?
+  designer        User?    @relation(fields: [designer_id], references: [id])
   status          String
-  current_version Int      @default(1)
+  // Ringkasan versi global; deret versi aktual dimulai dari 1 per item/slot.
+  current_version Int      @default(0)
   approval_method String // WALK_IN/MAKLOON/WHATSAPP
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
   versions DesignVersion[]
+
+  // Satu order hanya memiliki satu design job; versi per item disimpan di DesignVersion.
+  @@unique([tenant_id, order_id])
 }
 
 model DesignVersion {
-  id               String    @id @default(uuid())
+  id               String     @id @default(uuid())
   tenant_id        String
-  tenant           Tenant    @relation(fields: [tenant_id], references: [id])
+  tenant           Tenant     @relation(fields: [tenant_id], references: [id])
   design_job_id    String
-  design_job       DesignJob @relation(fields: [design_job_id], references: [id])
-  version_no       Int
-  file_path        String?
+  design_job       DesignJob  @relation(fields: [design_job_id], references: [id])
+  // Item yang jadi sasaran file ini. NULL = berlaku untuk seluruh order
+  // (order 1 item, file layout gabungan, atau data lama sebelum desain per-item).
+  order_item_id    String?
+  order_item       OrderItem? @relation(fields: [order_item_id], references: [id])
+  version_no       Int // deret per "slot" (design_job_id + order_item_id)
+  file_path        String? // key objek R2 untuk upload baru; link/teks bebas untuk baris lama
+  file_name        String? // nama asli file saat diupload
+  file_size        Int? // ukuran byte
+  content_type     String? // MIME
   preview_path     String?
   uploaded_by      String
-  uploader         User      @relation("UploadedBy", fields: [uploaded_by], references: [id])
-  uploaded_at      DateTime  @default(now())
-  approval_status  String // PENDING/APPROVED/REJECTED
+  uploader         User       @relation("UploadedBy", fields: [uploaded_by], references: [id])
+  uploaded_at      DateTime   @default(now())
+  approval_status  String // PENDING/APPROVED/REJECTED/SUPERSEDED
   approved_at      DateTime?
   approved_by      String?
-  approver         User?     @relation("ApprovedBy", fields: [approved_by], references: [id])
+  approver         User?      @relation("ApprovedBy", fields: [approved_by], references: [id])
   approval_method  String?
   approval_notes   String?
   rejection_reason String?
@@ -502,18 +816,26 @@ model ProductionJob {
   job_code      String // JOB-YYYYMMDD-XXXX
   machine_id    String
   machine       Machine         @relation(fields: [machine_id], references: [id])
-  operator_id   String
-  operator      User            @relation(fields: [operator_id], references: [id])
+  operator_id   String?
+  operator      User?           @relation(fields: [operator_id], references: [id])
+  qc_assignee_id String?
+  qc_assignee    User?          @relation("QCAssignee", fields: [qc_assignee_id], references: [id])
+  qc_claimed_at  DateTime?
+  finishing_assignee_id String?
+  finishing_assignee    User?    @relation("FinishingAssignee", fields: [finishing_assignee_id], references: [id])
+  finishing_claimed_at  DateTime?
   status        String
   priority      Int             @default(1)
   planned_start DateTime?
   planned_end   DateTime?
   actual_start  DateTime?
   actual_end    DateTime?
+  deadline      DateTime? // dari OrderItem.deadline (fallback Order.deadline) saat auto-release
   planned_qty   Int
   actual_qty    Int             @default(0)
+  actual_area   Decimal?        @db.Decimal(12, 3) // m² / meter tercetak (produk non-PCS)
   reprint_qty   Int             @default(0)
-  waste_qty     Int             @default(0)
+  waste_qty     Int             @default(0) // potong reject (pcs) — sisa bahan/offcut ada di MaterialMovement WASTE
   waste_reason  String?
   parent_job_id String?
   parent_job    ProductionJob?  @relation("ReworkJobs", fields: [parent_job_id], references: [id])
@@ -524,12 +846,28 @@ model ProductionJob {
   created_at    DateTime        @default(now())
   updated_at    DateTime        @updatedAt
 
+  material_plan_history Json?
+  items              ProductionJobItem[]
   material_movements MaterialMovement[]
   qc_records         QcRecord[]
   finishing_jobs     FinishingJob[]
   storage_items      StorageItem[]
 
   @@unique([tenant_id, job_code])
+}
+
+// Frozen item scope; reassignment never derives scope from the current catalog.
+model ProductionJobItem {
+  id            String @id @default(uuid())
+  tenant_id     String
+  job_id        String
+  job           ProductionJob @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  order_item_id String
+  order_item    OrderItem @relation(fields: [order_item_id], references: [id])
+  material_id   String?
+  material      Material? @relation(fields: [material_id], references: [id])
+  @@unique([job_id, order_item_id])
+  @@index([tenant_id, order_item_id])
 }
 
 model QcRecord {
@@ -620,6 +958,11 @@ model StorageItem {
   incident_reported_by String?
   incident_reporter    User?            @relation("IncidentReportedBy", fields: [incident_reported_by], references: [id])
   incident_notes       String?
+  incident_resolution  String?
+  incident_resolution_notes String?
+  incident_resolved_at DateTime?
+  incident_resolved_by String?
+  incident_resolver    User?            @relation("IncidentResolvedBy", fields: [incident_resolved_by], references: [id])
 }
 
 // ─── PAYMENT & PICKUP ─────────────────────────────────────────────────────────
@@ -674,11 +1017,36 @@ model NotificationEvent {
   provider_message_id String?
   error_message       String?
   sent_at             DateTime?
+  last_attempt_at     DateTime? // waktu percobaan kirim terakhir — dipakai job dispatcher untuk jeda retry 5 menit
   is_resend           Boolean   @default(false)
   resent_by           String?
   resender            User?     @relation(fields: [resent_by], references: [id])
   retry_count         Int       @default(0)
   created_at          DateTime  @default(now())
+}
+
+model OperationalAlert {
+  id                String   @id @default(uuid())
+  tenant_id         String
+  tenant            Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  dedupe_key        String
+  alert_type        String
+  severity          String   // CRITICAL/WARNING/INFO
+  status            String   @default("OPEN") // OPEN/ACKNOWLEDGED/RESOLVED
+  title             String
+  message           String
+  href              String?
+  entity_type       String?
+  entity_id         String?
+  first_seen_at     DateTime @default(now())
+  last_seen_at      DateTime @default(now())
+  acknowledged_at   DateTime?
+  acknowledged_by  String?
+  acknowledger      User?    @relation("AlertAcknowledgedBy", fields: [acknowledged_by], references: [id])
+  resolved_at       DateTime?
+
+  @@unique([tenant_id, dedupe_key])
+  @@index([tenant_id, status, severity, last_seen_at])
 }
 
 // ─── AUDIT & REPORTING ────────────────────────────────────────────────────────
@@ -793,24 +1161,182 @@ model AttendanceImport {
 }
 
 model AttendanceRecord {
-  id                 String           @id @default(uuid())
-  tenant_id          String
-  tenant             Tenant           @relation(fields: [tenant_id], references: [id])
-  import_id          String
-  import             AttendanceImport @relation(fields: [import_id], references: [id])
-  user_id            String?
-  user               User?            @relation(fields: [user_id], references: [id])
-  employee_name      String
-  date               DateTime
-  check_in           DateTime?
-  check_out          DateTime?
-  check_in_status    String // ON_TIME/LATE
-  late_minutes       Int              @default(0)
-  break_start        DateTime?
-  break_end          DateTime?
-  break_duration_min Int              @default(0)
-  break_status       String? // NORMAL/EXCEEDED
-  warning_sent_at    DateTime?
-  owner_note         String?
-  created_at         DateTime         @default(now())
+  id                   String            @id @default(uuid())
+  tenant_id            String
+  tenant               Tenant            @relation(fields: [tenant_id], references: [id])
+  import_id            String? // null = baris dibuat dari tombol istirahat Print Pilot, belum ada import fingerprint
+  import               AttendanceImport? @relation(fields: [import_id], references: [id])
+  user_id              String?
+  user                 User?             @relation(fields: [user_id], references: [id])
+  employee_name        String
+  // Hari kerja menurut timezone tenant, disimpan terpisah dari timestamp punch.
+  attendance_day       DateTime          @default(dbgenerated("CURRENT_DATE")) @db.Date
+  date                 DateTime
+  check_in             DateTime?
+  check_out            DateTime?
+  check_in_status      String // ON_TIME/LATE/UNKNOWN
+  late_minutes         Int               @default(0)
+  break_start          DateTime?
+  break_end            DateTime?
+  break_duration_min   Int               @default(0)
+  break_status         String? // NORMAL/EXCEEDED
+  warning_sent_at      DateTime?
+  owner_note           String?
+  // Absen in-app (lihat 02-WORKFLOW/18-ABSENSI-IN-APP.md)
+  source               String            @default("MANUAL") // IN_APP | KIOSK | FINGERPRINT_IMPORT | MANUAL
+  check_in_method      String? // IN_APP | KIOSK | FINGERPRINT_IMPORT | MANUAL (per-punch)
+  check_out_method     String?
+  check_out_status     String? // ON_TIME | EARLY | AUTO_CLOSED
+  check_in_lat         Float?
+  check_in_lng         Float?
+  check_in_accuracy_m  Float?
+  check_out_lat        Float?
+  check_out_lng        Float?
+  check_out_accuracy_m Float?
+  check_in_ip          String?
+  check_out_ip         String?
+  geo_flag             Boolean           @default(false) // ada punch di luar geofence
+  ip_flag              Boolean           @default(false) // ada punch di luar IP kantor
+  off_day              Boolean           @default(false) // absen di luar hari kerja
+  device_label         String? // ringkas User-Agent / nama kiosk
+  created_at           DateTime          @default(now())
+
+  selfies AttendanceSelfie[]
+
+  @@unique([tenant_id, user_id, attendance_day])
+  @@index([tenant_id, date])
+  @@index([user_id, date])
+}
+
+/// Selfie absen — thumbnail kecil (≤320px WebP) disimpan langsung di DB.
+/// Object storage nyata belum ada; dihapus cron setelah selfie_retention_days.
+model AttendanceSelfie {
+  id         String           @id @default(uuid())
+  tenant_id  String
+  tenant     Tenant           @relation(fields: [tenant_id], references: [id])
+  record_id  String
+  record     AttendanceRecord @relation(fields: [record_id], references: [id], onDelete: Cascade)
+  kind       String // CHECK_IN | CHECK_OUT
+  mime       String           @default("image/webp")
+  bytes      Bytes
+  created_at DateTime         @default(now())
+
+  @@index([tenant_id, created_at])
+  @@index([record_id])
+}
+
+/// Pengaturan absensi per tenant — diatur Owner di /owner/attendance-settings.
+model TenantAttendanceSetting {
+  id                      String   @id @default(uuid())
+  tenant_id               String   @unique
+  tenant                  Tenant   @relation(fields: [tenant_id], references: [id])
+  work_start              String   @default("09:00") // HH:mm
+  late_after              String   @default("09:15") // lewat ini = TERLAMBAT
+  work_end                String   @default("17:00")
+  workdays                String   @default("1,2,3,4,5,6") // 1=Sen … 7=Min
+  break_max_min           Int      @default(60)
+  earliest_clock_in_min   Int      @default(120)
+  geofence_lat            Float?
+  geofence_lng            Float?
+  geofence_radius_m       Int      @default(150)
+  geofence_mode           String   @default("FLAG") // OFF | FLAG | ENFORCE
+  ip_allowlist            String   @default("") // IP/CIDR dipisah koma
+  ip_mode                 String   @default("OFF") // OFF | FLAG | ENFORCE
+  selfie_required         Boolean  @default(true)
+  selfie_retention_days   Int      @default(120)
+  kiosk_enabled           Boolean  @default(false)
+  personal_device_enabled Boolean  @default(true)
+  auto_close_at           String   @default("23:59")
+  timezone                String   @default("Asia/Jakarta")
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+}
+
+/// Perangkat kiosk (tablet meja depan) untuk absen tanpa login user. Fase B.
+model KioskDevice {
+  id           String    @id @default(uuid())
+  tenant_id    String
+  tenant       Tenant    @relation(fields: [tenant_id], references: [id])
+  label        String
+  token_hash   String    @unique // token panjang di cookie perangkat, revocable
+  created_by   String
+  last_seen_at DateTime?
+  active       Boolean   @default(true)
+  created_at   DateTime  @default(now())
+
+  @@index([tenant_id])
+}
+
+// ─── PAYROLL (GAJI) ───────────────────────────────────────────────────────────
+
+model PayrollPeriod {
+  id           String    @id @default(uuid())
+  tenant_id    String
+  tenant       Tenant    @relation(fields: [tenant_id], references: [id])
+  year         Int
+  month        Int // 1-12
+  status       String    @default("DRAFT") // DRAFT/FINALIZED
+  generated_by String
+  generated_at DateTime  @default(now())
+  finalized_by String?
+  finalized_at DateTime?
+  created_at   DateTime  @default(now())
+
+  records PayrollRecord[]
+
+  @@unique([tenant_id, year, month])
+}
+
+model PayrollRecord {
+  id               String        @id @default(uuid())
+  tenant_id        String
+  tenant           Tenant        @relation(fields: [tenant_id], references: [id])
+  period_id        String
+  period           PayrollPeriod @relation(fields: [period_id], references: [id])
+  user_id          String
+  user             User          @relation(fields: [user_id], references: [id])
+  base_salary      Decimal       @db.Decimal(15, 2) // snapshot User.base_salary saat periode dibuat
+  working_days     Int
+  present_days     Int
+  absent_days      Int
+  late_minutes     Int
+  deduction_absent Decimal       @db.Decimal(15, 2)
+  deduction_late   Decimal       @db.Decimal(15, 2)
+  total_deduction  Decimal       @db.Decimal(15, 2)
+  net_salary       Decimal       @db.Decimal(15, 2)
+  status           String        @default("UNPAID") // UNPAID/PAID
+  paid_at          DateTime?
+  notes            String?
+  created_at       DateTime      @default(now())
+
+  @@unique([period_id, user_id])
+}
+
+// ─── PASSWORD RESET ───────────────────────────────────────────────────────────
+
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  user_id    String
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token_hash String    @unique // sha256 of the raw token; raw token only in the emailed link
+  expires_at DateTime
+  used_at    DateTime?
+  created_at DateTime  @default(now())
+
+  @@index([user_id])
+}
+
+// Token verifikasi email owner saat self-serve signup. Hanya hash token yang
+// disimpan; token mentah dikirim sekali melalui email dan berlaku singkat.
+model EmailVerificationToken {
+  id         String    @id @default(uuid())
+  user_id    String
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token_hash String    @unique
+  expires_at DateTime
+  used_at    DateTime?
+  created_at DateTime  @default(now())
+
+  @@index([user_id])
+  @@index([expires_at])
 }

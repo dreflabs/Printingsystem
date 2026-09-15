@@ -2,13 +2,12 @@
 
 ## Deskripsi
 
-Super Admin adalah role **platform**, bukan role tenant — dipakai oleh tim pengelola Print Pilot (bukan oleh percetakan pelanggan). Berbeda dari 5 role tenant (Owner, Admin, Designer Sales, Operator, Gudang), akun Super Admin tersimpan di tabel terpisah (`super_admins`, bukan `users`) dan login di domain utama (`printpilot.id`), bukan di subdomain tenant manapun — supaya tidak ada jalur eskalasi privilege dari sisi tenant ke level platform. Detail fitur & UI dashboard lengkap ada di `13-SAAS/SUPER-ADMIN.md`; dokumen ini fokus ke definisi hak akses per sub-level.
+Super Admin adalah role **platform**, bukan role tenant — dipakai oleh tim pengelola Print Pilot (bukan oleh percetakan pelanggan). Berbeda dari 5 role tenant (Owner, Admin, Designer Sales, Operator, Gudang), akun Super Admin tersimpan di tabel terpisah (`super_admins`, bukan `users`) dan login di domain utama (`printpilot.id`), bukan di subdomain tenant manapun — supaya tidak ada jalur eskalasi privilege dari sisi tenant ke level platform. Detail fitur & UI dashboard lengkap ada di `13-SAAS/SUPER-ADMIN.md`.
 
-## 3 Sub-Level Super Admin
+## Level Akses: Tunggal (Akses Penuh)
 
-Tabel `super_admins` punya field `role` dengan 3 nilai (`SUPER_ADMIN` / `SUPPORT` / `FINANCE`) — **bukan satu level akses monolitik**. Setiap staf pengelola SaaS di-assign salah satu dari 3 sub-level ini sesuai tanggung jawabnya, mengikuti prinsip least-privilege yang sama seperti role tenant.
+Hanya terdapat **1 level Super Admin** tanpa pembagian sub-level. Setiap akun Super Admin memiliki akses penuh ke seluruh fitur pengelola SaaS:
 
-### SUPER_ADMIN (akses penuh)
 | Modul | Akses |
 |-------|-------|
 | Dashboard metrics (MRR, tenant count, system health) | ✅ |
@@ -17,40 +16,16 @@ Tabel `super_admins` punya field `role` dengan 3 nilai (`SUPER_ADMIN` / `SUPPORT
 | Impersonate tenant (mode aktif/edit atau read-only) | ✅ bebas pilih mode |
 | Billing: lihat invoice, force-mark-paid | ✅ |
 | Broadcast notification ke semua tenant | ✅ |
-| Buat/kelola akun Super Admin lain (termasuk assign sub-level) | ✅ |
+| Buat/kelola akun Super Admin lain | ✅ |
 
-### SUPPORT (dukungan teknis tenant)
-| Modul | Akses |
-|-------|-------|
-| Dashboard metrics (MRR, tenant count, system health) | ✅ (lihat saja) |
-| Suspend / Activate tenant | ❌ — keputusan bisnis/kebijakan, bukan sekadar dukungan teknis |
-| Hard-delete tenant | ❌ |
-| Impersonate tenant | ✅ **hanya mode read-only** — tidak boleh pilih mode aktif/edit sama sekali |
-| Billing: lihat invoice, force-mark-paid | ❌ |
-| Broadcast notification | ✅ (untuk info teknis/maintenance) |
-| Buat/kelola akun Super Admin lain | ❌ |
+## Aturan Keamanan & Log Audit
 
-### FINANCE (billing & langganan)
-| Modul | Akses |
-|-------|-------|
-| Dashboard metrics (MRR, tenant count) | ✅ |
-| System health | ❌ (tidak relevan ke tanggung jawabnya) |
-| Suspend / Activate tenant | ❌ |
-| Hard-delete tenant | ❌ |
-| Impersonate tenant | ❌ — tidak butuh masuk ke data operasional tenant untuk urus billing |
-| Billing: lihat invoice, force-mark-paid | ✅ |
-| Tenant Management (list, status langganan) | 📖 read-only — untuk konteks siapa yang menunggak, tidak bisa aksi ke tenant |
-| Broadcast notification | ❌ |
-| Buat/kelola akun Super Admin lain | ❌ |
-
-## Yang Berlaku untuk Semua Sub-Level
-
-- **Semua aksi tercatat** di `tenant_audit_logs` dengan `actor_type = SUPER_ADMIN` dan sub-level pelakunya — tidak ada pengecualian, termasuk staf SUPPORT yang cuma impersonate read-only.
-- **Transparansi wajib ke tenant** — begitu sesi impersonate dimulai (SUPER_ADMIN atau SUPPORT), sistem kirim notifikasi ke Owner tenant (email + banner dashboard) berisi nama staf, waktu akses, dan alasan singkat. Ini berlaku sama untuk kedua sub-level yang boleh impersonate.
-- **MFA wajib** untuk login akun `super_admins` — mengingat akun ini punya jangkauan akses ke *seluruh* tenant sekaligus, jauh lebih sensitif dari akun Owner tenant manapun yang cuma bisa akses data tenant sendiri. Rekomendasi: TOTP (Google Authenticator/Authy), bukan cuma username+password.
+- **Semua aksi tercatat.** Aksi tenant-scoped di `tenant_audit_logs` (`actor_type = SUPER_ADMIN`). Aksi tingkat-platform (login sukses/gagal, kunci akun, kelola akun Super Admin, MFA, plus salinan aksi tenant) di `platform_audit_logs` — tahan-hapus: nama pelaku & label target di-snapshot supaya tetap terbaca setelah tenant di-purge / akun dihapus. Terlihat di panel **Aktivitas**.
+- **Transparansi wajib ke tenant** — begitu sesi impersonate dimulai, sistem kirim notifikasi ke Owner tenant (email + banner dashboard) berisi nama staf, waktu akses, dan alasan singkat.
+- **Login akun `super_admins`** — email + password satu langkah, terpisah dari tabel `users` tenant. Tidak ada MFA/OTP (dihapus 2026-09-08 atas keputusan pemilik — panel diakses dari jaringan terkontrol). Proteksi yang tersisa: percobaan gagal berturut-turut mengunci akun sementara (5× → kunci bertahap maks 60 menit), rate-limit 10/15 menit per identifier, sesi panel dibatasi 12 jam (`PLATFORM_SESSION_MAX_AGE_MS`). Pemulihan: SUPER_ADMIN lain reset password, atau `bootstrap:superadmin` di server.
 - **Tidak bisa login ke subdomain tenant langsung** dengan kredensial `super_admins` — akses ke data tenant *hanya* lewat mekanisme impersonate yang tercatat, tidak ada jalur pintas.
 
-## Yang TIDAK Boleh Dilakukan Super Admin (semua sub-level)
+## Yang TIDAK Boleh Dilakukan Super Admin
 
 - Mengubah data operasional tenant secara langsung di database tanpa lewat mekanisme impersonate tercatat (tidak ada "backdoor" edit).
 - Melihat kredensial/password asli user tenant mana pun (password di-hash, tidak bisa di-reverse oleh siapa pun termasuk Super Admin).

@@ -9,7 +9,7 @@ import { parseCsv } from "@/lib/csv";
 import { sendWhatsApp } from "@/lib/wa";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
-import { hhmmToMinutes } from "@/lib/attendance";
+import { hhmmToMinutes, tenantDateTime, tenantDayDate, tenantMinutesOfDay } from "@/lib/attendance";
 import { can } from "@/lib/permissions";
 
 export type AttendanceColumnMapping = {
@@ -88,8 +88,8 @@ function parseTimeParts(s: string): { h: number; m: number } | null {
 }
 
 /** Gabung tanggal (local midnight) + jam → Date. */
-function atTime(day: Date, t: { h: number; m: number }): Date {
-  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), t.h, t.m, 0);
+function atTime(day: Date, t: { h: number; m: number }, timeZone: string): Date {
+  return tenantDateTime(day, `${String(t.h).padStart(2, "0")}:${String(t.m).padStart(2, "0")}`, timeZone) ?? new Date(day.getFullYear(), day.getMonth(), day.getDate(), t.h, t.m, 0);
 }
 
 function normName(s: string): string {
@@ -174,11 +174,11 @@ export async function commitAttendanceImport(input: {
         const d: DailyDraft = drafts.get(key) ?? { name, day, checkIn: null, checkOut: null };
         if (map.checkIn != null) {
           const t = parseTimeParts(r[map.checkIn] ?? "");
-          if (t) d.checkIn = atTime(day, t);
+          if (t) d.checkIn = atTime(day, t, attendanceSet.timezone);
         }
         if (map.checkOut != null) {
           const t = parseTimeParts(r[map.checkOut] ?? "");
-          if (t) d.checkOut = atTime(day, t);
+          if (t) d.checkOut = atTime(day, t, attendanceSet.timezone);
         }
         drafts.set(key, d);
       } else {
@@ -187,7 +187,7 @@ export async function commitAttendanceImport(input: {
         const day = parseDateOnly(rawDT) ?? parseDateOnly(r[map.date] ?? "");
         const t = parseTimeParts(rawDT);
         if (!day || !t) { skipped++; continue; }
-        const stamp = atTime(day, t);
+        const stamp = atTime(day, t, attendanceSet.timezone);
         const key = `${normName(name)}|${day.toISOString().slice(0, 10)}`;
         const d: DailyDraft = drafts.get(key) ?? { name, day, checkIn: null, checkOut: null };
 
@@ -243,7 +243,7 @@ export async function commitAttendanceImport(input: {
       let status = "ON_TIME";
       let lateMin = 0;
       if (d.checkIn) {
-        const mod = d.checkIn.getHours() * 60 + d.checkIn.getMinutes();
+        const mod = tenantMinutesOfDay(d.checkIn, attendanceSet.timezone);
         const lateThreshold = hhmmToMinutes(attendanceSet.late_after) ?? 9 * 60 + 15;
         if (mod > lateThreshold) {
           status = "LATE";
@@ -263,7 +263,7 @@ export async function commitAttendanceImport(input: {
         user_id: userId,
         employee_name: d.name,
         attendance_day: new Date(Date.UTC(d.day.getFullYear(), d.day.getMonth(), d.day.getDate())),
-        date: d.day,
+        date: d.checkIn ?? d.checkOut ?? new Date(Date.UTC(d.day.getFullYear(), d.day.getMonth(), d.day.getDate())),
         check_in: d.checkIn,
         check_out: d.checkOut,
         check_in_status: status,

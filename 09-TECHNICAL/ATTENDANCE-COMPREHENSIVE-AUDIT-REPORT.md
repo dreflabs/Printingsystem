@@ -248,3 +248,5 @@ Status yang direkomendasikan adalah **Conditional Go**:
 - Timezone tenant ditambahkan pada `TenantAttendanceSetting` dengan default `Asia/Jakarta`; tanggal kerja, batas terlambat, dan jam pulang memakai timezone tenant.
 - Clock-in dan clock-out sekarang memakai advisory lock per tenant/user/hari di dalam transaksi sehingga klik ganda atau dua request bersamaan tidak dapat membuat/mengubah punch yang saling bertabrakan.
 - Impor dan payroll tetap memerlukan penyelarasan timezone penuh untuk timestamp fingerprint, cut-off periode payroll, serta uji integrasi database production.
+
+Tambahan tahap import fingerprint: parsing tanggal/jam sekarang mengubah waktu lokal perangkat ke instant berdasarkan timezone tenant sebelum menghitung keterlambatan dan menyimpan `attendance_day`. Ini mencegah import dari server UTC menggeser hari kerja tenant. Rekonsiliasi nama tetap menolak nama tidak cocok/ganda dan tidak menimpa punch IN_APP/KIOSK yang lebih dipercaya.

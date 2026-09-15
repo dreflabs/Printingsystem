@@ -50,6 +50,26 @@ export function tenantDayDate(now: Date, timeZone: string): Date {
   return new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
 }
 
+/** Convert a tenant-local calendar date plus HH:mm into an absolute instant. */
+export function tenantDateTime(day: Date, hhmm: string, timeZone: string): Date | null {
+  const minutes = hhmmToMinutes(hhmm);
+  if (minutes == null) return null;
+  const y = day.getFullYear();
+  const m = day.getMonth();
+  const d = day.getDate();
+  const candidate = new Date(Date.UTC(y, m, d, Math.floor(minutes / 60), minutes % 60));
+  try {
+    const parts: Record<string, string> = {};
+    for (const p of new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(candidate)) {
+      if (p.type !== "literal") parts[p.type] = p.value;
+    }
+    const renderedAsUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
+    return new Date(candidate.getTime() + (candidate.getTime() - renderedAsUtc));
+  } catch {
+    return candidate;
+  }
+}
+
 /** Jam/menit dan hari kerja berdasarkan timezone tenant. */
 export function tenantMinutesOfDay(now: Date, timeZone: string): number {
   const value = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hour12: false }).format(now);

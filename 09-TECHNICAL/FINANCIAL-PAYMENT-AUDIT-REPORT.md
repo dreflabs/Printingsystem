@@ -1,3 +1,5 @@
+> Status implementasi: Temuan P1 historis telah ditangani pada checkpoint 24d94c26; gap approval refund dan rekonsiliasi tetap terbuka.
+
 # Laporan Audit Pembayaran dan Keuangan
 
 Tanggal audit: 16 September 2026  

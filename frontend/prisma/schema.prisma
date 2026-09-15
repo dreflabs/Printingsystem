@@ -395,6 +395,7 @@ model Machine {
   notes               String?
   default_operator_id String? // operator default; auto-release memakai dia + pin job (PRODUCTION_ASSIGNED)
   default_operator    User?    @relation("MachineDefaultOperator", fields: [default_operator_id], references: [id])
+  max_active_jobs     Int?     // batas job aktif per mesin; null = tidak dibatasi
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
 

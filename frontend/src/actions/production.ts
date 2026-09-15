@@ -242,6 +242,16 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
       const job = await findJobByCode(tx, tenant.id, jobCode);
       if (!job) throw new Error("Job tidak ditemukan.");
 
+      if (!can(actor, "production.assign")) {
+        const machine = await tx.machine.findFirst({ where: { id: job.machine_id, tenant_id: tenant.id }, select: { max_active_jobs: true } });
+        if (machine?.max_active_jobs != null) {
+          const activeCount = await tx.productionJob.count({
+            where: { tenant_id: tenant.id, machine_id: job.machine_id, status: { in: ["PRODUCTION_STARTED", "PRODUCTION_PAUSED"] } },
+          });
+          if (activeCount >= machine.max_active_jobs) throw new Error("Kapasitas mesin sedang penuh. Pilih job lain atau hubungi Admin.");
+        }
+      }
+
       // Dua jalur mulai produksi:
       //  - PRODUCTION_QUEUED tanpa operator → operator mengklaim job ini (SCAN 1).
       //  - PRODUCTION_ASSIGNED → job sudah di-pin ke operator tertentu oleh Admin.

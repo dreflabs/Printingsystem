@@ -22,7 +22,7 @@ type Printing = {
   base_price: number | null; default_material_id: string | null; default_machine_id: string | null; active: boolean;
   material_options: { id: string; name: string; material_code: string; material_id: string; is_default: boolean; role: string; sort_order: number; unit_price: number | null }[];
 };
-type Machine = { id: string; machine_code: string; name: string; category: string; status: string; notes: string | null; default_operator_id: string | null; default_operator_name: string | null };
+type Machine = { id: string; machine_code: string; name: string; category: string; status: string; notes: string | null; default_operator_id: string | null; default_operator_name: string | null; max_active_jobs: number | null };
 type MatOpt = { id: string; name: string; active?: boolean; type: string; purpose: string; group_name: string | null; specifications: string | null; machine_ids: string[] };
 type DeletableItem = Retail | Printing | Machine;
 
@@ -219,6 +219,7 @@ function MachineModal({
   const [status, setStatus] = useState(editing?.status ?? "ACTIVE");
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [defaultOperatorId, setDefaultOperatorId] = useState(editing?.default_operator_id ?? "");
+  const [maxActiveJobs, setMaxActiveJobs] = useState(editing?.max_active_jobs != null ? String(editing.max_active_jobs) : "");
   const [operators, setOperators] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -230,7 +231,7 @@ function MachineModal({
   async function save() {
     if (!name.trim()) { setErr("Nama mesin wajib diisi."); return; }
     setBusy(true); setErr(null);
-    const payload = { name: name.trim(), category: category.trim(), status, notes: notes.trim() || null, default_operator_id: defaultOperatorId || null };
+    const payload = { name: name.trim(), category: category.trim(), status, notes: notes.trim() || null, default_operator_id: defaultOperatorId || null, max_active_jobs: maxActiveJobs.trim() ? Number(maxActiveJobs) : null };
     const res = editing ? await updateMachine(editing.id, payload) : await createMachine(payload);
     setBusy(false);
     if (!res.success) { setErr(res.error ?? "Gagal."); return; }
@@ -264,6 +265,8 @@ function MachineModal({
         </select>
       </Field>
       <p className="text-[10px] text-muted -mt-2">Kalau diisi, order yang auto-release langsung di-pin ke operator ini (status Ditugaskan), tanpa perlu Admin assign manual.</p>
+      <Field label="Batas job aktif (opsional)"><input className={inp} type="number" min="1" max="100" value={maxActiveJobs} onChange={(e) => setMaxActiveJobs(e.target.value)} placeholder="Kosong = tidak dibatasi" /></Field>
+      <p className="text-[10px] text-muted -mt-2">Operator tidak dapat mengambil job antrean baru jika mesin sudah mencapai batas ini.</p>
       <Field label="Catatan (opsional)">
         <textarea className={cn(inp, "h-16 py-2")} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="mis. print head no.2 lemah" />
       </Field>

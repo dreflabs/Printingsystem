@@ -825,13 +825,14 @@ async function resolveDefaultOperator(tenantId: string, operatorId: string | nul
   return u.id;
 }
 
-export async function createMachine(data: { name: string; category: string; status?: string; notes?: string | null; default_operator_id?: string | null }) {
+export async function createMachine(data: { name: string; category: string; status?: string; notes?: string | null; default_operator_id?: string | null; max_active_jobs?: number | null }) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengelola data mesin.");
     if (!data.name?.trim()) return fail("Nama mesin wajib diisi.");
     const defaultOperatorId = await resolveDefaultOperator(tenant.id, data.default_operator_id);
+    const maxActiveJobs = data.max_active_jobs == null ? null : Math.max(1, Math.min(100, Math.trunc(data.max_active_jobs)));
     const machine = await prisma.machine.create({
       data: {
         tenant_id: tenant.id,
@@ -841,6 +842,7 @@ export async function createMachine(data: { name: string; category: string; stat
         status: normStatus(data.status),
         notes: data.notes?.trim() || null,
         default_operator_id: defaultOperatorId,
+        max_active_jobs: maxActiveJobs,
       },
     });
     if (defaultOperatorId) {
@@ -863,7 +865,7 @@ export async function createMachine(data: { name: string; category: string; stat
 
 export async function updateMachine(
   id: string,
-  data: { name?: string; category?: string; status?: string; notes?: string | null; default_operator_id?: string | null }
+  data: { name?: string; category?: string; status?: string; notes?: string | null; default_operator_id?: string | null; max_active_jobs?: number | null }
 ) {
   try {
     const tenant = await requireTenant();
@@ -876,6 +878,7 @@ export async function updateMachine(
     if (data.category != null) patch.category = normCat(data.category);
     if (data.status != null) patch.status = normStatus(data.status);
     if (data.notes !== undefined) patch.notes = data.notes?.trim() || null;
+    if (data.max_active_jobs !== undefined) patch.max_active_jobs = data.max_active_jobs == null ? null : Math.max(1, Math.min(100, Math.trunc(data.max_active_jobs)));
     if (data.default_operator_id !== undefined) {
       patch.default_operator_id = await resolveDefaultOperator(tenant.id, data.default_operator_id);
     }

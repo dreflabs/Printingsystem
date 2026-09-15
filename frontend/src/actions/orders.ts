@@ -12,6 +12,7 @@ import { safeError } from "@/lib/safe-error";
 import { can, canAny } from "@/lib/permissions";
 import { getTenantEntitlements } from "@/lib/entitlements";
 import { ok, fail, type ActionResult } from "@/types";
+import { calculatePrintingUnitPrice } from "@/lib/catalog-constants";
 
 type OrderTypeInput = "walkin" | "online" | "makloon";
 
@@ -217,7 +218,7 @@ export async function createPrintingOrder(
       // 2. Totals — diskon TIDAK dipotong sebelum di-approve Owner (aturan 14).
       //    `discount` disimpan sebagai permintaan; total/dp/balance tetap harga penuh
       //    sampai decideDiscount(approve) dipanggil.
-      const resolvedItems = [] as (PrintingOrderItemInput & { unitPrice: number; catalogRate: number | null })[];
+      const resolvedItems = [] as (PrintingOrderItemInput & { unitPrice: number; catalogRate: number | null; productUnit: string | null })[];
       let subtotal = 0;
       for (const id of [...new Set(items.map(i => i.productId).filter((id): id is string => !!id))].sort()) {
         await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${id} AND tenant_id = ${tenant.id} FOR UPDATE`;
@@ -264,28 +265,17 @@ export async function createPrintingOrder(
           if (!i.productId) throw new Error("Designer wajib memilih produk dari katalog.");
           const basePrice = Number(catalogRate ?? 0);
           if (!product || !(basePrice > 0)) throw new Error("Produk belum memiliki harga katalog aktif.");
-          if (product.unit === "M2") {
-            const area = ((Number(i.width) || 0) / 100) * ((Number(i.height) || 0) / 100);
-            if (!(area > 0)) throw new Error("Ukuran wajib diisi untuk produk berbasis M2.");
-            unitPrice = Math.round(basePrice * area);
-          } else {
-            unitPrice = Math.round(basePrice);
-          }
+          unitPrice = calculatePrintingUnitPrice(product.unit, basePrice, i.width, i.height);
         } else if (i.productId && !can(actor, "quote.edit_price")) {
           const basePrice = Number(catalogRate ?? 0);
-          const expected = product?.unit === "M2"
-            ? (() => {
-                const area = ((Number(i.width) || 0) / 100) * ((Number(i.height) || 0) / 100);
-                return area > 0 ? Math.round(basePrice * area) : 0;
-              })()
-            : Math.round(basePrice);
+          const expected = product ? calculatePrintingUnitPrice(product.unit, basePrice, i.width, i.height) : 0;
           if (!(expected > 0) || unitPrice !== expected) {
             throw new Error("Harga harus mengikuti katalog. Override harga memerlukan permission quote.edit_price.");
           }
         } else if (!i.productId && !can(actor, "quote.edit_price")) {
           throw new Error("Item custom dengan harga manual memerlukan permission quote.edit_price.");
         }
-        resolvedItems.push({ ...i, unitPrice, catalogRate });
+        resolvedItems.push({ ...i, unitPrice, catalogRate, productUnit: product?.unit ?? null });
         subtotal += unitPrice * Math.max(1, Number(i.quantity) || 1);
       }
       const total = subtotal;
@@ -335,7 +325,7 @@ export async function createPrintingOrder(
             size,
             material_id: i.materialId || null,
             ...(selectedMaterial ? { material_snapshot: { ...selectedMaterial, conversion_factor: Number(selectedMaterial.conversion_factor) } } : {}),
-            pricing_snapshot: { catalog_rate: i.catalogRate, unit_price: i.unitPrice, material_id: i.materialId || null },
+            pricing_snapshot: { pricing_unit: i.productUnit, catalog_rate: i.catalogRate, unit_price: i.unitPrice, material_id: i.materialId || null, cost_unit: selectedMaterial?.unit_stock ?? null },
             finishing: i.finishing || null,
             deadline: itemDeadline && !Number.isNaN(itemDeadline.getTime()) ? itemDeadline : null,
             unit_price: i.unitPrice,
@@ -415,9 +405,14 @@ export async function addPayment(
     if (!can(actor, "payment.receive")) {
       return fail("Hanya Admin/Owner yang boleh mengkonfirmasi pembayaran.");
     }
-    if (!(input.amount > 0)) return fail("Nominal pembayaran harus lebih dari 0.");
+    if (!Number.isSafeInteger(input.amount) || !(input.amount > 0)) return fail("Nominal pembayaran harus berupa rupiah bulat dan lebih dari 0.");
+    if (!["CASH", "TRANSFER", "QRIS"].includes(input.method)) return fail("Metode pembayaran tidak valid.");
+    if (input.reference && input.reference.trim().length > 120) return fail("Referensi pembayaran terlalu panjang.");
 
     const result = await prisma.$transaction(async (tx) => {
+      // Serialisasi penerimaan uang per order. Tanpa row lock, dua kasir dapat
+      // membaca saldo lama yang sama lalu sama-sama lolos cek overpayment.
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} AND tenant_id = ${tenant.id} FOR UPDATE`;
       const order = await tx.order.findFirst({
         where: { id: orderId, tenant_id: tenant.id },
       });
@@ -435,7 +430,7 @@ export async function addPayment(
           order_id: order.id,
           amount: input.amount,
           method: input.method,
-          reference: input.reference || null,
+          reference: input.reference?.trim() || null,
           status: "CONFIRMED",
           received_by: actor.id,
           notes: input.notes || null,
@@ -526,6 +521,7 @@ export async function decideDiscount(
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} AND tenant_id = ${tenant.id} FOR UPDATE`;
       const order = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
       if (!order) throw new Error("Order tidak ditemukan.");
       if (Number(order.discount) <= 0) throw new Error("Order ini tidak punya diskon.");

@@ -120,13 +120,20 @@ export async function cancelOrder(
     if (!input.reason?.trim()) return fail("Alasan pembatalan wajib diisi.");
 
     const result = await prisma.$transaction(async (tx) => {
+      // Cancellation/refund must observe the same payment snapshot as the
+      // final order update when another cashier is recording a payment.
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} AND tenant_id = ${tenant.id} FOR UPDATE`;
       const order = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
       if (!order) throw new Error("Order tidak ditemukan.");
       if (TERMINAL.includes(order.status)) {
         throw new Error(`Order berstatus ${order.status} tidak bisa dibatalkan.`);
       }
 
-      const paid = Number(order.paid_amount);
+      const paidAgg = await tx.payment.aggregate({
+        where: { tenant_id: tenant.id, order_id: order.id, status: "CONFIRMED" },
+        _sum: { amount: true },
+      });
+      const paid = Number(paidAgg._sum.amount ?? order.paid_amount ?? 0);
       const dpRequired = Number(order.dp_required ?? Math.round(Number(order.total) * 0.5));
       const preProduction = PRE_PRODUCTION.includes(order.status);
 
@@ -159,6 +166,23 @@ export async function cancelOrder(
         throw new Error("Metode pengembalian wajib diisi jika ada refund.");
       }
 
+      if (refundAmount > 0) {
+        await tx.payment.create({
+          data: {
+            tenant_id: tenant.id,
+            order_id: order.id,
+            amount: -refundAmount,
+            method: input.refundMethod!,
+            reference: `REFUND ${order.order_code}`,
+            status: "CONFIRMED",
+            received_by: actor.id,
+            notes: `Refund pembatalan: ${input.reason.trim()}`,
+          },
+        });
+      }
+
+      const netPaid = paid - refundAmount;
+
       await tx.order.update({
         where: { id: orderId },
         data: {
@@ -169,6 +193,8 @@ export async function cancelOrder(
           dp_refund_amount: refundAmount,
           dp_refund_method: refundAmount > 0 ? input.refundMethod : null,
           cancellation_approved_by: preProduction ? null : actor.id,
+          paid_amount: netPaid,
+          balance: Math.max(0, Number(order.total) - netPaid),
         },
       });
 

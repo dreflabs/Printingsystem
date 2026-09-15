@@ -1,6 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stockUsage, validateUsageIds } from "../src/lib/production-materials";
+import { calculatePrintingUnitPrice, validateMaterialUnitPair } from "../src/lib/catalog-constants";
+
+test("printing prices use the selected product unit", () => {
+  assert.equal(calculatePrintingUnitPrice("M2", 15000, 200, 300), 90000);
+  assert.equal(calculatePrintingUnitPrice("METER", 8000), 8000);
+  assert.equal(calculatePrintingUnitPrice("LEMBAR", 2000), 2000);
+  assert.equal(calculatePrintingUnitPrice("RIM", 650000), 650000);
+  assert.throws(() => calculatePrintingUnitPrice("M2", 15000, 0, 300));
+});
+
+test("material unit pairs reject incompatible units and require custom names", () => {
+  assert.deepEqual(validateMaterialUnitPair("ROLL", "METER"), { stock: "ROLL", usage: "METER", custom: null });
+  assert.deepEqual(validateMaterialUnitPair("RIM", "LEMBAR"), { stock: "RIM", usage: "LEMBAR", custom: null });
+  assert.throws(() => validateMaterialUnitPair("ROLL", "GRAM"), /tidak didukung/);
+  assert.throws(() => validateMaterialUnitPair("PAKET", "PAKET"), /custom/);
+  assert.deepEqual(validateMaterialUnitPair("PAKET", "PAKET", "PAKET"), { stock: "PAKET", usage: "PAKET", custom: "PAKET" });
+});
 
 test("roll-meter conversion preserves usage and waste with six decimals", () => {
   const q = stockUsage(5, 1, 50);

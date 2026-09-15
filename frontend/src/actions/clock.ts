@@ -100,6 +100,7 @@ export async function startBreak(): Promise<ActionResult<{ recordId: string; bre
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireAttendanceEligible(tenant.id, actor);
 
     const set = await tenantSetting(tenant.id);
     if (!set.personal_device_enabled)

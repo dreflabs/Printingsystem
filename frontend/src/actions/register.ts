@@ -6,6 +6,8 @@ import { ok, fail, type ActionResult } from "@/types/actions";
 import {
   buildStarterMaterials,
 } from "@/lib/starter-data";
+import { validateTenantPassword } from "@/lib/password-policy";
+import { rateLimit } from "@/lib/rate-limit";
 
 const DEFAULT_ROLES = ["owner", "admin", "designer_sales", "operator", "gudang"] as const;
 const TRIAL_DAYS = 14;
@@ -90,13 +92,14 @@ export async function registerTenant(
     const phone = input.phone?.trim() || null;
     const address = input.address?.trim() || null;
 
+    const signupLimit = rateLimit(`signup:${email || "unknown"}:${slug || "unknown"}`, 5, 60 * 60_000);
+    if (!signupLimit.ok) return fail("Terlalu banyak percobaan pendaftaran. Coba lagi nanti.");
+
     if (!ownerName) return fail("Nama lengkap wajib diisi.", { ownerName: "Wajib diisi." });
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       return fail("Alamat email tidak valid.", { email: "Email tidak valid." });
-    if (!input.password || input.password.length < 8)
-      return fail("Kata sandi minimal 8 karakter.", { password: "Minimal 8 karakter." });
-    if (!/[a-zA-Z]/.test(input.password) || !/[0-9]/.test(input.password))
-      return fail("Kata sandi harus mengandung huruf dan angka.", { password: "Gabungkan huruf dan angka." });
+    const passwordError = validateTenantPassword(input.password ?? "");
+    if (passwordError) return fail(passwordError, { password: passwordError });
     if (!shopName) return fail("Nama percetakan wajib diisi.", { shopName: "Wajib diisi." });
     if (!/^[a-z0-9]{3,30}$/.test(slug))
       return fail("Subdomain harus 3–30 karakter, huruf kecil/angka saja.", {

@@ -20,8 +20,8 @@ export function ResetPasswordForm({ token }: { token: string }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password.length < 8) {
-      setError("Kata sandi minimal 8 karakter.");
+    if (password.length < 12 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+      setError("Kata sandi minimal 12 karakter dan harus mengandung huruf serta angka.");
       return;
     }
     if (password !== confirm) {

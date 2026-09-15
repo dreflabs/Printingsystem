@@ -9,6 +9,7 @@ import { logAction } from "@/lib/logger";
 import { hhmmToMinutes } from "@/lib/attendance";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
+import { can } from "@/lib/permissions";
 
 export interface AttendanceSettings {
   workStart: string;
@@ -36,6 +37,8 @@ const MODES = ["OFF", "FLAG", "ENFORCE"] as const;
 export async function getAttendanceSettings(): Promise<ActionResult<AttendanceSettings>> {
   try {
     const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!can(actor, "attendance.settings.read")) return fail("Anda tidak memiliki akses melihat pengaturan absensi.");
     const row = await prisma.tenantAttendanceSetting.upsert({
       where: { tenant_id: tenant.id },
       update: {},
@@ -54,7 +57,7 @@ export async function updateAttendanceSettings(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!actor.roles.includes("owner"))
+    if (!can(actor, "attendance.configure"))
       return fail("Hanya Owner yang boleh mengubah pengaturan absensi.");
 
     const before = await prisma.tenantAttendanceSetting.upsert({

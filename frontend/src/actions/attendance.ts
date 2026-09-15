@@ -10,8 +10,7 @@ import { sendWhatsApp } from "@/lib/wa";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 import { hhmmToMinutes } from "@/lib/attendance";
-
-const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
+import { can } from "@/lib/permissions";
 
 export type AttendanceColumnMapping = {
   /** kolom nama pegawai (wajib) */
@@ -108,7 +107,7 @@ const DIR_OUT = ["out", "pulang", "keluar", "c/out", "checkout", "check-out", "c
 export async function previewAttendanceImport(csvText: string) {
   try {
     const actor = await requireUser();
-    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengimpor absensi.");
+    if (!can(actor, "attendance.import")) return fail("Hanya Owner/Admin yang boleh mengimpor absensi.");
     const { headers, rows } = parseCsv(csvText);
     if (headers.length === 0) return fail("File CSV kosong atau tidak terbaca.");
 
@@ -146,7 +145,7 @@ export async function commitAttendanceImport(input: {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengimpor absensi.");
+    if (!can(actor, "attendance.import")) return fail("Hanya Owner/Admin yang boleh mengimpor absensi.");
     const attendanceSet = await prisma.tenantAttendanceSetting.upsert({
       where: { tenant_id: tenant.id }, update: {}, create: { tenant_id: tenant.id },
     });
@@ -215,22 +214,31 @@ export async function commitAttendanceImport(input: {
       where: { tenant_id: tenant.id },
       select: { id: true, name: true, username: true },
     });
-    const byName = new Map<string, string>();
+    const byName = new Map<string, Set<string>>();
     users.forEach((u) => {
-      byName.set(normName(u.name), u.id);
-      if (u.username) byName.set(normName(u.username), u.id);
+      const add = (key: string) => {
+        const ids = byName.get(key) ?? new Set<string>();
+        ids.add(u.id);
+        byName.set(key, ids);
+      };
+      add(normName(u.name));
+      if (u.username) add(normName(u.username));
     });
 
     let lateCount = 0;
     const lateEntries: { name: string; jam: string }[] = [];
     const unmatched = new Set<string>();
+    const ambiguous = new Set<string>();
     const days = list.map((d) => d.day.getTime());
     const periodStart = new Date(Math.min(...days));
     const periodEnd = new Date(Math.max(...days));
 
     const recordData = list.map((d) => {
-      const userId = byName.get(normName(d.name)) ?? null;
-      if (!userId) unmatched.add(d.name);
+      const candidates = byName.get(normName(d.name));
+      const userId = candidates?.size === 1 ? [...candidates][0] : null;
+      if (!userId) {
+        (candidates?.size ? ambiguous : unmatched).add(d.name);
+      }
 
       let status = "ON_TIME";
       let lateMin = 0;
@@ -262,6 +270,14 @@ export async function commitAttendanceImport(input: {
         late_minutes: lateMin,
       };
     });
+
+    if (unmatched.size || ambiguous.size) {
+      const details = [
+        unmatched.size ? `tidak cocok: ${[...unmatched].slice(0, 5).join(", ")}` : "",
+        ambiguous.size ? `nama ganda: ${[...ambiguous].slice(0, 5).join(", ")}` : "",
+      ].filter(Boolean).join("; ");
+      return fail(`Impor ditolak sampai identitas pegawai diperbaiki (${details}). Gunakan username yang unik.`);
+    }
 
     // Guard konflik dengan absen in-app (02-WORKFLOW/18-ABSENSI-IN-APP.md §5).
     // Prioritas kepercayaan: IN_APP/KIOSK > MANUAL > FINGERPRINT_IMPORT.
@@ -438,7 +454,7 @@ export async function listAttendanceImports() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat riwayat impor.");
+    if (!can(actor, "attendance.report")) return fail("Hanya Owner/Admin yang boleh melihat riwayat impor.");
 
     const imports = await prisma.attendanceImport.findMany({
       where: { tenant_id: tenant.id },
@@ -468,7 +484,7 @@ export async function getAttendanceReport(params?: { from?: string; to?: string;
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat laporan absensi.");
+    if (!can(actor, "attendance.report")) return fail("Hanya Owner/Admin yang boleh melihat laporan absensi.");
     const attendanceSet = await prisma.tenantAttendanceSetting.upsert({
       where: { tenant_id: tenant.id }, update: {}, create: { tenant_id: tenant.id },
     });
@@ -497,11 +513,18 @@ export async function getAttendanceReport(params?: { from?: string; to?: string;
 
     // Statistik job per operator (untuk kolom kinerja di laporan pegawai)
     const userIds = [...new Set(records.map((r) => r.user_id).filter((x): x is string => !!x))];
+    const jobDateRange: Record<string, Date> = {};
+    if (params?.from) jobDateRange.gte = new Date(params.from);
+    if (params?.to) {
+      const to = new Date(params.to);
+      to.setHours(23, 59, 59, 999);
+      jobDateRange.lte = to;
+    }
     const jobStats =
       userIds.length > 0
         ? await prisma.productionJob.groupBy({
             by: ["operator_id"],
-            where: { tenant_id: tenant.id, operator_id: { in: userIds } },
+            where: { tenant_id: tenant.id, operator_id: { in: userIds }, ...(Object.keys(jobDateRange).length ? { actual_end: jobDateRange } : {}) },
             _count: { _all: true },
             _sum: { actual_qty: true, waste_qty: true },
           })

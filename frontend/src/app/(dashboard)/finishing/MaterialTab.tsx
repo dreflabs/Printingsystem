@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { getMaterials, getMaterialMovementHistory, adjustMaterialStock, receiveMaterialStock, createMaterial, updateMaterial, getMachines } from "@/actions/master-data";
 import { getSessionUser } from "@/actions/session";
 import { getMaterialStocktake, startMaterialStocktake, recordMaterialStocktakeCount, submitMaterialStocktake, approveMaterialStocktake } from "@/actions/stocktake";
+import { MATERIAL_STOCK_UNITS, MATERIAL_USAGE_UNITS } from "@/lib/catalog-constants";
 
 type Material = {
   id: string;
@@ -28,8 +29,6 @@ type Material = {
 };
 
 
-const UNIT_STOCK = ["ROLL", "METER", "LEMBAR", "LITER", "KG", "RIM", "BOTOL", "PCS"];
-const UNIT_USAGE = ["METER", "LEMBAR", "ML", "GRAM", "PCS"];
 const CUSTOM = "__CUSTOM__";
 
 function MaterialModal({ editing, groups, onClose, onDone }: { editing: Material | null; groups: string[]; onClose: () => void; onDone: () => void }) {
@@ -38,9 +37,10 @@ function MaterialModal({ editing, groups, onClose, onDone }: { editing: Material
 
   const [name, setName] = useState(editing?.name ?? "");
   const [type, setType] = useState(editing?.type ?? "MEDIA");
-  const [unitStock, setUnitStock] = useState(editing?.unit_stock ?? "ROLL");
-  const [unitUsage, setUnitUsage] = useState(editing?.unit_usage ?? "METER");
-  const [unitCustom, setUnitCustom] = useState("");
+  const editingUsesCustom = !!editing && (!MATERIAL_STOCK_UNITS.includes(editing.unit_stock as typeof MATERIAL_STOCK_UNITS[number]) || !MATERIAL_USAGE_UNITS.includes(editing.unit_usage as typeof MATERIAL_USAGE_UNITS[number]));
+  const [unitStock, setUnitStock] = useState(editingUsesCustom ? CUSTOM : (editing?.unit_stock ?? "ROLL"));
+  const [unitUsage, setUnitUsage] = useState(editingUsesCustom ? CUSTOM : (editing?.unit_usage ?? "METER"));
+  const [unitCustom, setUnitCustom] = useState(editingUsesCustom ? (editing?.unit_custom ?? editing?.unit_stock ?? "") : "");
   const [conv, setConv] = useState(String(editing?.conversion_factor ?? 1));
   const [minStock, setMinStock] = useState(String(editing?.min_stock ?? 10));
   const [cost, setCost] = useState(String(editing?.standard_cost ?? 0));
@@ -116,7 +116,7 @@ function MaterialModal({ editing, groups, onClose, onDone }: { editing: Material
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted mb-1 block">Standard Cost (Rp)</label>
+              <label className="text-xs font-medium text-muted mb-1 block">Standard Cost (Rp per {resolvedStock || "unit stok"})</label>
               <input type="number" required min="0" value={cost} onChange={(e) => setCost(e.target.value)} className="w-full h-11 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal" />
             </div>
           </div>
@@ -125,14 +125,14 @@ function MaterialModal({ editing, groups, onClose, onDone }: { editing: Material
             <div>
               <label className="text-xs font-medium text-muted mb-1 block">Satuan Beli / Gudang *</label>
               <select value={unitStock} onChange={(e) => setUnitStock(e.target.value)} className="w-full h-11 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal">
-                {UNIT_STOCK.map((u) => <option key={u} value={u}>{u}</option>)}
+                {MATERIAL_STOCK_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
                 <option value={CUSTOM}>Custom…</option>
               </select>
             </div>
             <div>
               <label className="text-xs font-medium text-muted mb-1 block">Satuan Produksi *</label>
               <select value={unitUsage} onChange={(e) => setUnitUsage(e.target.value)} className="w-full h-11 bg-elevated border border-border rounded-xl px-3 text-sm text-primary outline-none focus:border-accent-teal">
-                {UNIT_USAGE.map((u) => <option key={u} value={u}>{u}</option>)}
+                {MATERIAL_USAGE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
                 <option value={CUSTOM}>Custom…</option>
               </select>
             </div>
@@ -233,7 +233,7 @@ function MaterialReceiptModal({ materials, onClose, onDone }: { materials: Mater
             <label className="text-xs text-muted">Supplier<input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Nama supplier" className="mt-1 w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary" /></label>
             <label className="text-xs text-muted">No. invoice/surat jalan<input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="Opsional" className="mt-1 w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary" /></label>
           </div>
-          <label className="text-xs text-muted">Harga beli per satuan<input type="number" min="0" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} placeholder="Opsional" className="mt-1 w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary" /></label>
+          <label className="text-xs text-muted">Harga beli (Rp per {selected?.unit_stock ?? "unit stok"})<input type="number" min="0" step="1" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} placeholder="Opsional" className="mt-1 w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary" /></label>
           <label className="text-xs text-muted">Catatan<input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opsional" className="mt-1 w-full h-10 bg-elevated border border-border rounded-xl px-3 text-sm text-primary" /></label>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="flex-1 h-11 rounded-xl bg-elevated border border-border text-sm text-muted">Batal</button>

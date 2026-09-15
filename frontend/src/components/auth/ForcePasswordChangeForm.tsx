@@ -14,14 +14,14 @@ export function ForcePasswordChangeForm() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  const hasLen = password.length >= 8;
+  const hasLen = password.length >= 12;
   const hasMix = /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
   const matches = password.length > 0 && password === confirm;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!hasLen) return setError("Kata sandi minimal 8 karakter.");
+    if (!hasLen) return setError("Kata sandi minimal 12 karakter.");
     if (!hasMix) return setError("Kata sandi harus mengandung huruf dan angka.");
     if (!matches) return setError("Konfirmasi kata sandi tidak cocok.");
 

@@ -4,6 +4,8 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { ok, fail, type ActionResult } from "@/types";
+import { validateTenantPassword } from "@/lib/password-policy";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * Self-serve password reset. Restricted to Owner accounts by design — employees
@@ -14,7 +16,7 @@ import { ok, fail, type ActionResult } from "@/types";
  * console.log in `deliverResetLink` with a real send.
  */
 
-const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const TOKEN_TTL_MS = 15 * 60 * 1000; // 15 menit, sesuai kebijakan reset tenant
 const APP_URL = process.env.APP_URL?.replace(/\/$/, "") || "http://localhost:3000";
 
 function sha256(v: string) {
@@ -50,6 +52,8 @@ export async function requestPasswordReset(
     if (!slug || !/^[a-z0-9]{3,30}$/.test(slug)) {
       return fail("Workspace tidak valid.", { workspace: "Isi subdomain workspace Anda." });
     }
+    const resetLimit = rateLimit(`password-reset:${normalized}:${slug}`, 5, 60 * 60_000);
+    if (!resetLimit.ok) return fail("Terlalu banyak permintaan reset. Coba lagi nanti.");
 
     const tenant = await prisma.tenant.findUnique({
       where: { slug },
@@ -97,9 +101,8 @@ export async function resetPassword(
 ): Promise<ActionResult<null>> {
   try {
     if (!token?.trim()) return fail("Token tidak ada.");
-    if (!newPassword || newPassword.length < 8) {
-      return fail("Kata sandi baru minimal 8 karakter.");
-    }
+    const passwordError = validateTenantPassword(newPassword ?? "");
+    if (passwordError) return fail(passwordError);
 
     const record = await prisma.passwordResetToken.findUnique({
       where: { token_hash: sha256(token.trim()) },
@@ -111,8 +114,16 @@ export async function resetPassword(
 
     const password_hash = await bcrypt.hash(newPassword, 12);
 
-    await prisma.$transaction([
-      prisma.user.update({
+    await prisma.$transaction(async (tx) => {
+      // Conditional update menjadikan token benar-benar single-use ketika dua
+      // request reset yang sama tiba bersamaan.
+      const claimed = await tx.passwordResetToken.updateMany({
+        where: { id: record.id, used_at: null, expires_at: { gt: new Date() } },
+        data: { used_at: new Date() },
+      });
+      if (claimed.count !== 1) throw new Error("RESET_TOKEN_ALREADY_USED");
+
+      await tx.user.update({
         where: { id: record.user_id },
         data: {
           password_hash,
@@ -122,15 +133,11 @@ export async function resetPassword(
           must_change_password: false,
         },
       }),
-      prisma.passwordResetToken.update({
-        where: { id: record.id },
-        data: { used_at: new Date() },
-      }),
       // Burn any other outstanding tokens for this user.
-      prisma.passwordResetToken.deleteMany({
+      await tx.passwordResetToken.deleteMany({
         where: { user_id: record.user_id, used_at: null },
-      }),
-    ]);
+      });
+    });
 
     return ok(null);
   } catch (e) {

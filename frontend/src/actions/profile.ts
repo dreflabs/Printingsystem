@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/actor";
 import { isTenantKey } from "@/lib/storage";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
+import { validateTenantPassword } from "@/lib/password-policy";
 
 /** Password bawaan sistem untuk pegawai baru (lihat createEmployee). Dilarang dipakai sebagai password permanen. */
 const DEFAULT_EMPLOYEE_PASSWORD = "printpilot123!";
@@ -127,6 +128,9 @@ export async function changePassword(userId: string, oldPassword: string, newPas
     
     if (!user) throw new Error("User not found or access denied");
 
+    const passwordError = validateTenantPassword(newPassword ?? "");
+    if (passwordError) throw new Error(passwordError);
+
     const isMatch = await bcrypt.compare(oldPassword, user.password_hash);
     if (!isMatch) {
       throw new Error("Password lama yang Anda masukkan salah.");
@@ -158,12 +162,8 @@ export async function forcePasswordChange(newPassword: string) {
     const tenant = await requireTenant();
     const actor = await requireUser();
 
-    if (newPassword.length < 8) {
-      return { success: false, error: "Kata sandi baru minimal 8 karakter." };
-    }
-    if (!/[a-zA-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-      return { success: false, error: "Kata sandi harus mengandung huruf dan angka." };
-    }
+    const passwordError = validateTenantPassword(newPassword ?? "");
+    if (passwordError) return { success: false, error: passwordError };
     if (newPassword === DEFAULT_EMPLOYEE_PASSWORD) {
       return { success: false, error: "Gunakan kata sandi baru, bukan password bawaan sistem." };
     }

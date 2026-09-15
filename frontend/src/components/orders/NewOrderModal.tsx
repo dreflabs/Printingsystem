@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { getOrderFormData, createPrintingOrder, type CreatePrintingOrderInput } from "@/actions/orders";
 import { addPayment } from "@/actions/orders";
 import { getSessionUser } from "@/actions/session";
+import { calculatePrintingUnitPrice, printingUnitLabel } from "@/lib/catalog-constants";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface ItemRow {
@@ -84,17 +85,17 @@ function parseRp(val: string) {
   return parseFloat(String(val).replace(/\./g, "")) || 0;
 }
 
-/** Harga item otomatis dari harga dasar produk (M2 = per m², selain itu per pcs). */
+/** Harga item otomatis dari harga katalog sesuai satuan produk. */
 function autoItemPrice(it: ItemRow, products: ProductOpt[]): number {
   const p = products.find((x) => x.value === it.productId);
   const rate = p?.allowedMaterials.find(m => m.value === it.materialId)?.unitPrice ?? p?.basePrice;
   if (!rate) return 0;
   const qty = Math.max(1, Number(it.qty) || 1);
-  if (p?.unit === "M2") {
-    const area = ((Number(it.width) || 0) / 100) * ((Number(it.height) || 0) / 100);
-    return area > 0 ? Math.round(rate * area) * qty : 0;
+  try {
+    return calculatePrintingUnitPrice(p?.unit ?? "PCS", rate, Number(it.width), Number(it.height)) * qty;
+  } catch {
+    return 0;
   }
-  return Math.round(rate) * qty;
 }
 
 // ─── Step Indicator ──────────────────────────────────────────────────────────
@@ -306,7 +307,7 @@ function ItemsStep({
           <div className="grid grid-cols-3 gap-3">
             <Input label="Lebar (cm)" type="number" placeholder="mis. 300" value={it.width} onChange={(e) => updateItem(it.key, { width: e.target.value })} />
             <Input label="Tinggi (cm)" type="number" placeholder="mis. 100" value={it.height} onChange={(e) => updateItem(it.key, { height: e.target.value })} />
-            <Input label="Qty (pcs) *" type="number" min="1" value={it.qty} onChange={(e) => updateItem(it.key, { qty: e.target.value })} />
+            <Input label={`Qty (${printingUnitLabel(selectedProduct?.unit ?? "PCS")}) *`} type="number" min="1" value={it.qty} onChange={(e) => updateItem(it.key, { qty: e.target.value })} />
           </div>
 
           <button

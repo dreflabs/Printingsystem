@@ -50,6 +50,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials, req) {
         if (!credentials?.username || !credentials?.password) return null;
         const identifier = (credentials.username as string).trim();
+        const normalizedIdentifier = identifier.toLowerCase();
         const pw = credentials.password as string;
         const meta = requestMeta(req);
 
@@ -63,7 +64,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Jika bukan, jangan berhenti di sini — lanjut ke login user tenant (owner
         // yang login pakai email).
         if (identifier.includes("@")) {
-          const sa = await prisma.superAdmin.findFirst({ where: { email: identifier } });
+          const sa = await prisma.superAdmin.findFirst({ where: { email: normalizedIdentifier } });
           if (sa) {
             const auditBase = {
               actorId: sa.id,

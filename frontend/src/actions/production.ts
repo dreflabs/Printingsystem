@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { getJobMaterialPlan, validateMachineMaterials, validateUsageIds, stockUsage, ACTIVE_PRINT_STATUSES } from "@/lib/production-materials";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
@@ -614,8 +614,11 @@ export async function finishProduction(
 
         const quantities = stockUsage(m.usageQty, m.wasteQty ?? 0, Number(material.conversion_factor));
         const usageTotal = quantities.total;
+        if (new Prisma.Decimal(material.current_stock).lt(usageTotal)) {
+          throw new Error(`Stok ${material.name} tidak mencukupi untuk menyelesaikan job. Catat stok masuk atau minta override Owner.`);
+        }
         // Pengurangan atomik — cegah lost update saat 2 operator pakai bahan shared
-        // bersamaan. Stok boleh minus (dicatat sbg anomali, produksi tidak diblokir).
+        // bersamaan. Saldo negatif diblokir; koreksi hanya melalui receipt/adjustment resmi.
         await tx.material.update({
           where: { id: material.id },
           data: { current_stock: { decrement: usageTotal } },

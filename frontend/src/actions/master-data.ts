@@ -9,7 +9,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
-import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES } from "@/lib/catalog-constants";
+import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES, validateMaterialUnitPair } from "@/lib/catalog-constants";
 import { can } from "@/lib/permissions";
 import { validateMaterialInboundQuantity } from "@/lib/material-quantity";
 
@@ -929,9 +929,10 @@ export async function deleteMachine(id: string) {
   }
 }
 
-async function validateMaterialSetup(tx: Prisma.TransactionClient, tenantId: string, data: { type?: string; purpose?: string; conversion_factor: number; min_stock: number; current_stock: number; standard_cost: number; machine_ids?: string[] }) {
+async function validateMaterialSetup(tx: Prisma.TransactionClient, tenantId: string, data: { type?: string; purpose?: string; unit_stock?: string; unit_usage?: string; unit_custom?: string | null; conversion_factor: number; min_stock: number; current_stock: number; standard_cost: number; machine_ids?: string[] }) {
   if (!data.type || !["MEDIA", "INK", "OTHER"].includes(data.type)) throw new Error("Tipe material tidak valid.");
   if (data.purpose && !["PRIMARY", "CONSUMABLE"].includes(data.purpose)) throw new Error("Fungsi material tidak valid.");
+  validateMaterialUnitPair(data.unit_stock ?? "", data.unit_usage ?? "", data.unit_custom);
   if (![data.conversion_factor, data.min_stock, data.current_stock, data.standard_cost].every(Number.isFinite) || data.conversion_factor <= 0 || data.min_stock < 0 || data.standard_cost < 0) throw new Error("Angka material tidak valid; konversi harus positif.");
   const ids = [...new Set(data.machine_ids ?? [])];
   if (ids.length !== (data.machine_ids ?? []).length || ids.length !== await tx.machine.count({ where: { tenant_id: tenantId, id: { in: ids } } })) throw new Error("Daftar mesin tidak valid untuk toko ini.");

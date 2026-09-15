@@ -27,7 +27,7 @@ export interface PlatformActor {
 export async function getPlatformActor(): Promise<PlatformActor | null> {
   const session = await auth();
   const u = session?.user as
-    | { id?: string; platform?: boolean; platformLoginAt?: number | null }
+    | { id?: string; platform?: boolean; platformLoginAt?: number | null; pwChangedAt?: number | null }
     | undefined;
   if (!u?.platform || !u.id) return null;
 
@@ -35,6 +35,8 @@ export async function getPlatformActor(): Promise<PlatformActor | null> {
 
   const record = await prisma.superAdmin.findUnique({ where: { id: u.id } });
   if (!record || !record.active) return null;
+  // Reset password harus langsung mencabut JWT platform yang terbit sebelumnya.
+  if ((u.pwChangedAt ?? 0) < record.password_changed_at.getTime()) return null;
 
   // Sub-level dinonaktifkan: setiap Super Admin aktif = akses penuh.
   return {

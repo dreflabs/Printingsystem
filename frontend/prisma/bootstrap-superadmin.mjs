@@ -26,6 +26,7 @@ import bcrypt from "bcryptjs";
 
 const BCRYPT_ROUNDS = 12;
 const MIN_PASSWORD_LEN = 12;
+const MAX_PASSWORD_BYTES = 72;
 
 // Kata sandi yang pernah dipakai contoh/seed — jangan sampai lolos ke produksi.
 const BANNED_PASSWORDS = new Set([
@@ -83,32 +84,69 @@ async function main() {
   if (password.length < MIN_PASSWORD_LEN) {
     return fail(`SUPER_ADMIN_PASSWORD minimal ${MIN_PASSWORD_LEN} karakter.`);
   }
+  if (new TextEncoder().encode(password).length > MAX_PASSWORD_BYTES) {
+    return fail(`SUPER_ADMIN_PASSWORD maksimal ${MAX_PASSWORD_BYTES} byte agar tidak ambigu pada bcrypt.`);
+  }
   if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
     return fail("SUPER_ADMIN_PASSWORD harus mengandung huruf dan angka.");
   }
   if (isProd && BANNED_PASSWORDS.has(password.toLowerCase())) {
     return fail("SUPER_ADMIN_PASSWORD memakai kata sandi contoh yang sudah bocor — ganti.");
   }
+  if (existing && await bcrypt.compare(password, existing.password_hash)) {
+    return fail("SUPER_ADMIN_PASSWORD harus berbeda dari kata sandi yang sekarang.");
+  }
 
   const password_hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
   if (existing) {
-    await prisma.superAdmin.update({
-      where: { email },
-      data: {
-        password_hash,
-        active: true,
-        failed_login_count: 0,
-        locked_until: null,
-      },
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.superAdmin.update({
+        where: { email },
+        data: {
+          password_hash,
+          active: true,
+          failed_login_count: 0,
+          locked_until: null,
+          password_changed_at: new Date(),
+        },
+      });
+      await tx.platformAuditLog.create({
+        data: {
+          actor_id: null,
+          actor_name: "SYSTEM_BREAK_GLASS",
+          actor_sub_level: "SUPER_ADMIN",
+          action: "SUPER_ADMIN_PASSWORD_RESET",
+          target_type: "SuperAdmin",
+          target_id: updated.id,
+          target_label: updated.email,
+          detail_json: JSON.stringify({ source: "bootstrap-superadmin", reason: "manual break-glass reset" }),
+        },
+      });
     });
     console.log(`\n✔ Kata sandi Super Admin "${email}" direset, kunci dibuka, akun diaktifkan.`);
+    console.log("  Sesi platform lama dicabut.");
     console.log("  Nama dan peran tidak diubah.");
     return;
   }
 
-  const created = await prisma.superAdmin.create({
-    data: { name, email, password_hash, role: "SUPER_ADMIN", active: true },
+  const created = await prisma.$transaction(async (tx) => {
+    const account = await tx.superAdmin.create({
+      data: { name, email, password_hash, role: "SUPER_ADMIN", active: true },
+    });
+    await tx.platformAuditLog.create({
+      data: {
+        actor_id: null,
+        actor_name: "SYSTEM_BREAK_GLASS",
+        actor_sub_level: "SUPER_ADMIN",
+        action: "SUPER_ADMIN_CREATED",
+        target_type: "SuperAdmin",
+        target_id: account.id,
+        target_label: account.email,
+        detail_json: JSON.stringify({ source: "bootstrap-superadmin", reason: "manual break-glass create" }),
+      },
+    });
+    return account;
   });
   console.log(`\n✔ Super Admin dibuat.`);
   console.log(`  email : ${created.email}`);

@@ -7,6 +7,8 @@
  */
 
 export const MIN_SUPER_ADMIN_PASSWORD_LEN = 12;
+/** Bcrypt hanya memakai 72 byte pertama dari password. Tolak sisanya agar tidak ambigu. */
+export const MAX_SUPER_ADMIN_PASSWORD_BYTES = 72;
 
 /** Kata sandi contoh/seed yang pernah bocor — tidak boleh dipakai di produksi. */
 export const BANNED_SUPER_ADMIN_PASSWORDS = new Set([
@@ -20,6 +22,9 @@ export const BANNED_SUPER_ADMIN_PASSWORDS = new Set([
 export function validateSuperAdminPassword(pw: string): string | null {
   if (!pw || pw.length < MIN_SUPER_ADMIN_PASSWORD_LEN) {
     return `Kata sandi minimal ${MIN_SUPER_ADMIN_PASSWORD_LEN} karakter.`;
+  }
+  if (new TextEncoder().encode(pw).length > MAX_SUPER_ADMIN_PASSWORD_BYTES) {
+    return `Kata sandi terlalu panjang (maksimal ${MAX_SUPER_ADMIN_PASSWORD_BYTES} byte).`;
   }
   if (!/[a-zA-Z]/.test(pw) || !/[0-9]/.test(pw)) {
     return "Kata sandi harus mengandung huruf dan angka.";

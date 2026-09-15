@@ -104,6 +104,16 @@ npm run bootstrap:superadmin
 
 Hapus `SUPER_ADMIN_PASSWORD` dari environment setelah selesai.
 
+Reset password juga menaikkan versi perubahan password dan mencabut sesi platform
+lama. Bootstrap menulis event `SUPER_ADMIN_PASSWORD_RESET` atau
+`SUPER_ADMIN_CREATED` sebagai `SYSTEM_BREAK_GLASS` di `PlatformAuditLog`; tetap
+catat operator, waktu, dan alasan di change log Coolify karena jalur terminal
+tidak memiliki identitas Super Admin aplikasi.
+
+Password yang pernah tercetak di terminal atau chat harus dianggap kompromi dan
+tidak boleh dipakai lagi. Masukkan password melalui `read` interaktif, bukan
+sebagai literal pada command atau Environment Variable permanen.
+
 > **Jangan jalankan `npx prisma db seed` di produksi.** Seed menghapus seluruh isi
 > database lebih dulu. Guard `ALLOW_PROD_SEED` ada justru untuk mencegah itu.
 

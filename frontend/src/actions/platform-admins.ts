@@ -122,7 +122,7 @@ export async function setSuperAdminActive(id: string, active: boolean) {
     await prisma.superAdmin.update({
       where: { id },
       data: active
-        ? { active: true, failed_login_count: 0, locked_until: null }
+        ? { active: true, failed_login_count: 0, locked_until: null, password_changed_at: new Date() }
         : { active: false },
     });
     await log(actor, active ? "SUPER_ADMIN_ACTIVATED" : "SUPER_ADMIN_DEACTIVATED", {
@@ -155,6 +155,7 @@ export async function resetSuperAdminPassword(id: string, newPassword: string) {
     if (!target) return fail("Akun tidak ditemukan.");
     const pwErr = validateSuperAdminPassword(newPassword);
     if (pwErr) return fail(pwErr);
+    if (await bcrypt.compare(newPassword, target.password_hash)) return fail("Kata sandi baru harus berbeda dari yang sekarang.");
 
     await prisma.superAdmin.update({
       where: { id },
@@ -162,6 +163,7 @@ export async function resetSuperAdminPassword(id: string, newPassword: string) {
         password_hash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS),
         failed_login_count: 0,
         locked_until: null,
+        password_changed_at: new Date(),
       },
     });
     await log(actor, "SUPER_ADMIN_PASSWORD_RESET", { id, label: target.email });

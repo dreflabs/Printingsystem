@@ -142,6 +142,8 @@ model SuperAdmin {
   failed_login_count Int       @default(0)
   locked_until       DateTime?
   last_login_at      DateTime?
+  // Naik setiap password berubah; dipakai untuk mencabut JWT platform lama.
+  password_changed_at DateTime  @default(now())
   // Login Super Admin = email + password saja (MFA/OTP dihapus 2026-09-08).
   created_at         DateTime  @default(now())
 

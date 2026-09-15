@@ -51,9 +51,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!credentials?.username || !credentials?.password) return null;
         const identifier = (credentials.username as string).trim();
         const pw = credentials.password as string;
+        const meta = requestMeta(req);
 
-        // Rem brute-force: maks. 10 percobaan / 15 menit per identifier.
-        const rlKey = `login:${identifier.toLowerCase()}`;
+        // Rem brute-force: maks. 10 percobaan / 15 menit per identifier+IP.
+        // Lockout database tetap menjadi kontrol utama per akun.
+        const rlKey = `login:${identifier.toLowerCase()}:${meta.ip ?? "unknown"}`;
         if (!rateLimit(rlKey, 10, 15 * 60_000).ok) return null;
 
         // ── Platform login (Super Admin) — identified by email, stored in super_admins ──
@@ -63,7 +65,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (identifier.includes("@")) {
           const sa = await prisma.superAdmin.findFirst({ where: { email: identifier } });
           if (sa) {
-            const meta = requestMeta(req);
             const auditBase = {
               actorId: sa.id,
               actorName: sa.name,
@@ -123,6 +124,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               platform: true,
               subLevel: sa.role, // SUPER_ADMIN / SUPPORT / FINANCE
               platformLoginAt: Date.now(), // untuk batas umur sesi platform (lihat getPlatformActor)
+              pwChangedAt: sa.password_changed_at?.getTime() ?? 0,
             };
           }
         }

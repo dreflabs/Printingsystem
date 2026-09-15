@@ -29,6 +29,7 @@ export interface AttendanceSettings {
   kioskEnabled: boolean;
   personalDeviceEnabled: boolean;
   autoCloseAt: string;
+  timezone: string;
 }
 
 const MODES = ["OFF", "FLAG", "ENFORCE"] as const;
@@ -72,6 +73,11 @@ export async function updateAttendanceSettings(
     if (patch.lateAfter !== undefined) data.late_after = reqTime(patch.lateAfter, "Batas telat");
     if (patch.workEnd !== undefined) data.work_end = reqTime(patch.workEnd, "Jam pulang");
     if (patch.autoCloseAt !== undefined) data.auto_close_at = reqTime(patch.autoCloseAt, "Jam auto-tutup");
+    if (patch.timezone !== undefined) {
+      const tz = patch.timezone.trim();
+      try { new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(); } catch { return fail("Timezone tidak valid. Gunakan nama IANA seperti Asia/Jakarta."); }
+      data.timezone = tz;
+    }
 
     const ws = (data.work_start ?? before.work_start) as string;
     const la = (data.late_after ?? before.late_after) as string;
@@ -189,6 +195,7 @@ function shape(r: Row): AttendanceSettings {
     kioskEnabled: r.kiosk_enabled,
     personalDeviceEnabled: r.personal_device_enabled,
     autoCloseAt: r.auto_close_at,
+    timezone: r.timezone,
   };
 }
 

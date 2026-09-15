@@ -13,10 +13,11 @@ import { logAction } from "@/lib/logger";
 import { sendWhatsApp } from "@/lib/wa";
 import {
   hhmmToMinutes,
-  minutesOfDay,
-  lateInfo,
-  checkOutInfo,
-  isWorkday,
+  lateInfoForTenant,
+  checkOutInfoForTenant,
+  isWorkdayForTenant,
+  tenantMinutesOfDay,
+  tenantDayDate,
   evaluateGeofence,
   ipAllowed,
   decodeSelfieDataUrl,
@@ -43,19 +44,9 @@ export interface PunchContext {
   input: PunchInput;
 }
 
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-function endOfToday(): Date {
-  const d = startOfToday();
-  d.setDate(d.getDate() + 1);
-  return d;
-}
-function todayRecord(userId: string, tenantId: string) {
+function todayRecord(userId: string, tenantId: string, timeZone: string) {
   return prisma.attendanceRecord.findFirst({
-    where: { tenant_id: tenantId, user_id: userId, attendance_day: { gte: startOfToday(), lt: endOfToday() } },
+    where: { tenant_id: tenantId, user_id: userId, attendance_day: tenantDayDate(new Date(), timeZone) },
     orderBy: { created_at: "desc" },
   });
 }
@@ -72,13 +63,13 @@ export interface ClockInResult {
 export async function performClockIn(ctx: PunchContext): Promise<ClockInResult> {
   const { tenantId, user, setting: set, method, ip, deviceLabel, input } = ctx;
 
-  const existing = await todayRecord(user.id, tenantId);
+  const existing = await todayRecord(user.id, tenantId, set.timezone);
   if (existing?.check_in) throw new PunchError("Anda sudah absen masuk hari ini.");
 
   const now = new Date();
 
   const startMin = hhmmToMinutes(set.work_start);
-  if (startMin != null && minutesOfDay(now) < startMin - set.earliest_clock_in_min) {
+  if (startMin != null && tenantMinutesOfDay(now, set.timezone) < startMin - set.earliest_clock_in_min) {
     throw new PunchError(
       `Belum bisa absen masuk. Paling awal ${set.earliest_clock_in_min} menit sebelum jam ${set.work_start}.`
     );
@@ -105,8 +96,8 @@ export async function performClockIn(ctx: PunchContext): Promise<ClockInResult> 
   if (set.selfie_required && !selfie) throw new PunchError("Selfie wajib untuk absen. Izinkan kamera lalu coba lagi.");
   if (input.selfie && !selfie) throw new PunchError("Foto selfie tidak valid. Ulangi pengambilan foto.");
 
-  const { status, lateMinutes } = lateInfo(now, set.late_after);
-  const offDay = !isWorkday(now, set.workdays);
+  const { status, lateMinutes } = lateInfoForTenant(now, set.late_after, set.timezone);
+  const offDay = !isWorkdayForTenant(now, set.workdays, set.timezone);
 
   const rec = await prisma.$transaction(async (tx) => {
     const base = {
@@ -131,8 +122,8 @@ export async function performClockIn(ctx: PunchContext): Promise<ClockInResult> 
             tenant_id: tenantId,
             user_id: user.id,
             employee_name: user.name,
-            attendance_day: startOfToday(),
-            date: startOfToday(),
+            attendance_day: tenantDayDate(now, set.timezone),
+            date: now,
             ...base,
           },
         });
@@ -162,7 +153,7 @@ export interface ClockOutResult {
 export async function performClockOut(ctx: PunchContext): Promise<ClockOutResult> {
   const { tenantId, user, setting: set, method, ip, input } = ctx;
 
-  const rec = await todayRecord(user.id, tenantId);
+  const rec = await todayRecord(user.id, tenantId, set.timezone);
   if (!rec || !rec.check_in) throw new PunchError("Anda belum absen masuk hari ini.");
   if (rec.check_out) throw new PunchError("Anda sudah absen pulang hari ini.");
   if (rec.break_start && !rec.break_end) throw new PunchError("Selesaikan istirahat dulu sebelum absen pulang.");
@@ -187,7 +178,7 @@ export async function performClockOut(ctx: PunchContext): Promise<ClockOutResult
   if (set.selfie_required && !selfie) throw new PunchError("Selfie wajib untuk absen pulang. Izinkan kamera lalu coba lagi.");
   if (input.selfie && !selfie) throw new PunchError("Foto selfie tidak valid. Ulangi pengambilan foto.");
 
-  const status = checkOutInfo(now, set.work_end);
+  const status = checkOutInfoForTenant(now, set.work_end, set.timezone);
   const checkoutIpFlag = set.ip_mode !== "OFF" && !ipAllowed(ip, set.ip_allowlist);
 
   await prisma.$transaction(async (tx) => {

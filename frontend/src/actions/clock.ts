@@ -16,6 +16,7 @@ import {
 } from "@/lib/attendance-punch";
 import { safeError } from "@/lib/safe-error";
 import { requireAttendanceEligible } from "@/lib/attendance-policy";
+import { tenantDayDate } from "@/lib/attendance";
 import { ok, fail, type ActionResult } from "@/types";
 
 /**
@@ -26,18 +27,6 @@ import { ok, fail, type ActionResult } from "@/types";
  * klien tidak pernah mengirim timestamp. Data absensi tidak bisa diedit/dihapus
  * siapa pun — Owner hanya menambah catatan.
  */
-
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfToday(): Date {
-  const d = startOfToday();
-  d.setDate(d.getDate() + 1);
-  return d;
-}
 
 export interface BreakStatus {
   recordId: string | null;
@@ -54,9 +43,9 @@ export interface BreakStatus {
   doneToday: boolean;
 }
 
-async function todayRecord(userId: string, tenantId: string) {
+async function todayRecord(userId: string, tenantId: string, timeZone: string) {
   return prisma.attendanceRecord.findFirst({
-    where: { tenant_id: tenantId, user_id: userId, attendance_day: { gte: startOfToday(), lt: endOfToday() } },
+    where: { tenant_id: tenantId, user_id: userId, attendance_day: tenantDayDate(new Date(), timeZone) },
     orderBy: { created_at: "desc" },
   });
 }
@@ -68,7 +57,7 @@ export async function getMyBreakStatus(): Promise<ActionResult<BreakStatus>> {
     await requireAttendanceEligible(tenant.id, actor);
     const set = await tenantSetting(tenant.id);
     const maxMin = set.break_max_min;
-    const rec = await todayRecord(actor.id, tenant.id);
+    const rec = await todayRecord(actor.id, tenant.id, set.timezone);
     if (!rec) {
       return ok({
         recordId: null, onBreak: false, breakStart: null, breakEnd: null,
@@ -106,7 +95,7 @@ export async function startBreak(): Promise<ActionResult<{ recordId: string; bre
     if (!set.personal_device_enabled)
       return fail("Absen dari HP pribadi dinonaktifkan. Catat istirahat lewat perangkat kiosk.");
 
-    const existing = await todayRecord(actor.id, tenant.id);
+    const existing = await todayRecord(actor.id, tenant.id, set.timezone);
     if (!existing?.check_in) return fail("Absen masuk terlebih dahulu sebelum memulai istirahat.");
     if (existing.check_out) return fail("Istirahat tidak dapat dimulai setelah absen pulang.");
     if (existing?.break_start && !existing.break_end) return fail("Anda sedang istirahat.");
@@ -123,8 +112,8 @@ export async function startBreak(): Promise<ActionResult<{ recordId: string; bre
             tenant_id: tenant.id,
             user_id: actor.id,
             employee_name: actor.name,
-            attendance_day: startOfToday(),
-            date: startOfToday(),
+            attendance_day: tenantDayDate(now, set.timezone),
+            date: now,
             check_in_status: "ON_TIME",
             break_start: now,
             break_status: "NORMAL",
@@ -150,7 +139,7 @@ export async function endBreak(): Promise<ActionResult<{ durationMin: number; st
     const actor = await requireUser();
     await requireAttendanceEligible(tenant.id, actor);
     const set = await tenantSetting(tenant.id);
-    const rec = await todayRecord(actor.id, tenant.id);
+    const rec = await todayRecord(actor.id, tenant.id, set.timezone);
     if (!rec || !rec.break_start) return fail("Anda belum memulai istirahat.");
     if (!rec.check_in) return fail("Absen masuk terlebih dahulu sebelum menyelesaikan istirahat.");
     if (rec.break_end) return fail("Istirahat sudah diselesaikan.");
@@ -221,9 +210,9 @@ export async function getMyAttendanceToday(): Promise<ActionResult<AttendanceTod
     const tenant = await requireTenant();
     const actor = await requireUser();
     await requireAttendanceEligible(tenant.id, actor);
-    const [rec, set, breakRes] = await Promise.all([
-      todayRecord(actor.id, tenant.id),
-      tenantSetting(tenant.id),
+    const set = await tenantSetting(tenant.id);
+    const [rec, breakRes] = await Promise.all([
+      todayRecord(actor.id, tenant.id, set.timezone),
       getMyBreakStatus(),
     ]);
     const brk: BreakStatus = breakRes.success

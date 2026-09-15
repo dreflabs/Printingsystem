@@ -262,7 +262,7 @@ export async function commitAttendanceImport(input: {
         tenant_id: tenant.id,
         user_id: userId,
         employee_name: d.name,
-        attendance_day: new Date(d.day.getFullYear(), d.day.getMonth(), d.day.getDate()),
+        attendance_day: new Date(Date.UTC(d.day.getFullYear(), d.day.getMonth(), d.day.getDate())),
         date: d.day,
         check_in: d.checkIn,
         check_out: d.checkOut,

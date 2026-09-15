@@ -1233,6 +1233,7 @@ model TenantAttendanceSetting {
   kiosk_enabled           Boolean  @default(false)
   personal_device_enabled Boolean  @default(true)
   auto_close_at           String   @default("23:59")
+  timezone                String   @default("Asia/Jakarta")
   created_at              DateTime @default(now())
   updated_at              DateTime @updatedAt
 }

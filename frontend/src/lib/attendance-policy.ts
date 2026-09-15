@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { Actor } from "@/lib/actor";
 import { can } from "@/lib/permissions";
+import { tenantDayDate } from "@/lib/attendance";
 
 /**
  * Server-side gate for personal attendance. Eligibility is deliberately
@@ -28,12 +29,10 @@ export async function requireAttendanceEligible(tenantId: string, actor: Actor) 
  */
 export async function requireCheckedInForWork(tenantId: string, actor: Actor) {
   await requireAttendanceEligible(tenantId, actor);
-  const day = new Date();
-  day.setHours(0, 0, 0, 0);
-  const next = new Date(day);
-  next.setDate(next.getDate() + 1);
+  const setting = await prisma.tenantAttendanceSetting.findUnique({ where: { tenant_id: tenantId }, select: { timezone: true } });
+  const day = tenantDayDate(new Date(), setting?.timezone ?? "Asia/Jakarta");
   const record = await prisma.attendanceRecord.findFirst({
-    where: { tenant_id: tenantId, user_id: actor.id, attendance_day: { gte: day, lt: next }, check_in: { not: null } },
+    where: { tenant_id: tenantId, user_id: actor.id, attendance_day: day, check_in: { not: null } },
     select: { id: true, check_in: true, check_out: true },
   });
   if (!record) throw new Error("Absen masuk terlebih dahulu sebelum mengerjakan job.");

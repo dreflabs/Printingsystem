@@ -35,6 +35,51 @@ export function minutesOfDay(d: Date): number {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+/** Tanggal kerja tenant dalam bentuk DATE UTC-midnight, tanpa bergantung TZ OS. */
+export function tenantDayDate(now: Date, timeZone: string): Date {
+  let parts: Record<string, string> = {};
+  try {
+    for (const p of new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now)) {
+      if (p.type !== "literal") parts[p.type] = p.value;
+    }
+  } catch {
+    for (const p of new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now)) {
+      if (p.type !== "literal") parts[p.type] = p.value;
+    }
+  }
+  return new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
+}
+
+/** Jam/menit dan hari kerja berdasarkan timezone tenant. */
+export function tenantMinutesOfDay(now: Date, timeZone: string): number {
+  const value = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
+  const [h, m] = value.split(":").map(Number);
+  return h * 60 + m;
+}
+
+export function tenantIsoWeekday(now: Date, timeZone: string): number {
+  const day = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(now);
+  return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(day) + 1;
+}
+
+export function lateInfoForTenant(now: Date, lateAfter: string, timeZone: string) {
+  const limit = hhmmToMinutes(lateAfter);
+  if (limit == null) return { status: "ON_TIME" as const, lateMinutes: 0 };
+  const mod = tenantMinutesOfDay(now, timeZone);
+  return mod > limit ? { status: "LATE" as const, lateMinutes: mod - limit } : { status: "ON_TIME" as const, lateMinutes: 0 };
+}
+
+export function checkOutInfoForTenant(now: Date, workEnd: string, timeZone: string): "ON_TIME" | "EARLY" {
+  const limit = hhmmToMinutes(workEnd);
+  if (limit == null) return "ON_TIME";
+  return tenantMinutesOfDay(now, timeZone) < limit ? "EARLY" : "ON_TIME";
+}
+
+export function isWorkdayForTenant(now: Date, workdays: string, timeZone: string): boolean {
+  const set = workdays.split(",").map((x) => Number(x.trim())).filter((x) => x >= 1 && x <= 7);
+  return set.length === 0 || set.includes(tenantIsoWeekday(now, timeZone));
+}
+
 /** 1=Senin … 7=Minggu (JS getDay: 0=Minggu). */
 export function isoWeekday(d: Date): number {
   const g = d.getDay();

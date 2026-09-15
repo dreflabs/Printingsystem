@@ -580,7 +580,14 @@ export async function createMaterial(data: {
     });
 
     revalidatePath("/admin");
-    return ok(material);
+    // Jangan meneruskan row Prisma mentah ke Client Component: field Decimal
+    // seperti conversion_factor/current_stock tidak dapat diserialisasi oleh
+    // boundary Server Action Next.js.
+    return ok({
+      id: material.id,
+      material_code: material.material_code,
+      name: material.name,
+    });
   } catch (e) {
     console.error("createMaterial:", e);
     return fail(safeError(e, "Gagal membuat material."));

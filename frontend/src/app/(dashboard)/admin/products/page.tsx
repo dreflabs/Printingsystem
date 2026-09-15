@@ -20,10 +20,10 @@ type Retail = {
 type Printing = {
   id: string; name: string; category: string; unit: string;
   base_price: number | null; default_material_id: string | null; default_machine_id: string | null; active: boolean;
-  material_options: { id: string; name: string; material_code: string; material_id: string; is_default: boolean; role: string; sort_order: number }[];
+  material_options: { id: string; name: string; material_code: string; material_id: string; is_default: boolean; role: string; sort_order: number; unit_price: number | null }[];
 };
 type Machine = { id: string; machine_code: string; name: string; category: string; status: string; notes: string | null; default_operator_id: string | null; default_operator_name: string | null };
-type MatOpt = { id: string; name: string; active?: boolean };
+type MatOpt = { id: string; name: string; active?: boolean; type: string; purpose: string; group_name: string | null; specifications: string | null; machine_ids: string[] };
 type DeletableItem = Retail | Printing | Machine;
 
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
@@ -105,6 +105,12 @@ function PrintingModal({
   const [materialId, setMaterialId] = useState(editing?.default_material_id ?? "");
   const [materialIds, setMaterialIds] = useState<string[]>(editing?.material_options.map((m) => m.material_id) ?? []);
   const [machineId, setMachineId] = useState(editing?.default_machine_id ?? "");
+  const [materialSearch, setMaterialSearch] = useState("");
+  const [materialGroup, setMaterialGroup] = useState("");
+  const [rates, setRates] = useState<Record<string, string>>(Object.fromEntries((editing?.material_options ?? []).map(m => [m.material_id, m.unit_price == null ? "" : String(m.unit_price)])));
+  const primary = materials.filter(m => m.purpose === "PRIMARY" && m.type !== "INK");
+  const groups = [...new Set(primary.map(m => m.group_name).filter((g): g is string => !!g))].sort();
+  const visibleMaterials = primary.filter(m => (!materialGroup || m.group_name === materialGroup) && `${m.name} ${m.specifications ?? ""}`.toLowerCase().includes(materialSearch.toLowerCase()));
   const [active, setActive] = useState(editing?.active ?? true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -120,6 +126,7 @@ function PrintingModal({
       default_material_id: materialId || null,
       default_machine_id: machineId || null,
       material_ids: materialIds,
+      material_rates: materialIds.map(id => ({ material_id: id, unit_price: rates[id]?.trim() ? Number(rates[id]) : null })),
     };
     const res = editing
       ? await updatePrintingProduct(editing.id, { ...payload, active })
@@ -147,40 +154,38 @@ function PrintingModal({
         </Field>
       </Grid2>
       <p className="text-[10px] text-muted -mt-2">Harga dasar dipakai untuk mengisi otomatis &quot;Harga Total&quot; saat buat order (tetap bisa diubah). Kosongkan kalau harga selalu ditentukan manual.</p>
-      <Field label="Material Default (opsional)">
-        <select className={inp} value={materialId} onChange={(e) => {
-          const next = e.target.value;
-          setMaterialId(next);
-          if (next && !materialIds.includes(next)) setMaterialIds((ids) => [...ids, next]);
-        }}>
-          <option value="">—</option>
-          {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-      </Field>
-      <Field label="Material yang Diizinkan untuk Produk">
-        <div className="max-h-44 overflow-y-auto rounded-xl border border-border bg-elevated p-3 space-y-2">
-          {materials.length === 0 ? (
-            <p className="text-xs text-muted">Belum ada master material aktif.</p>
-          ) : materials.map((m) => (
-            <label key={m.id} className="flex items-center gap-2 text-xs text-primary">
-              <input
-                type="checkbox"
-                checked={materialIds.includes(m.id)}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setMaterialIds((ids) => ids.includes(m.id) ? ids : [...ids, m.id]);
-                  } else {
-                    setMaterialIds((ids) => ids.filter((id) => id !== m.id));
-                    if (materialId === m.id) setMaterialId("");
-                  }
-                }}
-              />
-              <span>{m.name}</span>
-              {materialId === m.id && <span className="text-[10px] text-accent-teal font-bold">DEFAULT</span>}
-            </label>
-          ))}
+      <Field label={`Bahan yang tersedia untuk produk (${materialIds.length} dipilih)`}>
+        <div className="space-y-3">
+          <input className={inp} aria-label="Cari bahan produk" placeholder="Cari bahan atau spesifikasi..." value={materialSearch} onChange={e => setMaterialSearch(e.target.value)} />
+          <select className={inp} aria-label="Kelompok bahan" value={materialGroup} onChange={e => setMaterialGroup(e.target.value)}>
+            <option value="">Semua kelompok bahan utama</option>
+            {groups.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
+          <div className="max-h-64 overflow-y-auto divide-y divide-border rounded-xl border border-border px-3">
+            {visibleMaterials.length === 0 && <p className="py-4 text-xs text-muted">Tidak ada bahan utama yang sesuai. Atur material melalui Gudang.</p>}
+            {visibleMaterials.map(m => <div key={m.id} className="py-3 space-y-2">
+              <label className="flex items-start gap-2 text-sm text-primary">
+                <input type="checkbox" checked={materialIds.includes(m.id)} onChange={e => {
+                  if (e.target.checked) setMaterialIds(ids => [...ids, m.id]);
+                  else { setMaterialIds(ids => ids.filter(id => id !== m.id)); if (materialId === m.id) setMaterialId(""); }
+                }} />
+                <span>{m.name}<span className="block text-xs text-muted">{m.group_name || "Belum ada kelompok"}{m.specifications ? ` · ${m.specifications}` : ""}</span></span>
+              </label>
+              {materialIds.includes(m.id) && <div className="space-y-1 pl-5">
+                <label className="text-xs text-muted" htmlFor={`rate-${m.id}`}>Tarif / {unit === "M2" ? "m²" : unit.toLowerCase()} (Rp)</label>
+                <input id={`rate-${m.id}`} type="number" min="0.01" step="0.01" className={inp} value={rates[m.id] ?? ""} placeholder="Kosong = gunakan harga dasar produk" onChange={e => setRates(r => ({ ...r, [m.id]: e.target.value }))} />
+                {machineId && !m.machine_ids.includes(machineId) && <p className="text-xs text-status-yellow-text">Bahan belum terdaftar pada mesin default. Atur akses mesin di Gudang sebelum produksi.</p>}
+              </div>}
+            </div>)}
+          </div>
         </div>
-        <p className="text-[10px] text-muted mt-1">Hanya material yang dicentang yang akan muncul pada form order produk ini.</p>
+        <p className="text-xs text-muted mt-2">Hanya bahan yang dicentang tampil saat order. Tinta dan bahan pendukung diatur pada mesin. Bahan baru di Gudang tidak otomatis masuk ke produk.</p>
+      </Field>
+      <Field label="Bahan default (opsional)">
+        <select className={inp} value={materialId} onChange={e => setMaterialId(e.target.value)}>
+          <option value="">Pilih manual saat order</option>
+          {primary.filter(m => materialIds.includes(m.id)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
       </Field>
       <Field label="Mesin Default">
         <select className={inp} value={machineId} onChange={(e) => setMachineId(e.target.value)}>
@@ -317,7 +322,7 @@ export default function AdminProductsPage() {
     if (r.success) setRetail(r.data as Retail[]);
     if (p.success) setPrinting(p.data as Printing[]);
     if (mac.success) setMachines(mac.data as Machine[]);
-    if (m.success) setMaterials((m.data as { id: string; name: string; active: boolean }[]).filter((x) => x.active).map((x) => ({ id: x.id, name: x.name, active: x.active })));
+    if (m.success) setMaterials(m.data.filter(x => x.active));
     if (c.success) setCats(c.data);
     if (!p.success) setError(p.error ?? null);
   }, []);

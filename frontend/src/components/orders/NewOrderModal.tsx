@@ -63,7 +63,7 @@ type ProductOpt = Opt & {
   unit: string;
   basePrice: number | null;
   defaultMaterialId: string | null;
-  allowedMaterials: Opt[];
+  allowedMaterials: (Opt & { unitPrice: number | null })[];
 };
 type CustomerRow = { id: string; name: string; phone: string | null; type: string; defaultDiscountPct: number };
 
@@ -87,13 +87,14 @@ function parseRp(val: string) {
 /** Harga item otomatis dari harga dasar produk (M2 = per m², selain itu per pcs). */
 function autoItemPrice(it: ItemRow, products: ProductOpt[]): number {
   const p = products.find((x) => x.value === it.productId);
-  if (!p?.basePrice) return 0;
+  const rate = p?.allowedMaterials.find(m => m.value === it.materialId)?.unitPrice ?? p?.basePrice;
+  if (!rate) return 0;
   const qty = Math.max(1, Number(it.qty) || 1);
-  if (p.unit === "M2") {
+  if (p?.unit === "M2") {
     const area = ((Number(it.width) || 0) / 100) * ((Number(it.height) || 0) / 100);
-    return area > 0 ? Math.round(p.basePrice * area * qty) : 0;
+    return area > 0 ? Math.round(rate * area) * qty : 0;
   }
-  return Math.round(p.basePrice * qty);
+  return Math.round(rate) * qty;
 }
 
 // ─── Step Indicator ──────────────────────────────────────────────────────────
@@ -321,13 +322,13 @@ function ItemsStep({
               label="Material / Bahan"
               placeholder={selectedProduct ? "Pilih bahan untuk produk..." : "Pilih produk dulu..."}
               value={it.materialId}
-              onChange={(e) => updateItem(it.key, { materialId: e.target.value })}
+              onChange={(e) => updateItem(it.key, { materialId: e.target.value, priceTouched: false })}
               options={materialOptions}
               disabled={!selectedProduct || materialOptions.length === 0}
             />
             {selectedProduct && materialOptions.length === 0 && (
               <p className="text-[11px] text-status-yellow-text sm:col-span-2">
-                Material produk belum dikonfigurasi. Admin perlu mengatur allowlist di Katalog Produk.
+                Bahan produk belum diatur. Admin/Owner perlu memilih bahan yang tersedia di Katalog Produk.
               </p>
             )}
             <div className="flex flex-col gap-1.5">
@@ -536,7 +537,8 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
         defaultMaterialId: p.default_material_id ?? null,
         allowedMaterials: p.material_options.map((m) => ({
           value: m.id,
-          label: `${m.material_code} · ${m.name}`,
+          label: `${m.name}${m.stock_available ? "" : " — stok habis"}`,
+          unitPrice: m.unit_price,
         })),
       })));
       setCustomers(res.data.customers as CustomerRow[]);
@@ -563,9 +565,9 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
         if (it.key !== key) return it;
         const next = { ...it, ...patch };
         // Auto-isi harga kalau produk/dimensi/qty berubah & belum diubah manual.
-        if (!next.priceTouched && ("productId" in patch || "width" in patch || "height" in patch || "qty" in patch)) {
+        if (!next.priceTouched && ("productId" in patch || "materialId" in patch || "width" in patch || "height" in patch || "qty" in patch)) {
           const auto = autoItemPrice(next, products);
-          if (auto > 0) next.price = formatRp(String(auto));
+          next.price = auto > 0 ? formatRp(String(auto)) : "";
         }
         return next;
       }),

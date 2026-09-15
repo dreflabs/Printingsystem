@@ -19,6 +19,7 @@ import { PageHeader } from "@/components/dashboard/PageHeader";
 import { SoloNextSteps } from "@/components/dashboard/SoloNextSteps";
 import { WorkspaceModeNudge } from "@/components/dashboard/WorkspaceModeNudge";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
+import { OperationalAlerts } from "@/components/dashboard/OperationalAlerts";
 import { decideDiscount } from "@/actions/orders";
 import { approveFinalAudit } from "@/actions/audit";
 import { decideRework, reassignProductionJob } from "@/actions/production";
@@ -309,6 +310,7 @@ export default function OwnerPage() {
         </div>
       )}
       {workspaceMode === "SOLO" && selfAttendance && <AbsenCard />}
+      <OperationalAlerts />
 
       {error && <ErrorState message={error} onRetry={load} />}
 

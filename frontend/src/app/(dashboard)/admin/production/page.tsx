@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Package, Wrench, AlertTriangle, Clock, Play, RotateCcw, ShieldAlert, RefreshCw, X } from "lucide-react";
+import { JobMaterialReview } from "@/components/production/JobMaterialReview";
 import { StatusPill } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { getProductionOverview } from "@/actions/queries";
@@ -62,6 +63,7 @@ export default function ProductionPage() {
   const [d, setD] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
+  const [materialJob, setMaterialJob] = useState<string | null>(null);
   const [reassignJob, setReassignJob] = useState<JobRow | null>(null);
   const [releasingId, setReleasingId] = useState<string | null>(null);
   const jobTableRef = useRef<HTMLDivElement>(null);
@@ -113,6 +115,7 @@ export default function ProductionPage() {
 
   return (
     <div className="space-y-6">
+      {materialJob && <JobMaterialReview jobCode={materialJob} onClose={() => setMaterialJob(null)} onSaved={() => { setMaterialJob(null); load(); }} />}
       {reassignJob && d && (
         <ReassignModal job={reassignJob} opts={d.reassignOptions} onClose={() => setReassignJob(null)} onDone={() => { setReassignJob(null); load(); }} />
       )}
@@ -310,7 +313,8 @@ export default function ProductionPage() {
                     <td className="p-3 text-muted">{j.machineName} · {j.operatorName}</td>
                     <td className="p-3"><StatusPill status={j.status} /></td>
                     <td className="p-3 text-muted">{fmtDate(j.deadline)}</td>
-                    <td className="p-3 text-right">
+                    <td className="p-3 text-right space-y-2">
+                      {["PRODUCTION_QUEUED", "PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"].includes(j.status) && <button className="block ml-auto text-accent-teal text-xs font-bold" onClick={() => setMaterialJob(j.jobCode)}>{j.materialSetupRequired ? "Tinjau item & bahan" : "Item & bahan"}</button>}
                       {["PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"].includes(j.status) ? (
                         <button onClick={() => setReassignJob(j)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-status-yellow/10 text-status-yellow-text text-xs font-bold hover:bg-status-yellow/20 border border-status-yellow/30">
                           <RefreshCw className="h-3 w-3" /> Reassign

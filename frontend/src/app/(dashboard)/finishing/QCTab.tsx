@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { CheckCircle2, XCircle, ClipboardList, ScanLine, History, Upload, Image as ImageIcon, X } from "lucide-react";
+import { CheckCircle2, XCircle, ClipboardList, ScanLine, History, Upload, X, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getGudangQueues } from "@/actions/queries";
-import { submitQC, getQCHistory } from "@/actions/production";
+import { submitQC, getQCHistory, claimQCJob } from "@/actions/production";
+import { getSessionUser } from "@/actions/session";
 import { Prisma } from "@prisma/client";
 
 type QCHistoryRecord = Prisma.QcRecordGetPayload<{
   include: {
-    job: { include: { order: { include: { customer: true } } } };
+    job: { include: { order: { include: { customer: { select: { name: true } } } } } };
     inspector: { select: { name: true } };
   }
 }>;
@@ -31,6 +32,12 @@ type QCJob = {
   status: string;
   plannedQty: number;
   deadline: string | Date | null;
+  machineName: string;
+  machineCode: string;
+  qcAssignee: { id: string; name: string } | null;
+  finishingAssignee: { id: string; name: string } | null;
+  items: { product: string; quantity: number; size: string | null; material: string; finishing: string | null }[];
+  designFiles: { id: string; itemId: string | null; name: string | null; version: number; url: string }[];
 };
 
 const fmtDeadline = (d: string | Date | null) =>
@@ -85,6 +92,11 @@ function QCInspectionModal({ job, onClose, onDone }: { job: QCJob; onClose: () =
         <div className="p-5 border-b border-border shrink-0">
           <h3 className="text-base font-bold text-primary">Form Inspeksi QC</h3>
           <p className="text-xs text-muted font-mono">{job.jobCode} · {job.orderCode} · {job.plannedQty} pcs</p>
+          <div className="mt-3 rounded-xl bg-elevated border border-border p-3 space-y-2">
+            <p className="text-xs text-primary"><span className="font-semibold">Mesin:</span> {job.machineName} ({job.machineCode})</p>
+            {job.items.map((item, index) => <p key={`${item.product}-${index}`} className="text-xs text-muted"><span className="font-semibold text-primary">{item.product}</span> · {item.quantity} pcs · {item.size || "Ukuran sesuai order"} · {item.material}{item.finishing ? ` · ${item.finishing}` : ""}</p>)}
+            {job.designFiles.length > 0 && <div className="flex flex-wrap gap-2 pt-1">{job.designFiles.map((file) => <a key={file.id} href={file.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-accent-teal hover:underline"><FileText className="h-3 w-3" />{file.name || `Desain V${file.version}`}</a>)}</div>}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -236,6 +248,8 @@ export function QCTab() {
   const [error, setError] = useState<string | null>(null);
   const [qcFor, setQcFor] = useState<QCJob | null>(null);
   const [activeTab, setActiveTab] = useState<"queue" | "history">("queue");
+  const [userId, setUserId] = useState<string | null>(null);
+  const [claiming, setClaiming] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [resQ, resH] = await Promise.all([getGudangQueues(), getQCHistory()]);
@@ -247,6 +261,16 @@ export function QCTab() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { getSessionUser().then((res) => { if (res.ok) setUserId(res.user.id); }); }, []);
+
+  async function inspect(job: QCJob) {
+    if (job.qcAssignee && job.qcAssignee.id !== userId) return;
+    setClaiming(job.jobCode);
+    const res = job.qcAssignee?.id === userId ? { success: true as const } : await claimQCJob(job.jobCode);
+    setClaiming(null);
+    if (!res.success) { setError(res.error); return; }
+    setQcFor(job);
+  }
 
   const kpi = [
     { label: "Menunggu Inspeksi", value: queue.length, color: "text-status-yellow-text" },
@@ -313,7 +337,8 @@ export function QCTab() {
                   <th className="px-4 py-3">Kode Job</th>
                   <th className="px-4 py-3">Kode Order</th>
                   <th className="px-4 py-3">Konsumen</th>
-                  <th className="px-4 py-3">Qty</th>
+                  <th className="px-4 py-3">Pekerjaan</th>
+                  <th className="px-4 py-3">Petugas</th>
                   <th className="px-4 py-3">Deadline</th>
                   <th className="px-4 py-3 text-right">Aksi</th>
                 </tr>
@@ -324,20 +349,22 @@ export function QCTab() {
                     <td className="px-4 py-3 font-mono text-accent-teal font-bold">{j.jobCode}</td>
                     <td className="px-4 py-3 font-mono text-muted">{j.orderCode}</td>
                     <td className="px-4 py-3 text-primary">{j.customerName}</td>
-                    <td className="px-4 py-3 text-muted">{j.plannedQty} pcs</td>
+                    <td className="px-4 py-3 text-muted"><p>{j.plannedQty} pcs · {j.machineName}</p><p className="text-[11px] mt-1">{j.items.map((item) => `${item.product} · ${item.material}`).join(" | ")}</p></td>
+                    <td className="px-4 py-3 text-muted">{j.qcAssignee ? <span className={cn("inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold", j.qcAssignee.id === userId ? "bg-status-green/10 text-status-green" : "bg-elevated text-muted")}>{j.qcAssignee.id === userId ? "Tugas saya" : j.qcAssignee.name}</span> : <span className="text-status-yellow-text">Belum diambil</span>}</td>
                     <td className="px-4 py-3 font-mono text-muted">{fmtDeadline(j.deadline)}</td>
                     <td className="px-4 py-3 text-right">
                       <button
-                        onClick={() => setQcFor(j)}
-                        className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white font-bold hover:brightness-110 transition-all flex items-center gap-1.5 ml-auto"
+                        onClick={() => inspect(j)}
+                        disabled={claiming === j.jobCode || (!!j.qcAssignee && j.qcAssignee.id !== userId)}
+                        className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-accent-teal to-accent-teal/70 text-white font-bold hover:brightness-110 transition-all flex items-center gap-1.5 ml-auto disabled:opacity-40"
                       >
-                        <ScanLine className="h-3.5 w-3.5" /> Mulai Inspeksi
+                        <ScanLine className="h-3.5 w-3.5" /> {claiming === j.jobCode ? "Mengambil..." : j.qcAssignee?.id === userId ? "Mulai Inspeksi" : j.qcAssignee ? "Diambil Petugas" : "Ambil & Inspeksi"}
                       </button>
                     </td>
                   </tr>
                 ))}
                 {queue.length === 0 && (
-                  <tr><td colSpan={6} className="p-8 text-center text-muted">Tidak ada antrian QC saat ini.</td></tr>
+                  <tr><td colSpan={7} className="p-8 text-center text-muted">Tidak ada antrian QC saat ini.</td></tr>
                 )}
               </tbody>
             </table>

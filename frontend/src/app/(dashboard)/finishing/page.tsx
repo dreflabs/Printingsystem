@@ -1,24 +1,27 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ClipboardList, Wrench, Package, Box } from "lucide-react";
+import { ClipboardList, Wrench, Package, Box, ShoppingCart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
+import { OperationalAlerts } from "@/components/dashboard/OperationalAlerts";
 import { getSessionUser } from "@/actions/session";
 import { QCTab } from "./QCTab";
 import { FinishingTab } from "./FinishingTab";
 import { StorageTab } from "./StorageTab";
 import { MaterialTab } from "./MaterialTab";
+import { PurchaseOrderTab } from "./PurchaseOrderTab";
 
-type FinishingTab = "qc" | "finishing" | "storage" | "material";
+type FinishingTab = "qc" | "finishing" | "storage" | "material" | "purchase";
 
 const TABS: { id: FinishingTab; label: string; icon: typeof ClipboardList }[] = [
   { id: "qc", label: "QC", icon: ClipboardList },
   { id: "finishing", label: "Finishing", icon: Wrench },
   { id: "storage", label: "Storage", icon: Package },
   { id: "material", label: "Material", icon: Box },
+  { id: "purchase", label: "Pembelian", icon: ShoppingCart },
 ];
 
 /**
@@ -38,10 +41,19 @@ export default function FinishingPage() {
     getSessionUser().then((r) => {
       if (r.ok && r.user.role === "operator") {
         setIsOperatorOnly(true);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setActiveTab("material");
       }
     });
+  }, []);
+
+  useEffect(() => {
+    const syncTab = () => {
+      const hash = window.location.hash.replace("#", "");
+      if (["qc", "finishing", "storage", "material", "purchase"].includes(hash)) setActiveTab(hash as FinishingTab);
+    };
+    syncTab();
+    window.addEventListener("hashchange", syncTab);
+    return () => window.removeEventListener("hashchange", syncTab);
   }, []);
 
   const visibleTabs = isOperatorOnly ? TABS.filter((t) => OPERATOR_ALLOWED_TABS.includes(t.id)) : TABS;
@@ -56,6 +68,7 @@ export default function FinishingPage() {
       <RoleGuide role="gudang" defaultCollapsed />
 
       <AbsenCard />
+      <OperationalAlerts />
 
       {/* Tab Navigation */}
       <div className="flex gap-2 bg-elevated p-1 rounded-xl border border-border w-fit overflow-x-auto">
@@ -77,6 +90,7 @@ export default function FinishingPage() {
       {activeTab === "finishing" && !isOperatorOnly && <FinishingTab />}
       {activeTab === "storage" && !isOperatorOnly && <StorageTab />}
       {activeTab === "material" && <MaterialTab />}
+      {activeTab === "purchase" && !isOperatorOnly && <PurchaseOrderTab />}
     </div>
   );
 }

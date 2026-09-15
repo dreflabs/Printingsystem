@@ -1,3 +1,4 @@
+import { validateMachineMaterials } from "@/lib/production-materials";
 import type { Prisma } from "@prisma/client";
 import { checkProductionReadiness, coveredDesignItemIds, type ReadinessItem } from "@/lib/production-readiness";
 
@@ -81,7 +82,7 @@ export async function autoReleaseToProduction(
               unit: true,
               default_machine_id: true,
               material_options: {
-                where: { tenant_id: tenantId, active: true, material: { active: true } },
+                where: { tenant_id: tenantId, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
                 select: { material_id: true },
               },
             },
@@ -166,6 +167,17 @@ export async function autoReleaseToProduction(
     return { released: false, jobCodes: [], missing };
   }
 
+  try {
+    if (machines.length !== machineIds.length) throw new Error("Mesin default tidak valid untuk toko ini.");
+    for (const machineId of machineIds) {
+      await validateMachineMaterials(tx, tenantId, machineId, items.filter(it => it.defaultMachineId === machineId).map(it => it.materialId));
+    }
+  } catch (error) {
+    const missing = [error instanceof Error ? error.message : "Konfigurasi bahan mesin belum lengkap."];
+    await tx.order.update({ where: { id: orderId }, data: { auto_release_blocked: blockedPayload(missing) } });
+    return { released: false, jobCodes: [], missing };
+  }
+
   // Gatekeeper: order lengkap & routable, tapi tenant minta Admin menekan
   // "Rilis ke Produksi" dulu. Simpan sentinel, jangan buat job.
   if (!opts?.bypassGatekeeper) {
@@ -235,6 +247,7 @@ export async function autoReleaseToProduction(
         priority: priorityFromDeadline(jobDeadline),
         deadline: jobDeadline,
         planned_qty: plannedQty,
+        items: { create: items.filter(it => it.defaultMachineId === machineId).map(it => ({ tenant_id: tenantId, order_item_id: it.id, material_id: it.materialId })) },
       },
     });
     jobCodes.push(code);

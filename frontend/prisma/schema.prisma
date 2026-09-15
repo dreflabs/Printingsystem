@@ -51,6 +51,11 @@ model Tenant {
   materials              Material[]
   machine_materials      MachineMaterial[]
   material_movements     MaterialMovement[]
+  suppliers              Supplier[]
+  purchase_orders        PurchaseOrder[]
+  purchase_order_items   PurchaseOrderItem[]
+  material_stocktakes    MaterialStocktake[]
+  material_stocktake_items MaterialStocktakeItem[]
   orders                 Order[]
   order_items            OrderItem[]
   retail_products        RetailProduct[]
@@ -65,6 +70,7 @@ model Tenant {
   payments               Payment[]
   pickup_records         PickupRecord[]
   notification_events    NotificationEvent[]
+  operational_alerts     OperationalAlert[]
   audits                 Audit[]
   audit_items            AuditItem[]
   audit_logs             AuditLog[]
@@ -259,8 +265,13 @@ model User {
   created_customers      Customer[]
   added_materials        Material[]
   material_movements     MaterialMovement[]
+  stocktakes_created     MaterialStocktake[]   @relation("StocktakeCreatedBy")
+  stocktakes_submitted   MaterialStocktake[]   @relation("StocktakeSubmittedBy")
+  stocktakes_approved    MaterialStocktake[]   @relation("StocktakeApprovedBy")
+  stocktake_counts       MaterialStocktakeItem[] @relation("StocktakeCountedBy")
   assigned_machines      UserMachine[]         @relation("MachineAssignedBy")
   created_orders         Order[]               @relation("OrderCreatedBy")
+  created_purchase_orders PurchaseOrder[]      @relation("PurchaseOrderCreatedBy")
   designed_orders        Order[]               @relation("OrderDesigner")
   discount_approved      Order[]               @relation("DiscountApprovedBy")
   dp_override_by_orders  Order[]               @relation("DpOverrideBy")
@@ -271,6 +282,8 @@ model User {
   uploaded_designs       DesignVersion[]       @relation("UploadedBy")
   approved_designs       DesignVersion[]       @relation("ApprovedBy")
   production_jobs        ProductionJob[]
+  qc_assigned_jobs       ProductionJob[]   @relation("QCAssignee")
+  finishing_assigned_jobs ProductionJob[]  @relation("FinishingAssignee")
   qc_inspections         QcRecord[]            @relation("Inspector")
   rework_decisions       QcRecord[]            @relation("ReworkDecidedBy")
   finishing_jobs         FinishingJob[]
@@ -278,9 +291,11 @@ model User {
   transit_items          StorageItem[]         @relation("TransitBy")
   released_items         StorageItem[]         @relation("ReleasedBy")
   incident_reports       StorageItem[]         @relation("IncidentReportedBy")
+  resolved_incidents     StorageItem[]         @relation("IncidentResolvedBy")
   payments_received      Payment[]
   pickup_releases        PickupRecord[]
   resent_notifications   NotificationEvent[]
+  acknowledged_alerts    OperationalAlert[]    @relation("AlertAcknowledgedBy")
   audits_performed       Audit[]               @relation("AuditedBy")
   audits_approved        Audit[]               @relation("AuditApprovedBy")
   audit_logs             AuditLog[]
@@ -396,14 +411,17 @@ model Material {
   tenant            Tenant   @relation(fields: [tenant_id], references: [id])
   material_code     String
   name              String
-  type              String // MEDIA/INK
+  group_name        String? // Tenant-defined family, e.g. Flexi Banner
+  specifications    String? // GSM, roll width, coating
+  purpose           String   @default("PRIMARY") // PRIMARY/CONSUMABLE
+  type              String // MEDIA/INK/OTHER
   unit_stock        String // ROLL/METER/LEMBAR/LITER/KG/RIM/BOTOL/PCS/CUSTOM
   unit_usage        String // METER/LEMBAR/ML/GRAM/PCS/CUSTOM
   unit_custom       String?
   conversion_factor Decimal  @db.Decimal(10, 2)
   is_shared         Boolean  @default(false)
   min_stock         Decimal  @db.Decimal(10, 2)
-  current_stock     Decimal  @db.Decimal(10, 2)
+  current_stock     Decimal  @db.Decimal(18, 6)
   standard_cost     Decimal  @db.Decimal(15, 2)
   added_by          String
   adder             User     @relation(fields: [added_by], references: [id])
@@ -413,9 +431,12 @@ model Material {
 
   machines           MachineMaterial[]
   material_movements MaterialMovement[]
+  stocktake_items    MaterialStocktakeItem[]
   default_for        Product[]
   order_items        OrderItem[]
   product_options    ProductMaterial[]
+  job_items          ProductionJobItem[]
+  purchase_order_items PurchaseOrderItem[]
 
   @@unique([tenant_id, material_code])
 }
@@ -431,6 +452,7 @@ model ProductMaterial {
   product     Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
   material_id String
   material    Material @relation(fields: [material_id], references: [id], onDelete: Cascade)
+  unit_price  Decimal? @db.Decimal(15, 2) // null = use Product.base_price
   role        String   @default("PRIMARY") // PRIMARY/FINISHING/OPTIONAL
   is_default  Boolean  @default(false)
   active      Boolean  @default(true)
@@ -467,16 +489,126 @@ model MaterialMovement {
   job_id                String?
   job                   ProductionJob? @relation(fields: [job_id], references: [id])
   movement_type         String // IN/OUT/WASTE/ADJUSTMENT
-  quantity_usage        Decimal        @db.Decimal(10, 2)
-  quantity_stock_change Decimal        @db.Decimal(10, 2)
-  before_stock          Decimal        @db.Decimal(10, 2)
-  after_stock           Decimal        @db.Decimal(10, 2)
+  quantity_usage        Decimal        @db.Decimal(18, 6)
+  quantity_stock_change Decimal        @db.Decimal(18, 6)
+  before_stock          Decimal        @db.Decimal(18, 6)
+  after_stock           Decimal        @db.Decimal(18, 6)
   supplier              String?
+  supplier_id           String?
+  supplier_ref          Supplier?      @relation("SupplierMovements", fields: [supplier_id], references: [id], onDelete: SetNull)
   unit_cost             Decimal?       @db.Decimal(15, 2)
+  reference_no          String?
+  purchase_order_id     String?
+  purchase_order        PurchaseOrder? @relation(fields: [purchase_order_id], references: [id], onDelete: SetNull)
+  purchase_order_item_id String?
+  purchase_order_item   PurchaseOrderItem? @relation(fields: [purchase_order_item_id], references: [id], onDelete: SetNull)
+  received_at           DateTime       @default(now())
   performed_by          String
   performer             User           @relation(fields: [performed_by], references: [id])
   reason                String?
   created_at            DateTime       @default(now())
+}
+
+model Supplier {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  notes       String?
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  purchase_orders PurchaseOrder[]
+  movements       MaterialMovement[] @relation("SupplierMovements")
+
+  @@unique([tenant_id, code])
+  @@index([tenant_id, active, name])
+}
+
+model PurchaseOrder {
+  id            String   @id @default(uuid())
+  tenant_id     String
+  tenant        Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  po_number     String
+  supplier_id   String
+  supplier      Supplier @relation(fields: [supplier_id], references: [id])
+  status        String   @default("DRAFT") // DRAFT/SUBMITTED/PARTIAL/RECEIVED/CANCELLED
+  order_date    DateTime @default(now())
+  expected_date DateTime?
+  notes         String?
+  created_by    String
+  creator       User     @relation("PurchaseOrderCreatedBy", fields: [created_by], references: [id])
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  items     PurchaseOrderItem[]
+  movements MaterialMovement[]
+
+  @@unique([tenant_id, po_number])
+  @@index([tenant_id, status, order_date])
+}
+
+model PurchaseOrderItem {
+  id               String        @id @default(uuid())
+  tenant_id        String
+  tenant           Tenant        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  purchase_order_id String
+  purchase_order   PurchaseOrder  @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
+  material_id      String
+  material         Material      @relation(fields: [material_id], references: [id])
+  ordered_qty      Decimal       @db.Decimal(18, 6)
+  received_qty     Decimal       @default(0) @db.Decimal(18, 6)
+  unit_cost        Decimal       @db.Decimal(15, 2)
+  notes            String?
+  movements        MaterialMovement[]
+
+  @@index([tenant_id, purchase_order_id])
+  @@index([tenant_id, material_id])
+}
+
+model MaterialStocktake {
+  id           String   @id @default(uuid())
+  tenant_id    String
+  tenant       Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  status       String   @default("DRAFT") // DRAFT/SUBMITTED/APPROVED/CANCELLED
+  notes        String?
+  created_by   String
+  creator      User     @relation("StocktakeCreatedBy", fields: [created_by], references: [id])
+  submitted_by String?
+  submitter    User?    @relation("StocktakeSubmittedBy", fields: [submitted_by], references: [id])
+  approved_by  String?
+  approver     User?    @relation("StocktakeApprovedBy", fields: [approved_by], references: [id])
+  created_at   DateTime @default(now())
+  submitted_at DateTime?
+  approved_at  DateTime?
+  items        MaterialStocktakeItem[]
+
+  @@index([tenant_id, status, created_at])
+}
+
+model MaterialStocktakeItem {
+  id            String            @id @default(uuid())
+  tenant_id     String
+  tenant        Tenant            @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  stocktake_id  String
+  stocktake     MaterialStocktake @relation(fields: [stocktake_id], references: [id], onDelete: Cascade)
+  material_id   String
+  material      Material          @relation(fields: [material_id], references: [id])
+  system_stock  Decimal           @db.Decimal(18, 6)
+  counted_stock Decimal?
+  variance      Decimal?
+  notes         String?
+  counted_by    String?
+  counter       User?             @relation("StocktakeCountedBy", fields: [counted_by], references: [id])
+  counted_at    DateTime?
+
+  @@unique([stocktake_id, material_id])
+  @@index([tenant_id, material_id])
 }
 
 // ─── ORDERS ───────────────────────────────────────────────────────────────────
@@ -559,6 +691,9 @@ model OrderItem {
   unit_price        Decimal        @db.Decimal(15, 2)
   total_price       Decimal        @db.Decimal(15, 2)
 
+  material_snapshot Json?
+  pricing_snapshot  Json?
+  production_items ProductionJobItem[]
   design_versions DesignVersion[]
 }
 
@@ -667,6 +802,12 @@ model ProductionJob {
   machine       Machine         @relation(fields: [machine_id], references: [id])
   operator_id   String?
   operator      User?           @relation(fields: [operator_id], references: [id])
+  qc_assignee_id String?
+  qc_assignee    User?          @relation("QCAssignee", fields: [qc_assignee_id], references: [id])
+  qc_claimed_at  DateTime?
+  finishing_assignee_id String?
+  finishing_assignee    User?    @relation("FinishingAssignee", fields: [finishing_assignee_id], references: [id])
+  finishing_claimed_at  DateTime?
   status        String
   priority      Int             @default(1)
   planned_start DateTime?
@@ -689,12 +830,28 @@ model ProductionJob {
   created_at    DateTime        @default(now())
   updated_at    DateTime        @updatedAt
 
+  material_plan_history Json?
+  items              ProductionJobItem[]
   material_movements MaterialMovement[]
   qc_records         QcRecord[]
   finishing_jobs     FinishingJob[]
   storage_items      StorageItem[]
 
   @@unique([tenant_id, job_code])
+}
+
+// Frozen item scope; reassignment never derives scope from the current catalog.
+model ProductionJobItem {
+  id            String @id @default(uuid())
+  tenant_id     String
+  job_id        String
+  job           ProductionJob @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  order_item_id String
+  order_item    OrderItem @relation(fields: [order_item_id], references: [id])
+  material_id   String?
+  material      Material? @relation(fields: [material_id], references: [id])
+  @@unique([job_id, order_item_id])
+  @@index([tenant_id, order_item_id])
 }
 
 model QcRecord {
@@ -785,6 +942,11 @@ model StorageItem {
   incident_reported_by String?
   incident_reporter    User?            @relation("IncidentReportedBy", fields: [incident_reported_by], references: [id])
   incident_notes       String?
+  incident_resolution  String?
+  incident_resolution_notes String?
+  incident_resolved_at DateTime?
+  incident_resolved_by String?
+  incident_resolver    User?            @relation("IncidentResolvedBy", fields: [incident_resolved_by], references: [id])
 }
 
 // ─── PAYMENT & PICKUP ─────────────────────────────────────────────────────────
@@ -845,6 +1007,30 @@ model NotificationEvent {
   resender            User?     @relation(fields: [resent_by], references: [id])
   retry_count         Int       @default(0)
   created_at          DateTime  @default(now())
+}
+
+model OperationalAlert {
+  id                String   @id @default(uuid())
+  tenant_id         String
+  tenant            Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  dedupe_key        String
+  alert_type        String
+  severity          String   // CRITICAL/WARNING/INFO
+  status            String   @default("OPEN") // OPEN/ACKNOWLEDGED/RESOLVED
+  title             String
+  message           String
+  href              String?
+  entity_type       String?
+  entity_id         String?
+  first_seen_at     DateTime @default(now())
+  last_seen_at      DateTime @default(now())
+  acknowledged_at   DateTime?
+  acknowledged_by  String?
+  acknowledger      User?    @relation("AlertAcknowledgedBy", fields: [acknowledged_by], references: [id])
+  resolved_at       DateTime?
+
+  @@unique([tenant_id, dedupe_key])
+  @@index([tenant_id, status, severity, last_seen_at])
 }
 
 // ─── AUDIT & REPORTING ────────────────────────────────────────────────────────

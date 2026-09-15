@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
+import { validateMachineMaterials } from "@/lib/production-materials";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
@@ -694,7 +695,7 @@ export async function assignProductionJob(
                   unit: true,
                   default_machine_id: true,
                   material_options: {
-                    where: { tenant_id: tenant.id, active: true, material: { active: true } },
+                    where: { tenant_id: tenant.id, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
                     select: { material_id: true },
                   },
                 },
@@ -802,8 +803,17 @@ export async function assignProductionJob(
       const down = machines.find((m) => m.status !== "ACTIVE");
       if (down) throw new Error(`Mesin ${down.name} sedang ${down.status} — tidak bisa menerima job.`);
 
+      const assignedIds = new Set<string>();
+      const scopedAssignments = assignments.map(a => {
+        const selected = assignments.length === 1 ? order.items : order.items.filter(it => it.product?.default_machine_id === a.machineId);
+        if (!selected.length || selected.some(it => assignedIds.has(it.id))) throw new Error("Penugasan mesin ambigu. Gunakan satu job per mesin dan pastikan mesin default setiap item sudah diatur.");
+        selected.forEach(it => assignedIds.add(it.id));
+        return { a, selected };
+      });
+      if (assignedIds.size !== order.items.length) throw new Error("Sebagian item belum mendapat mesin. Lengkapi mesin default produk atau gunakan satu penugasan untuk seluruh order.");
       const jobCodes: string[] = [];
-      for (const a of assignments) {
+      for (const { a, selected } of scopedAssignments) {
+        await validateMachineMaterials(tx, tenant.id, a.machineId, selected.map(it => it.material_id));
         const code = await nextJobCode(tx, tenant.id);
         await tx.productionJob.create({
           data: {
@@ -814,7 +824,8 @@ export async function assignProductionJob(
             operator_id: a.operatorId,
             status: "PRODUCTION_ASSIGNED",
             priority: a.priority ?? 1,
-            planned_qty: a.plannedQty,
+            planned_qty: selected.reduce((n, it) => n + it.quantity, 0),
+            items: { create: selected.map(it => ({ tenant_id: tenant.id, order_item_id: it.id, material_id: it.material_id })) },
             planned_start: a.plannedStart ? new Date(a.plannedStart) : null,
             planned_end: a.plannedEnd ? new Date(a.plannedEnd) : null,
             notes: a.notes || null,

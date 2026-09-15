@@ -32,6 +32,7 @@ type Job = {
   suggestedMaterialId: string | null;
   allowedMaterialIds: string[];
   plannedMaterialIds: string[];
+  materialSetupRequired: boolean;
   fileUrl: string | null;
   fileName: string | null;
   files: { label: string; url: string; name: string | null; notes: string | null }[];
@@ -332,7 +333,7 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
   const [actualQty, setActualQty] = useState(String(job.plannedQty || ""));
   const [area, setArea] = useState(areaPrefill != null ? String(areaPrefill) : "");
   const [reprint, setReprint] = useState("");
-  const [rows, setRows] = useState<MatRow[]>([newRow(job.suggestedMaterialId ?? "")]);
+  const [rows, setRows] = useState<MatRow[]>(job.plannedMaterialIds.length ? job.plannedMaterialIds.map(id => newRow(id)) : [newRow()]);
   const [showWaste, setShowWaste] = useState(false);
   const [rejectQty, setRejectQty] = useState("");
   const [rejectReason, setRejectReason] = useState("");
@@ -344,17 +345,14 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
   const setRow = (key: number, patch: Partial<MatRow>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const matById = (id: string) => materials.find((m) => m.id === id);
-  const allowedMaterials = job.plannedMaterialIds.length > 0
-    ? materials.filter((m) => job.plannedMaterialIds.includes(m.id))
-    : job.allowedMaterialIds.length > 0
-      ? materials.filter((m) => job.allowedMaterialIds.includes(m.id))
-    : materials;
+  const allowedMaterials = job.plannedMaterialIds.length ? materials.filter(m => job.allowedMaterialIds.includes(m.id)) : [];
 
   const rejectN = Number(rejectQty) || 0;
   const rejectFinal = rejectReason === "Lainnya" ? rejectCustom.trim() : rejectReason;
   const filledRows = rows.filter((r) => r.materialId && Number(r.usageQty) > 0);
 
   const canSubmit =
+    !job.materialSetupRequired && job.plannedMaterialIds.length > 0 && job.plannedMaterialIds.every(id => filledRows.some(r => r.materialId === id)) &&
     Number(actualQty) > 0 &&
     (!areaUnit || Number(area) > 0) &&
     filledRows.length > 0 &&
@@ -436,7 +434,7 @@ function FinishForm({ job, materials, onDone }: { job: Job; materials: MaterialO
           <InfoTip text="Berapa banyak bahan HABIS untuk job ini (satuan di kanan kotak). ⚠️ Angka ini langsung memotong stok — isi sejujurnya, jangan asal." />
         </p>
         {allowedMaterials.length === 0 && (
-          <p className="text-[11px] text-status-yellow-text">Belum ada master material — tambahkan di Katalog dulu.</p>
+          <p className="text-[11px] text-status-yellow-text">Bahan job belum lengkap. Minta Admin meninjau item dan bahan melalui halaman Produksi.</p>
         )}
         {rows.map((r, i) => {
           const mat = matById(r.materialId);

@@ -33,7 +33,7 @@ type ScanCtx = {
   plannedMaterialIds: string[];
   availableActions: { action: string; label: string }[];
 };
-type MaterialOpt = { id: string; name: string };
+type MaterialOpt = { id: string; name: string; unit_usage?: string };
 
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 
@@ -394,23 +394,16 @@ function ActionForm({
           <input className={field} type="number" placeholder="Qty waste" value={f.wasteQty ?? ""} onChange={(e) => set("wasteQty", e.target.value)} />
           <input className={field} placeholder="Alasan waste" value={f.wasteReason ?? ""} onChange={(e) => set("wasteReason", e.target.value)} />
         </div>
-        <select className={field} value={f.materialId ?? ""} onChange={(e) => set("materialId", e.target.value)}>
-          <option value="">Pilih material dipakai…</option>
-          {(ctx.plannedMaterialIds.length > 0
-            ? materials.filter((m) => ctx.plannedMaterialIds.includes(m.id))
-            : ctx.allowedMaterialIds.length > 0
-              ? materials.filter((m) => ctx.allowedMaterialIds.includes(m.id))
-              : materials
-          ).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-        <input className={field} type="number" placeholder="Jumlah pemakaian material" value={f.usageQty ?? ""} onChange={(e) => set("usageQty", e.target.value)} />
-        {materials.length === 0 && <p className="text-[11px] text-status-yellow-text">Belum ada master material — tambahkan dulu di Katalog.</p>}
+        {ctx.plannedMaterialIds.length === 0 && <p className="text-xs text-status-yellow-text">Bahan job belum ditetapkan. Minta Admin meninjau item job.</p>}
+        {materials.filter(m => ctx.plannedMaterialIds.length > 0 && ctx.allowedMaterialIds.includes(m.id)).map(m => <label key={m.id} className="block text-xs text-muted">{m.name} · {m.unit_usage ?? "satuan pemakaian"} {ctx.plannedMaterialIds.includes(m.id) ? "(wajib)" : "(pendukung, opsional)"}
+          <input className={field} type="number" min="0" step="any" placeholder="Jumlah pemakaian" value={f[`usage-${m.id}`] ?? ""} onChange={e => set(`usage-${m.id}`, e.target.value)} />
+        </label>)}
       </>,
       () => ({
         actualQty: f.actualQty, wasteQty: f.wasteQty, wasteReason: f.wasteReason,
-        materials: f.materialId && f.usageQty ? [{ materialId: f.materialId, usageQty: Number(f.usageQty) }] : [],
+        materials: ctx.allowedMaterialIds.filter(id => Number(f[`usage-${id}`]) > 0).map(id => ({ materialId: id, usageQty: Number(f[`usage-${id}`]) })),
       }),
-      !!(Number(f.actualQty) > 0 && f.materialId && Number(f.usageQty) > 0),
+      !!(Number(f.actualQty) > 0 && ctx.plannedMaterialIds.length > 0 && ctx.plannedMaterialIds.every(id => Number(f[`usage-${id}`]) > 0)),
     );
 
   if (action === "submit_qc")

@@ -45,6 +45,7 @@ export const GROUPED_NAV: NavEntry[] = [
   { type: "link", label: "Dashboard Operator", href: "/operator", icon: Factory, roles: ["operator"] },
   { type: "link", label: "Absensi Saya", href: "/operator#absensi", icon: Clock3, roles: ["operator"] },
   { type: "link", label: "Finishing & QC", href: "/finishing", icon: Package, roles: ["gudang"] },
+  { type: "link", label: "Material & Stok", href: "/finishing#material", icon: Package, roles: ["gudang"] },
   { type: "link", label: "Absensi Saya", href: "/finishing#absensi", icon: Clock3, roles: ["gudang"] },
 
   {

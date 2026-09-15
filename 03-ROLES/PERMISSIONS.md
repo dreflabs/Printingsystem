@@ -62,11 +62,22 @@ izin; jumlah pegawai, `workspace_mode`, dan paket SaaS tidak mengubah arti role.
 
 ### QC, gudang, dan audit
 
+- `material.view`
+- `material.receive`
+- `material.adjust` — koreksi opname oleh Owner
+- `material.stocktake` — membuat/mengisi sesi opname oleh Gudang
+- `material.stocktake_approve` — menyetujui hasil opname dan menerapkan selisih oleh Owner
+- `purchase.view` — melihat supplier dan purchase order
+- `purchase.create` — membuat supplier dan purchase order (Admin/Owner)
+- `purchase.receive` — menerima item PO dan menambah stok secara tercatat (Gudang/Admin/Owner)
+- `operations.alerts.view` — melihat alert stok, incident storage, deadline job, dan job stagnan
+- `operations.alerts.acknowledge` — mengakui alert agar ada jejak penanggung jawab (Admin/Owner)
 - `qc.submit`
 - `finishing.execute`
 - `storage.store`
 - `storage.move_to_counter`
 - `storage.report_incident`
+- `storage.resolve_incident` — penyelesaian incident oleh Admin/Owner
 - `audit.submit`
 - `audit.approve`
 - `correction.create_operational`

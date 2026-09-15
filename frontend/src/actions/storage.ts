@@ -12,6 +12,7 @@ import { ok, fail, type ActionResult } from "@/types";
 import { buildLocationCode, defaultLocationName, buildStorageLocations } from "@/lib/starter-data";
 import { can, canAny } from "@/lib/permissions";
 import { requireEntitlement } from "@/lib/entitlements";
+import { requireOperationalCheckIn } from "@/lib/attendance-policy";
 
 /** Buang prefix "LOC:" dari hasil scan Location QR. */
 function cleanLocationCode(v: string): string {
@@ -44,7 +45,8 @@ async function findJobByCode(tx: Prisma.TransactionClient, tenantId: string, cod
 export async function getStorageLocations() {
   try {
     const tenant = await requireTenant();
-    await requireUser();
+    const actor = await requireUser();
+    if (!canAny(actor, "storage.store", "storage.move_to_counter", "storage.configure")) return fail("Anda tidak memiliki akses melihat storage.");
     const locs = await prisma.storageLocation.findMany({
       where: { tenant_id: tenant.id },
       orderBy: { location_code: "asc" },
@@ -215,6 +217,8 @@ export async function assignStorageLocation(
     const actor = await requireUser();
     await requireEntitlement(tenant.id, "storage");
     if (!can(actor, "storage.store")) return fail("Hanya role Gudang yang boleh menyimpan ke storage.");
+    await requireOperationalCheckIn(tenant.id, actor);
+    if (input?.quantity != null && (!Number.isSafeInteger(input.quantity) || input.quantity <= 0)) return fail("Jumlah barang di storage harus lebih dari 0.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -222,6 +226,8 @@ export async function assignStorageLocation(
       if (job.status !== "FINISHING_COMPLETE") {
         throw new Error(`Job harus FINISHING_COMPLETE (sekarang: ${job.status}).`);
       }
+
+      await tx.$queryRaw`SELECT id FROM "ProductionJob" WHERE id = ${job.id} AND tenant_id = ${tenant.id} FOR UPDATE`;
 
       const existing = await tx.storageItem.findFirst({
         where: { job_id: job.id, status: { in: ["STORED", "IN_TRANSIT"] } },
@@ -348,6 +354,88 @@ export async function reportStorageIncident(
   }
 }
 
+export type StorageIncidentResolution = "RESOLVED" | "REPLACEMENT_REQUIRED" | "CANCELLED";
+
+/** Daftar incident storage untuk Owner/Admin sebelum diselesaikan. */
+export async function getStorageIncidents() {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!canAny(actor, "storage.resolve_incident", "storage.report_incident", "storage.configure")) return fail("Anda tidak memiliki akses melihat incident storage.");
+    const items = await prisma.storageItem.findMany({
+      where: { tenant_id: tenant.id, status: "INCIDENT" },
+      orderBy: { incident_reported_at: "asc" },
+      include: {
+        location: { select: { location_code: true, name: true } },
+        job: { select: { job_code: true, order: { select: { order_code: true, customer: { select: { name: true } } } } } },
+        incident_reporter: { select: { name: true } },
+        incident_resolver: { select: { name: true } },
+      },
+    });
+    return ok(items.map((item) => ({
+      id: item.id,
+      jobCode: item.job.job_code,
+      orderCode: item.job.order.order_code,
+      customerName: item.job.order.customer?.name ?? "-",
+      quantity: item.quantity,
+      location: `${item.location.location_code} · ${item.location.name}`,
+      notes: item.incident_notes,
+      reportedAt: item.incident_reported_at,
+      reportedBy: item.incident_reporter?.name ?? "-",
+      resolution: item.incident_resolution,
+      resolutionNotes: item.incident_resolution_notes,
+      resolvedAt: item.incident_resolved_at,
+      resolvedBy: item.incident_resolver?.name ?? null,
+    })));
+  } catch (e) {
+    console.error("getStorageIncidents:", e);
+    return fail(safeError(e, "Gagal memuat incident storage."));
+  }
+}
+
+/** Penyelesaian incident. Hanya RESOLVED yang membuka kembali barang untuk pickup. */
+export async function resolveStorageIncident(
+  jobCode: string,
+  input: { resolution: StorageIncidentResolution; notes: string }
+): Promise<ActionResult<{ status: string }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!can(actor, "storage.resolve_incident")) return fail("Hanya Admin/Owner yang boleh menyelesaikan incident storage.");
+    if (!input.notes?.trim()) return fail("Catatan penyelesaian wajib diisi.");
+
+    const result = await prisma.$transaction(async (tx) => {
+      const job = await findJobByCode(tx, tenant.id, jobCode);
+      if (!job) throw new Error("Job tidak ditemukan.");
+      const item = await tx.storageItem.findFirst({ where: { job_id: job.id, status: "INCIDENT" } });
+      if (!item) throw new Error("Incident aktif tidak ditemukan untuk job ini.");
+      if (item.incident_resolution === "RESOLVED") throw new Error("Incident sudah diselesaikan sebelumnya.");
+
+      const nextStatus = input.resolution === "RESOLVED" ? "STORED" : "INCIDENT";
+      await tx.storageItem.update({
+        where: { id: item.id },
+        data: {
+          status: nextStatus,
+          incident_resolution: input.resolution,
+          incident_resolution_notes: input.notes.trim(),
+          incident_resolved_at: new Date(),
+          incident_resolved_by: actor.id,
+        },
+      });
+      return { jobCode: job.job_code, status: nextStatus };
+    });
+
+    await logAction(actor.id, "STORAGE_INCIDENT_RESOLVED", "ProductionJob", result.jobCode, null, { resolution: input.resolution, notes: input.notes });
+    revalidatePath("/finishing");
+    revalidatePath("/scan");
+    revalidatePath("/owner");
+    return ok({ status: result.status });
+  } catch (e) {
+    console.error("resolveStorageIncident:", e);
+    return fail(safeError(e, "Gagal menyelesaikan incident storage."));
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // SCAN 9 — KONFIRMASI BARANG DI COUNTER
 // ─────────────────────────────────────────────────────────────
@@ -358,6 +446,7 @@ export async function confirmItemAtCounter(jobCode: string): Promise<ActionResul
     const actor = await requireUser();
     await requireEntitlement(tenant.id, "storage");
     if (!can(actor, "storage.move_to_counter")) return fail("Hanya role Gudang yang boleh konfirmasi barang di counter.");
+    await requireOperationalCheckIn(tenant.id, actor);
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -374,6 +463,12 @@ export async function confirmItemAtCounter(jobCode: string): Promise<ActionResul
         where: { tenant_id: tenant.id, zone: "COUNTER", active: true },
         orderBy: { location_code: "asc" },
       });
+      if (!counter) throw new Error("Lokasi counter aktif belum tersedia. Minta Owner/Admin menyiapkannya.");
+      const counterClaim = await tx.storageLocation.updateMany({
+        where: { id: counter.id, active: true, capacity_current: { lt: counter.capacity_max } },
+        data: { capacity_current: { increment: 1 } },
+      });
+      if (counterClaim.count === 0) throw new Error("Kapasitas counter penuh.");
 
       await tx.storageItem.update({
         where: { id: item.id },
@@ -492,13 +587,24 @@ export async function releaseOrder(
 
       // Bebaskan slot rak untuk barang yang belum sempat lewat counter (masih STORED
       // → slot-nya masih terhitung; yang sudah IN_TRANSIT sudah di-decrement di SCAN 9).
-      const stillStored = await tx.storageItem.findMany({
+    const stillStored = await tx.storageItem.findMany({
         where: { job_id: { in: jobIds }, status: "STORED" },
         select: { location_id: true },
       });
       for (const si of stillStored) {
         await tx.storageLocation.update({
           where: { id: si.location_id },
+          data: { capacity_current: { decrement: 1 } },
+      });
+    }
+
+      const inTransit = await tx.storageItem.findMany({
+        where: { job_id: { in: jobIds }, status: "IN_TRANSIT", transit_location_id: { not: null } },
+        select: { transit_location_id: true },
+      });
+      for (const si of inTransit) {
+        await tx.storageLocation.update({
+          where: { id: si.transit_location_id! },
           data: { capacity_current: { decrement: 1 } },
         });
       }
@@ -544,14 +650,15 @@ export async function releaseOrder(
 export async function getStorageLocationsWithItems() {
   try {
     const tenant = await requireTenant();
-    await requireUser();
+    const actor = await requireUser();
+    if (!canAny(actor, "storage.store", "storage.move_to_counter", "storage.configure")) return fail("Anda tidak memiliki akses melihat storage.");
     const locs = await prisma.storageLocation.findMany({
       where: { tenant_id: tenant.id },
       orderBy: [{ floor: "desc" }, { zone: "asc" }, { rack: "asc" }, { slot: "asc" }],
       include: {
         stored_items: {
           where: { status: "STORED" },
-          include: { job: { include: { order: { include: { customer: true } } } } },
+          include: { job: { include: { order: { include: { customer: { select: { name: true } } } } } } },
         },
       },
     });
@@ -565,7 +672,8 @@ export async function getStorageLocationsWithItems() {
 export async function searchStorageItems(query: string) {
   try {
     const tenant = await requireTenant();
-    await requireUser();
+    const actor = await requireUser();
+    if (!canAny(actor, "storage.store", "storage.move_to_counter", "storage.configure")) return fail("Anda tidak memiliki akses mencari storage.");
     if (!query || query.trim().length < 3) return ok([]);
     const q = query.trim();
     const items = await prisma.storageItem.findMany({
@@ -583,7 +691,7 @@ export async function searchStorageItems(query: string) {
       include: {
         location: true,
         transit_location: true,
-        job: { include: { order: { include: { customer: true } } } },
+        job: { include: { order: { include: { customer: { select: { name: true } } } } } },
       },
       take: 20,
     });

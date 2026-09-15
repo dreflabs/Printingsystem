@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Map, Box, MapPin, Loader2, ArrowRight, Settings2, Plus, Check, Power } from "lucide-react";
+import { Search, Map, Box, MapPin, Loader2, ArrowRight, Settings2, Plus, Check, Power, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   getStorageLocationsWithItems,
@@ -9,6 +9,8 @@ import {
   createStorageLocation,
   updateStorageLocation,
   seedDefaultStorageLayout,
+  getStorageIncidents,
+  resolveStorageIncident,
 } from "@/actions/storage";
 import { getSessionUser } from "@/actions/session";
 import { useToast } from "@/components/ui";
@@ -17,7 +19,7 @@ import { Prisma } from "@prisma/client";
 type LocWithItems = Prisma.StorageLocationGetPayload<{
   include: {
     stored_items: {
-      include: { job: { include: { order: { include: { customer: true } } } } }
+      include: { job: { include: { order: { include: { customer: { select: { name: true } } } } } } }
     }
   }
 }>[];
@@ -26,9 +28,25 @@ type StorageItemSearch = Prisma.StorageItemGetPayload<{
   include: {
     location: true;
     transit_location: true;
-    job: { include: { order: { include: { customer: true } } } }
+    job: { include: { order: { include: { customer: { select: { name: true } } } } } }
   }
 }>[];
+
+type StorageIncident = {
+  id: string;
+  jobCode: string;
+  orderCode: string;
+  customerName: string;
+  quantity: number;
+  location: string;
+  notes: string | null;
+  reportedAt: string | Date | null;
+  reportedBy: string;
+  resolution: string | null;
+  resolutionNotes: string | null;
+  resolvedAt: string | Date | null;
+  resolvedBy: string | null;
+};
 
 const ZONES = ["A", "B", "C", "D", "COUNTER"];
 
@@ -54,6 +72,9 @@ export function StorageTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<StorageItemSearch>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [incidents, setIncidents] = useState<StorageIncident[]>([]);
+  const [incidentResolution, setIncidentResolution] = useState<Record<string, string>>({});
+  const [incidentNotes, setIncidentNotes] = useState<Record<string, string>>({});
 
   const loadLocs = useCallback(async () => {
     setLoading(true);
@@ -66,9 +87,17 @@ export function StorageTab() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadLocs(); }, [loadLocs]);
 
+  const loadIncidents = useCallback(async () => {
+    const res = await getStorageIncidents();
+    if (res.success) setIncidents(res.data);
+  }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadIncidents(); }, [loadIncidents]);
+
   useEffect(() => {
     getSessionUser().then((r) => {
-      if (r.ok && (r.user.role === "owner" || r.user.role === "admin")) setCanManage(true);
+      if (r.ok && r.user.roles.some((role) => role === "owner" || role === "admin")) setCanManage(true);
     });
   }, []);
 
@@ -134,6 +163,17 @@ export function StorageTab() {
     } else toast({ type: "error", title: "Gagal", message: res.error });
   };
 
+  const resolveIncident = async (incident: StorageIncident) => {
+    const resolution = incidentResolution[incident.id] || "RESOLVED";
+    const notes = incidentNotes[incident.id]?.trim() || "";
+    if (!notes) { toast({ type: "error", title: "Catatan wajib diisi", message: "Jelaskan hasil pemeriksaan incident." }); return; }
+    setBusy(true);
+    const res = await resolveStorageIncident(incident.jobCode, { resolution: resolution as "RESOLVED" | "REPLACEMENT_REQUIRED" | "CANCELLED", notes });
+    setBusy(false);
+    if (res.success) { toast({ type: "success", title: "Incident diperbarui", message: incident.jobCode }); loadIncidents(); loadLocs(); }
+    else toast({ type: "error", title: "Gagal", message: res.error });
+  };
+
   const visibleLocs = managing ? locs : locs.filter((l) => l.active);
 
   return (
@@ -156,6 +196,13 @@ export function StorageTab() {
       </div>
 
       {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
+
+      {incidents.length > 0 && (
+        <div className="bg-card border border-status-red/30 rounded-2xl shadow-card overflow-hidden">
+          <div className="flex items-center gap-2 p-5 border-b border-border bg-status-red/5"><AlertTriangle className="h-5 w-5 text-status-red" /><h2 className="text-base font-bold text-primary">Incident Storage</h2><span className="rounded-full bg-status-red/10 px-2 py-0.5 text-[10px] font-bold text-status-red">{incidents.length}</span></div>
+          <div className="divide-y divide-border/50">{incidents.map((incident) => <div key={incident.id} className="p-4 space-y-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-bold text-primary">{incident.jobCode} · {incident.orderCode}</p><p className="text-xs text-muted">{incident.customerName} · {incident.quantity} pcs · {incident.location}</p><p className="text-xs text-status-red mt-1">{incident.notes || "Tidak ada catatan"}</p></div><span className="text-[11px] text-muted">Dilaporkan oleh {incident.reportedBy}</span></div>{canManage ? <div className="flex flex-wrap items-end gap-2"><label className="text-[11px] text-muted">Keputusan<select value={incidentResolution[incident.id] || "RESOLVED"} onChange={(e) => setIncidentResolution((p) => ({ ...p, [incident.id]: e.target.value }))} className="mt-1 block h-9 rounded-lg border border-border bg-elevated px-2 text-xs text-primary"><option value="RESOLVED">Barang ditemukan/aman — buka kembali</option><option value="REPLACEMENT_REQUIRED">Perlu barang pengganti — tetap blokir</option><option value="CANCELLED">Dibatalkan — tetap blokir</option></select></label><label className="flex-1 min-w-[220px] text-[11px] text-muted">Catatan penyelesaian<input value={incidentNotes[incident.id] || ""} onChange={(e) => setIncidentNotes((p) => ({ ...p, [incident.id]: e.target.value }))} placeholder="Hasil pemeriksaan dan tindakan" className="mt-1 h-9 w-full rounded-lg border border-border bg-elevated px-3 text-xs text-primary" /></label><button disabled={busy} onClick={() => resolveIncident(incident)} className="h-9 rounded-lg bg-accent-teal px-3 text-xs font-bold text-white disabled:opacity-40">Simpan keputusan</button></div> : <p className="text-xs text-status-yellow-text">Menunggu keputusan Owner/Admin.</p>}</div>)}</div>
+        </div>
+      )}
 
       {/* Panel manajemen lokasi rak */}
       {managing && canManage && (

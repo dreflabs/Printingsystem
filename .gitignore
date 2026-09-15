@@ -23,6 +23,9 @@ yarn-debug.log*
 yarn-error.log*
 *.log
 
+# Local database backups (never commit)
+backups/
+
 # OS metadata
 .DS_Store
 Thumbs.db

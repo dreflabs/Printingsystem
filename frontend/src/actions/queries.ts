@@ -54,7 +54,8 @@ export async function getOperatorJobs() {
     const allowedMachineIds = userMachines.map(um => um.machine_id);
 
     const include = {
-      machine: { select: { name: true, machine_code: true } },
+      items: { where: { tenant_id: tenant.id }, select: { order_item_id: true, material_id: true, material: { select: { name: true, active: true } } } },
+      machine: { select: { name: true, machine_code: true, materials: { where: { tenant_id: tenant.id, material: { active: true, purpose: "CONSUMABLE" } }, select: { material_id: true } } } },
       order: {
         select: {
           order_code: true,
@@ -76,7 +77,7 @@ export async function getOperatorJobs() {
                   default_machine_id: true,
                   unit: true,
                   material_options: {
-                    where: { tenant_id: tenant.id, active: true, material: { active: true } },
+                    where: { tenant_id: tenant.id, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
                     select: { material_id: true },
                   },
                 },
@@ -150,18 +151,17 @@ export async function getOperatorJobs() {
         if (!latestApprovedBySlot.has(key)) latestApprovedBySlot.set(key, v);
       }
       // Item yang relevan ke mesin job ini; fallback ke semua item non-retail.
-      const forMachine = j.order.items.filter((it) => it.product?.default_machine_id === j.machine_id);
-      const relevant = forMachine.length ? forMachine : j.order.items;
+      const scope = new Set(j.items.map(it => it.order_item_id));
+      const relevant = j.order.items.filter(it => scope.has(it.id));
       const items = relevant.map((it) => ({
         product: it.product?.name ?? it.description?.trim() ?? "Item cetak",
         size: it.size ?? null,
         qty: it.quantity,
-        material: it.material?.name ?? null,
+        material: j.items.find(link => link.order_item_id === it.id)?.material?.name ?? it.material?.name ?? null,
         finishing: it.finishing?.trim() || null,
       }));
-      const allowedMaterialIds = Array.from(new Set(
-        relevant.flatMap((it) => it.product?.material_options.map((option) => option.material_id) ?? [])
-      ));
+      const plannedMaterialIds = [...new Set(j.items.filter(l => l.material?.active).map(l => l.material_id).filter((id): id is string => !!id))];
+      const allowedMaterialIds = [...new Set([...plannedMaterialIds, ...j.machine.materials.map(m => m.material_id)])];
       // File cetak: versi APPROVED milik item relevan + versi berlingkup seluruh order.
       const relevantIds = new Set(relevant.map((it) => it.id));
       const seenVer = new Set<string>();
@@ -187,9 +187,10 @@ export async function getOperatorJobs() {
         productUnit: relevant.find((it) => it.product?.unit)?.product?.unit ?? "PCS",
         firstItemSize: relevant.find((it) => it.size)?.size ?? null,
         firstItemQty: relevant[0]?.quantity ?? j.planned_qty,
-        suggestedMaterialId: relevant.find((it) => it.material_id)?.material_id ?? null,
+        suggestedMaterialId: plannedMaterialIds[0] ?? null,
         allowedMaterialIds,
-        plannedMaterialIds: Array.from(new Set(relevant.map((it) => it.material_id).filter((id): id is string => !!id))),
+        plannedMaterialIds,
+        materialSetupRequired: !j.items.length || j.items.some(l => !l.material_id || !l.material?.active),
         priority: j.priority,
         plannedQty: j.planned_qty,
         actualQty: j.actual_qty,
@@ -254,7 +255,10 @@ export async function getOperatorJobs() {
 export async function getGudangQueues() {
   try {
     const tenant = await requireTenant();
-    await requireUser();
+    const actor = await requireUser();
+    if (!can(actor, "qc.submit") && !can(actor, "finishing.execute") && !can(actor, "storage.store")) {
+      return fail("Hanya Gudang/Admin/Owner yang boleh melihat antrian Gudang.");
+    }
 
     const jobs = await prisma.productionJob.findMany({
       where: {
@@ -263,7 +267,41 @@ export async function getGudangQueues() {
       },
       orderBy: { updated_at: "asc" },
       include: {
-        order: { select: { order_code: true, status: true, deadline: true, customer: { select: { name: true } } } },
+        machine: { select: { name: true, machine_code: true } },
+        qc_assignee: { select: { id: true, name: true } },
+        finishing_assignee: { select: { id: true, name: true } },
+        items: {
+          select: {
+            material: { select: { name: true, material_code: true } },
+            order_item: {
+              select: {
+                description: true,
+                quantity: true,
+                size: true,
+                finishing: true,
+                product: { select: { name: true } },
+              },
+            },
+          },
+        },
+        order: {
+          select: {
+            order_code: true,
+            status: true,
+            deadline: true,
+            customer: { select: { name: true } },
+            design_jobs: {
+              select: {
+                versions: {
+                  where: { approval_status: "APPROVED", file_path: { not: null } },
+                  orderBy: { uploaded_at: "desc" },
+                  take: 20,
+                  select: { id: true, order_item_id: true, file_name: true, file_path: true, version_no: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -276,6 +314,24 @@ export async function getGudangQueues() {
       plannedQty: j.planned_qty,
       actualQty: j.actual_qty,
       deadline: j.order.deadline,
+      machineName: j.machine.name,
+      machineCode: j.machine.machine_code,
+      qcAssignee: j.qc_assignee ? { id: j.qc_assignee.id, name: j.qc_assignee.name } : null,
+      finishingAssignee: j.finishing_assignee ? { id: j.finishing_assignee.id, name: j.finishing_assignee.name } : null,
+      items: j.items.map((item) => ({
+        product: item.order_item.product?.name ?? item.order_item.description ?? "Item cetak",
+        quantity: item.order_item.quantity,
+        size: item.order_item.size,
+        material: item.material?.name ?? "Material belum ditentukan",
+        finishing: item.order_item.finishing,
+      })),
+      designFiles: j.order.design_jobs.flatMap((design) => design.versions.map((version) => ({
+        id: version.id,
+        itemId: version.order_item_id,
+        name: version.file_name,
+        version: version.version_no,
+        url: `/api/design/${version.id}`,
+      }))),
     });
 
     return ok({
@@ -622,6 +678,7 @@ export async function getProductionOverview() {
         orderBy: { created_at: "desc" },
         take: 200,
         include: {
+          _count: { select: { items: true } },
           machine: { select: { id: true, name: true, machine_code: true, status: true } },
           operator: { select: { id: true, name: true, active: true } },
           order: { select: { order_code: true, deadline: true, customer: { select: { name: true } } } },
@@ -647,7 +704,7 @@ export async function getProductionOverview() {
                   unit: true,
                   default_machine_id: true,
                   material_options: {
-                    where: { tenant_id: tenant.id, active: true, material: { active: true } },
+                    where: { tenant_id: tenant.id, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
                     select: { material_id: true },
                   },
                 },
@@ -722,6 +779,7 @@ export async function getProductionOverview() {
     }
 
     const shaped = jobs.map((j) => ({
+      materialSetupRequired: j._count.items === 0,
       jobCode: j.job_code,
       orderCode: j.order.order_code,
       customerName: j.order.customer?.name ?? "-",
@@ -889,7 +947,7 @@ export async function getOrderDetail(orderId: string) {
                 unit: true,
                 default_machine_id: true,
                 material_options: {
-                  where: { tenant_id: tenant.id, active: true, material: { active: true } },
+                  where: { tenant_id: tenant.id, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
                   select: { material_id: true },
                 },
               },

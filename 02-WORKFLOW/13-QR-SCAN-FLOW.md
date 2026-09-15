@@ -109,9 +109,9 @@ AUDIT
 
 **Alur:**
 1. Gudang buka halaman "Antrian QC"
-2. Klik **Pemeriksaan Kualitas (QC)**
+2. Klik **Ambil & Inspeksi**; sistem mengunci job untuk petugas tersebut
 3. Jika diperlukan, pindai Job QR dari barang fisik
-4. Sistem tampilkan checklist QC + spesifikasi order (qty, ukuran, finishing)
+4. Sistem tampilkan checklist QC + spesifikasi order (qty, ukuran, material, finishing, mesin, file desain approved)
 5. Inspector isi checklist: quantity ✓, ukuran ✓, warna ✓, kualitas cetak ✓, defect ✓
 6. Inspector pilih: **PASS** atau **FAIL**
 7. Jika FAIL: wajib isi kategori masalah + deskripsi + upload foto
@@ -131,9 +131,9 @@ AUDIT
 
 **Alur:**
 1. Gudang buka halaman "Antrian Finishing"
-2. Scan Job QR
-3. Sistem tampilkan: spesifikasi finishing (laminating, cutting, welding, dll)
-4. Klik "MULAI FINISHING"
+2. Klik **Ambil & Mulai**; sistem mengunci job untuk petugas tersebut
+3. Scan Job QR bila diperlukan
+4. Sistem tampilkan spesifikasi finishing (laminating, cutting, welding, dll)
 5. Status → `FINISHING_STARTED`
 
 **Validasi:**

@@ -1,16 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { Prisma } from "@prisma/client";
+import { saveProductMaterials, validateCatalogMachine, OPEN_ORDER_EXCLUSIONS, type MaterialRate } from "@/lib/product-materials";
+import { logAction } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES } from "@/lib/catalog-constants";
+import { can } from "@/lib/permissions";
 
 const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
-const isGudang = (r: string[]) => r.includes("gudang") || r.includes("owner");
-
 /** null/undefined/0 → null; 0<n≤100 → n; selain itu → "invalid". */
 function clampPct(v: number | null | undefined): number | null | "invalid" {
   if (v == null || v === 0) return null;
@@ -215,12 +217,13 @@ export async function getPrintingProducts() {
       orderBy: { name: "asc" },
       include: {
         material_options: {
-          where: { tenant_id: tenant.id, active: true, material: { active: true } },
+          where: { tenant_id: tenant.id, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
           orderBy: [{ sort_order: "asc" }, { material: { name: "asc" } }],
           select: {
             material_id: true,
             is_default: true,
             role: true,
+            unit_price: true,
             sort_order: true,
             material: { select: { id: true, name: true, material_code: true } },
           },
@@ -236,6 +239,7 @@ export async function getPrintingProducts() {
           material_id: option.material_id,
           is_default: option.is_default,
           role: option.role,
+          unit_price: option.unit_price == null ? null : Number(option.unit_price),
           sort_order: option.sort_order,
           id: option.material.id,
           name: option.material.name,
@@ -249,215 +253,68 @@ export async function getPrintingProducts() {
   }
 }
 
-export async function createPrintingProduct(data: {
-  name: string;
-  category: string;
-  unit?: string;
-  base_price?: number | null;
-  default_material_id?: string | null;
-  default_machine_id?: string | null;
-  material_ids?: string[];
-}) {
+type PrintingProductInput = {
+  name: string; category: string; unit?: string; base_price?: number | null;
+  default_material_id?: string | null; default_machine_id?: string | null;
+  material_ids?: string[]; material_rates?: MaterialRate[];
+};
+
+export async function createPrintingProduct(data: PrintingProductInput) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengelola produk cetak.");
     if (!data.name?.trim()) return fail("Nama produk wajib diisi.");
-    const unit = PRINTING_UNITS.includes((data.unit ?? "").toUpperCase() as (typeof PRINTING_UNITS)[number])
-      ? (data.unit as string).toUpperCase()
-      : "PCS";
+    if (data.base_price != null && (!Number.isFinite(data.base_price) || data.base_price <= 0)) return fail("Harga dasar harus positif atau dikosongkan.");
     const product = await prisma.$transaction(async (tx) => {
-      const defaultMaterialId = data.default_material_id || null;
-      const materialIds = Array.from(new Set((data.material_ids ?? (defaultMaterialId ? [defaultMaterialId] : [])).filter(Boolean)));
-      if (defaultMaterialId && !materialIds.includes(defaultMaterialId)) {
-        throw new Error("Material default harus termasuk dalam daftar material produk.");
-      }
-      if (materialIds.length > 0) {
-        const materialCount = await tx.material.count({
-          where: { id: { in: materialIds }, tenant_id: tenant.id, active: true },
-        });
-        if (materialCount !== materialIds.length) throw new Error("Daftar material mengandung bahan yang tidak valid atau nonaktif.");
-      }
-      const created = await tx.product.create({
-        data: {
-          tenant_id: tenant.id,
-          name: data.name.trim(),
-          category: (data.category?.trim() || "LAINNYA").toUpperCase(),
-          unit,
-          base_price: data.base_price != null && data.base_price > 0 ? data.base_price : null,
-          default_material_id: defaultMaterialId,
-          default_machine_id: data.default_machine_id || null,
-        },
+      await validateCatalogMachine(tx, tenant.id, data.default_machine_id);
+      const created = await tx.product.create({ data: {
+        tenant_id: tenant.id, name: data.name.trim(), category: (data.category?.trim() || "LAINNYA").toUpperCase(),
+        unit: PRINTING_UNITS.includes((data.unit ?? "PCS") as typeof PRINTING_UNITS[number]) ? data.unit : "PCS",
+        base_price: data.base_price ?? null, default_machine_id: data.default_machine_id || null,
+      } });
+      await saveProductMaterials(tx, tenant.id, created.id, {
+        material_ids: data.material_ids ?? [], default_material_id: data.default_material_id || null, material_rates: data.material_rates,
       });
-      if (materialIds.length > 0) {
-        await tx.productMaterial.createMany({
-          data: materialIds.map((materialId, index) => ({
-            tenant_id: tenant.id,
-            product_id: created.id,
-            material_id: materialId,
-            is_default: materialId === defaultMaterialId,
-            sort_order: index,
-          })),
-        });
-      }
       return created;
     });
+    await logAction(actor.id, "PRODUCT_CREATED", "Product", product.id, null, data);
     revalidatePath("/admin/products");
     return ok(plainPrinting(product));
-  } catch (e) {
-    console.error("createPrintingProduct:", e);
-    return fail(safeError(e, "Gagal membuat produk cetak."));
-  }
+  } catch (e) { return fail(safeError(e, "Gagal membuat produk cetak.")); }
 }
 
-export async function updatePrintingProduct(
-  id: string,
-  data: {
-    name?: string;
-    category?: string;
-    unit?: string;
-    base_price?: number | null;
-    default_material_id?: string | null;
-    default_machine_id?: string | null;
-    material_ids?: string[];
-    active?: boolean;
-  }
-) {
+export async function updatePrintingProduct(id: string, data: Partial<PrintingProductInput> & { active?: boolean }) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengelola produk cetak.");
-    const existing = await prisma.product.findFirst({ where: { id, tenant_id: tenant.id } });
-    if (!existing) return fail("Produk tidak ditemukan.");
-
-    const patch: Record<string, unknown> = {};
-    if (data.name != null) patch.name = data.name.trim();
-    if (data.category != null) patch.category = (data.category.trim() || "LAINNYA").toUpperCase();
-    if (data.unit != null) {
-      patch.unit = PRINTING_UNITS.includes(data.unit.toUpperCase() as (typeof PRINTING_UNITS)[number])
-        ? data.unit.toUpperCase()
-        : "PCS";
-    }
-    if (data.base_price !== undefined) patch.base_price = data.base_price != null && data.base_price > 0 ? data.base_price : null;
-    if (data.default_material_id !== undefined) patch.default_material_id = data.default_material_id || null;
-    if (data.default_machine_id !== undefined) patch.default_machine_id = data.default_machine_id || null;
-    if (data.active != null) patch.active = data.active;
-
-    const product = await prisma.$transaction(async (tx) => {
-      const nextDefault = data.default_material_id !== undefined
-        ? data.default_material_id || null
-        : existing.default_material_id;
-      const requestedMaterialIds = data.material_ids !== undefined
-        ? Array.from(new Set(data.material_ids.filter(Boolean)))
-        : null;
-      const effectiveMaterialIds = requestedMaterialIds ?? (nextDefault ? [nextDefault] : []);
-      if (nextDefault && !effectiveMaterialIds.includes(nextDefault)) {
-        throw new Error("Material default harus termasuk dalam daftar material produk.");
-      }
-      if (effectiveMaterialIds.length > 0) {
-        const materialCount = await tx.material.count({
-          where: { id: { in: effectiveMaterialIds }, tenant_id: tenant.id, active: true },
-        });
-        if (materialCount !== effectiveMaterialIds.length) throw new Error("Daftar material mengandung bahan yang tidak valid atau nonaktif.");
-      }
-      const updated = await tx.product.update({ where: { id }, data: patch });
-      if (requestedMaterialIds !== null) {
-        await tx.productMaterial.deleteMany({ where: { tenant_id: tenant.id, product_id: id } });
-        if (requestedMaterialIds.length > 0) {
-          await tx.productMaterial.createMany({
-            data: requestedMaterialIds.map((materialId, index) => ({
-              tenant_id: tenant.id,
-              product_id: id,
-              material_id: materialId,
-              is_default: materialId === nextDefault,
-              sort_order: index,
-            })),
-          });
-        }
-      } else if (nextDefault) {
-        await tx.productMaterial.updateMany({
-          where: { tenant_id: tenant.id, product_id: id },
-          data: { is_default: false },
-        });
-        await tx.productMaterial.upsert({
-          where: { tenant_id_product_id_material_id: { tenant_id: tenant.id, product_id: id, material_id: nextDefault } },
-          create: { tenant_id: tenant.id, product_id: id, material_id: nextDefault, is_default: true },
-          update: { active: true, is_default: true },
-        });
-      } else if (data.default_material_id !== undefined) {
-        await tx.productMaterial.updateMany({
-          where: { tenant_id: tenant.id, product_id: id },
-          data: { is_default: false },
+    if (data.name !== undefined && !data.name.trim()) return fail("Nama produk wajib diisi.");
+    if (data.base_price != null && (!Number.isFinite(data.base_price) || data.base_price <= 0)) return fail("Harga dasar harus positif atau dikosongkan.");
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${id} AND tenant_id = ${tenant.id} FOR UPDATE`;
+      const existing = await tx.product.findFirst({ where: { id, tenant_id: tenant.id }, include: { material_options: { where: { active: true } } } });
+      if (!existing) throw new Error("Produk tidak ditemukan.");
+      if (data.default_machine_id !== undefined) await validateCatalogMachine(tx, tenant.id, data.default_machine_id);
+      const { material_ids, material_rates, default_material_id, ...fields } = data;
+      const updated = await tx.product.update({ where: { id }, data: { ...fields, ...(fields.default_machine_id !== undefined ? { default_machine_id: fields.default_machine_id || null } : {}) } });
+      if (material_ids !== undefined || default_material_id !== undefined || material_rates !== undefined) {
+        await saveProductMaterials(tx, tenant.id, id, {
+          material_ids: material_ids ?? existing.material_options.map(m => m.material_id),
+          default_material_id: default_material_id === undefined ? existing.default_material_id : default_material_id || null,
+          material_rates,
         });
       }
-      return updated;
+      return { updated, existing };
     });
-    revalidatePath("/admin/products");
-    return ok(plainPrinting(product));
-  } catch (e) {
-    console.error("updatePrintingProduct:", e);
-    return fail(safeError(e, "Gagal memperbarui produk cetak."));
-  }
+    await logAction(actor.id, "PRODUCT_MATERIALS_UPDATED", "Product", id, result.existing, data);
+    revalidatePath("/admin/products"); revalidatePath("/admin"); revalidatePath("/designer");
+    return ok(plainPrinting(result.updated));
+  } catch (e) { return fail(safeError(e, "Gagal memperbarui produk cetak.")); }
 }
 
-/**
- * Set the explicit material allowlist for one printing product. Empty lists
- * are allowed so an incomplete product can be configured before first order;
- * the order server action rejects products without an active mapping.
- */
-export async function setProductMaterials(
-  productId: string,
-  data: { materialIds: string[]; defaultMaterialId?: string | null }
-) {
-  try {
-    const tenant = await requireTenant();
-    const actor = await requireUser();
-    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengatur material produk.");
-
-    const product = await prisma.product.findFirst({
-      where: { id: productId, tenant_id: tenant.id },
-      select: { id: true },
-    });
-    if (!product) return fail("Produk tidak ditemukan.");
-
-    const materialIds = Array.from(new Set(data.materialIds.filter(Boolean)));
-    const defaultMaterialId = data.defaultMaterialId || null;
-    if (defaultMaterialId && !materialIds.includes(defaultMaterialId)) {
-      return fail("Material default harus termasuk dalam daftar material produk.");
-    }
-    if (materialIds.length > 0) {
-      const count = await prisma.material.count({
-        where: { tenant_id: tenant.id, id: { in: materialIds }, active: true },
-      });
-      if (count !== materialIds.length) return fail("Daftar material mengandung bahan yang tidak valid atau nonaktif.");
-    }
-
-    await prisma.$transaction(async (tx) => {
-      await tx.productMaterial.deleteMany({ where: { tenant_id: tenant.id, product_id: productId } });
-      if (materialIds.length > 0) {
-        await tx.productMaterial.createMany({
-          data: materialIds.map((materialId, index) => ({
-            tenant_id: tenant.id,
-            product_id: productId,
-            material_id: materialId,
-            is_default: materialId === defaultMaterialId,
-            sort_order: index,
-          })),
-        });
-      }
-      await tx.product.update({
-        where: { id: productId },
-        data: { default_material_id: defaultMaterialId },
-      });
-    });
-
-    revalidatePath("/admin/products");
-    revalidatePath("/admin");
-    return ok({ productId, materialIds, defaultMaterialId });
-  } catch (e) {
-    console.error("setProductMaterials:", e);
-    return fail(safeError(e, "Gagal menyimpan material produk."));
-  }
+export async function setProductMaterials(productId: string, data: { materialIds: string[]; defaultMaterialId?: string | null }) {
+  return updatePrintingProduct(productId, { material_ids: data.materialIds, default_material_id: data.defaultMaterialId ?? null });
 }
 
 export async function deletePrintingProduct(id: string) {
@@ -597,11 +454,12 @@ export async function updateCustomer(
 export async function getMaterials() {
   try {
     const tenant = await requireTenant();
-    await requireUser();
+    const actor = await requireUser();
+    if (!can(actor, "material.view")) return fail("Anda tidak memiliki akses melihat material.");
     const materials = await prisma.material.findMany({
       where: { tenant_id: tenant.id },
       orderBy: { name: "asc" },
-      include: { machines: { select: { machine_id: true } } },
+      include: { machines: { select: { machine_id: true } }, product_options: { where: { active: true }, select: { product: { select: { name: true } } } } },
     });
     return ok(
       materials.map((m) => ({
@@ -619,8 +477,56 @@ export async function getMaterials() {
   }
 }
 
+/** Riwayat pergerakan material untuk audit penerimaan, pemakaian, waste, dan opname. */
+export async function getMaterialMovementHistory(materialId?: string) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!can(actor, "material.view")) return fail("Anda tidak memiliki akses melihat riwayat material.");
+    const rows = await prisma.materialMovement.findMany({
+      where: { tenant_id: tenant.id, ...(materialId ? { material_id: materialId } : {}) },
+      orderBy: { created_at: "desc" },
+      take: 200,
+      include: {
+        material: { select: { material_code: true, name: true, unit_stock: true } },
+        machine: { select: { name: true, machine_code: true } },
+        performer: { select: { name: true } },
+        job: { select: { job_code: true, order: { select: { order_code: true } } } },
+      },
+    });
+    return ok(rows.map((row) => ({
+      id: row.id,
+      materialId: row.material_id,
+      materialCode: row.material.material_code,
+      materialName: row.material.name,
+      unitStock: row.material.unit_stock,
+      movementType: row.movement_type,
+      quantityUsage: Number(row.quantity_usage),
+      quantityStockChange: Number(row.quantity_stock_change),
+      beforeStock: Number(row.before_stock),
+      afterStock: Number(row.after_stock),
+      supplier: row.supplier,
+      unitCost: row.unit_cost == null ? null : Number(row.unit_cost),
+      referenceNo: row.reference_no,
+      receivedAt: row.received_at,
+      performedBy: row.performer.name,
+      machine: row.machine ? `${row.machine.name} (${row.machine.machine_code})` : null,
+      jobCode: row.job?.job_code ?? null,
+      orderCode: row.job?.order.order_code ?? null,
+      reason: row.reason,
+      createdAt: row.created_at,
+    })));
+  } catch (e) {
+    console.error("getMaterialMovementHistory:", e);
+    return fail(safeError(e, "Gagal memuat riwayat material."));
+  }
+}
+
 export async function createMaterial(data: {
   name: string;
+  group_name?: string | null;
+  specifications?: string | null;
+  purpose?: string;
   type: string; // MEDIA / INK / OTHER
   unit_stock: string;
   unit_usage: string;
@@ -635,11 +541,12 @@ export async function createMaterial(data: {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.roles)) return fail("Hanya Owner/Gudang yang boleh menambah material baru.");
+    if (!can(actor, "material.receive")) return fail("Hanya Gudang/Owner yang boleh menambah material baru.");
     if (!data.name?.trim()) return fail("Nama material wajib diisi.");
-    if (!(data.conversion_factor > 0)) return fail("Faktor konversi harus lebih dari 0.");
+    if (!Number.isFinite(data.conversion_factor) || !(data.conversion_factor > 0)) return fail("Faktor konversi harus lebih dari 0.");
 
     const material = await prisma.$transaction(async (tx) => {
+      await validateMaterialSetup(tx, tenant.id, data);
       const m = await tx.material.create({
         data: {
           tenant_id: tenant.id,
@@ -649,6 +556,9 @@ export async function createMaterial(data: {
           })(),
           name: data.name.trim(),
           type: data.type,
+          group_name: data.group_name?.trim() || null,
+          specifications: data.specifications?.trim() || null,
+          purpose: data.type === "INK" ? "CONSUMABLE" : data.purpose ?? "PRIMARY",
           unit_stock: data.unit_stock,
           unit_usage: data.unit_usage,
           unit_custom: data.unit_custom || null,
@@ -680,6 +590,10 @@ export async function updateMaterial(
   id: string,
   data: {
     name?: string;
+    type?: string;
+    purpose?: string;
+    group_name?: string | null;
+    specifications?: string | null;
     unit_stock?: string;
     unit_usage?: string;
     unit_custom?: string | null;
@@ -694,13 +608,24 @@ export async function updateMaterial(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.roles)) return fail("Hanya Owner/Gudang yang boleh mengubah data material.");
+    if (!can(actor, "material.receive")) return fail("Hanya Gudang/Owner yang boleh mengubah data material.");
     const existing = await prisma.material.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!existing) return fail("Material tidak ditemukan.");
 
     const { machine_ids, ...fields } = data;
     await prisma.$transaction(async (tx) => {
-      await tx.material.update({ where: { id }, data: fields });
+      await tx.$queryRaw`SELECT id FROM "Material" WHERE id = ${id} AND tenant_id = ${tenant.id} FOR UPDATE`;
+      await validateMaterialSetup(tx, tenant.id, { ...existing, ...data, conversion_factor: Number(data.conversion_factor ?? existing.conversion_factor), min_stock: Number(data.min_stock ?? existing.min_stock), standard_cost: Number(data.standard_cost ?? existing.standard_cost), current_stock: Number(existing.current_stock) });
+      const changingUnits = (data.unit_stock !== undefined && data.unit_stock !== existing.unit_stock) || (data.unit_usage !== undefined && data.unit_usage !== existing.unit_usage) || (data.conversion_factor !== undefined && data.conversion_factor !== Number(existing.conversion_factor));
+      if (changingUnits && (Number(existing.current_stock) !== 0 || await tx.materialMovement.count({ where: { tenant_id: tenant.id, material_id: id } }) || await tx.orderItem.count({ where: { tenant_id: tenant.id, material_id: id } }))) throw new Error("Satuan/konversi material yang sudah digunakan tidak dapat diubah. Buat material baru agar histori stok tetap konsisten.");
+      if (data.active === false || data.purpose === "CONSUMABLE" || data.type === "INK") {
+        if (await tx.productMaterial.count({ where: { tenant_id: tenant.id, material_id: id, active: true } }) || await tx.orderItem.count({ where: { tenant_id: tenant.id, material_id: id, order: { status: { notIn: OPEN_ORDER_EXCLUSIONS } } } })) throw new Error("Material masih terhubung ke produk atau order terbuka. Tinjau relasinya terlebih dahulu.");
+      }
+      if (machine_ids) {
+        const removed = await tx.machineMaterial.findMany({ where: { tenant_id: tenant.id, material_id: id, machine_id: { notIn: machine_ids } }, select: { machine_id: true } });
+        if (removed.length && await tx.productionJob.count({ where: { tenant_id: tenant.id, machine_id: { in: removed.map(m => m.machine_id) }, status: { in: ["PRODUCTION_QUEUED", "PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"] }, items: { some: { material_id: id } } } })) throw new Error("Bahan masih digunakan job aktif pada mesin yang akan dihapus.");
+      }
+      await tx.material.update({ where: { id }, data: { ...fields, ...(data.type === "INK" ? { purpose: "CONSUMABLE" } : {}) } });
       if (machine_ids) {
         await tx.machineMaterial.deleteMany({ where: { tenant_id: tenant.id, material_id: id } });
         for (const machineId of machine_ids) {
@@ -711,6 +636,7 @@ export async function updateMaterial(
       }
     });
 
+    await logAction(actor.id, "MATERIAL_UPDATED", "Material", id, existing, data);
     revalidatePath("/admin");
     return ok({ id });
   } catch (e) {
@@ -727,10 +653,12 @@ export async function adjustMaterialStock(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isGudang(actor.roles)) return fail("Hanya Owner/Gudang yang boleh menyesuaikan stok material.");
+    if (!can(actor, "material.adjust")) return fail("Hanya Owner yang boleh melakukan adjustment stok.");
     if (!data.reason?.trim()) return fail("Alasan penyesuaian wajib diisi.");
+    if (!Number.isFinite(data.newStock) || data.newStock < 0) return fail("Jumlah stok fisik tidak valid.");
 
     const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Material" WHERE id = ${materialId} AND tenant_id = ${tenant.id} FOR UPDATE`;
       const material = await tx.material.findFirst({ where: { id: materialId, tenant_id: tenant.id } });
       if (!material) throw new Error("Material tidak ditemukan.");
 
@@ -743,7 +671,7 @@ export async function adjustMaterialStock(
         data: {
           tenant_id: tenant.id,
           material_id: materialId,
-          movement_type: delta >= 0 ? "IN" : "ADJUSTMENT",
+          movement_type: "ADJUSTMENT",
           quantity_usage: 0,
           quantity_stock_change: delta,
           before_stock: before,
@@ -762,6 +690,70 @@ export async function adjustMaterialStock(
   } catch (e) {
     console.error("adjustMaterialStock:", e);
     return fail(safeError(e, "Gagal menyesuaikan stok."));
+  }
+}
+
+/** Penerimaan barang baru: tambah delta ke stok dan catat movement IN. */
+export async function receiveMaterialStock(
+  materialId: string,
+  data: {
+    quantity: number;
+    supplier?: string;
+    unitCost?: number;
+    receivedAt?: string;
+    referenceNo?: string;
+    notes?: string;
+  }
+) {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!can(actor, "material.receive")) return fail("Hanya Gudang/Owner yang boleh mencatat stok masuk.");
+    if (!Number.isFinite(data.quantity) || data.quantity <= 0) return fail("Jumlah stok masuk harus lebih dari 0.");
+    if (data.unitCost != null && (!Number.isFinite(data.unitCost) || data.unitCost < 0)) return fail("Harga beli tidak valid.");
+
+    const receivedAt = data.receivedAt ? new Date(`${data.receivedAt}T12:00:00`) : new Date();
+    if (Number.isNaN(receivedAt.getTime())) return fail("Tanggal penerimaan tidak valid.");
+
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Material" WHERE id = ${materialId} AND tenant_id = ${tenant.id} FOR UPDATE`;
+      const material = await tx.material.findFirst({ where: { id: materialId, tenant_id: tenant.id, active: true } });
+      if (!material) throw new Error("Material tidak ditemukan atau sudah nonaktif.");
+
+      const before = Number(material.current_stock);
+      const after = before + data.quantity;
+      await tx.material.update({ where: { id: material.id }, data: { current_stock: after } });
+      await tx.materialMovement.create({
+        data: {
+          tenant_id: tenant.id,
+          material_id: material.id,
+          movement_type: "IN",
+          quantity_usage: 0,
+          quantity_stock_change: data.quantity,
+          before_stock: before,
+          after_stock: after,
+          supplier: data.supplier?.trim() || null,
+          unit_cost: data.unitCost ?? null,
+          reference_no: data.referenceNo?.trim() || null,
+          received_at: receivedAt,
+          performed_by: actor.id,
+          reason: data.notes?.trim() || "Penerimaan bahan",
+        },
+      });
+      return { before, after, quantity: data.quantity };
+    });
+
+    await logAction(actor.id, "MATERIAL_RECEIVED", "Material", materialId, null, {
+      quantity: data.quantity,
+      supplier: data.supplier,
+      reference_no: data.referenceNo,
+    });
+    revalidatePath("/finishing");
+    revalidatePath("/admin");
+    return ok(result);
+  } catch (e) {
+    console.error("receiveMaterialStock:", e);
+    return fail(safeError(e, "Gagal mencatat stok masuk."));
   }
 }
 
@@ -922,4 +914,12 @@ export async function deleteMachine(id: string) {
     console.error("deleteMachine:", e);
     return fail(safeError(e, "Gagal menghapus mesin."));
   }
+}
+
+async function validateMaterialSetup(tx: Prisma.TransactionClient, tenantId: string, data: { type?: string; purpose?: string; conversion_factor: number; min_stock: number; current_stock: number; standard_cost: number; machine_ids?: string[] }) {
+  if (!data.type || !["MEDIA", "INK", "OTHER"].includes(data.type)) throw new Error("Tipe material tidak valid.");
+  if (data.purpose && !["PRIMARY", "CONSUMABLE"].includes(data.purpose)) throw new Error("Fungsi material tidak valid.");
+  if (![data.conversion_factor, data.min_stock, data.current_stock, data.standard_cost].every(Number.isFinite) || data.conversion_factor <= 0 || data.min_stock < 0 || data.standard_cost < 0) throw new Error("Angka material tidak valid; konversi harus positif.");
+  const ids = [...new Set(data.machine_ids ?? [])];
+  if (ids.length !== (data.machine_ids ?? []).length || ids.length !== await tx.machine.count({ where: { tenant_id: tenantId, id: { in: ids } } })) throw new Error("Daftar mesin tidak valid untuk toko ini.");
 }

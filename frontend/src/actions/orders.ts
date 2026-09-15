@@ -217,8 +217,14 @@ export async function createPrintingOrder(
       // 2. Totals — diskon TIDAK dipotong sebelum di-approve Owner (aturan 14).
       //    `discount` disimpan sebagai permintaan; total/dp/balance tetap harga penuh
       //    sampai decideDiscount(approve) dipanggil.
-      const resolvedItems = [] as (PrintingOrderItemInput & { unitPrice: number })[];
+      const resolvedItems = [] as (PrintingOrderItemInput & { unitPrice: number; catalogRate: number | null })[];
       let subtotal = 0;
+      for (const id of [...new Set(items.map(i => i.productId).filter((id): id is string => !!id))].sort()) {
+        await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${id} AND tenant_id = ${tenant.id} FOR UPDATE`;
+      }
+      for (const id of [...new Set(items.map(i => i.materialId).filter((id): id is string => !!id))].sort()) {
+        await tx.$queryRaw`SELECT id FROM "Material" WHERE id = ${id} AND tenant_id = ${tenant.id} FOR UPDATE`;
+      }
       for (const i of items) {
         let unitPrice = Math.max(0, Math.round(Number(i.unitPrice) || 0));
         const product = i.productId
@@ -228,15 +234,16 @@ export async function createPrintingOrder(
             })
           : null;
         if (i.productId && !product) throw new Error("Produk tidak valid atau tidak aktif.");
+        let catalogRate = product?.base_price == null ? null : Number(product.base_price);
         if (i.productId) {
           const allowed = await tx.productMaterial.findMany({
             where: {
               tenant_id: tenant.id,
               product_id: i.productId,
-              active: true,
-              material: { active: true },
+              active: true, role: "PRIMARY",
+              material: { active: true, purpose: "PRIMARY", type: { not: "INK" } },
             },
-            select: { material_id: true },
+            select: { material_id: true, unit_price: true },
           });
           if (allowed.length === 0) {
             throw new Error("Material produk belum dikonfigurasi. Atur material yang diizinkan di Katalog Produk.");
@@ -244,6 +251,8 @@ export async function createPrintingOrder(
           if (!i.materialId || !allowed.some((option) => option.material_id === i.materialId)) {
             throw new Error("Material tidak diizinkan untuk produk yang dipilih.");
           }
+          const rate = allowed.find(option => option.material_id === i.materialId)?.unit_price;
+          if (rate != null) catalogRate = Number(rate);
         } else if (i.materialId) {
           const material = await tx.material.findFirst({
             where: { id: i.materialId, tenant_id: tenant.id, active: true },
@@ -253,7 +262,7 @@ export async function createPrintingOrder(
         }
         if (designerRestricted) {
           if (!i.productId) throw new Error("Designer wajib memilih produk dari katalog.");
-          const basePrice = Number(product?.base_price ?? 0);
+          const basePrice = Number(catalogRate ?? 0);
           if (!product || !(basePrice > 0)) throw new Error("Produk belum memiliki harga katalog aktif.");
           if (product.unit === "M2") {
             const area = ((Number(i.width) || 0) / 100) * ((Number(i.height) || 0) / 100);
@@ -263,7 +272,7 @@ export async function createPrintingOrder(
             unitPrice = Math.round(basePrice);
           }
         } else if (i.productId && !can(actor, "quote.edit_price")) {
-          const basePrice = Number(product?.base_price ?? 0);
+          const basePrice = Number(catalogRate ?? 0);
           const expected = product?.unit === "M2"
             ? (() => {
                 const area = ((Number(i.width) || 0) / 100) * ((Number(i.height) || 0) / 100);
@@ -276,7 +285,7 @@ export async function createPrintingOrder(
         } else if (!i.productId && !can(actor, "quote.edit_price")) {
           throw new Error("Item custom dengan harga manual memerlukan permission quote.edit_price.");
         }
-        resolvedItems.push({ ...i, unitPrice });
+        resolvedItems.push({ ...i, unitPrice, catalogRate });
         subtotal += unitPrice * Math.max(1, Number(i.quantity) || 1);
       }
       const total = subtotal;
@@ -315,6 +324,7 @@ export async function createPrintingOrder(
         if (i.deadline && (!itemDeadline || Number.isNaN(itemDeadline.getTime()))) {
           throw new Error("Format deadline item tidak valid.");
         }
+        const selectedMaterial = i.materialId ? await tx.material.findFirst({ where: { id: i.materialId, tenant_id: tenant.id }, select: { name: true, material_code: true, group_name: true, specifications: true, unit_stock: true, unit_usage: true, conversion_factor: true } }) : null;
         await tx.orderItem.create({
           data: {
             tenant_id: tenant.id,
@@ -324,6 +334,8 @@ export async function createPrintingOrder(
             quantity: i.quantity,
             size,
             material_id: i.materialId || null,
+            ...(selectedMaterial ? { material_snapshot: { ...selectedMaterial, conversion_factor: Number(selectedMaterial.conversion_factor) } } : {}),
+            pricing_snapshot: { catalog_rate: i.catalogRate, unit_price: i.unitPrice, material_id: i.materialId || null },
             finishing: i.finishing || null,
             deadline: itemDeadline && !Number.isNaN(itemDeadline.getTime()) ? itemDeadline : null,
             unit_price: i.unitPrice,
@@ -666,12 +678,13 @@ export async function getOrderFormData() {
           base_price: true,
           default_material_id: true,
           material_options: {
-            where: { tenant_id: tenant.id, active: true, material: { active: true } },
+            where: { tenant_id: tenant.id, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
             orderBy: [{ sort_order: "asc" }, { material: { name: "asc" } }],
             select: {
               material_id: true,
               is_default: true,
-              material: { select: { id: true, name: true, material_code: true, type: true, unit_usage: true, unit_custom: true } },
+              unit_price: true,
+              material: { select: { id: true, name: true, material_code: true, type: true, unit_usage: true, unit_custom: true, group_name: true, current_stock: true, unit_stock: true } },
             },
           },
         },
@@ -715,7 +728,7 @@ export async function getOrderFormData() {
         category: p.category,
         unit: p.unit,
         basePrice: canViewQuote && p.base_price != null ? Number(p.base_price) : null,
-        default_material_id: p.default_material_id,
+        default_material_id: p.material_options.find(o => o.is_default)?.material_id ?? null,
         material_options: p.material_options.map((option) => ({
           id: option.material.id,
           name: option.material.name,
@@ -724,6 +737,9 @@ export async function getOrderFormData() {
           unit_usage: option.material.unit_usage,
           unit_custom: option.material.unit_custom,
           is_default: option.is_default,
+          unit_price: canViewQuote && option.unit_price != null ? Number(option.unit_price) : null,
+          group_name: option.material.group_name,
+          stock_available: Number(option.material.current_stock) > 0,
         })),
       })),
       materials,

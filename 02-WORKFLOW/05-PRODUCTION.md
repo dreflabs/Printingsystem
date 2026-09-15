@@ -103,8 +103,15 @@ Job berstatus PRODUCTION_STARTED
 
 ---
 
-## Job Macet di Tahap QC / Finishing (Bukan Produksi) — Tidak Ada Reassignment
+## Penugasan QC / Finishing untuk Banyak Petugas Gudang
 
-Aturan reassignment di atas **hanya berlaku untuk tahap produksi** (`PRODUCTION_ASSIGNED`/`PRODUCTION_STARTED`, ditangani Operator). Untuk job yang sedang di tahap **QC atau Finishing** (ditangani role Gudang) dan staf yang mengerjakannya tiba-tiba tidak bisa lanjut (sakit mendadak, dsb) — **job tersebut menunggu**, bukan direassign ke staf Gudang lain di tengah jalan.
+Job QC dan Finishing menggunakan klaim atomik per tahap. Petugas Gudang memilih
+**Ambil & Inspeksi** atau **Ambil & Mulai**; hanya satu petugas yang dapat
+memegang job pada tahap tersebut. Nama petugas dan waktu klaim tersimpan pada
+job, sehingga dashboard tidak menampilkan tugas sebagai pekerjaan bebas yang
+dapat dikerjakan bersamaan.
 
-Alasan: berbeda dari job produksi yang statusnya jelas per mesin, satu record QC/Finishing yang sudah setengah jalan (misalnya checklist QC baru terisi sebagian) tidak punya mekanisme "pindah tangan" yang aman — memaksakan orang lain melanjutkan checklist yang sudah diisi orang lain berisiko salah tanggung jawab kalau hasil akhirnya keliru. Job baru bisa dilanjutkan staf Gudang lain kalau checklist/proses yang sudah berjalan dianggap batal dan diulang dari awal oleh orang yang sama atau berbeda, bukan "melanjutkan" pekerjaan orang lain.
+Jika petugas berhenti di tengah proses, Admin/Owner perlu membuka kembali atau
+menyelesaikan penanganan sesuai kebijakan operasional sebelum petugas lain
+melanjutkan. Checklist QC yang sudah disubmit tidak dapat ditimpa; untuk hasil
+FAIL, sistem membuat alur rework dan riwayat inspector tetap utuh.

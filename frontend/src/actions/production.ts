@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
+import { getJobMaterialPlan, validateMachineMaterials, validateUsageIds, stockUsage, ACTIVE_PRINT_STATUSES } from "@/lib/production-materials";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
@@ -12,6 +13,7 @@ import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
 import { can, canAny } from "@/lib/permissions";
 import { latestDesignVersionsBySlot } from "@/lib/production-readiness";
+import { requireOperationalCheckIn } from "@/lib/attendance-policy";
 
 /**
  * Admin/Owner menekan "Rilis ke Produksi" untuk order yang tertahan gatekeeper
@@ -122,7 +124,7 @@ export async function getScanContext(code: string) {
             name: true,
             default_machine_id: true,
             material_options: {
-              where: { tenant_id: tenant.id, active: true, material: { active: true } },
+              where: { tenant_id: tenant.id, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
               select: { material_id: true },
             },
           },
@@ -140,15 +142,12 @@ export async function getScanContext(code: string) {
     });
     const latestApprovedVers = latestDesignVersionsBySlot(approvedVers)
       .filter((version) => version.approval_status === "APPROVED" && !!version.file_path);
-    const jobItemIds = new Set(
-      orderItems.filter((it) => it.product?.default_machine_id === job.machine_id).map((it) => it.id)
-    );
-    const scopedItemIds = jobItemIds.size > 0 ? jobItemIds : new Set(orderItems.map((it) => it.id));
-    const scopedItems = orderItems.filter((item) => scopedItemIds.has(item.id));
-    const allowedMaterialIds = Array.from(new Set(
-      scopedItems.flatMap((item) => item.product?.material_options.map((option) => option.material_id) ?? [])
-    ));
-    const plannedMaterialIds = Array.from(new Set(scopedItems.map((item) => item.material_id).filter((id): id is string => !!id)));
+    const links = await prisma.productionJobItem.findMany({ where: { tenant_id: tenant.id, job_id: job.id }, select: { order_item_id: true, material_id: true, material: { select: { active: true } } } });
+    const scopedItemIds = new Set(links.map(link => link.order_item_id));
+    const scopedItems = orderItems.filter(item => scopedItemIds.has(item.id));
+    const consumables = await prisma.machineMaterial.findMany({ where: { tenant_id: tenant.id, machine_id: job.machine_id, material: { active: true, purpose: "CONSUMABLE" } }, select: { material_id: true } });
+    const plannedMaterialIds = [...new Set(links.filter(l => l.material?.active).map(l => l.material_id).filter((id): id is string => !!id))];
+    const allowedMaterialIds = [...new Set([...plannedMaterialIds, ...consumables.map(m => m.material_id)])];
     const seenVer = new Set<string>();
     const files: { label: string; url: string; name: string | null }[] = [];
     for (const v of latestApprovedVers) {
@@ -211,7 +210,7 @@ export async function getScanContext(code: string) {
       // Kompat lama: file pertama sebagai tunggal.
       fileUrl: files[0]?.url ?? null,
       fileName: files[0]?.name ?? null,
-      items: orderItems.map((i) => ({
+      items: scopedItems.map((i) => ({
         description: i.description ?? "Item",
         quantity: i.quantity,
         size: i.size ?? null,
@@ -237,6 +236,7 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
     if (!canAny(actor, "production.execute", "production.assign")) {
       return fail("Hanya Operator/Admin/Owner yang boleh memulai produksi.");
     }
+    await requireOperationalCheckIn(tenant.id, actor);
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
@@ -261,6 +261,8 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
         });
         if (!grant) throw new Error("Anda tidak ditugaskan ke mesin job ini.");
       }
+
+      await getJobMaterialPlan(tx, tenant.id, job);
 
       // Klaim job antrean: kunci atomik supaya 2 operator tidak bisa menang bersamaan.
       if (isClaim) {
@@ -472,7 +474,7 @@ export async function reassignProductionJob(
 
     const job = await findJobByCode(prisma, tenant.id, jobCode);
     if (!job) return fail("Job tidak ditemukan.");
-    if (!["PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"].includes(job.status)) {
+    if (!ACTIVE_PRINT_STATUSES.includes(job.status)) {
       return fail(`Job tidak bisa direassign dari status ${job.status}.`);
     }
 
@@ -508,9 +510,12 @@ export async function reassignProductionJob(
     }
 
     const before = { machine_id: job.machine_id, operator_id: job.operator_id };
-    await prisma.productionJob.update({
-      where: { id: job.id },
-      data: { machine_id: input.machineId, operator_id: input.operatorId },
+    await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "ProductionJob" WHERE id = ${job.id} FOR UPDATE`;
+      const links = await tx.productionJobItem.findMany({ where: { tenant_id: tenant.id, job_id: job.id } });
+      await validateMachineMaterials(tx, tenant.id, input.machineId, links.map(l => l.material_id));
+      const changed = await tx.productionJob.updateMany({ where: { id: job.id, tenant_id: tenant.id, status: { in: ACTIVE_PRINT_STATUSES } }, data: { machine_id: input.machineId, operator_id: input.operatorId, ...(job.status === "PRODUCTION_QUEUED" ? { status: "PRODUCTION_ASSIGNED" } : {}) } });
+      if (!changed.count) throw new Error("Job sudah berubah. Muat ulang sebelum mengalihkan.");
     });
     await logAction(actor.id, "PRODUCTION_JOB_REASSIGNED", "ProductionJob", job.job_code, before, {
       machine_id: input.machineId,
@@ -567,7 +572,7 @@ export async function finishProduction(
     if (!canAny(actor, "production.execute", "production.assign")) {
       return fail("Hanya Operator/Admin/Owner yang boleh menyelesaikan produksi.");
     }
-    if (!(input.actualQty > 0)) return fail("Jumlah aktual tidak boleh 0.");
+    if (!Number.isSafeInteger(input.actualQty) || !(input.actualQty > 0)) return fail("Jumlah aktual tidak boleh 0.");
     if ((input.wasteQty ?? 0) > 0 && !input.wasteReason?.trim()) {
       return fail("Waste > 0 wajib disertai alasan.");
     }
@@ -575,7 +580,7 @@ export async function finishProduction(
       return fail("Pemakaian material wajib dicatat (minimal 1).");
     }
     for (const m of input.materials) {
-      if (!(m.usageQty > 0)) return fail("Jumlah pemakaian material harus > 0.");
+      if (!Number.isFinite(m.usageQty) || !(m.usageQty > 0) || !Number.isFinite(m.wasteQty ?? 0) || (m.wasteQty ?? 0) < 0) return fail("Jumlah pemakaian material harus > 0.");
       if ((m.wasteQty ?? 0) > 0 && !m.wasteReason?.trim()) {
         return fail("Waste material wajib disertai alasan.");
       }
@@ -598,47 +603,17 @@ export async function finishProduction(
       });
       if (claim.count === 0) throw new Error("Job sudah diselesaikan lewat panggilan lain.");
 
-      const orderItems = await tx.orderItem.findMany({
-        where: { tenant_id: tenant.id, order_id: job.order_id, retail_product_id: null },
-        select: { product_id: true, material_id: true },
-      });
-      const productIds = Array.from(new Set(orderItems.map((item) => item.product_id).filter((id): id is string => !!id)));
-      const mappedMaterials = productIds.length > 0
-        ? await tx.productMaterial.findMany({
-            where: {
-              tenant_id: tenant.id,
-              product_id: { in: productIds },
-              active: true,
-              material: { active: true },
-            },
-            select: { material_id: true },
-          })
-        : [];
-      const allowedMaterialIds = new Set([
-        ...mappedMaterials.map((row) => row.material_id),
-        ...orderItems.filter((item) => !item.product_id).map((item) => item.material_id).filter((id): id is string => !!id),
-      ]);
-      const plannedMaterialIds = new Set(orderItems.map((item) => item.material_id).filter((id): id is string => !!id));
-      if (mappedMaterials.length > 0) {
-        for (const item of orderItems) {
-          if (item.product_id && item.material_id && !allowedMaterialIds.has(item.material_id)) {
-            throw new Error("Material pada order tidak lagi kompatibel dengan konfigurasi produk.");
-          }
-        }
-      }
-
+      const plan = await getJobMaterialPlan(tx, tenant.id, job);
+      validateUsageIds(plan.plannedIds, plan.consumableIds, input.materials.map(m => m.materialId));
       const lowStock: string[] = [];
-      for (const m of input.materials) {
-        if (plannedMaterialIds.size > 0 && !plannedMaterialIds.has(m.materialId)) {
-          throw new Error("Material yang dipakai harus mengikuti material pada order item. Gunakan alur override untuk substitusi.");
-        }
-        if (plannedMaterialIds.size === 0 && mappedMaterials.length > 0 && !allowedMaterialIds.has(m.materialId)) {
-          throw new Error("Material yang dipakai tidak diizinkan untuk produk pada job ini.");
-        }
-        const material = await tx.material.findFirst({ where: { id: m.materialId, tenant_id: tenant.id } });
+      // Stable ordering avoids deadlocks when jobs consume the same materials.
+      for (const m of [...input.materials].sort((a, b) => a.materialId.localeCompare(b.materialId))) {
+        await tx.$queryRaw`SELECT id FROM "Material" WHERE id = ${m.materialId} AND tenant_id = ${tenant.id} FOR UPDATE`;
+        const material = await tx.material.findFirst({ where: { id: m.materialId, tenant_id: tenant.id, active: true } });
         if (!material) throw new Error("Material tidak ditemukan.");
 
-        const usageTotal = m.usageQty + (m.wasteQty ?? 0);
+        const quantities = stockUsage(m.usageQty, m.wasteQty ?? 0, Number(material.conversion_factor));
+        const usageTotal = quantities.total;
         // Pengurangan atomik — cegah lost update saat 2 operator pakai bahan shared
         // bersamaan. Stok boleh minus (dicatat sbg anomali, produksi tidak diblokir).
         await tx.material.update({
@@ -650,7 +625,8 @@ export async function finishProduction(
           select: { current_stock: true },
         });
         const after = Number(fresh!.current_stock);
-        const before = after + usageTotal;
+        const before = fresh!.current_stock.plus(usageTotal);
+        const afterUsage = before.minus(quantities.used);
 
         await tx.materialMovement.create({
           data: {
@@ -660,9 +636,9 @@ export async function finishProduction(
             job_id: job.id,
             movement_type: "OUT",
             quantity_usage: m.usageQty,
-            quantity_stock_change: -m.usageQty,
+            quantity_stock_change: quantities.used.negated(),
             before_stock: before,
-            after_stock: before - m.usageQty,
+            after_stock: afterUsage,
             performed_by: actor.id,
             reason: `Pemakaian produksi ${job.job_code}`,
           },
@@ -676,8 +652,8 @@ export async function finishProduction(
               job_id: job.id,
               movement_type: "WASTE",
               quantity_usage: m.wasteQty!,
-              quantity_stock_change: -(m.wasteQty!),
-              before_stock: before - m.usageQty,
+              quantity_stock_change: quantities.wasted.negated(),
+              before_stock: afterUsage,
               after_stock: after,
               performed_by: actor.id,
               reason: m.wasteReason!.trim(),
@@ -727,6 +703,38 @@ export async function finishProduction(
 // SCAN 3 — QC
 // ─────────────────────────────────────────────────────────────
 
+/** Klaim satu job QC secara atomik agar dua petugas tidak mengerjakan job yang sama. */
+export async function claimQCJob(jobCode: string): Promise<ActionResult<{ jobStatus: string; assigneeId: string }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!can(actor, "qc.submit")) return fail("Anda tidak memiliki akses mengambil tugas QC.");
+    await requireOperationalCheckIn(tenant.id, actor);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const job = await findJobByCode(tx, tenant.id, jobCode);
+      if (!job) throw new Error("Job tidak ditemukan.");
+      if (job.status !== "PRODUCTION_COMPLETE") throw new Error(`Job tidak berada di antrean QC (status: ${job.status}).`);
+      if (job.qc_assignee_id && job.qc_assignee_id !== actor.id) throw new Error("Job QC sudah diambil petugas lain.");
+
+      const claimed = await tx.productionJob.updateMany({
+        where: { id: job.id, tenant_id: tenant.id, status: "PRODUCTION_COMPLETE", qc_assignee_id: null },
+        data: { qc_assignee_id: actor.id, qc_claimed_at: new Date() },
+      });
+      if (claimed.count === 0 && job.qc_assignee_id !== actor.id) throw new Error("Job QC baru saja diambil petugas lain.");
+      return { jobCode: job.job_code, jobStatus: job.status, assigneeId: actor.id };
+    });
+
+    await logAction(actor.id, "QC_TASK_CLAIMED", "ProductionJob", result.jobCode, null, null);
+    revalidatePath("/finishing");
+    revalidatePath("/scan");
+    return ok({ jobStatus: result.jobStatus, assigneeId: result.assigneeId });
+  } catch (e) {
+    console.error("claimQCJob:", e);
+    return fail(safeError(e, "Gagal mengambil tugas QC."));
+  }
+}
+
 export interface SubmitQCInput {
   result: "PASS" | "FAIL";
   checklist: Record<string, "OK" | "MINOR" | "MAJOR">;
@@ -744,6 +752,14 @@ export async function submitQC(
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!can(actor, "qc.submit")) return fail("Hanya role Gudang yang boleh melakukan QC.");
+    await requireOperationalCheckIn(tenant.id, actor);
+    const requiredChecklist = ["qty", "size", "color", "print", "defect", "finishing"] as const;
+    if (requiredChecklist.some((key) => !["OK", "MINOR", "MAJOR"].includes(input.checklist?.[key] ?? ""))) {
+      return fail("Semua item checklist QC wajib diisi.");
+    }
+    if (input.result === "PASS" && requiredChecklist.some((key) => input.checklist[key] === "MAJOR")) {
+      return fail("QC PASS tidak boleh memiliki temuan Mayor.");
+    }
     if (input.result === "FAIL") {
       if (!input.notes || input.notes.trim().length < 20) {
         return fail("QC FAIL wajib deskripsi masalah minimal 20 karakter.");
@@ -757,6 +773,26 @@ export async function submitQC(
       if (job.status !== "PRODUCTION_COMPLETE") {
         throw new Error(`QC hanya untuk job PRODUCTION_COMPLETE (status sekarang: ${job.status}).`);
       }
+      if (job.qc_assignee_id && job.qc_assignee_id !== actor.id) {
+        throw new Error("Job QC sudah diambil petugas lain.");
+      }
+
+      const nextStatus = input.result === "PASS" ? "QC_PASSED" : "FAILED_REWORK";
+      const claimed = await tx.productionJob.updateMany({
+        where: {
+          id: job.id,
+          tenant_id: tenant.id,
+          status: "PRODUCTION_COMPLETE",
+          OR: [{ qc_assignee_id: null }, { qc_assignee_id: actor.id }],
+        },
+        data: {
+          status: nextStatus,
+          qc_assignee_id: actor.id,
+          qc_claimed_at: job.qc_claimed_at ?? new Date(),
+          ...(input.result === "FAIL" ? { rework_reason: input.notes } : {}),
+        },
+      });
+      if (claimed.count === 0) throw new Error("Job sudah diproses QC oleh petugas lain.");
 
       await tx.qcRecord.create({
         data: {
@@ -772,7 +808,6 @@ export async function submitQC(
       });
 
       if (input.result === "PASS") {
-        await tx.productionJob.update({ where: { id: job.id }, data: { status: "QC_PASSED" } });
         await advanceOrderWhenAllJobs(tx, job.order_id, "QC_PASSED", "QC_PASSED");
         return { jobCode: job.job_code, orderId: job.order_id, result: "PASS", jobStatus: "QC_PASSED" };
       }
@@ -780,7 +815,6 @@ export async function submitQC(
       // FAIL → job FAILED_REWORK, order → QC_REWORK_PENDING.
       // `from` mencakup PRODUCTION_STARTED: pada order multi-job, order bisa masih
       // PRODUCTION_STARTED (job lain belum selesai) saat satu job gagal QC.
-      await tx.productionJob.update({ where: { id: job.id }, data: { status: "FAILED_REWORK", rework_reason: input.notes } });
       await tx.order.updateMany({
         where: { id: job.order_id, status: { in: ["QC_PENDING", "PRODUCTION_COMPLETE", "PRODUCTION_STARTED"] } },
         data: { status: "QC_REWORK_PENDING" },
@@ -805,13 +839,14 @@ export async function submitQC(
 export async function getQCHistory() {
   try {
     const tenant = await requireTenant();
-    await requireUser();
+    const actor = await requireUser();
+    if (!can(actor, "qc.submit")) return fail("Anda tidak memiliki akses melihat riwayat QC.");
     const records = await prisma.qcRecord.findMany({
       where: { tenant_id: tenant.id },
       orderBy: { created_at: "desc" },
       take: 50,
       include: {
-        job: { include: { order: { include: { customer: true } } } },
+        job: { include: { order: { include: { customer: { select: { name: true } } } } } },
         inspector: { select: { name: true } },
       },
     });
@@ -880,6 +915,7 @@ export async function decideRework(
           status: "PRODUCTION_ASSIGNED",
           priority: job.priority,
           planned_qty: job.planned_qty,
+          items: { create: (await tx.productionJobItem.findMany({ where: { tenant_id: tenant.id, job_id: job.id } })).map(it => ({ tenant_id: tenant.id, order_item_id: it.order_item_id, material_id: it.material_id })) },
           parent_job_id: input.decision === "APPROVED" ? job.id : null,
           rework_count: input.decision === "APPROVED" ? (job.rework_count ?? 0) + 1 : 0,
           rework_reason: input.reason.trim(),
@@ -917,16 +953,67 @@ export async function decideRework(
 // SCAN 4 & 5 — FINISHING
 // ─────────────────────────────────────────────────────────────
 
+/** Klaim antrean finishing tanpa langsung mengubah status produksi. */
+export async function claimFinishingJob(jobCode: string): Promise<ActionResult<{ jobStatus: string; assigneeId: string }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!can(actor, "finishing.execute")) return fail("Anda tidak memiliki akses mengambil tugas finishing.");
+    await requireOperationalCheckIn(tenant.id, actor);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const job = await findJobByCode(tx, tenant.id, jobCode);
+      if (!job) throw new Error("Job tidak ditemukan.");
+      if (job.status !== "QC_PASSED") throw new Error(`Job tidak berada di antrean finishing (status: ${job.status}).`);
+      if (job.finishing_assignee_id && job.finishing_assignee_id !== actor.id) throw new Error("Job finishing sudah diambil petugas lain.");
+
+      const claimed = await tx.productionJob.updateMany({
+        where: { id: job.id, tenant_id: tenant.id, status: "QC_PASSED", finishing_assignee_id: null },
+        data: { finishing_assignee_id: actor.id, finishing_claimed_at: new Date() },
+      });
+      if (claimed.count === 0 && job.finishing_assignee_id !== actor.id) throw new Error("Job finishing baru saja diambil petugas lain.");
+      return { jobCode: job.job_code, jobStatus: job.status, assigneeId: actor.id };
+    });
+
+    await logAction(actor.id, "FINISHING_TASK_CLAIMED", "ProductionJob", result.jobCode, null, null);
+    revalidatePath("/finishing");
+    revalidatePath("/scan");
+    return ok({ jobStatus: result.jobStatus, assigneeId: result.assigneeId });
+  } catch (e) {
+    console.error("claimFinishingJob:", e);
+    return fail(safeError(e, "Gagal mengambil tugas finishing."));
+  }
+}
+
 export async function startFinishing(jobCode: string): Promise<ActionResult<{ jobStatus: string }>> {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!can(actor, "finishing.execute")) return fail("Hanya role Gudang yang boleh mulai finishing.");
+    await requireOperationalCheckIn(tenant.id, actor);
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
       if (!job) throw new Error("Job tidak ditemukan.");
       if (job.status !== "QC_PASSED") throw new Error(`Finishing hanya untuk job QC_PASSED (sekarang: ${job.status}).`);
+      if (job.finishing_assignee_id && job.finishing_assignee_id !== actor.id) {
+        throw new Error("Job finishing sudah diambil petugas lain.");
+      }
+
+      const claimed = await tx.productionJob.updateMany({
+        where: {
+          id: job.id,
+          tenant_id: tenant.id,
+          status: "QC_PASSED",
+          OR: [{ finishing_assignee_id: null }, { finishing_assignee_id: actor.id }],
+        },
+        data: {
+          status: "FINISHING_STARTED",
+          finishing_assignee_id: actor.id,
+          finishing_claimed_at: job.finishing_claimed_at ?? new Date(),
+        },
+      });
+      if (claimed.count === 0) throw new Error("Job finishing sudah diambil petugas lain.");
 
       await tx.finishingJob.create({
         data: {
@@ -938,7 +1025,6 @@ export async function startFinishing(jobCode: string): Promise<ActionResult<{ jo
           job_qr_scanned_at: new Date(),
         },
       });
-      await tx.productionJob.update({ where: { id: job.id }, data: { status: "FINISHING_STARTED" } });
       await advanceOrderWhenAllJobs(tx, job.order_id, "FINISHING_STARTED", "FINISHING_STARTED");
       return { jobCode: job.job_code, jobStatus: "FINISHING_STARTED" };
     });
@@ -961,12 +1047,19 @@ export async function finishFinishing(
     const tenant = await requireTenant();
     const actor = await requireUser();
     if (!can(actor, "finishing.execute")) return fail("Hanya role Gudang yang boleh menyelesaikan finishing.");
+    await requireOperationalCheckIn(tenant.id, actor);
     if (!(input.actualQty > 0)) return fail("Jumlah aktual finishing tidak boleh 0.");
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await findJobByCode(tx, tenant.id, jobCode);
       if (!job) throw new Error("Job tidak ditemukan.");
       if (job.status !== "FINISHING_STARTED") throw new Error(`Status job bukan FINISHING_STARTED (sekarang: ${job.status}).`);
+      if (job.finishing_assignee_id && job.finishing_assignee_id !== actor.id) {
+        throw new Error("Job finishing sedang dikerjakan petugas lain.");
+      }
+      if (job.actual_qty != null && input.actualQty > job.actual_qty) {
+        throw new Error(`Jumlah finishing tidak boleh melebihi hasil produksi (${job.actual_qty}).`);
+      }
 
       const fj = await tx.finishingJob.findFirst({
         where: { job_id: job.id, status: "STARTED" },
@@ -974,8 +1067,8 @@ export async function finishFinishing(
       });
       if (!fj) throw new Error("Finishing job aktif tidak ditemukan.");
 
-      await tx.finishingJob.update({
-        where: { id: fj.id },
+      const finished = await tx.finishingJob.updateMany({
+        where: { id: fj.id, status: "STARTED" },
         data: {
           status: "COMPLETE",
           completed_at: new Date(),
@@ -984,7 +1077,9 @@ export async function finishFinishing(
           label_printed_at: new Date(),
         },
       });
-      await tx.productionJob.update({ where: { id: job.id }, data: { status: "FINISHING_COMPLETE" } });
+      if (finished.count === 0) throw new Error("Finishing sudah diselesaikan petugas lain.");
+      const jobDone = await tx.productionJob.updateMany({ where: { id: job.id, status: "FINISHING_STARTED" }, data: { status: "FINISHING_COMPLETE" } });
+      if (jobDone.count === 0) throw new Error("Status job sudah berubah. Muat ulang dashboard.");
       // Catatan: FINISHING_COMPLETE saja TIDAK membuat order READY_FOR_PICKUP —
       // wajib lewat storage (SCAN 6+7) di Sprint 5.
       await advanceOrderWhenAllJobs(tx, job.order_id, "FINISHING_COMPLETE", "FINISHING_COMPLETE");

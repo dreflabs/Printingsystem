@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Package, Wrench, CheckCircle2, Tag, ScanLine, QrCode } from "lucide-react";
+import { Package, Wrench, CheckCircle2, Tag, ScanLine, QrCode, FileText } from "lucide-react";
 import { StatusPill , ErrorState} from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { getGudangQueues } from "@/actions/queries";
-import { startFinishing, finishFinishing } from "@/actions/production";
+import { startFinishing, finishFinishing, claimFinishingJob } from "@/actions/production";
+import { getSessionUser } from "@/actions/session";
 
 type Row = {
   jobCode: string;
@@ -15,6 +16,12 @@ type Row = {
   plannedQty: number;
   actualQty: number;
   deadline: string | Date | null;
+  machineName: string;
+  machineCode: string;
+  qcAssignee: { id: string; name: string } | null;
+  finishingAssignee: { id: string; name: string } | null;
+  items: { product: string; quantity: number; size: string | null; material: string; finishing: string | null }[];
+  designFiles: { id: string; itemId: string | null; name: string | null; version: number; url: string }[];
 };
 
 const fmtDeadline = (d: string | Date | null) =>
@@ -42,6 +49,8 @@ export function FinishingTab() {
   const [busy, setBusy] = useState(false);
   const [showDoneForm, setShowDoneForm] = useState(false);
   const [qty, setQty] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
+  const [claiming, setClaiming] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await getGudangQueues();
@@ -55,10 +64,15 @@ export function FinishingTab() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { getSessionUser().then((res) => { if (res.ok) setUserId(res.user.id); }); }, []);
 
   async function begin(jobCode: string) {
     setBusy(true);
+    setClaiming(jobCode);
+    const claim = await claimFinishingJob(jobCode);
+    if (!claim.success) { setClaiming(null); setBusy(false); setError(claim.error); return; }
     const res = await startFinishing(jobCode);
+    setClaiming(null);
     setBusy(false);
     if (!res.success) { setError(res.error); return; }
     await load();
@@ -109,6 +123,10 @@ export function FinishingTab() {
             <div>
               <p className="font-bold text-primary text-lg">{active.jobCode}</p>
               <p className="text-sm text-muted mb-4">{active.orderCode} · {active.customerName} · Planned {active.plannedQty} pcs</p>
+              <p className="text-xs text-muted">Petugas: <span className="font-semibold text-primary">{active.finishingAssignee?.name || "Belum ditetapkan"}</span></p>
+              <p className="text-xs text-muted">Mesin: <span className="text-primary font-semibold">{active.machineName} ({active.machineCode})</span></p>
+              {active.items.map((item, index) => <p key={`${item.product}-${index}`} className="text-xs text-muted mt-1">{item.product} · {item.quantity} pcs · {item.size || "Ukuran sesuai order"} · {item.material}{item.finishing ? ` · ${item.finishing}` : ""}</p>)}
+              {active.designFiles.length > 0 && <div className="flex flex-wrap gap-2 mt-2">{active.designFiles.map((file) => <a key={file.id} href={file.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-accent-teal hover:underline"><FileText className="h-3 w-3" />{file.name || `Desain V${file.version}`}</a>)}</div>}
             </div>
             <LabelButton jobCode={active.jobCode} />
           </div>
@@ -129,7 +147,7 @@ export function FinishingTab() {
                 className="w-full h-12 rounded-xl bg-card border border-border text-primary text-lg font-bold px-4 outline-none focus:border-accent-teal transition-all"
               />
               <button
-                disabled={!qty || busy}
+              disabled={!qty || busy || (!!active.finishingAssignee && active.finishingAssignee.id !== userId)}
                 onClick={complete}
                 className="w-full h-12 rounded-xl bg-status-green text-white text-sm font-bold hover:brightness-110 transition-all cursor-pointer disabled:opacity-40"
               >
@@ -204,6 +222,7 @@ export function FinishingTab() {
                   <StatusPill status={j.status} />
                 </div>
                 <p className="font-bold text-primary text-base mb-0.5">{j.orderCode} · {j.customerName}</p>
+                <p className="text-xs text-muted">{j.machineName} · {j.items.map((item) => `${item.product} · ${item.material}`).join(" | ")}</p>
                 <span className="inline-flex items-center gap-1.5 bg-elevated px-2 py-1 rounded-md text-primary text-xs font-medium border border-border">
                   <Tag className="h-3.5 w-3.5 text-accent-teal" /> {j.plannedQty} pcs
                 </span>
@@ -214,11 +233,11 @@ export function FinishingTab() {
               </div>
               <LabelButton jobCode={j.jobCode} />
               <button
-                disabled={busy}
+                disabled={busy || (!!j.finishingAssignee && j.finishingAssignee.id !== userId)}
                 onClick={() => begin(j.jobCode)}
                 className="shrink-0 h-10 px-4 rounded-xl bg-accent-teal/20 border border-accent-teal/40 text-accent-teal text-xs font-bold hover:bg-accent-teal/30 transition-all cursor-pointer disabled:opacity-50"
               >
-                Mulai
+                {claiming === j.jobCode ? "Mengambil..." : j.finishingAssignee?.id === userId ? "Mulai" : j.finishingAssignee ? `Diambil ${j.finishingAssignee.name}` : "Ambil & Mulai"}
               </button>
             </div>
           ))}

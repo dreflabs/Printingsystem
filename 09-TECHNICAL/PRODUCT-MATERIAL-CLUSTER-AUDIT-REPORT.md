@@ -33,19 +33,21 @@ Pada audit awal, implementasi **belum memenuhi** alur tersebut. UI dan server ma
 
 ## Status implementasi setelah persetujuan
 
-Rekomendasi ini sudah diterapkan pada kode dan database lokal:
+**Koreksi audit ulang 15 September 2026:** implementasi baru memenuhi sebagian rekomendasi. Rincian kondisi terbaru ada di bagian 9; bagian 1–8 mencatat audit awal dan target bisnis, bukan jaminan seluruh fitur sudah tersedia. Database lokal dan aplikasi pada screenshot belum terbukti merupakan lingkungan yang sama.
+
+Bagian berikut sudah diterapkan pada kode dan database lokal:
 
 - Tabel `ProductMaterial` dan index tenant/product sudah ditambahkan.
 - Migration `20260915160000_product_material_allowlist` sudah berhasil diterapkan.
 - Katalog Produk sekarang menyimpan allowlist material dan material default secara atomik.
 - Form order memfilter material berdasarkan produk dan mengosongkan pilihan lama saat produk berganti.
 - Server menolak produk tanpa mapping aktif atau material yang tidak termasuk allowlist.
-- Auto-release, dashboard kesiapan, Operator, dan Scan membawa validasi material yang sama.
+- Auto-release dan dashboard kesiapan membawa mapping material. Operator/Scan juga menerima mapping, tetapi pembatasan dan validasi penyelesaian produksi belum setara dengan validasi order (lihat bagian 9).
 - Seed development sekarang memiliki contoh mapping Banner/Flexi dan produk lain.
 
 Produk existing yang belum memiliki mapping sengaja ditahan sampai Admin/Owner melengkapinya; sistem tidak memilihkan semua material secara otomatis.
 
-## 1. Temuan implementasi saat ini
+## 1. Temuan audit awal — sebelum perubahan allowlist
 
 ### 1.1 Model data hanya punya satu material default
 
@@ -289,8 +291,143 @@ Hasil verifikasi runtime setelah PostgreSQL tersedia: migration `20260915160000_
 - **Material dinonaktifkan saat ada job terbuka:** sistem menolak deaktivasi atau memberi dampak terbuka yang jelas.
 - **Tenant A mengirim ID material Tenant B:** server menolak karena tenant scope.
 
-## Kesimpulan
+## Kesimpulan audit awal
 
 Konsep “cluster material per product” adalah perubahan kontrol bisnis, bukan sekadar filter dropdown. Implementasi sekarang baru memiliki master material dan satu default; belum memiliki allowlist produk, UI konfigurasi cluster, atau validasi server. Rekomendasi profesional adalah `ProductMaterial` sebagai sumber kebenaran kompatibilitas, Material Family sebagai metadata opsional, dan validasi yang sama pada order, produksi, serta pengurangan stok.
 
 Dengan model ini, Admin mendapatkan form yang ringkas dan benar, Gudang tetap mengendalikan stok, Operator tidak salah memakai bahan, dan sistem tetap aman untuk tenant yang hanya memiliki satu orang maupun tenant dengan banyak Admin/Gudang/Operator.
+
+## 9. Audit ulang berdasarkan screenshot pukul 17.13–17.15
+
+### 9.1 Metode dan batas bukti
+
+Audit ini memeriksa empat screenshot, kode lokal pada commit `cceb57e4`, migration, dokumen, dan query SELECT melalui Prisma ke PostgreSQL lokal. Tidak membuat order, mengubah konfigurasi bahan, mengurangi stok, atau mengubah kode aplikasi. Skenario uji di bawah adalah kriteria penerimaan, belum hasil pengujian E2E.
+
+Alamat aplikasi tidak terlihat pada screenshot. Belum ada konfirmasi apakah screenshot berasal dari localhost atau website server. Audit tidak membaca database server atau memverifikasi build yang sedang dilayani server tersebut.
+
+### 9.2 Mengapa semua material masih terlihat?
+
+**Bukti screenshot:** produk BANNER menawarkan Art Paper A3, Stiker Vinyl, dan Tinta Eco Solvent bersama bahan Flexi. Ini tidak memenuhi kebutuhan pembatasan bahan utama per produk. Placeholder berbunyi “Pilih bahan...”.
+
+**Bukti kode lokal:** `NewOrderModal.tsx:274` mengambil `selectedProduct.allowedMaterials`, bukan array material umum. Pada baris 322–330, placeholder sudah menjadi “Pilih bahan untuk produk...”; produk tanpa mapping menampilkan pesan konfigurasi dan dropdown dinonaktifkan. Admin dan Designer menggunakan komponen modal yang sama. `orders.ts:232` juga menolak pasangan produk–material yang tidak terdaftar.
+
+Artinya, mapping kosong pada kode baru **tidak menjelaskan dropdown berisi semua material**. Screenshot lebih konsisten dengan form versi lama atau lingkungan aplikasi berbeda. Ini inferensi, belum kepastian. Alternatif yang perlu diperiksa pada lingkungan screenshot adalah seluruh material memang dicentang untuk BANNER; hal ini bisa membuat pilihan terlalu luas, walaupun perbedaan placeholder tetap perlu dijelaskan.
+
+Git lokal menunjukkan commit `cceb57e4 feat: enforce product material allowlists`, satu commit lebih maju dari referensi upstream yang tersimpan lokal. Referensi itu bukan pemeriksaan GitHub terkini. Push sebelumnya belum berhasil; tidak ada bukti deploy server memuat commit tersebut. Commit lokal, push GitHub, build server, migration server, dan mapping katalog merupakan lima langkah berbeda.
+
+Cara memastikan penyebab pada lingkungan yang digunakan:
+
+1. Pastikan URL, tenant/toko, dan commit aplikasi yang berjalan.
+2. Periksa apakah edit Produk menampilkan “Material yang Diizinkan untuk Produk”.
+3. Periksa daftar mapping BANNER di database lingkungan tersebut.
+4. Periksa respons `getOrderFormData`: apakah mapping BANNER hanya berisi bahan yang disetujui?
+5. Jika respons benar tetapi UI masih lama, periksa build/proses yang dilayani, lalu muat ulang browser. Refresh sendiri tidak memperbarui deployment.
+6. Jika deployment belum diperbarui, jalankan rilis dan migration secara terkontrol, kemudian lengkapi mapping. Jangan menggunakan seed sebagai perbaikan data operasional.
+
+### 9.3 Kondisi database lokal yang terverifikasi ulang
+
+Ditemukan **8 produk aktif lintas tenant lokal**, hanya **1 produk memiliki mapping aktif**, sehingga **7 produk belum terkonfigurasi**. Produk “Cetak Banner Outdoor” belum memiliki mapping maupun default material. Satu mapping yang ada menghubungkan “Spanduk” dengan Albatros; keberadaan relasi ini bukan penilaian bahwa bahan tersebut sesuai secara bisnis.
+
+Nama produk lokal berbeda dari screenshot: database yang diperiksa tidak menampilkan katalog BANNER, BANNER KOREA, BROCURE, dan GANCI UV seperti screenshot. Karena itu angka lokal tidak boleh dianggap sebagai kondisi tenant pada screenshot.
+
+Migration hanya menyalin `default_material_id` lama ke `ProductMaterial`. Ia tidak menebak kompatibilitas dari nama, kategori, atau riwayat order. Maka migrasi berhasil tidak berarti seluruh produk sudah memiliki daftar bahan. Backfill juga belum menyaring status aktif material; pembacaan mapping pada aplikasi menyaring material aktif.
+
+### 9.4 Empat konsep yang perlu dipisahkan
+
+1. **Kategori produk**, misalnya OUTDOOR atau A3+, membantu mencari produk pada dropdown. Kategori ini tidak menghubungkan bahan secara otomatis.
+2. **Tipe material**, yaitu MEDIA, INK, OTHER, mengelompokkan fungsi umum persediaan. Semua MEDIA belum tentu cocok untuk Banner.
+3. **Kelompok bahan**, misalnya Flexi Banner, Kertas Art Paper, atau Vinyl Stiker, membantu pengelolaan gudang. Field kelompok ini belum tersedia pada modal Gudang yang diperiksa.
+4. **Daftar bahan yang diizinkan per produk**, disimpan di `ProductMaterial`, menentukan pilihan sah saat transaksi.
+
+Rekomendasi: gunakan hubungan banyak-ke-banyak yang sudah tersedia. Satu produk dapat memakai beberapa bahan; satu bahan dapat dipakai beberapa produk tanpa menggandakan stok. Kelompok bahan menjadi alat bantu memilih mapping, bukan izin otomatis untuk seluruh bahan baru dalam kelompok.
+
+### 9.5 Alur bisnis yang direkomendasikan
+
+**Setup Gudang oleh Owner/Gudang:** buat material dengan nama jelas, tipe, kelompok, spesifikasi, satuan stok, satuan pemakaian, konversi, dan stok minimum. Kode saat ini membatasi pembuatan material ke Owner/Gudang; jangan menyebut Admin otomatis memiliki izin tersebut.
+
+**Setup Katalog oleh Admin/Owner:** pilih produk BANNER, centang Flexi China 280 gr, 350 gr, dan 400 gr jika memang tersedia dan disetujui toko. Tetapkan default hanya dari daftar tersebut. Pilih mesin yang kompatibel. Material contoh adalah target konfigurasi, bukan klaim bahwa semuanya sudah ada di database.
+
+**Order oleh Admin/Designer:** pilih BANNER → hanya tiga bahan tersebut muncul → pilih bahan → ukuran/qty → harga dan deadline. Setiap item memiliki filter sendiri. Mengganti produk harus membuang bahan yang tidak sesuai. Server memvalidasi ulang pasangan item, tenant, dan status aktif.
+
+**Desain dan ACC:** bahan dan spesifikasi menjadi bagian konteks item yang disetujui. Jika bahan berubah setelah ACC dan perubahan memengaruhi hasil/desain/harga, lakukan perubahan order tercatat dengan persetujuan ulang sesuai dampaknya, bukan mengganti bahan diam-diam.
+
+**Produksi:** job membawa bahan rencana per item dan mesin yang ditetapkan. Operator mencatat bahan utama sesuai job. Tinta serta bahan pendukung dicatat melalui daftar konsumsi mesin/BOM terpisah. Substitusi memerlukan otorisasi, alasan, dampak harga/desain, dan audit; fitur ini masih rekomendasi.
+
+**Gudang:** stok dipotong berdasarkan pemakaian yang sudah dikonversi ke satuan stok; histori order mempertahankan spesifikasi saat transaksi.
+
+### 9.6 Rekomendasi UI Gudang dan Katalog
+
+- Gudang: tambahkan filter kelompok dan indikator “Dipakai pada N produk” atau “Belum terhubung”. Pengguna berizin katalog dapat membuka pengaturan relasi; pengguna gudang biasa cukup melihat atau meminta konfigurasi.
+- Material: tambahkan spesifikasi yang relevan seperti gramasi dan lebar roll. Nama “KOREA” dan “Flexi Korea” pada screenshot perlu ditinjau karena ambigu; jangan otomatis digabung atau dihapus karena belum terbukti bahan yang sama.
+- Katalog: tampilkan pencarian dan filter kelompok pada daftar bahan, jumlah yang dipilih, lalu default yang hanya berasal dari pilihan tersebut. Istilah “Bahan yang tersedia untuk produk” lebih mudah dipahami daripada “allowlist”.
+- Bahan utama dan konsumsi pendukung perlu dipisahkan. Pada Banner, tinta tidak menjadi opsi bahan utama. Jangan melarang semua tipe OTHER secara global karena produk lain dapat memakai substrat selain kertas/media konvensional.
+- Tombol “Tambahkan bahan dari kelompok” boleh membantu memilih banyak bahan, tetapi harus menampilkan daftar yang akan ditambahkan dan disimpan eksplisit. Menambahkan bahan baru ke Gudang tidak langsung memperluas opsi produk.
+- Stok nol sebaiknya tetap terlihat dengan penanda dan kebijakan penerimaan order yang jelas. Kompatibilitas dan ketersediaan stok adalah dua hal berbeda.
+- Produk tanpa mapping: tampilkan “Bahan produk belum diatur” dan jalur ke konfigurasi bagi pengguna berizin. Tidak boleh kembali menampilkan seluruh material.
+- Untuk toko satu orang, Owner dapat melakukan setup Gudang dan Katalog dengan akun yang sama. Pembagian izin tidak perlu memaksa adanya karyawan terpisah.
+
+### 9.7 Celah implementasi lain yang perlu ditangani
+
+**A. Konfigurasi masih bisa salah meski filter bekerja.** Checkbox Katalog menerima semua material aktif tanpa membedakan bahan utama dan pendukung; server memeriksa tenant/status tetapi tidak semantik bahan. Field `ProductMaterial.role` sudah ada, tetapi belum menjadi filter bahan utama pada pembacaan order. Default bersifat opsional; index database hanya menjamin paling banyak satu default aktif, bukan wajib satu. Tetapkan kebijakan default eksplisit dan konsisten.
+
+**B. Harga belum mengikuti bahan.** Harga otomatis masih memakai `Product.base_price` (`orders.ts:256` dan `:266`). Memilih Flexi 400 gr tidak otomatis memberi tarif berbeda dari 280 gr. Rekomendasi: harga per pasangan produk–bahan atau daftar tarif yang memiliki satuan, disimpan sebagai snapshot pada item. Jika tarif belum diatur, minta harga manual sesuai izin; jangan mengesankan bahan lebih mahal sudah dihitung otomatis.
+
+**C. Operator/Scan masih mempunyai fallback seluruh material.** Ketika daftar bahan rencana dan mapping sama-sama kosong, kedua UI kembali ke array material umum. Ini berbeda dari form order baru. Tutup fallback untuk pekerjaan berbasis produk; job lama yang belum lengkap membutuhkan peninjauan konfigurasi.
+
+**D. Validasi selesai produksi masih terlalu luas.** `production.ts:600` mengambil seluruh item printing dalam order, menggabungkan semua material, lalu memeriksa terhadap gabungan tersebut. Ini belum memvalidasi pasangan produk–material per item maupun membatasi bahan ke item job/mesin tertentu. Order dua mesin berisiko menerima bahan milik job lain lewat payload. Pemeriksaan kompatibilitas dilewati ketika mapping kosong. Lookup material juga belum mensyaratkan aktif.
+
+**E. Mesin dan substitusi belum lengkap.** Pada jalur penyelesaian yang diperiksa tidak ada pemeriksaan `MachineMaterial`. Pesan error menyuruh memakai alur override, tetapi alur substitusi operasional belum tersedia pada UI yang diperiksa. Dokumen menyatakan lebih banyak daripada implementasi; klaim sebelumnya bahwa semua jalur sudah sama perlu dikoreksi.
+
+**F. Konversi stok perlu prioritas tinggi.** UI Operator meminta satuan pemakaian, sedangkan `finishProduction` mengurangi `usageQty + wasteQty` langsung dari `current_stock`, tanpa `conversion_factor`. Contoh hipotetis: stok 2 roll, 1 roll = 50 meter, pemakaian 5 meter harus mengurangi 0,1 roll, bukan 5 roll. Jangan menyimpulkan semua stok aktual sudah salah tanpa audit movement; risikonya berlaku pada konfigurasi dengan satuan berbeda. Perlu konsistensi ledger, waste, pembulatan, dan satuan biaya. Jika konsumsi memakai m² tetapi stok meter panjang, lebar roll juga harus ikut perhitungan.
+
+### 9.8 Urutan pekerjaan yang disarankan
+
+**Tahap 1 — pastikan lingkungan dan konfigurasi:** cocokkan URL/tenant/commit, verifikasi deployment dan migration, audit mapping pada tenant tersebut, lengkapi daftar bahan produk yang benar. Ini langkah pertama untuk menjelaskan screenshot; belum perlu membangun ulang fondasi relasi yang sudah ada.
+
+**Tahap 2 — perkuat transaksi:** tutup fallback, validasi per item/per job/per mesin, periksa material aktif, tangani perubahan katalog terhadap order terbuka, dan perbaiki konversi stok sebelum mengandalkan pencatatan konsumsi produksi nyata. Jangan mengubah spesifikasi order lama secara otomatis saat mapping katalog berubah.
+
+**Tahap 3 — rapikan setup:** kelompok material, pencarian mapping, pemisahan bahan utama/pendukung, badge produk belum lengkap, default yang konsisten, dan audit log perubahan mapping. Uji izin untuk pengguna dengan satu maupun beberapa role.
+
+**Tahap 4 — harga dan substitusi:** tarif per material, snapshot spesifikasi/harga pada item, prosedur revisi bahan, substitusi terotorisasi, dan konsumsi pendukung mesin. Kelompokkan backlog ini terpisah dari perbaikan dropdown agar cakupan rilis jelas.
+
+### 9.9 Kriteria penerimaan tambahan
+
+1. Banner menampilkan hanya bahan yang diizinkan, termasuk ketika Admin/Designer membuka form yang sama.
+2. Item pertama Banner dan item kedua Brosur menampilkan daftar masing-masing; perubahan produk tidak meninggalkan bahan lama.
+3. Material baru di Gudang tidak muncul pada Banner sampai mapping disimpan.
+4. Payload bahan tidak sesuai, nonaktif, atau lintas tenant ditolak tanpa membuat order parsial.
+5. Material diizinkan untuk produk A tidak otomatis sah untuk produk B dalam order yang sama.
+6. Operator job mesin A tidak bisa mencatat material item milik job mesin B.
+7. Job lama tanpa mapping tidak membuka semua bahan; ada jalur peninjauan yang jelas.
+8. Stok 2 roll dengan faktor 50 dan penggunaan 5 meter menghasilkan 1,9 roll serta ledger konsisten; waste memakai konversi yang sama.
+9. Pemilihan bahan dengan tarif berbeda memperbarui penawaran sesuai aturan; perubahan katalog tidak menulis ulang harga historis.
+10. Penonaktifan bahan/default saat order terbuka menghasilkan keputusan eksplisit, bukan hilangnya pilihan tanpa penjelasan.
+
+**Kesimpulan audit ulang:** kebutuhan pengguna tepat dan fondasi filter produk–material sudah ada di kode lokal, tetapi belum terbukti terpasang pada lingkungan screenshot, data lokal sebagian besar belum dipetakan, dan kontrol produksi/gudang masih perlu dilengkapi. Pengelompokan tampilan saja tidak cukup untuk menyatakan alur bisnis selesai.
+
+## 10. Implementasi lanjutan setelah persetujuan rekomendasi
+
+Perubahan berikut sudah diterapkan pada kode lokal dan migration `20260915180000_material_catalog_integrity` sudah berhasil diterapkan ke PostgreSQL lokal:
+
+- Material memiliki kelompok, spesifikasi, dan fungsi `PRIMARY` atau `CONSUMABLE`. Material bertipe INK otomatis menjadi consumable.
+- Katalog produk hanya dapat menghubungkan material utama aktif. Tinta tidak dapat dijadikan bahan utama produk.
+- Katalog menampilkan pencarian dan filter kelompok bahan, default yang berasal dari pilihan yang sama, serta tarif per pasangan produk–material.
+- Harga order memakai tarif pasangan produk–material bila diatur, lalu menyimpan snapshot spesifikasi material dan tarif pada OrderItem. Harga historis tidak mengikuti perubahan katalog berikutnya.
+- Relasi item job produksi kini disimpan di `ProductionJobItem`. Scope job tidak lagi dihitung ulang dari mesin default produk setelah job dibuat.
+- Auto-release dan assign manual memvalidasi bahwa setiap bahan rencana terdaftar pada mesin job. Job lama tanpa scope item mendapat tombol **Tinjau item & bahan** pada Admin → Produksi.
+- Admin/Owner dapat meninjau item dan bahan job yang belum lengkap melalui dialog dengan konfirmasi desain/harga, alasan wajib, serta riwayat pada job dan audit log. Job yang sudah dimulai tidak boleh mengganti rencana bahan melalui dialog tersebut.
+- Operator dan Scan hanya menerima bahan utama job serta bahan consumable mesin. Fallback ke seluruh master material dihapus untuk jalur job berbasis item.
+- Penyelesaian produksi memvalidasi semua bahan utama job, melarang duplikasi atau bahan dari job lain, memastikan material aktif, dan mengunci baris stok sebelum pengurangan.
+- Pemakaian dan waste dikonversi dari satuan pemakaian ke satuan stok menggunakan `conversion_factor` dengan presisi enam desimal. Satuan/konversi material yang sudah dipakai tidak dapat diubah; buat material baru agar histori tetap konsisten.
+- Penyesuaian stok mewajibkan alasan, memakai lock per material, dan perubahan material yang masih terkait order terbuka, produk aktif, atau job aktif ditahan.
+
+Verifikasi yang lulus:
+
+- `npx prisma migrate status` — database lokal up to date.
+- `npx tsc --noEmit` — lulus.
+- `npx next build --webpack` — lulus sampai finalizing page optimization dan menghasilkan seluruh route.
+- Unit test policy material — 3 test lulus.
+- Integrasi PostgreSQL dengan fixture rollback — 1 test lulus. Fixture dibuat dalam transaksi dan selalu dibatalkan.
+- ESLint pada file yang berubah — tidak ada error; tersisa lima warning lama tentang import/props yang tidak dipakai.
+
+Catatan rilis: migration, kode, dan mapping katalog pada server harus dipasang terpisah. Perubahan lokal belum otomatis mengubah website server. Sebelum membuka order baru, Admin/Owner perlu mengisi allowlist produk dan relasi `MachineMaterial`; produk yang belum lengkap akan tertahan dengan alasan yang ditampilkan di dashboard.

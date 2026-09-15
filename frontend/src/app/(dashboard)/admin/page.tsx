@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
+import { OperationalAlerts } from "@/components/dashboard/OperationalAlerts";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { getOrders, getOrderDetail } from "@/actions/queries";
 import { addPayment } from "@/actions/orders";
@@ -999,6 +1000,7 @@ export default function AdminDashboardPage() {
       />
 
       <RoleGuide role="admin" defaultCollapsed />
+      <OperationalAlerts />
 
       {error && <ErrorState message={error} onRetry={load} />}
 

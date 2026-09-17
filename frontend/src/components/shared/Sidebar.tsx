@@ -73,21 +73,42 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
 
   const userRoleSet = new Set(roles as UserRole[]);
   const soloView = workspaceMode === "SOLO" && userRoleSet.has("owner");
-  const teamOwnerView =
-    (workspaceMode === "TEAM_SMALL" || workspaceMode === "TEAM_FULL") && userRoleSet.has("owner");
   const roleKey = [...roles].sort().join(",");
 
-  // Navigasi ditentukan workspace_mode + peran:
-  //  - SOLO + Owner        → SOLO_NAV (rata, alur 1 orang)
-  //  - TIM  + Owner        → GROUPED_NAV disaring ke peran "owner" (pengawasan)
-  //  - selain itu (pegawai) → GROUPED_NAV disaring ke peran user
+  // Peran yang sedang aktif dilihat mengikuti dashboard (path) yang dibuka via
+  // "Mode Aktif" — bukan sekadar peran apa saja yang dimiliki user. Owner yang
+  // juga pegang peran lain (mode TIM) harus melihat menu peran yang sedang
+  // aktif itu, bukan selalu menu Owner hanya karena dia juga seorang Owner.
+  const activeRole: UserRole =
+    ROLE_SWITCHER_CONFIG.find((r) => {
+      if (pathname.startsWith("/owner")) return r.role === "owner";
+      if (pathname.startsWith("/admin")) return r.role === "admin";
+      if (pathname.startsWith("/designer")) return r.role === "designer_sales";
+      if (pathname.startsWith("/operator")) return r.role === "operator";
+      if (pathname.startsWith("/finishing")) return r.role === "gudang";
+      return false;
+    })?.role ?? role;
+
+  const teamOwnerView =
+    (workspaceMode === "TEAM_SMALL" || workspaceMode === "TEAM_FULL") &&
+    userRoleSet.has("owner") &&
+    activeRole === "owner";
+
+  // Navigasi ditentukan workspace_mode + peran aktif:
+  //  - SOLO + Owner              → SOLO_NAV (rata, alur 1 orang)
+  //  - TIM  + Owner (lihat Owner)→ GROUPED_NAV disaring ke peran "owner" (pengawasan)
+  //  - Owner sedang lihat peran lain, atau bukan Owner → GROUPED_NAV disaring ke peran aktif itu
   const navItems: ResolvedNav[] = React.useMemo(() => {
     if (soloView) {
       return SOLO_NAV.map((n) => ({ kind: "link" as const, label: n.label, href: n.href, icon: n.icon }));
     }
-    const scope: UserRole[] = teamOwnerView ? ["owner"] : (roleKey.split(",").filter(Boolean) as UserRole[]);
+    const scope: UserRole[] = teamOwnerView
+      ? ["owner"]
+      : userRoleSet.has("owner")
+        ? [activeRole]
+        : (roleKey.split(",").filter(Boolean) as UserRole[]);
     return resolveNav(scope);
-  }, [soloView, teamOwnerView, roleKey]);
+  }, [soloView, teamOwnerView, roleKey, activeRole, userRoleSet]);
 
   // Preferensi buka/tutup grup yang di-set manual viewer (localStorage). Grup yang
   // memuat halaman aktif tetap terbuka otomatis kecuali viewer menutupnya sendiri.
@@ -112,15 +133,7 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
   const switcherRoles = ROLE_SWITCHER_CONFIG.filter((r) => userRoleSet.has(r.role));
   const hasMultipleRoles = !soloView && switcherRoles.length > 1;
 
-  const currentRoleLabel =
-    ROLE_SWITCHER_CONFIG.find((r) => {
-      if (pathname.startsWith("/owner")) return r.role === "owner";
-      if (pathname.startsWith("/admin")) return r.role === "admin";
-      if (pathname.startsWith("/designer")) return r.role === "designer_sales";
-      if (pathname.startsWith("/operator")) return r.role === "operator";
-      if (pathname.startsWith("/finishing")) return r.role === "gudang";
-      return false;
-    })?.label ?? role;
+  const currentRoleLabel = ROLE_SWITCHER_CONFIG.find((r) => r.role === activeRole)?.label ?? role;
 
   return (
     <>

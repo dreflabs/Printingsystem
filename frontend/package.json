@@ -11,7 +11,8 @@
     "bootstrap:superadmin": "node prisma/bootstrap-superadmin.mjs",
     "backfill:churn-stale-trials": "node prisma/backfill-churn-stale-trials.mjs",
     "backfill:workspace-mode": "node prisma/backfill-workspace-mode.mjs",
-    "backfill:storage-slots": "node prisma/backfill-storage-slot-count.mjs"
+    "backfill:storage-slots": "node prisma/backfill-storage-slot-count.mjs",
+    "backfill:subscription-features": "node prisma/backfill-subscription-plan-features.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor } from "@/lib/actor";
-import { logAction } from "@/lib/logger";
+import { logAction, logActionInTransaction } from "@/lib/logger";
 import { DEAD_JOB_STATUS } from "@/lib/order-progress";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail, type ActionResult } from "@/types";
@@ -321,11 +322,68 @@ export interface CreateCorrectionInput {
   oldValue?: string;
   newValue?: string;
   reason: string;
+  /** Wajib diisi kalau fieldName === "refund_amount": metode pengembalian dana. */
+  refundMethod?: string;
+}
+
+const REFUND_FIELD_NAME = "refund_amount";
+
+/**
+ * Efek uang nyata dari koreksi FINANCIAL berkategori refund: kunci Order,
+ * buat Payment negatif, kurangi paid_amount/balance. Sama seperti pola
+ * refund pembatalan di cancel.ts, tapi tanpa mengubah status order (order
+ * masih berjalan, cuma dikoreksi nilainya).
+ */
+export async function applyRefundCorrection(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  orderId: string,
+  refundAmount: number,
+  refundMethod: string,
+  actorId: string,
+  note: string
+) {
+  await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} AND tenant_id = ${tenantId} FOR UPDATE`;
+  const order = await tx.order.findFirstOrThrow({ where: { id: orderId, tenant_id: tenantId } });
+  const paid = Number(order.paid_amount);
+  const amount = Math.max(0, Math.min(refundAmount, paid));
+  if (amount <= 0) throw new Error("Nominal refund tidak valid saat diterapkan.");
+  await tx.payment.create({
+    data: {
+      tenant_id: tenantId,
+      order_id: orderId,
+      amount: -amount,
+      method: refundMethod,
+      reference: `REFUND-KOREKSI ${order.order_code}`,
+      status: "CONFIRMED",
+      received_by: actorId,
+      notes: note,
+    },
+  });
+  const netPaid = paid - amount;
+  await tx.order.update({
+    where: { id: orderId },
+    data: { paid_amount: netPaid, balance: Math.max(0, Number(order.total) - netPaid) },
+  });
+  await logActionInTransaction(tx, {
+    tenantId,
+    actorId,
+    action: "CORRECTION_REFUND_APPLIED",
+    entityType: "Order",
+    entityId: orderId,
+    newValueJson: { refund_amount: amount, method: refundMethod },
+  });
 }
 
 /**
- * Koreksi order yang sudah CLOSED — record BARU, tidak mengubah data asli.
+ * Koreksi order — record BARU, tidak mengubah data asli.
  * Owner: semua kategori. Admin: hanya non-FINANCIAL, dan butuh approve Owner.
+ *
+ * Operasional (MATERIAL/QUANTITY/OTHER) tetap CLOSED-only — masuk akal cuma
+ * setelah job selesai. Koreksi FINANCIAL dibuka lebih awal: begitu
+ * `paid_amount > 0`, karena justru saat itulah decideDiscount/requestDiscount
+ * mengarahkan user ke alur ini (order yang masih berjalan tapi sudah dibayar
+ * butuh refund/credit, bukan menunggu sampai CLOSED).
  */
 export async function createCorrection(
   orderId: string,
@@ -347,24 +405,52 @@ export async function createCorrection(
 
     const order = await prisma.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
     if (!order) return fail("Order tidak ditemukan.");
-    if (order.status !== "CLOSED") return fail("Koreksi hanya untuk order berstatus CLOSED.");
+    const eligible = order.status === "CLOSED" || (input.category === "FINANCIAL" && Number(order.paid_amount) > 0);
+    if (!eligible) return fail("Koreksi hanya untuk order berstatus CLOSED, atau koreksi finansial pada order yang sudah menerima pembayaran.");
+
+    let refundAmount: number | null = null;
+    if (input.category === "FINANCIAL" && input.fieldName === REFUND_FIELD_NAME) {
+      refundAmount = Math.round(Number(input.newValue));
+      const paid = Number(order.paid_amount);
+      if (!Number.isFinite(refundAmount) || refundAmount <= 0) return fail("Nominal refund harus lebih dari 0.");
+      if (refundAmount > paid) return fail(`Nominal refund tidak boleh melebihi total yang sudah dibayar (${rp(paid)}).`);
+      if (!input.refundMethod?.trim()) return fail("Metode pengembalian wajib diisi untuk koreksi refund.");
+    }
 
     const isOwner = actor.roles.includes("owner");
-    const correction = await prisma.correction.create({
-      data: {
-        tenant_id: tenant.id,
-        order_id: orderId,
-        corrected_entity: input.correctedEntity,
-        corrected_id: input.correctedId,
-        category: input.category,
-        field_name: input.fieldName,
-        old_value: input.oldValue ?? null,
-        new_value: input.newValue ?? null,
-        reason: input.reason.trim(),
-        created_by: actor.id,
-        approved_by: isOwner ? actor.id : null,
-        approved_at: isOwner ? new Date() : null,
-      },
+    const correction = await prisma.$transaction(async (tx) => {
+      const created = await tx.correction.create({
+        data: {
+          tenant_id: tenant.id,
+          order_id: orderId,
+          corrected_entity: input.correctedEntity,
+          corrected_id: input.correctedId,
+          category: input.category,
+          field_name: input.fieldName,
+          old_value: input.oldValue ?? null,
+          new_value: refundAmount != null ? String(refundAmount) : (input.newValue ?? null),
+          refund_method: refundAmount != null ? input.refundMethod!.trim() : null,
+          reason: input.reason.trim(),
+          created_by: actor.id,
+          approved_by: isOwner ? actor.id : null,
+          approved_at: isOwner ? new Date() : null,
+        },
+      });
+      // Owner membuat koreksi = otomatis approved (lihat approved_by di atas),
+      // jadi efek refund harus diterapkan sekarang juga, bukan menunggu approveCorrection
+      // yang tidak akan pernah dipanggil untuk koreksi yang sudah approved.
+      if (isOwner && refundAmount != null) {
+        await applyRefundCorrection(
+          tx,
+          tenant.id,
+          orderId,
+          refundAmount,
+          input.refundMethod!.trim(),
+          actor.id,
+          `Refund via koreksi (Owner): ${input.reason.trim()}`
+        );
+      }
+      return created;
     });
 
     await logAction(actor.id, "CORRECTION_CREATED", input.correctedEntity, input.correctedId, input.oldValue ?? null, {
@@ -398,9 +484,23 @@ export async function approveCorrection(
     if (correction.approved_by) return fail("Koreksi sudah diputuskan.");
 
     if (input.approve) {
-      await prisma.correction.update({
-        where: { id: correctionId },
-        data: { approved_by: actor.id, approved_at: new Date() },
+      await prisma.$transaction(async (tx) => {
+        await tx.correction.update({
+          where: { id: correctionId },
+          data: { approved_by: actor.id, approved_at: new Date() },
+        });
+        if (correction.category === "FINANCIAL" && correction.field_name === REFUND_FIELD_NAME) {
+          if (!correction.refund_method) throw new Error("Koreksi ini tidak punya metode refund — tidak bisa diterapkan.");
+          await applyRefundCorrection(
+            tx,
+            tenant.id,
+            correction.order_id,
+            Math.round(Number(correction.new_value ?? 0)),
+            correction.refund_method,
+            actor.id,
+            `Refund via koreksi (disetujui): ${correction.reason ?? ""}`
+          );
+        }
       });
     } else {
       // tolak = hapus draft koreksi (belum berpengaruh ke data manapun)

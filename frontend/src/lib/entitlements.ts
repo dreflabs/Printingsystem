@@ -27,7 +27,7 @@ function parseFeatures(value: string | null | undefined): ReadonlySet<string> {
 }
 
 const LEGACY_PLAN_DEFAULTS: Record<string, { maxUsers: number | null; maxOrdersPerMonth: number | null; features: ReadonlySet<string> }> = {
-  STARTER: { maxUsers: 5, maxOrdersPerMonth: 200, features: new Set(["dashboard", "kanban", "qc"]) },
+  STARTER: { maxUsers: 5, maxOrdersPerMonth: 200, features: new Set(["dashboard", "kanban"]) },
   PRO: { maxUsers: 15, maxOrdersPerMonth: null, features: new Set(["dashboard", "kanban", "qc", "storage", "whatsapp_unlimited", "audit_trail"]) },
   ENTERPRISE: { maxUsers: null, maxOrdersPerMonth: null, features: new Set(["dashboard", "kanban", "qc", "storage", "whatsapp_unlimited", "audit_trail"]) },
 };

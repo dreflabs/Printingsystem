@@ -11,7 +11,9 @@ export const SAAS_PLANS = {
     price_monthly: 299000,
     max_users: 5,
     max_orders_per_month: 200,
-    features: ["dashboard", "kanban", "qc"],
+    // "qc" sengaja tidak diberikan ke Starter — SAAS-MODEL.md mengunci Modul QC
+    // untuk paket ini. Naik ke Pro untuk membuka claimQCJob/submitQC/decideRework.
+    features: ["dashboard", "kanban"],
     tenantPlan: "STARTER",
   },
   pro: {

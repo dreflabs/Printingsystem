@@ -16,6 +16,7 @@ import { latestDesignVersionsBySlot } from "@/lib/production-readiness";
 import { requireOperationalCheckIn } from "@/lib/attendance-policy";
 import { resolveOutputUnit } from "@/lib/output-units";
 import { movementCostAmount } from "@/lib/material-costing";
+import { requireEntitlement } from "@/lib/entitlements";
 
 /**
  * Admin/Owner menekan "Rilis ke Produksi" untuk order yang tertahan gatekeeper
@@ -244,7 +245,13 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
       const job = await findJobByCode(tx, tenant.id, jobCode);
       if (!job) throw new Error("Job tidak ditemukan.");
 
+      // Admin/Owner dengan production.assign sengaja melewati cap ini — konsisten
+      // dengan override lain di alur ini (mis. klaim mesin manapun di baris ~270).
       if (!can(actor, "production.assign")) {
+        // Kunci baris Machine dulu supaya cek+klaim job di bawah atomik: tanpa ini,
+        // dua startProduction bersamaan pada mesin yang sama bisa lolos cek
+        // activeCount sebelum salah satu commit (Postgres default Read Committed).
+        await tx.$queryRaw`SELECT id FROM "Machine" WHERE id = ${job.machine_id} AND tenant_id = ${tenant.id} FOR UPDATE`;
         const machine = await tx.machine.findFirst({ where: { id: job.machine_id, tenant_id: tenant.id }, select: { max_active_jobs: true } });
         if (machine?.max_active_jobs != null) {
           const activeCount = await tx.productionJob.count({
@@ -737,6 +744,7 @@ export async function claimQCJob(jobCode: string): Promise<ActionResult<{ jobSta
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "qc");
     if (!can(actor, "qc.submit")) return fail("Anda tidak memiliki akses mengambil tugas QC.");
     await requireOperationalCheckIn(tenant.id, actor);
 
@@ -780,6 +788,7 @@ export async function submitQC(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "qc");
     if (!can(actor, "qc.submit")) return fail("Hanya role Gudang yang boleh melakukan QC.");
     await requireOperationalCheckIn(tenant.id, actor);
     const requiredChecklist = ["qty", "size", "color", "print", "defect", "finishing"] as const;
@@ -869,6 +878,7 @@ export async function getQCHistory() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "qc");
     if (!can(actor, "qc.submit")) return fail("Anda tidak memiliki akses melihat riwayat QC.");
     const records = await prisma.qcRecord.findMany({
       where: { tenant_id: tenant.id },
@@ -895,6 +905,7 @@ export async function decideRework(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
+    await requireEntitlement(tenant.id, "qc");
     if (!can(actor, "production.rework_decide")) return fail("Hanya Owner yang boleh memutuskan rework.");
     if (!input.reason?.trim()) return fail("Alasan keputusan wajib diisi.");
 

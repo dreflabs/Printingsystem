@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSuperAdmin, requireSubLevel, IMPERSONATE_COOKIE, type PlatformActor } from "@/lib/platform";
 import { churnTenant, purgeTenant, PURGE_GRACE_DAYS } from "@/lib/tenant-lifecycle";
+import { changePlanCore } from "@/lib/plan-change";
 import { logPlatform, headerMeta, type PlatformAuditAction } from "@/lib/platform-audit";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
@@ -322,46 +323,17 @@ export async function updateTenantPlan(
         ? null
         : Math.max(1, Math.round(input.maxUsers));
 
-    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-    if (!tenant) return fail("Tenant tidak ditemukan.");
-    if (tenant.plan === input.plan && tenant.max_users === maxUsers) {
-      return fail("Tidak ada perubahan.");
-    }
-
-    const planChanged = tenant.plan !== input.plan;
-    let newPlanRow: { id: string } | null = null;
-    if (planChanged) {
-      newPlanRow = await prisma.subscriptionPlan.findUnique({
-        where: { slug: input.plan.toLowerCase() },
-        select: { id: true },
-      });
-      if (!newPlanRow) {
-        return fail(
-          `Paket "${input.plan}" belum ada di katalog SubscriptionPlan (slug "${input.plan.toLowerCase()}"). Buat plan-nya dulu sebelum mengubah tenant ke paket ini.`
-        );
-      }
-    }
-
-    await prisma.$transaction(async (tx) => {
-      await tx.tenant.update({
-        where: { id: tenantId },
-        data: { plan: input.plan, max_users: maxUsers },
-      });
-
-      // Keep TenantSubscription (and therefore MRR) in sync with Tenant.plan.
-      if (planChanged && newPlanRow) {
-        await tx.tenantSubscription.updateMany({
-          where: { tenant_id: tenantId, status: "ACTIVE" },
-          data: { status: "CANCELLED", ends_at: new Date() },
-        });
-        await tx.tenantSubscription.create({
-          data: { tenant_id: tenantId, plan_id: newPlanRow.id, status: "ACTIVE" },
-        });
-      }
+    const result = await changePlanCore({
+      tenantId,
+      targetPlan: input.plan,
+      maxUsers,
+      reason: input.reason,
+      actor: { type: "platform" },
     });
+    if (!result.success) return result;
 
     const change = {
-      from: { plan: tenant.plan, max_users: tenant.max_users },
+      from: { plan: result.data.previousPlan, max_users: result.data.previousMaxUsers },
       to: { plan: input.plan, max_users: maxUsers },
       reason: input.reason ?? null,
     };
@@ -369,7 +341,7 @@ export async function updateTenantPlan(
     await logActor(actor, "TENANT_PLAN_CHANGED", {
       targetType: "Tenant",
       targetId: tenantId,
-      targetLabel: tenant.slug,
+      targetLabel: result.data.tenantSlug,
       detail: change,
     });
 

@@ -200,7 +200,7 @@ export async function createEmployee(data: {
       });
       if (activeUsers >= entitlements.maxUsers) {
         throw new Error(
-          `Kuota user aktif paket Anda sudah penuh (${activeUsers}/${entitlements.maxUsers}). Upgrade paket atau nonaktifkan pegawai terlebih dahulu.`,
+          `Kuota user aktif paket Anda sudah penuh (${activeUsers}/${entitlements.maxUsers}). Nonaktifkan pegawai lain, atau Owner bisa upgrade paket sendiri di /owner/billing.`,
         );
       }
     }
@@ -416,7 +416,7 @@ export async function toggleEmployeeStatus(userId: string, active: boolean) {
         const activeUsers = await prisma.user.count({ where: { tenant_id: tenant.id, active: true } });
         if (activeUsers >= entitlements.maxUsers) {
           throw new Error(
-            `Kuota user aktif paket Anda sudah penuh (${activeUsers}/${entitlements.maxUsers}). Upgrade paket atau nonaktifkan pegawai lain terlebih dahulu.`,
+            `Kuota user aktif paket Anda sudah penuh (${activeUsers}/${entitlements.maxUsers}). Nonaktifkan pegawai lain, atau Owner bisa upgrade paket sendiri di /owner/billing.`,
           );
         }
       }

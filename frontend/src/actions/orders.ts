@@ -132,7 +132,7 @@ export async function createPrintingOrder(
       });
       if (ordersThisMonth >= entitlements.maxOrdersPerMonth) {
         return fail(
-          `Kuota order bulanan paket Anda sudah penuh (${ordersThisMonth}/${entitlements.maxOrdersPerMonth}). Upgrade paket untuk membuat order baru.`,
+          `Kuota order bulanan paket Anda sudah penuh (${ordersThisMonth}/${entitlements.maxOrdersPerMonth}). Owner bisa upgrade paket sendiri di /owner/billing, atau hubungi halo@printpilot.id.`,
         );
       }
     }

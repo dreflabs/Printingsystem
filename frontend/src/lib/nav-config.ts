@@ -12,6 +12,7 @@ import {
   ScanLine,
   Palette,
   Package,
+  CreditCard,
 } from "lucide-react";
 
 export type UserRole = "admin" | "designer_sales" | "operator" | "gudang" | "owner";
@@ -108,6 +109,7 @@ export const GROUPED_NAV: NavEntry[] = [
     roles: ["owner"],
     children: [
       { label: "Identitas & Kebijakan", href: "/owner/toko", roles: ["owner"] },
+      { label: "Paket & Tagihan", href: "/owner/billing", roles: ["owner"] },
       { label: "Audit Log", href: "/audit-logs", roles: ["owner"] },
     ],
   },
@@ -130,6 +132,7 @@ export const SOLO_NAV: { label: string; href: string; icon: LucideIcon }[] = [
   { label: "Katalog & Harga", href: "/admin/products", icon: Tag },
   { label: "Scan QR", href: "/scan", icon: ScanLine },
   { label: "Pegawai & Akses", href: "/owner/users", icon: Users },
+  { label: "Paket & Tagihan", href: "/owner/billing", icon: CreditCard },
   { label: "Bantuan", href: "/bantuan", icon: BookOpen },
 ];
 

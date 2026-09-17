@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { assertJobAuth, runJob } from "@/lib/jobs";
-import { hhmmToMinutes } from "@/lib/attendance";
+import { tenantDayDate, tenantDateTime } from "@/lib/attendance";
 
 export const dynamic = "force-dynamic";
 
@@ -21,25 +21,28 @@ export const dynamic = "force-dynamic";
 async function handle(): Promise<Response> {
   return runJob("attendance-autoclose", async () => {
     const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
 
     const settings = await prisma.tenantAttendanceSetting.findMany();
     const byTenant = new Map(settings.map((s) => [s.tenant_id, s]));
+    // "Hari ini" berbeda per tenant tergantung timezone masing-masing — jangan
+    // pakai jam server, atau tenant di zona lain bisa ditutup 1 hari lebih
+    // awal/telat dan jam check-out sintetisnya jadi salah.
+    const tenantToday = (tenantId: string) => tenantDayDate(now, byTenant.get(tenantId)?.timezone ?? "Asia/Jakarta");
 
     let autoClosed = 0;
     let breaksClosed = 0;
     let selfiesPurged = 0;
 
-    // 1. Lupa absen pulang — hanya tanggal sebelum hari ini.
-    const openPunches = await prisma.attendanceRecord.findMany({
-      where: { check_in: { not: null }, check_out: null, date: { lt: todayStart } },
+    // 1. Lupa absen pulang — hanya tanggal sebelum "hari ini" tenant tsb.
+    const openPunchCandidates = await prisma.attendanceRecord.findMany({
+      where: { check_in: { not: null }, check_out: null },
     });
-    for (const rec of openPunches) {
+    for (const rec of openPunchCandidates) {
+      if (rec.date >= tenantToday(rec.tenant_id)) continue;
       const set = byTenant.get(rec.tenant_id);
-      const endMin = hhmmToMinutes(set?.work_end ?? "17:00") ?? 17 * 60;
-      const closeAt = new Date(rec.date);
-      closeAt.setHours(Math.floor(endMin / 60), endMin % 60, 0, 0);
+      const timezone = set?.timezone ?? "Asia/Jakarta";
+      const workEnd = set?.work_end ?? "17:00";
+      const closeAt = tenantDateTime(rec.date, workEnd, timezone) ?? rec.date;
       const note = "⚠ Lupa absen pulang — ditutup otomatis sistem.";
       await prisma.attendanceRecord.update({
         where: { id: rec.id },
@@ -53,12 +56,13 @@ async function handle(): Promise<Response> {
       autoClosed++;
     }
 
-    // 2. Istirahat menggantung dari hari sebelumnya.
-    const openBreaks = await prisma.attendanceRecord.findMany({
-      where: { break_start: { not: null }, break_end: null, date: { lt: todayStart } },
+    // 2. Istirahat menggantung dari hari sebelumnya (per timezone tenant).
+    const openBreakCandidates = await prisma.attendanceRecord.findMany({
+      where: { break_start: { not: null }, break_end: null },
     });
-    for (const rec of openBreaks) {
+    for (const rec of openBreakCandidates) {
       if (!rec.break_start) continue;
+      if (rec.date >= tenantToday(rec.tenant_id)) continue;
       const set = byTenant.get(rec.tenant_id);
       const maxMin = set?.break_max_min ?? 60;
       const end = new Date(rec.break_start.getTime() + maxMin * 60_000);

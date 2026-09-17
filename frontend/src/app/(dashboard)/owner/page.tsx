@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Crown, TrendingUp, ShoppingBag, Package, AlertTriangle, RotateCcw, BadgePercent,
   CheckCircle2, XCircle, Bell, ShieldAlert, Activity, ClipboardList, X, ClipboardCheck,
-  MessageSquareX, Ban, Users, Wrench, ArrowRight,
+  MessageSquareX, Ban, Users, Wrench, ArrowRight, PauseCircle,
 } from "lucide-react";
 import { StatusPill , ErrorState} from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -34,12 +34,12 @@ const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—");
 
 function ApprovalModal({
-  title, description, details, approveLabel = "Setujui", rejectLabel = "Tolak", extra,
-  onApprove, onReject, onClose, busy, canApprove = true,
+  title, description, details, approveLabel = "Setujui", rejectLabel = "Tolak", holdLabel, extra,
+  onApprove, onReject, onHold, onClose, busy, canApprove = true,
 }: {
   title: string; description: string; details: { label: string; value: string }[];
-  approveLabel?: string; rejectLabel?: string; extra?: React.ReactNode;
-  onApprove: () => void; onReject: () => void; onClose: () => void; busy: boolean; canApprove?: boolean;
+  approveLabel?: string; rejectLabel?: string; holdLabel?: string; extra?: React.ReactNode;
+  onApprove: () => void; onReject: () => void; onHold?: () => void; onClose: () => void; busy: boolean; canApprove?: boolean;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -65,6 +65,11 @@ function ApprovalModal({
           <button disabled={busy} onClick={onReject} className="flex-1 h-10 rounded-xl bg-status-red/10 text-status-red text-xs font-bold hover:bg-status-red/20 disabled:opacity-50 flex items-center justify-center gap-1.5">
             <XCircle className="h-4 w-4" /> {rejectLabel}
           </button>
+          {onHold && (
+            <button disabled={busy} onClick={onHold} className="flex-1 h-10 rounded-xl bg-status-yellow/10 text-status-yellow-text text-xs font-bold hover:bg-status-yellow/20 disabled:opacity-50 flex items-center justify-center gap-1.5">
+              <PauseCircle className="h-4 w-4" /> {holdLabel}
+            </button>
+          )}
           <button disabled={busy || !canApprove} onClick={onApprove} className="flex-1 h-10 rounded-xl bg-status-green text-white text-xs font-bold hover:brightness-110 disabled:opacity-40 flex items-center justify-center gap-1.5">
             <CheckCircle2 className="h-4 w-4" /> {approveLabel}
           </button>
@@ -211,9 +216,11 @@ export default function OwnerPage() {
           ]}
           approveLabel="Approve (Child Job)"
           rejectLabel="Reject (Reprint)"
+          holdLabel="Hold (Tahan)"
           busy={busy}
           onApprove={() => run(() => decideRework(modal.row.jobCode, { decision: "APPROVED", reason: "Owner approve rework via dashboard" }))}
           onReject={() => run(() => decideRework(modal.row.jobCode, { decision: "REJECTED", reason: "Owner reject rework via dashboard" }))}
+          onHold={() => run(() => decideRework(modal.row.jobCode, { decision: "HOLD", reason: "Owner menahan order — menunggu keputusan lebih lanjut" }))}
           onClose={() => setModal(null)}
         />
       )}

@@ -156,7 +156,11 @@ export async function createDesignUploadUrl(
     });
     if (!job) return fail("Job desain tidak ditemukan untuk order ini.");
     if (!DESIGN_MUTABLE_ORDER_STATUSES.includes(job.order.status)) {
-      return fail("Desain tidak dapat diubah setelah order masuk produksi.");
+      return fail(
+        job.order.status === "ON_HOLD"
+          ? "Order sedang dibekukan — cairkan order terlebih dahulu sebelum mengunggah desain."
+          : "Desain tidak dapat diubah setelah order masuk produksi."
+      );
     }
     if (!isAdmin(actor.roles) && job.designer_id !== actor.id) {
       return fail("Claim job ini terlebih dahulu sebelum mengunggah desain.");
@@ -249,7 +253,11 @@ export async function uploadDesignVersion(
         select: { status: true },
       });
       if (!order || !DESIGN_MUTABLE_ORDER_STATUSES.includes(order.status)) {
-        throw new Error("Desain tidak dapat diubah setelah order masuk produksi.");
+        throw new Error(
+          order?.status === "ON_HOLD"
+            ? "Order sedang dibekukan — cairkan order terlebih dahulu sebelum mengunggah desain."
+            : "Desain tidak dapat diubah setelah order masuk produksi."
+        );
       }
       if (!isAdmin(actor.roles) && job.designer_id !== actor.id) {
         throw new Error("Claim job ini terlebih dahulu sebelum mengunggah desain.");
@@ -871,8 +879,15 @@ export async function takeDesignJob(orderId: string): Promise<ActionResult<{ suc
     const result = await prisma.$transaction(async (tx) => {
       const job = await tx.designJob.findUnique({
         where: { tenant_id_order_id: { tenant_id: tenant.id, order_id: orderId } },
+        include: { order: { select: { status: true } } },
       });
       if (!job) throw new Error("Job desain tidak ditemukan.");
+      // Order dibekukan/dibatalkan/sudah masuk produksi — jangan biarkan job
+      // diklaim, supaya tidak menjebak designer dengan tugas yang tidak bisa
+      // diunggah (uploadDesignVersion menolaknya dengan guard yang sama).
+      if (!DESIGN_MUTABLE_ORDER_STATUSES.includes(job.order.status)) {
+        throw new Error("Order sedang tidak menerima pekerjaan desain (dibekukan/sudah masuk produksi).");
+      }
       if (job.designer_id) {
         if (job.designer_id === actor.id) return { success: true };
         throw new Error("Job ini sudah diambil oleh designer lain.");

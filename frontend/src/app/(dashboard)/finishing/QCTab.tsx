@@ -6,14 +6,16 @@ import { cn } from "@/lib/utils";
 import { getGudangQueues } from "@/actions/queries";
 import { submitQC, getQCHistory, claimQCJob } from "@/actions/production";
 import { getSessionUser } from "@/actions/session";
-import { Prisma } from "@prisma/client";
 
-type QCHistoryRecord = Prisma.QcRecordGetPayload<{
-  include: {
-    job: { include: { order: { include: { customer: { select: { name: true } } } } } };
-    inspector: { select: { name: true } };
-  }
-}>;
+type QCHistoryRecord = {
+  id: string;
+  result: string;
+  notes: string | null;
+  photo_path: string | null;
+  created_at: Date;
+  inspector: { name: string };
+  job: { job_code: string; order: { order_code: string; customer: { name: string } | null } };
+};
 
 const CHECKLIST_ITEMS = [
   { id: "qty", label: "Jumlah (aktual vs rencana)" },

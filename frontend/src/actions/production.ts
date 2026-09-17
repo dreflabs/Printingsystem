@@ -885,11 +885,19 @@ export async function getQCHistory() {
       orderBy: { created_at: "desc" },
       take: 50,
       include: {
-        job: { include: { order: { include: { customer: { select: { name: true } } } } } },
+        job: { select: { job_code: true, order: { select: { order_code: true, customer: { select: { name: true } } } } } },
         inspector: { select: { name: true } },
       },
     });
-    return ok(records);
+    return ok(records.map((r) => ({
+      id: r.id,
+      result: r.result,
+      notes: r.notes,
+      photo_path: r.photo_path,
+      created_at: r.created_at,
+      inspector: { name: r.inspector.name },
+      job: { job_code: r.job.job_code, order: { order_code: r.job.order.order_code, customer: r.job.order.customer } },
+    })));
   } catch (e) {
     console.error("getQCHistory:", e);
     return fail(safeError(e, "Gagal memuat riwayat QC."));
@@ -1138,5 +1146,33 @@ export async function finishFinishing(
   } catch (e) {
     console.error("finishFinishing:", e);
     return fail(safeError(e, "Gagal menyelesaikan finishing."));
+  }
+}
+
+export async function getFinishingHistory() {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!can(actor, "finishing.execute")) return fail("Anda tidak memiliki akses melihat riwayat finishing.");
+    const records = await prisma.finishingJob.findMany({
+      where: { tenant_id: tenant.id, status: "COMPLETE" },
+      orderBy: { completed_at: "desc" },
+      take: 50,
+      include: {
+        job: { select: { job_code: true, order: { select: { order_code: true, customer: { select: { name: true } } } } } },
+        operator: { select: { name: true } },
+      },
+    });
+    return ok(records.map((r) => ({
+      id: r.id,
+      actual_qty: r.actual_qty,
+      notes: r.notes,
+      completed_at: r.completed_at,
+      operator: { name: r.operator.name },
+      job: { job_code: r.job.job_code, order: { order_code: r.job.order.order_code, customer: r.job.order.customer } },
+    })));
+  } catch (e) {
+    console.error("getFinishingHistory:", e);
+    return fail(safeError(e, "Gagal memuat riwayat finishing."));
   }
 }

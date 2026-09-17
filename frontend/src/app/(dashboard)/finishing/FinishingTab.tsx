@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Package, Wrench, CheckCircle2, Tag, ScanLine, QrCode, FileText } from "lucide-react";
+import { Package, Wrench, CheckCircle2, Tag, ScanLine, QrCode, FileText, History } from "lucide-react";
 import { StatusPill , ErrorState} from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { getGudangQueues } from "@/actions/queries";
-import { startFinishing, finishFinishing, claimFinishingJob } from "@/actions/production";
+import { startFinishing, finishFinishing, claimFinishingJob, getFinishingHistory } from "@/actions/production";
 import { getSessionUser } from "@/actions/session";
 
 type Row = {
@@ -22,6 +22,15 @@ type Row = {
   finishingAssignee: { id: string; name: string } | null;
   items: { product: string; quantity: number; size: string | null; material: string; finishing: string | null }[];
   designFiles: { id: string; itemId: string | null; name: string | null; version: number; url: string }[];
+};
+
+type FinishingHistoryRecord = {
+  id: string;
+  actual_qty: number;
+  notes: string | null;
+  completed_at: Date | null;
+  operator: { name: string };
+  job: { job_code: string; order: { order_code: string; customer: { name: string } | null } };
 };
 
 const fmtDeadline = (d: string | Date | null) =>
@@ -51,15 +60,18 @@ export function FinishingTab() {
   const [qty, setQty] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"queue" | "history">("queue");
+  const [historyList, setHistoryList] = useState<FinishingHistoryRecord[]>([]);
 
   const load = useCallback(async () => {
-    const res = await getGudangQueues();
+    const [res, resH] = await Promise.all([getGudangQueues(), getFinishingHistory()]);
     if (!res.success) { setError(res.error); return; }
     setError(null);
     const fq = res.data.finishingQueue;
     setQueue(fq.filter((j) => j.status === "QC_PASSED"));
     setActive(fq.find((j) => j.status === "FINISHING_STARTED") ?? null);
     setStorageReady(res.data.storageQueue);
+    if (resH.success) setHistoryList(resH.data);
   }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -113,7 +125,65 @@ export function FinishingTab() {
         ))}
       </div>
 
-      {active ? (
+      <div className="flex gap-2 bg-elevated p-1 rounded-xl border border-border w-fit">
+        <button
+          onClick={() => setActiveTab("queue")}
+          className={cn("px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5",
+            activeTab === "queue" ? "bg-accent-teal text-white shadow-sm" : "text-muted hover:text-primary")}
+        >
+          <Wrench className="h-4 w-4" /> Antrian
+        </button>
+        <button
+          onClick={() => setActiveTab("history")}
+          className={cn("px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5",
+            activeTab === "history" ? "bg-accent-teal text-white shadow-sm" : "text-muted hover:text-primary")}
+        >
+          <History className="h-4 w-4" /> Riwayat
+        </button>
+      </div>
+
+      {activeTab === "history" ? (
+        <div className="bg-card border border-border rounded-2xl shadow-card overflow-hidden">
+          <div className="flex items-center gap-2 p-5 border-b border-border bg-elevated/30">
+            <History className="h-5 w-5 text-accent-teal" />
+            <h2 className="text-base font-semibold text-primary">Riwayat Finishing Terakhir</h2>
+          </div>
+
+          <div className="divide-y divide-border/50 max-h-[600px] overflow-y-auto">
+            {historyList.length === 0 && (
+              <div className="p-8 text-center text-muted">Belum ada riwayat finishing.</div>
+            )}
+
+            {historyList.map((item) => (
+              <div key={item.id} className="p-5 hover:bg-elevated/30 transition-colors">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-status-green/10 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="h-5 w-5 text-status-green" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-accent-teal text-sm">{item.job.job_code}</span>
+                        <span className="text-xs text-muted">·</span>
+                        <span className="text-xs text-primary">{item.job.order.order_code}</span>
+                      </div>
+                      <p className="text-xs text-muted mt-0.5">{item.job.order.customer?.name} · {item.operator.name} · {item.actual_qty} pcs</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono text-muted">
+                    {item.completed_at && new Date(item.completed_at).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}
+                  </span>
+                </div>
+                {item.notes && (
+                  <div className="text-xs p-3 rounded-xl border border-border bg-elevated/40 text-primary mt-2">
+                    {item.notes}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : active ? (
         <div className="bg-gradient-to-br from-accent-teal/10 to-accent-teal/5 border border-accent-teal/30 rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <span className="h-2 w-2 rounded-full bg-accent-teal animate-pulse" />
@@ -162,6 +232,7 @@ export function FinishingTab() {
         </div>
       )}
 
+      {activeTab === "queue" && <>
       <a
         href="/scan"
         className="w-full h-14 rounded-xl bg-elevated border-2 border-dashed border-accent-teal/40 text-accent-teal font-semibold flex items-center justify-center gap-2 hover:bg-accent-teal/10 transition-all cursor-pointer"
@@ -243,6 +314,7 @@ export function FinishingTab() {
           ))}
         </div>
       </div>
+      </>}
     </div>
   );
 }

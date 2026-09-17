@@ -235,6 +235,10 @@ export async function createEmployee(data: {
         role_id: role.id,
         attendance_eligible: ATTENDANCE_DEFAULT_ROLES.has(data.role_name) || (data.extra_role_names ?? []).some((r) => ATTENDANCE_DEFAULT_ROLES.has(r)),
         must_change_password: true,
+        // Dibuat langsung oleh Owner (bukan self-serve signup) — tidak ada alur
+        // verifikasi email untuk pegawai, jadi tandai terverifikasi agar bisa
+        // login. Tanpa ini, login.ts:166 mengunci akun pegawai selamanya.
+        email_verified_at: new Date(),
       },
     });
 

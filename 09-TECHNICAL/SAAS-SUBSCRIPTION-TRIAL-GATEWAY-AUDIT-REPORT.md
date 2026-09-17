@@ -260,3 +260,61 @@ Perubahan berikut sudah disiapkan di schema dan generator invoice:
 - Migrasi juga membersihkan kemungkinan invoice periode lama yang duplikat tanpa menghapus histori keuangan.
 
 `npx prisma validate`, `npx prisma generate`, dan TypeScript berhasil. `prisma migrate deploy` belum dapat dijalankan pada sesi ini karena PostgreSQL lokal di `localhost:5432` tidak sedang aktif; migrasi wajib dijalankan setelah database lokal/server tersedia sebelum deploy aplikasi.
+
+## 13. Audit ulang — alur registrasi end-to-end dan verifikasi klaim Tahap A/B (17 September 2026)
+
+Permintaan pemilik proyek: pelajari alur registrasi dari ujung ke ujung (bukan cuma backend/billing yang sudah dicakup Bagian 2–4), dan pastikan Print Pilot bisa disebut SaaS profesional. Bagian ini melengkapi laporan di atas dengan (a) jejak UI yang belum pernah ditelusuri langkah-demi-langkah, dan (b) verifikasi ulang klaim "sudah diterapkan" di Bagian 11–12 terhadap kode saat ini — konsisten dengan praktik double-check yang dipakai di `AUDIT-IMPLEMENTATION-STATUS-REPORT.md`.
+
+### 13.1 Alur registrasi end-to-end, apa adanya
+
+`src/app/(auth)/register/page.tsx` — wizard 3 langkah, client component:
+
+1. **Langkah 1 — Akun Owner**: nama, email, WA (opsional), password + konfirmasi. Validasi client (12+ karakter, campuran huruf/angka, kedua password cocok) **sama persis** dengan `validateTenantPassword()` di server (`src/lib/password-policy.ts`) — tidak ada celah client/server mismatch di sini, satu kebijakan dipakai keduanya.
+2. **Langkah 2 — Profil percetakan**: nama toko (auto-generate subdomain darinya, bisa diedit manual), alamat (opsional), dan pertanyaan "berapa orang yang menjalankan percetakan ini?" (solo/tim kecil/tim per-divisi → `workspace_mode`).
+3. **Submit** → `registerTenant()` (server action, satu transaksi): buat `Tenant` (status TRIAL, `trial_ends_at` +14 hari), buat `TenantSubscription` (status ACTIVE, `ends_at` = trial end, plan sesuai pilihan di landing page), buat user Owner dengan SEMUA role operasional sebagai `extra_roles` (supaya bisa jalan sendiri), seed material starter, buat `TenantAttendanceSetting` default, tandai `OnboardingStep.WIZARD_DONE`, catat `TenantAuditLog`.
+4. **Langkah 3 — Selesai**: kalau verifikasi email tidak diwajibkan (kondisi default beta saat ini), auto sign-in via NextAuth lalu tombol "Buka Dashboard" ke `/owner`. Kalau diwajibkan, tampilkan pesan cek email dan tombol ke `/login`.
+5. Owner tiba di dashboard, `getSetupChecklist()` (`src/actions/onboarding.ts`) menghitung 6 item kesiapan toko (mesin, bahan, produk+mesin default, lokasi penyimpanan, pegawai, order pertama) dan ditampilkan lewat `RoleGuide` — item "pegawai" otomatis disembunyikan (bukan cuma ditandai selesai) kalau `workspace_mode = SOLO`.
+
+**Ini bagian yang sudah bagus, setara SaaS matang** — pola "activation checklist" pasca-signup (mirip Notion/Linear) sudah ada dan cukup pintar menyesuaikan solo vs tim. Password policy tidak dobel-standar antara UI dan server. Trial digambarkan jujur di UI ("Paket X — Rp Y/bln **setelah trial**", "Tanpa kartu kredit, bisa batal kapan saja") — tidak ada dark pattern yang menyembunyikan bahwa nanti berbayar.
+
+### 13.2 Temuan baru dari jejak UI (belum tercatat di Bagian 2–4)
+
+**Tidak ada persetujuan Syarat & Ketentuan / Kebijakan Privasi saat mendaftar.** Halaman `/syarat-ketentuan` dan `/kebijakan-privasi` sudah ada dan lengkap, tapi cuma ditautkan di footer landing page (`src/app/page.tsx:440-441`) — form registrasi (`register/page.tsx`) tidak punya checkbox "Saya menyetujui Syarat & Ketentuan dan Kebijakan Privasi" sama sekali. Untuk SaaS yang menyimpan data pelanggan-dari-pelanggan (nomor WA, alamat, dsb.) dan berencana menagih uang, persetujuan eksplisit saat akun dibuat itu praktik standar, bukan hiasan hukum — dan gampang ditambahkan (satu checkbox wajib centang sebelum "Buat Workspace" di Langkah 2).
+
+**Tidak ada welcome email sama sekali pada kondisi default (verifikasi email mati).** `registerTenant()` cuma memanggil `sendEmail()` satu kali, di dalam blok `if (result.verificationRequired && ...)` (`register.ts:232-243`). Selama `REQUIRE_EMAIL_VERIFICATION` tidak diaktifkan (kondisi beta saat ini), **tidak ada email apa pun** yang dikirim setelah registrasi berhasil — bukan cuma verifikasi yang mati, konfirmasi/welcome pun tidak ada. Satu-satunya jejak subdomain + username Owner adalah teks sekali-lihat di Langkah 3 ("Simpan keduanya"); kalau tab ditutup sebelum dicatat, satu-satunya jalan pulih adalah forgot-password by email — yang berfungsi, tapi pengalaman pertama yang lebih baik untuk SaaS profesional adalah tetap mengirim email "Selamat datang, ini link login Anda" terlepas dari status verifikasi.
+
+### 13.3 Verifikasi ulang klaim Tahap A/B (Bagian 11–12) terhadap kode hari ini
+
+**`BILLING_GATEWAY_ENABLED="false"` — ADA tapi TIDAK DIBACA di mana pun.** Dikonfirmasi ada di `.env.example:65`. Digrep di seluruh `src/`: nol hasil. Klaim Bagian 11 ("ditambahkan sebagai penanda eksplisit bahwa billing beta masih manual/simulasi") secara teknis benar (variabelnya ada), tapi menyesatkan kalau dibaca sebagai "sistem tahu dan menyesuaikan perilaku" — flag ini murni dekoratif hari ini, tidak menggerbang route, UI, atau logic apa pun. Perbaiki salah satu: (a) benar-benar dipakai untuk menyembunyikan CTA "Upgrade/Bayar" sampai gateway siap, atau (b) hapus dari `.env.example` supaya tidak ada tim yang mengira ada logic di baliknya.
+
+**`Invoice.billing_period` + `idempotency_key` unique constraint — DIKONFIRMASI BENAR.** `prisma/schema.prisma:141-142` punya `@@unique([tenant_id, billing_period])` dan `@@unique([idempotency_key])` persis seperti diklaim.
+
+**Trial tidak pernah masuk siklus invoice — dikonfirmasi, dengan baris kode persisnya.** `generateInvoicesForPeriod()` (`src/lib/billing.ts:53`) query dengan `where: { status: "ACTIVE", tenant: { status: "ACTIVE" } }`. Tenant baru berstatus `Tenant.status = "TRIAL"` — **dilewati total** oleh generator invoice ini, bukan cuma "belum masuk grace period sesuai dokumen" seperti tertulis di Bagian 4, tapi benar-benar tidak pernah disentuh generator invoice sama sekali selama masih TRIAL.
+
+**`SUSPENDED` cuma bisa disetel manual oleh Super Admin — temuan baru yang mempertajam Bagian 4.** Digrep seluruh path yang men-set `status: "SUSPENDED"`: hanya `src/actions/platform.ts:137` (`action === "SUSPEND"`, tombol manual di panel Super Admin). Cron otomatis (`src/app/api/jobs/tenant-lifecycle/route.ts`) cuma punya 2 jalur: (A) TRIAL yang `trial_ends_at`-nya lebih tua dari `TRIAL_GRACE_DAYS` (14 hari) → langsung **CHURNED**, melompati SUSPENDED sama sekali; (B) SUSPENDED yang sudah lama (>60 hari, tapi ini cuma bisa dicapai lewat aksi manual di atas) → CHURNED. Artinya alur "invoice jatuh tempo → grace 3 hari → SUSPENDED otomatis" yang dijanjikan `SAAS-MODEL.md` **tidak punya jalur otomatis sama sekali** hari ini — bukan cuma "belum terhubung dengan pembayaran" seperti tertulis di Bagian 4, tapi benar-benar tidak ada kode yang pernah men-trigger SUSPENDED selain klik manual Super Admin.
+
+**Reminder H-30/H-7/H-1 sebelum penghapusan — dikonfirmasi nihil.** Digrep `sendEmail`/`reminder`/`H-30`/`H-7`/`H-1` di `tenant-lifecycle.ts` dan cron route-nya: nol hasil. Tenant TRIAL yang churn otomatis (28 hari total: 14 trial + 14 grace) tidak pernah menerima peringatan apa pun sebelum slug-nya di-rename dan login gagal.
+
+### 13.4 Apakah Print Pilot sudah bisa disebut "SaaS profesional"?
+
+Jawaban terbagi dua, dan penting untuk tidak dicampur:
+
+**Dari sisi produk/UX registrasi: sudah cukup dekat dengan standar profesional.** Wizard singkat, password policy konsisten, activation checklist pintar, tidak ada dark pattern harga. Yang kurang cuma dua hal kecil dan cepat diperbaiki (13.2): checkbox consent ToS/Privacy, dan welcome email.
+
+**Dari sisi model bisnis (closed-loop trial → bayar → retensi): belum, dan ini bukan hal kecil.** Rangkaian yang seharusnya menghasilkan uang — trial habis → invoice otomatis → pengingat → grace period → suspend kalau tidak bayar → aktif lagi kalau bayar — **tidak ada satu pun mata rantai yang berjalan otomatis**. Satu-satunya hal otomatis adalah "hilang diam-diam setelah 28 hari" (churn), yang justru berlawanan dengan tujuan bisnis: alih-alih mendorong pembayaran, sistem malah menghapus prospek yang belum sempat ditagih. Ini konsisten dengan apa yang sudah direkomendasikan Bagian 6–9 di atas (Tahap B–D) — bagian ini hanya menegaskan dengan bukti kode bahwa gap-nya persis seperti yang sudah diperkirakan, dan menambahkan detail bahwa SUSPENDED benar-benar tidak punya jalur otomatis sama sekali (bukan cuma "belum lengkap").
+
+### 13.5 Rekomendasi tambahan (di luar roadmap gateway Bagian 5–9 yang sudah ada)
+
+1. **Cepat, tidak perlu gateway** — tambah checkbox consent ToS/Privacy di Langkah 2 form registrasi, wajib dicentang sebelum tombol "Buat Workspace" aktif.
+2. **Cepat, tidak perlu gateway** — kirim email "Selamat datang" setelah registrasi berhasil, terlepas dari `REQUIRE_EMAIL_VERIFICATION`. Isi minimal: link login, subdomain, username, tanggal trial berakhir (biar user tahu sejak awal, bukan kaget nanti), dan link ke halaman checklist penyiapan.
+3. **Sebelum trial pertama yang nyata dijalankan ke pengguna asli** — putuskan (ini pengulangan penting dari Bagian 10 poin 4, karena hari ini terbukti nol implementasi): apakah alur invoice-otomatis-untuk-tenant-TRIAL, reminder H-30/H-7/H-1, dan auto-SUSPEND akan benar-benar dibangun (Tahap B di atas), atau untuk sementara Super Admin akan memantau manual satu-per-satu tenant yang mendekati `trial_ends_at` lewat panel platform. Kalau pilihannya manual dulu, tambahkan minimal satu widget di panel Super Admin: daftar tenant TRIAL yang `trial_ends_at`-nya kurang dari 3 hari lagi, supaya follow-up manual punya alat bantu — bukan mengandalkan ingatan.
+4. **Konsistensi kode** — perbaiki atau hapus `BILLING_GATEWAY_ENABLED` yang saat ini dekoratif (13.3), supaya tidak ada asumsi keliru saat ada yang membaca `.env.example` di kemudian hari.
+
+### 13.6 Implementasi poin 1 dan 2 — 17 September 2026
+
+Kedua item cepat di atas sudah dikerjakan dan diverifikasi manual lewat browser (bukan cuma `tsc`):
+
+- **Checkbox consent**: `register/page.tsx` Langkah 2 sekarang punya checkbox wajib "Saya menyetujui Syarat & Ketentuan dan Kebijakan Privasi" (tautan buka tab baru ke `/syarat-ketentuan` dan `/kebijakan-privasi`) sebelum tombol "Buat Workspace" aktif. Server (`registerTenant()`) juga menolak `consentAccepted !== true` — jadi bukan cuma gate UI yang bisa dilewati lewat panggilan langsung ke action. Bukti persetujuan disimpan di kolom baru `User.terms_accepted_at` (migration `20260917073829_add_user_terms_accepted_at`), diisi saat Owner dibuat.
+- **Welcome email**: dikirim setelah registrasi sukses **kalau verifikasi email tidak diwajibkan** (kondisi default beta) — berisi nama toko, tanggal trial berakhir (dihitung dari `trialEnds` yang sama dipakai skema DB, bukan dihitung ulang), link login ke subdomain tenant (`https://<slug>.<host APP_URL>/login`), dan username. Kalau verifikasi diwajibkan, tetap cuma kirim email verifikasi seperti sebelumnya (kirim dua email sebelum akun aktif dianggap berlebihan — welcome email menyusul otomatis begitu mereka verifikasi & login pertama kali, bukan gap yang perlu ditutup sekarang).
+- Diuji manual: signup penuh lewat browser (checkbox tak dicentang → tombol disabled; dicentang → sukses), log server dev mengonfirmasi isi email simulasi (`[MAIL:SIMULASI:generic]`) dengan tanggal trial dan link login yang benar, query DB mengonfirmasi `terms_accepted_at` tersimpan. Tenant uji coba sudah dihapus lagi setelah verifikasi.
+- `npx tsc --noEmit` bersih, 12 test suite tetap lulus (tidak ada yang menyentuh alur ini secara langsung, tapi memastikan tidak ada regresi tak sengaja).

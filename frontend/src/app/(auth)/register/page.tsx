@@ -80,6 +80,7 @@ function RegisterWizard() {
     subdomain: "",
     address: "",
     teamSize: "solo" as TeamSize,
+    consentAccepted: false,
   });
 
   const pw = formData.password;
@@ -117,6 +118,7 @@ function RegisterWizard() {
       address: formData.address || undefined,
       plan,
       teamSize: formData.teamSize,
+      consentAccepted: formData.consentAccepted,
     });
     if (!res.success) {
       setIsLoading(false);
@@ -434,10 +436,30 @@ function RegisterWizard() {
                     </div>
                   </div>
 
-                  <div className="mt-8 flex justify-end">
+                  <label className="mt-6 flex items-start gap-2.5 text-xs text-muted cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={formData.consentAccepted}
+                      onChange={(e) => setFormData({ ...formData, consentAccepted: e.target.checked })}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-accent-teal cursor-pointer"
+                    />
+                    <span>
+                      Saya menyetujui{" "}
+                      <Link href="/syarat-ketentuan" target="_blank" className="text-accent-teal hover:underline font-semibold">
+                        Syarat &amp; Ketentuan
+                      </Link>{" "}
+                      dan{" "}
+                      <Link href="/kebijakan-privasi" target="_blank" className="text-accent-teal hover:underline font-semibold">
+                        Kebijakan Privasi
+                      </Link>{" "}
+                      Print Pilot.
+                    </span>
+                  </label>
+
+                  <div className="mt-6 flex justify-end">
                     <button
                       onClick={handleNext}
-                      disabled={isLoading || !formData.shopName || formData.subdomain.length < 3}
+                      disabled={isLoading || !formData.shopName || formData.subdomain.length < 3 || !formData.consentAccepted}
                       className="h-11 px-8 rounded-xl bg-status-green text-white font-bold flex items-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-[0_0_20px_rgba(52,211,153,0.3)]"
                     >
                       {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buat Workspace"}

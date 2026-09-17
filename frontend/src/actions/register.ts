@@ -23,6 +23,8 @@ export type RegisterTenantInput = {
   shopName: string;
   subdomain: string;
   address?: string;
+  /** Wajib true — centang persetujuan Syarat & Ketentuan + Kebijakan Privasi di Langkah 2. */
+  consentAccepted: boolean;
   /** Paket yang diklik di landing page ("starter" default, "pro" opsional). Enterprise tidak self-serve. */
   plan?: string;
   /**
@@ -50,6 +52,20 @@ export type RegisterTenantResult = {
 function slugify(v: string) {
   return v.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
+
+/** `https://printpilot.id` + slug → `https://<slug>.printpilot.id/login`. Fallback ke APP_URL kalau host tak bisa di-parse (mis. localhost dev). */
+function tenantLoginUrl(slug: string): string {
+  const base = process.env.APP_URL?.replace(/\/$/, "") || "http://localhost:3000";
+  try {
+    const u = new URL(base);
+    u.hostname = `${slug}.${u.hostname}`;
+    return `${u.origin}/login`;
+  } catch {
+    return `${base}/login`;
+  }
+}
+
+const TANGGAL_ID = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
 /**
  * Public self-serve signup. Creates Tenant + owner User + trial subscription +
@@ -83,6 +99,11 @@ export async function registerTenant(
       return fail("Subdomain harus 3–30 karakter, huruf kecil/angka saja.", {
         subdomain: "3–30 karakter, huruf kecil/angka.",
       });
+    if (!input.consentAccepted) {
+      return fail("Anda harus menyetujui Syarat & Ketentuan dan Kebijakan Privasi.", {
+        consent: "Wajib disetujui sebelum membuat workspace.",
+      });
+    }
 
     // Selama beta/trial verifikasi email sengaja dimatikan. Aktifkan eksplisit
     // saat product release melalui REQUIRE_EMAIL_VERIFICATION=true agar deploy
@@ -170,6 +191,7 @@ export async function registerTenant(
           username: usernameBase,
           email,
           email_verified_at: verificationRequired ? null : new Date(),
+          terms_accepted_at: now,
           password_hash,
           role_id: roleIds["owner"],
           phone,
@@ -226,7 +248,7 @@ export async function registerTenant(
         });
       }
 
-      return { slug, ownerUsername: usernameBase, tenantId: tenant.id, verificationRequired, verificationRaw };
+      return { slug, ownerUsername: usernameBase, tenantId: tenant.id, verificationRequired, verificationRaw, trialEnds };
     });
 
     if (result.verificationRequired && result.verificationRaw) {
@@ -239,6 +261,28 @@ export async function registerTenant(
       if (!mailed.ok) {
         console.error("register email verification delivery failed:", mailed.error);
         return fail("Workspace berhasil dibuat, tetapi email verifikasi belum dapat dikirim. Hubungi dukungan untuk mengirim ulang.");
+      }
+    } else {
+      // Verifikasi tidak diwajibkan (kondisi default beta) — tanpa ini, tidak
+      // ada email apa pun yang terkirim setelah signup. Best-effort: gagal
+      // kirim tidak boleh menggagalkan pendaftaran, workspace sudah aktif.
+      const loginUrl = tenantLoginUrl(result.slug);
+      const welcome = await sendEmail({
+        to: email,
+        subject: "Selamat datang di Print Pilot",
+        body: [
+          `Halo ${ownerName},`,
+          ``,
+          `Workspace "${shopName}" sudah aktif. Masa uji coba 14 hari berlaku sampai ${TANGGAL_ID.format(result.trialEnds)}.`,
+          ``,
+          `Login: ${loginUrl}`,
+          `Username: ${result.ownerUsername}`,
+          ``,
+          `Simpan email ini sebagai referensi. Kalau lupa kata sandi, gunakan "Lupa kata sandi" di halaman login.`,
+        ].join("\n"),
+      });
+      if (!welcome.ok) {
+        console.error("register welcome email delivery failed:", welcome.error);
       }
     }
 

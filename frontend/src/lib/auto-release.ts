@@ -110,9 +110,14 @@ export async function autoReleaseToProduction(
   const total = Number(order.total);
   const dpRequired = Number(order.dp_required ?? Math.round(total * 0.5));
 
-  const items: ReadinessItem[] = order.items
-    .filter((it) => !it.retail_product_id) // item retail tidak lewat produksi
-    .map((it) => ({
+  const nonRetailItems = order.items.filter((it) => !it.retail_product_id); // item retail tidak lewat produksi
+  const materialIds = [...new Set(nonRetailItems.map((it) => it.material_id).filter((v): v is string => !!v))];
+  const materials = materialIds.length
+    ? await tx.material.findMany({ where: { id: { in: materialIds }, tenant_id: tenantId }, select: { id: true, current_stock: true } })
+    : [];
+  const stockById = new Map(materials.map((m) => [m.id, Number(m.current_stock)]));
+
+  const items: ReadinessItem[] = nonRetailItems.map((it) => ({
       id: it.id,
       label: it.description || "",
       productId: it.product_id,
@@ -122,6 +127,7 @@ export async function autoReleaseToProduction(
       size: it.size,
       materialId: it.material_id,
       allowedMaterialIds: it.product?.material_options.map((option) => option.material_id) ?? [],
+      materialCurrentStock: it.material_id ? stockById.get(it.material_id) ?? null : null,
       unitPrice: Number(it.unit_price),
       totalPrice: Number(it.total_price),
       deadline: it.deadline ?? null,

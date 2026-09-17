@@ -716,6 +716,7 @@ export async function getProductionOverview() {
       }),
     ]);
 
+    const materialStockById = new Map(materials.map((m) => [m.id, num(m.current_stock)]));
     const stuckOrders = stuckRows.map((o) => {
       const awaitingRelease = o.auto_release_blocked === "AWAITING_ADMIN_RELEASE";
       let reasons: string[] = [];
@@ -738,6 +739,7 @@ export async function getProductionOverview() {
             size: i.size,
             materialId: i.material_id,
             allowedMaterialIds: i.product?.material_options.map((option) => option.material_id) ?? [],
+            materialCurrentStock: i.material_id ? materialStockById.get(i.material_id) ?? null : null,
             unitPrice: num(i.unit_price),
             totalPrice: num(i.total_price),
           }));
@@ -953,7 +955,7 @@ export async function getOrderDetail(orderId: string) {
               },
             },
             retail_product: { select: { name: true } },
-            material: { select: { name: true } },
+            material: { select: { name: true, current_stock: true } },
           },
         },
         payments: { orderBy: { paid_at: "asc" }, include: { receiver: { select: { name: true } } } },
@@ -984,6 +986,7 @@ export async function getOrderDetail(orderId: string) {
         size: i.size,
         materialId: i.material_id,
         allowedMaterialIds: i.product?.material_options.map((option) => option.material_id) ?? [],
+        materialCurrentStock: i.material ? num(i.material.current_stock) : null,
         unitPrice: num(i.unit_price),
         totalPrice: num(i.total_price),
       }));

@@ -726,6 +726,11 @@ export async function assignProductionJob(
         where: { tenant_id: tenant.id, design_job: { order_id: orderId } },
         select: { order_item_id: true, approval_status: true, file_path: true, file_name: true, version_no: true, uploaded_at: true },
       });
+      const materialIds = [...new Set(order.items.map((it) => it.material_id).filter((v): v is string => !!v))];
+      const materials = materialIds.length
+        ? await tx.material.findMany({ where: { id: { in: materialIds }, tenant_id: tenant.id }, select: { id: true, current_stock: true } })
+        : [];
+      const stockById = new Map(materials.map((m) => [m.id, Number(m.current_stock)]));
       const readinessItems: ReadinessItem[] = order.items.map((it) => ({
         id: it.id,
         label: it.description || "Item cetak",
@@ -736,6 +741,7 @@ export async function assignProductionJob(
         size: it.size,
         materialId: it.material_id,
         allowedMaterialIds: it.product?.material_options.map((option) => option.material_id) ?? [],
+        materialCurrentStock: it.material_id ? stockById.get(it.material_id) ?? null : null,
         unitPrice: Number(it.unit_price),
         totalPrice: Number(it.total_price),
         deadline: it.deadline,

@@ -20,6 +20,8 @@ export interface ReadinessItem {
   materialId: string | null;
   /** Active ProductMaterial ids; empty means product compatibility is unconfigured. */
   allowedMaterialIds?: string[];
+  /** Stok bahan saat ini (unit stok material). Null/undefined = tidak dicek (caller tidak fetch). */
+  materialCurrentStock?: number | null;
   unitPrice: number;
   totalPrice: number;
   /** override deadline item — dipakai auto-release untuk prioritas per job, diabaikan gate. */
@@ -163,6 +165,11 @@ export function checkProductionReadiness(input: ReadinessInput): ReadinessResult
     }
     if (!(it.unitPrice > 0) || !(it.totalPrice > 0)) gaps.push("harga");
     if ((it.productUnit ?? "PCS") !== "PCS" && !it.size?.trim()) gaps.push("ukuran");
+    // Stok habis (0) bukan cuma "menipis" — job tidak akan bisa diselesaikan
+    // operator sama sekali, jadi jangan ikut turun ke antrian produksi.
+    if (it.materialId && it.materialCurrentStock != null && it.materialCurrentStock <= EPS) {
+      gaps.push("stok bahan habis");
+    }
     if (gaps.length > 0) {
       missing.push(`Item "${it.label || "(tanpa nama)"}" belum lengkap: ${gaps.join(", ")}`);
     }

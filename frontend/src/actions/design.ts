@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { can } from "@/lib/permissions";
+import { requireOperationalCheckIn } from "@/lib/attendance-policy";
 import { logAction } from "@/lib/logger";
 import { retryOnUnique } from "@/lib/retry";
 import {
@@ -223,6 +224,7 @@ export async function uploadDesignVersion(
     if (!canDesign(actor.roles)) {
       return fail("Hanya Designer Sales/Admin/Owner yang boleh upload desain.");
     }
+    await requireOperationalCheckIn(tenant.id, actor);
     const filePath = input.filePath?.trim();
     if (!filePath) return fail("File desain wajib diisi.");
     // filePath boleh berupa object key R2 milik tenant ini (dari createDesignUploadUrl,
@@ -875,6 +877,7 @@ export async function takeDesignJob(orderId: string): Promise<ActionResult<{ suc
     if (!canDesign(actor.roles)) {
       return fail("Hanya Designer / Admin yang boleh mengambil tugas ini.");
     }
+    await requireOperationalCheckIn(tenant.id, actor);
 
     const result = await prisma.$transaction(async (tx) => {
       const job = await tx.designJob.findUnique({

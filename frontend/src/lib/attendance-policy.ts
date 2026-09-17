@@ -40,9 +40,15 @@ export async function requireCheckedInForWork(tenantId: string, actor: Actor) {
   return record;
 }
 
-/** Apply the gate only to operational staff; management can perform takeover. */
+/**
+ * Apply the gate only to operational staff; management can perform takeover.
+ * designer_sales is included here — it's wajib-absen by default alongside
+ * operator/gudang (see ATTENDANCE_DEFAULT_ROLES), so it must be enforced the
+ * same way or a Designer can work all day without ever checking in while an
+ * Operator/Gudang doing the exact same policy is hard-blocked.
+ */
 export async function requireOperationalCheckIn(tenantId: string, actor: Actor) {
-  const isOperational = actor.roles.includes("operator") || actor.roles.includes("gudang");
+  const isOperational = actor.roles.includes("operator") || actor.roles.includes("gudang") || actor.roles.includes("designer_sales");
   const isManagement = actor.roles.includes("owner") || actor.roles.includes("admin");
   if (isOperational && !isManagement) return requireCheckedInForWork(tenantId, actor);
   return null;

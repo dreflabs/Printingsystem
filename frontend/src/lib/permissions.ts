@@ -43,6 +43,9 @@ const ROLE_PERMISSIONS: Record<string, ReadonlySet<Permission>> = {
     "discount.request", "payment.view_detail", "payment.receive", "payment.confirm", "payment.refund_request", "pickup.release",
     "design.upload", "design.approve_online", "design.request_revision", "production.assign", "production.reassign", "qc.submit", "storage.configure", "storage.report_incident", "storage.resolve_incident",
     "material.view", "material.stocktake_approve", "purchase.view", "purchase.create", "purchase.receive", "operations.alerts.view", "operations.alerts.acknowledge", "audit.submit", "correction.create_operational", "report.view_operational", "report.view_financial", "report.export", "attendance.self", "attendance.view", "attendance.import", "attendance.report", "attendance.settings.read",
+    // Admin melihat payroll tanpa nominal (status & jumlah pegawai saja) —
+    // redaksi nominalnya ditegakkan di actions/payroll.ts, bukan di sini.
+    "payroll.view",
   ]),
   designer_sales: new Set<Permission>([
     "order.view_scoped", "order.create", "order.edit_draft", "customer.create", "design.upload", "design.approve_walkin", "design.request_revision", "attendance.self",

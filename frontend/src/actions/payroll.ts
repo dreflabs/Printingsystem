@@ -3,20 +3,20 @@
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor, impersonationNote } from "@/lib/actor";
+import { can } from "@/lib/permissions";
 import { logAction } from "@/lib/logger";
 import { safeError } from "@/lib/safe-error";
+import { isWorkday } from "@/lib/attendance";
 import { ok, fail } from "@/types";
 import { revalidatePath } from "next/cache";
 
-const isAdmin = (r: string[]) => r.includes("admin") || r.includes("owner");
 const num = (v: unknown) => Number(v ?? 0);
 
-/** Hari kerja dalam sebulan = semua tanggal kalender kecuali Minggu (toko libur Minggu). */
-function workingDaysInMonth(year: number, month: number): number {
-  const daysInMonth = new Date(year, month, 0).getDate();
+/** Hitung hari kerja (sesuai TenantAttendanceSetting.workdays) di rentang [start, end). */
+function countWorkdays(start: Date, end: Date, workdays: string): number {
   let count = 0;
-  for (let d = 1; d <= daysInMonth; d++) {
-    if (new Date(year, month - 1, d).getDay() !== 0) count++;
+  for (const d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
+    if (isWorkday(d, workdays)) count++;
   }
   return count;
 }
@@ -36,8 +36,14 @@ export async function generatePayrollPeriod(year: number, month: number) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh membuat periode payroll.");
+    if (!can(actor, "payroll.manage")) return fail("Hanya Owner yang boleh membuat periode payroll.");
     if (month < 1 || month > 12) return fail("Bulan tidak valid.");
+
+    const { start, end } = monthRangeUTC(year, month);
+    const now = new Date();
+    if (end > now) {
+      return fail("Bulan ini belum selesai — payroll hanya bisa digenerate untuk bulan yang sudah lewat penuh.");
+    }
 
     const existing = await prisma.payrollPeriod.findUnique({
       where: { tenant_id_year_month: { tenant_id: tenant.id, year, month } },
@@ -48,15 +54,33 @@ export async function generatePayrollPeriod(year: number, month: number) {
 
     const employees = await prisma.user.findMany({
       where: { tenant_id: tenant.id, active: true, base_salary: { not: null } },
-      select: { id: true, base_salary: true },
+      select: { id: true, base_salary: true, attendance_eligible: true, created_at: true },
     });
     if (employees.length === 0) {
       return fail("Belum ada pegawai dengan gaji pokok diset. Isi gaji pokok di halaman Pegawai dulu.");
     }
 
-    const { start, end } = monthRangeUTC(year, month);
-    const workingDays = workingDaysInMonth(year, month);
+    const attendanceSetting = await prisma.tenantAttendanceSetting.upsert({
+      where: { tenant_id: tenant.id },
+      update: {},
+      create: { tenant_id: tenant.id },
+    });
+    const monthWorkingDays = countWorkdays(start, end, attendanceSetting.workdays);
     const lateRate = num(tenant.payroll_late_deduction_per_minute);
+
+    // Baris yang sudah PAID tidak boleh ditimpa ke UNPAID hanya karena periode
+    // di-generate ulang (mis. koreksi absen pegawai lain) — riwayat pembayaran
+    // yang sudah tercatat harus tetap.
+    const paidRecordIds = existing
+      ? new Set(
+          (
+            await prisma.payrollRecord.findMany({
+              where: { period_id: existing.id, status: "PAID" },
+              select: { user_id: true },
+            })
+          ).map((r) => r.user_id)
+        )
+      : new Set<string>();
 
     const period = await prisma.payrollPeriod.upsert({
       where: { tenant_id_year_month: { tenant_id: tenant.id, year, month } },
@@ -65,8 +89,37 @@ export async function generatePayrollPeriod(year: number, month: number) {
     });
 
     for (const emp of employees) {
+      if (paidRecordIds.has(emp.id)) continue;
+
+      const base = num(emp.base_salary);
+
+      // Pegawai yang dibebaskan dari wajib-absen (mis. bergaji tetap, tidak
+      // pakai jam kerja formal) tidak boleh dianggap "bolos" karena memang
+      // tidak diwajibkan absen — gaji penuh, tanpa potongan absen/telat.
+      if (!emp.attendance_eligible) {
+        await prisma.payrollRecord.upsert({
+          where: { period_id_user_id: { period_id: period.id, user_id: emp.id } },
+          create: {
+            tenant_id: tenant.id, period_id: period.id, user_id: emp.id, base_salary: base,
+            working_days: 0, present_days: 0, absent_days: 0, late_minutes: 0,
+            deduction_absent: 0, deduction_late: 0, total_deduction: 0, net_salary: base,
+          },
+          update: {
+            base_salary: base, working_days: 0, present_days: 0, absent_days: 0, late_minutes: 0,
+            deduction_absent: 0, deduction_late: 0, total_deduction: 0, net_salary: base,
+            status: "UNPAID", paid_at: null,
+          },
+        });
+        continue;
+      }
+
+      // Prorata pegawai yang baru mulai di tengah bulan — hari sebelum
+      // dia bergabung tidak dihitung sebagai hari kerja wajib.
+      const effectiveStart = emp.created_at > start ? emp.created_at : start;
+      const employeeWorkingDays = effectiveStart < end ? countWorkdays(effectiveStart, end, attendanceSetting.workdays) : 0;
+
       const records = await prisma.attendanceRecord.findMany({
-        where: { tenant_id: tenant.id, user_id: emp.id, date: { gte: start, lt: end } },
+        where: { tenant_id: tenant.id, user_id: emp.id, date: { gte: effectiveStart, lt: end } },
         select: { date: true, check_in: true, late_minutes: true },
       });
 
@@ -74,11 +127,10 @@ export async function generatePayrollPeriod(year: number, month: number) {
         records.filter((r) => r.check_in).map((r) => r.date.toISOString().slice(0, 10))
       );
       const presentDays = presentDates.size;
-      const absentDays = Math.max(0, workingDays - presentDays);
+      const absentDays = Math.max(0, employeeWorkingDays - presentDays);
       const lateMinutes = records.reduce((sum, r) => sum + (r.late_minutes ?? 0), 0);
 
-      const base = num(emp.base_salary);
-      const perDay = workingDays > 0 ? base / workingDays : 0;
+      const perDay = monthWorkingDays > 0 ? base / monthWorkingDays : 0;
       const deductionAbsent = Math.round(perDay * absentDays);
       const deductionLate = Math.round(lateMinutes * lateRate);
       const totalDeduction = Math.min(base, deductionAbsent + deductionLate);
@@ -91,7 +143,7 @@ export async function generatePayrollPeriod(year: number, month: number) {
           period_id: period.id,
           user_id: emp.id,
           base_salary: base,
-          working_days: workingDays,
+          working_days: employeeWorkingDays,
           present_days: presentDays,
           absent_days: absentDays,
           late_minutes: lateMinutes,
@@ -102,7 +154,7 @@ export async function generatePayrollPeriod(year: number, month: number) {
         },
         update: {
           base_salary: base,
-          working_days: workingDays,
+          working_days: employeeWorkingDays,
           present_days: presentDays,
           absent_days: absentDays,
           late_minutes: lateMinutes,
@@ -122,7 +174,6 @@ export async function generatePayrollPeriod(year: number, month: number) {
       employee_count: employees.length,
     });
 
-    revalidatePath("/owner/payroll");
     revalidatePath("/admin/payroll");
     return ok({ periodId: period.id });
   } catch (e) {
@@ -136,7 +187,7 @@ export async function finalizePayrollPeriod(periodId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh finalisasi payroll.");
+    if (!can(actor, "payroll.manage")) return fail("Hanya Owner yang boleh finalisasi payroll.");
 
     const period = await prisma.payrollPeriod.findFirst({ where: { id: periodId, tenant_id: tenant.id } });
     if (!period) return fail("Periode tidak ditemukan.");
@@ -149,7 +200,6 @@ export async function finalizePayrollPeriod(periodId: string) {
 
     await logAction(actor.id, "PAYROLL_PERIOD_FINALIZED", "PayrollPeriod", periodId);
 
-    revalidatePath("/owner/payroll");
     revalidatePath("/admin/payroll");
     return ok(null);
   } catch (e) {
@@ -163,16 +213,24 @@ export async function markPayrollRecordPaid(recordId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh menandai gaji sudah dibayar.");
+    if (!can(actor, "payroll.manage")) return fail("Hanya Owner yang boleh menandai gaji sudah dibayar.");
 
-    const record = await prisma.payrollRecord.findFirst({ where: { id: recordId, tenant_id: tenant.id } });
+    const record = await prisma.payrollRecord.findFirst({
+      where: { id: recordId, tenant_id: tenant.id },
+      include: { period: { select: { status: true } } },
+    });
     if (!record) return fail("Data payroll tidak ditemukan.");
+    // Periode masih DRAFT bisa digenerate ulang, dan regenerate akan menimpa
+    // baris lain — kunci pembayaran ke periode yang sudah FINALIZED saja agar
+    // status LUNAS tidak pernah tertimpa oleh generate ulang.
+    if (record.period.status !== "FINALIZED") {
+      return fail("Finalisasi periode ini dulu sebelum menandai gaji sudah dibayar.");
+    }
     if (record.status === "PAID") return fail("Sudah ditandai lunas.");
 
     await prisma.payrollRecord.update({ where: { id: recordId }, data: { status: "PAID", paid_at: new Date() } });
     await logAction(actor.id, "PAYROLL_RECORD_PAID", "PayrollRecord", recordId);
 
-    revalidatePath("/owner/payroll");
     revalidatePath("/admin/payroll");
     return ok(null);
   } catch (e) {
@@ -186,7 +244,7 @@ export async function setEmployeeBaseSalary(userId: string, amount: number) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh mengubah gaji pokok pegawai.");
+    if (!can(actor, "payroll.manage")) return fail("Hanya Owner yang boleh mengubah gaji pokok pegawai.");
     if (!Number.isFinite(amount) || amount < 0) return fail("Nominal gaji tidak valid.");
 
     const user = await prisma.user.findFirst({ where: { id: userId, tenant_id: tenant.id } });
@@ -199,7 +257,7 @@ export async function setEmployeeBaseSalary(userId: string, amount: number) {
     await logAction(actor.id, "EMPLOYEE_BASE_SALARY_SET", "User", userId, { changed: true }, { changed: true }, impersonationNote(actor));
 
     revalidatePath("/owner/users");
-    revalidatePath("/owner/payroll");
+    revalidatePath("/admin/payroll");
     return ok(null);
   } catch (e) {
     console.error("setEmployeeBaseSalary:", e);
@@ -212,7 +270,7 @@ export async function updatePayrollLateDeductionRate(rupiahPerMinute: number) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh mengubah pengaturan payroll.");
+    if (!can(actor, "payroll.manage")) return fail("Hanya Owner yang boleh mengubah pengaturan payroll.");
     if (!Number.isFinite(rupiahPerMinute) || rupiahPerMinute < 0) return fail("Nominal tidak valid.");
 
     await prisma.tenant.update({ where: { id: tenant.id }, data: { payroll_late_deduction_per_minute: rupiahPerMinute } });
@@ -220,7 +278,7 @@ export async function updatePayrollLateDeductionRate(rupiahPerMinute: number) {
     // dibaca role admin, yang akan membocorkan nominal payroll ke Admin.
     await logAction(actor.id, "PAYROLL_LATE_RATE_UPDATED", "Tenant", tenant.id, { changed: true }, { changed: true });
 
-    revalidatePath("/owner/payroll");
+    revalidatePath("/admin/payroll");
     return ok(null);
   } catch (e) {
     console.error("updatePayrollLateDeductionRate:", e);
@@ -236,7 +294,7 @@ export async function getPayrollPeriods() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat payroll.");
+    if (!can(actor, "payroll.view")) return fail("Hanya Owner/Admin yang boleh melihat payroll.");
 
     const periods = await prisma.payrollPeriod.findMany({
       where: { tenant_id: tenant.id },
@@ -246,7 +304,7 @@ export async function getPayrollPeriods() {
 
     // readOnly = Super Admin sub-level SUPPORT sedang impersonate — meski actor.role
     // di sini "owner" (role tenant target), SUPPORT tidak boleh lihat nominal gaji.
-    const canSeeAmount = actor.roles.includes("owner") && !actor.readOnly;
+    const canSeeAmount = can(actor, "payroll.manage") && !actor.readOnly;
     return ok(
       periods.map((p) => ({
         id: p.id,
@@ -269,7 +327,7 @@ export async function getPayrollPeriodDetail(periodId: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
-    if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat payroll.");
+    if (!can(actor, "payroll.view")) return fail("Hanya Owner/Admin yang boleh melihat payroll.");
 
     const period = await prisma.payrollPeriod.findFirst({
       where: { id: periodId, tenant_id: tenant.id },
@@ -284,7 +342,7 @@ export async function getPayrollPeriodDetail(periodId: string) {
 
     // readOnly = Super Admin sub-level SUPPORT sedang impersonate — tidak boleh
     // lihat nominal gaji meski actor.role di sini "owner" (role tenant target).
-    const canSeeAmount = actor.roles.includes("owner") && !actor.readOnly;
+    const canSeeAmount = can(actor, "payroll.manage") && !actor.readOnly;
     return ok({
       id: period.id,
       year: period.year,
@@ -326,7 +384,7 @@ export async function getPayslip(recordId: string) {
     const actor = await requireUser();
     // Slip gaji tidak punya varian tanpa nominal — SUPPORT (readOnly) yang
     // impersonate ditolak sepenuhnya di sini, bukan cuma disembunyikan angkanya.
-    if (!actor.roles.includes("owner") || actor.readOnly) return fail("Hanya Owner yang boleh melihat slip gaji.");
+    if (!can(actor, "payroll.manage") || actor.readOnly) return fail("Hanya Owner yang boleh melihat slip gaji.");
 
     const record = await prisma.payrollRecord.findFirst({
       where: { id: recordId, tenant_id: tenant.id },

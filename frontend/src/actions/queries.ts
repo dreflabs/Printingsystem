@@ -47,11 +47,18 @@ export async function getOperatorJobs() {
       return fail("Hanya Operator yang boleh melihat antrian produksi.");
     }
 
-    const userMachines = await prisma.userMachine.findMany({
-      where: { tenant_id: tenant.id, user_id: actor.id },
-      select: { machine_id: true }
-    });
+    const [userMachines, userCategories] = await Promise.all([
+      prisma.userMachine.findMany({
+        where: { tenant_id: tenant.id, user_id: actor.id },
+        select: { machine_id: true }
+      }),
+      prisma.userMachineCategory.findMany({
+        where: { tenant_id: tenant.id, user_id: actor.id },
+        select: { category: true }
+      }),
+    ]);
     const allowedMachineIds = userMachines.map(um => um.machine_id);
+    const allowedCategories = userCategories.map(uc => uc.category);
 
     const include = {
       items: { where: { tenant_id: tenant.id }, select: { order_item_id: true, material_id: true, material: { select: { name: true, active: true } } } },
@@ -113,13 +120,14 @@ export async function getOperatorJobs() {
         orderBy: [{ priority: "desc" }, { created_at: "asc" }],
         include,
       }),
-      // Hanya ambil job dari mesin yang ditugaskan ke operator ini
+      // Hanya ambil job dari mesin yang ditugaskan ke operator ini, baik lewat
+      // checklist per-mesin maupun lewat kategori mesin yang dipegangnya.
       prisma.productionJob.findMany({
         where: {
           tenant_id: tenant.id,
           operator_id: null,
           status: "PRODUCTION_QUEUED",
-          machine_id: { in: allowedMachineIds }
+          machine: { OR: [{ id: { in: allowedMachineIds } }, { category: { in: allowedCategories } }] },
         },
         orderBy: [{ priority: "desc" }, { order: { deadline: "asc" } }, { created_at: "asc" }],
         include,

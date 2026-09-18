@@ -44,7 +44,7 @@ export default function OwnerUsersPage() {
   >(null);
   const [deleteFor, setDeleteFor] = useState<{ id: string; name: string } | null>(null);
   const [roleEditFor, setRoleEditFor] = useState<{ id: string; name: string; primary: string; roles: string[] } | null>(null);
-  const [machineEditFor, setMachineEditFor] = useState<{ id: string; name: string; user_machines: any[] } | null>(null);
+  const [machineEditFor, setMachineEditFor] = useState<{ id: string; name: string; user_machines: any[]; user_machine_categories: any[] } | null>(null);
 
   const runPendingConfirm = async () => {
     if (!pendingConfirm) return;
@@ -338,7 +338,7 @@ export default function OwnerUsersPage() {
                         const count = user.user_machines?.length || 0;
                         return (
                           <button
-                            onClick={() => setMachineEditFor({ id: user.id, name: user.name, user_machines: user.user_machines || [] })}
+                            onClick={() => setMachineEditFor({ id: user.id, name: user.name, user_machines: user.user_machines || [], user_machine_categories: user.user_machine_categories || [] })}
                             aria-label={`Atur akses mesin untuk ${user.name}`}
                             title={count > 0 ? user.user_machines.map((um: any) => um.machine.name).join(", ") : undefined}
                             className={cn(

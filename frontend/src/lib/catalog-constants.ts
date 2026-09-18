@@ -77,10 +77,11 @@ export function calculatePrintingUnitPrice(unit: string, rate: number, widthCm?:
 }
 
 /**
- * Jenis/kategori mesin — HANYA SARAN autocomplete, bukan pilihan terkunci.
- * Tenant bebas mengetik jenis mesin mereka sendiri (mis. "Eco Solvent 3.2m",
- * "UV Flatbed", "Riso", "Konica bizhub"). Tidak ada logika yang bergantung
- * pada nilai ini — murni label untuk pengelompokan.
+ * Jenis/kategori mesin — SARAN autocomplete, bukan pilihan terkunci. Tenant
+ * bebas mengetik jenis mesin mereka sendiri (mis. "Eco Solvent 3.2m",
+ * "UV Flatbed", "Riso", "Konica bizhub"); nilai bebas itu tetap dipakai
+ * sebagai grouping key oleh UserMachineCategory (routing job per kategori
+ * mesin ke operator) — lihat normCat() di actions/master-data.ts.
  */
 export const MACHINE_CATEGORIES = [
   "OUTDOOR", "INDOOR", "SUBLIMASI", "A3", "UV", "DTF", "BENDERA", "LAINNYA",

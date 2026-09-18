@@ -41,6 +41,7 @@ model Tenant {
   // Relations
   users                    User[]
   user_machines            UserMachine[]
+  user_machine_categories  UserMachineCategory[]
   subscription_plans       TenantSubscription[]
   invoices                 Invoice[]
   tenant_audit_logs        TenantAuditLog[]
@@ -275,54 +276,58 @@ model User {
   // Operator-specific: machines they are assigned to
   user_machines UserMachine[]
 
+  // Operator-specific: machine categories they are assigned to (see UserMachineCategory)
+  user_machine_categories UserMachineCategory[]
+
   // Mesin yang memakai user ini sebagai operator default (auto-release memilih dia)
   default_for_machines Machine[] @relation("MachineDefaultOperator")
 
   // Relations (inverse side)
-  created_customers         Customer[]
-  added_materials           Material[]
-  material_movements        MaterialMovement[]
-  stocktakes_created        MaterialStocktake[]      @relation("StocktakeCreatedBy")
-  stocktakes_submitted      MaterialStocktake[]      @relation("StocktakeSubmittedBy")
-  stocktakes_approved       MaterialStocktake[]      @relation("StocktakeApprovedBy")
-  stocktake_counts          MaterialStocktakeItem[]  @relation("StocktakeCountedBy")
-  assigned_machines         UserMachine[]            @relation("MachineAssignedBy")
-  created_orders            Order[]                  @relation("OrderCreatedBy")
-  created_purchase_orders   PurchaseOrder[]          @relation("PurchaseOrderCreatedBy")
-  designed_orders           Order[]                  @relation("OrderDesigner")
-  discount_approved         Order[]                  @relation("DiscountApprovedBy")
-  dp_override_by_orders     Order[]                  @relation("DpOverrideBy")
-  cancelled_by_orders       Order[]                  @relation("OrderCancelledBy")
-  cancellation_approved     Order[]                  @relation("CancellationApprovedBy")
-  retail_stock_movements    RetailStockMovement[]
-  design_jobs               DesignJob[]
-  uploaded_designs          DesignVersion[]          @relation("UploadedBy")
-  approved_designs          DesignVersion[]          @relation("ApprovedBy")
-  production_jobs           ProductionJob[]
-  qc_assigned_jobs          ProductionJob[]          @relation("QCAssignee")
-  finishing_assigned_jobs   ProductionJob[]          @relation("FinishingAssignee")
-  qc_inspections            QcRecord[]               @relation("Inspector")
-  rework_decisions          QcRecord[]               @relation("ReworkDecidedBy")
-  finishing_jobs            FinishingJob[]
-  stored_items              StorageItem[]            @relation("StoredBy")
-  transit_items             StorageItem[]            @relation("TransitBy")
-  released_items            StorageItem[]            @relation("ReleasedBy")
-  incident_reports          StorageItem[]            @relation("IncidentReportedBy")
-  resolved_incidents        StorageItem[]            @relation("IncidentResolvedBy")
-  payments_received         Payment[]
-  pickup_releases           PickupRecord[]
-  resent_notifications      NotificationEvent[]
-  acknowledged_alerts       OperationalAlert[]       @relation("AlertAcknowledgedBy")
-  audits_performed          Audit[]                  @relation("AuditedBy")
-  audits_approved           Audit[]                  @relation("AuditApprovedBy")
-  audit_logs                AuditLog[]
-  created_corrections       Correction[]             @relation("CorrectionCreatedBy")
-  approved_corrections      Correction[]             @relation("CorrectionApprovedBy")
-  imported_attendance       AttendanceImport[]
-  attendance_records        AttendanceRecord[]
-  password_reset_tokens     PasswordResetToken[]
-  email_verification_tokens EmailVerificationToken[]
-  payroll_records           PayrollRecord[]
+  created_customers           Customer[]
+  added_materials             Material[]
+  material_movements          MaterialMovement[]
+  stocktakes_created          MaterialStocktake[]      @relation("StocktakeCreatedBy")
+  stocktakes_submitted        MaterialStocktake[]      @relation("StocktakeSubmittedBy")
+  stocktakes_approved         MaterialStocktake[]      @relation("StocktakeApprovedBy")
+  stocktake_counts            MaterialStocktakeItem[]  @relation("StocktakeCountedBy")
+  assigned_machines           UserMachine[]            @relation("MachineAssignedBy")
+  assigned_machine_categories UserMachineCategory[]    @relation("MachineCategoryAssignedBy")
+  created_orders              Order[]                  @relation("OrderCreatedBy")
+  created_purchase_orders     PurchaseOrder[]          @relation("PurchaseOrderCreatedBy")
+  designed_orders             Order[]                  @relation("OrderDesigner")
+  discount_approved           Order[]                  @relation("DiscountApprovedBy")
+  dp_override_by_orders       Order[]                  @relation("DpOverrideBy")
+  cancelled_by_orders         Order[]                  @relation("OrderCancelledBy")
+  cancellation_approved       Order[]                  @relation("CancellationApprovedBy")
+  retail_stock_movements      RetailStockMovement[]
+  design_jobs                 DesignJob[]
+  uploaded_designs            DesignVersion[]          @relation("UploadedBy")
+  approved_designs            DesignVersion[]          @relation("ApprovedBy")
+  production_jobs             ProductionJob[]
+  qc_assigned_jobs            ProductionJob[]          @relation("QCAssignee")
+  finishing_assigned_jobs     ProductionJob[]          @relation("FinishingAssignee")
+  qc_inspections              QcRecord[]               @relation("Inspector")
+  rework_decisions            QcRecord[]               @relation("ReworkDecidedBy")
+  finishing_jobs              FinishingJob[]
+  stored_items                StorageItem[]            @relation("StoredBy")
+  transit_items               StorageItem[]            @relation("TransitBy")
+  released_items              StorageItem[]            @relation("ReleasedBy")
+  incident_reports            StorageItem[]            @relation("IncidentReportedBy")
+  resolved_incidents          StorageItem[]            @relation("IncidentResolvedBy")
+  payments_received           Payment[]
+  pickup_releases             PickupRecord[]
+  resent_notifications        NotificationEvent[]
+  acknowledged_alerts         OperationalAlert[]       @relation("AlertAcknowledgedBy")
+  audits_performed            Audit[]                  @relation("AuditedBy")
+  audits_approved             Audit[]                  @relation("AuditApprovedBy")
+  audit_logs                  AuditLog[]
+  created_corrections         Correction[]             @relation("CorrectionCreatedBy")
+  approved_corrections        Correction[]             @relation("CorrectionApprovedBy")
+  imported_attendance         AttendanceImport[]
+  attendance_records          AttendanceRecord[]
+  password_reset_tokens       PasswordResetToken[]
+  email_verification_tokens   EmailVerificationToken[]
+  payroll_records             PayrollRecord[]
 
   @@unique([tenant_id, username])
   @@unique([tenant_id, email])
@@ -353,6 +358,23 @@ model UserMachine {
   assigned_at DateTime @default(now())
 
   @@unique([user_id, machine_id])
+}
+
+// Join table: Operator ↔ Machine category (many-to-many, owner-assigned).
+// Grants an operator visibility into every machine of a category, instead of
+// ticking machines one by one — see UserMachine for the per-machine variant.
+model UserMachineCategory {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id])
+  user_id     String
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  category    String
+  assigned_by String
+  assigner    User     @relation("MachineCategoryAssignedBy", fields: [assigned_by], references: [id])
+  assigned_at DateTime @default(now())
+
+  @@unique([user_id, category])
 }
 
 // ─── MASTER DATA ──────────────────────────────────────────────────────────────

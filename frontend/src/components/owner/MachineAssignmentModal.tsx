@@ -3,14 +3,15 @@
 import { useState, useEffect } from "react";
 import { X, Printer, Loader2, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getMachines } from "@/actions/master-data";
-import { updateOperatorMachines } from "@/actions/user-management";
+import { getMachines, getMachineCategories } from "@/actions/master-data";
+import { updateOperatorMachines, updateOperatorCategories } from "@/actions/user-management";
 
 interface MachineAssignmentModalProps {
   user: {
     id: string;
     name: string;
     user_machines: { machine_id: string }[];
+    user_machine_categories?: { category: string }[];
   };
   onClose: () => void;
   onSuccess: () => void;
@@ -18,10 +19,14 @@ interface MachineAssignmentModalProps {
 
 export function MachineAssignmentModal({ user, onClose, onSuccess }: MachineAssignmentModalProps) {
   const [machines, setMachines] = useState<any[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>(
     user.user_machines?.map((m: any) => m.machine_id) || []
+  );
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    user.user_machine_categories?.map((c) => c.category) || []
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -32,11 +37,14 @@ export function MachineAssignmentModal({ user, onClose, onSuccess }: MachineAssi
   const loadMachines = async () => {
     setIsLoading(true);
     try {
-      const result = await getMachines();
-      if (result.success) {
-        setMachines(result.data);
+      const [machinesResult, categoriesResult] = await Promise.all([getMachines(), getMachineCategories()]);
+      if (machinesResult.success) {
+        setMachines(machinesResult.data);
       } else {
-        setError(result.error);
+        setError(machinesResult.error);
+      }
+      if (categoriesResult.success) {
+        setCategories(categoriesResult.data);
       }
     } catch (err: any) {
       setError(err.message || "Gagal memuat daftar mesin.");
@@ -51,16 +59,29 @@ export function MachineAssignmentModal({ user, onClose, onSuccess }: MachineAssi
     );
   };
 
+  const toggleCategory = (category: string) => {
+    setSelectedCategories(prev =>
+      prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]
+    );
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setError(null);
     try {
-      const result = await updateOperatorMachines(user.id, selectedMachineIds);
-      if (result.success) {
-        onSuccess();
-      } else {
-        setError(result.error);
+      const [machinesResult, categoriesResult] = await Promise.all([
+        updateOperatorMachines(user.id, selectedMachineIds),
+        updateOperatorCategories(user.id, selectedCategories),
+      ]);
+      if (!machinesResult.success) {
+        setError(machinesResult.error);
+        return;
       }
+      if (!categoriesResult.success) {
+        setError(categoriesResult.error);
+        return;
+      }
+      onSuccess();
     } catch (err: any) {
       setError(err.message || "Terjadi kesalahan sistem.");
     } finally {
@@ -102,7 +123,44 @@ export function MachineAssignmentModal({ user, onClose, onSuccess }: MachineAssi
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted" />
             </div>
-          ) : machines.length === 0 ? (
+          ) : (
+            <>
+              {categories.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-xs font-bold text-muted uppercase tracking-wide mb-2">
+                    Kategori Mesin
+                  </h3>
+                  <p className="text-xs text-muted mb-2">
+                    Operator otomatis melihat job dari semua mesin berkategori ini, tanpa perlu dicentang satu-satu di bawah.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {categories.map((category) => {
+                      const isSelected = selectedCategories.includes(category);
+                      return (
+                        <button
+                          key={category}
+                          onClick={() => toggleCategory(category)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all",
+                            isSelected
+                              ? "border-accent-teal/50 bg-accent-teal/10 text-accent-teal"
+                              : "border-border text-muted hover:border-border/80 hover:bg-elevated/50"
+                          )}
+                        >
+                          {category}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <h3 className="text-xs font-bold text-muted uppercase tracking-wide mb-2">
+                Mesin
+              </h3>
+            </>
+          )}
+
+          {isLoading ? null : machines.length === 0 ? (
             <div className="text-center py-8 text-muted text-sm">
               Belum ada mesin yang didaftarkan.
             </div>

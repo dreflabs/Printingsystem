@@ -811,6 +811,26 @@ export async function getMachines() {
   }
 }
 
+/** Kategori mesin yang sudah pernah dipakai tenant ini — untuk picker Kategori. */
+export async function getMachineCategories() {
+  try {
+    const tenant = await requireTenant();
+    await requireUser();
+    const rows = await prisma.machine.findMany({
+      where: { tenant_id: tenant.id },
+      select: { category: true },
+      distinct: ["category"],
+    });
+    const categories = Array.from(
+      new Set([...(MACHINE_CATEGORIES as readonly string[]), ...rows.map((r) => r.category?.trim()).filter(Boolean)])
+    ).sort((a, b) => a.localeCompare(b, "id"));
+    return ok(categories);
+  } catch (e) {
+    console.error("getMachineCategories:", e);
+    return fail(safeError(e, "Gagal memuat kategori mesin."));
+  }
+}
+
 // Jenis/kategori mesin bebas diisi tenant — bukan enum. Nilai yang cocok dengan
 // daftar saran dinormalkan ke huruf besar (biar konsisten dengan data lama);
 // selain itu diterima apa adanya, hanya dirapikan & dibatasi panjangnya.

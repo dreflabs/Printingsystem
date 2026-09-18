@@ -28,6 +28,7 @@ const USER_SELECT = {
   role: { select: { name: true } },
   extra_roles: { select: { role: { select: { name: true } } } },
   user_machines: { select: { machine_id: true, machine: { select: { name: true } } } },
+  user_machine_categories: { select: { category: true } },
 } as const;
 
 const ATTENDANCE_DEFAULT_ROLES = new Set(["owner", "designer_sales", "operator", "gudang"]);
@@ -121,6 +122,102 @@ export async function updateOperatorMachines(userId: string, machineIds: string[
   } catch (error) {
     console.error("updateOperatorMachines error:", error);
     return fail(safeError(error, "Terjadi kesalahan saat menyimpan tugas mesin."));
+  }
+}
+
+export async function updateOperatorCategories(userId: string, categories: string[]): Promise<ActionResult<null>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+
+    if (!can(actor, "shop.configure")) return fail("Hanya Owner yang boleh mengatur penugasan mesin.");
+
+    const target = await prisma.user.findFirst({
+      where: { id: userId, tenant_id: tenant.id },
+      include: { role: true, extra_roles: { include: { role: true } } }
+    });
+    if (!target) return fail("Pegawai tidak ditemukan.");
+
+    const isOp = target.role.name === "operator" || target.extra_roles.some(er => er.role.name === "operator");
+    if (!isOp) return fail("Pegawai ini tidak memiliki role Operator Cetak.");
+
+    // JANGAN paksa uppercase di sini: normCat() di master-data.ts hanya
+    // meng-uppercase kategori yang cocok dengan MACHINE_CATEGORIES (daftar
+    // saran), kategori bebas lain disimpan apa adanya (mis. "Digital
+    // Printing"). Kategori yang dikirim harus persis sama dengan nilai
+    // Machine.category supaya filter OR di getOperatorJobs nyambung.
+    const requestedCategories = [...new Set((categories ?? []).map((c) => c.trim()).filter(Boolean))];
+
+    if (requestedCategories.length > 0) {
+      // Kategori tenant-scoped, sama seperti validasi machine id di
+      // updateOperatorMachines — daftar dari klien tidak dapat dipercaya.
+      const existingCategories = await prisma.machine.findMany({
+        where: { tenant_id: tenant.id },
+        select: { category: true },
+        distinct: ["category"],
+      });
+      const validCategories = new Set(existingCategories.map((m) => m.category));
+      const invalid = requestedCategories.filter((c) => !validCategories.has(c));
+      if (invalid.length > 0) {
+        return fail(`Kategori tidak valid atau belum dipakai mesin manapun: ${invalid.join(", ")}.`);
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Jangan mencabut akses kategori dari operator yang masih memegang job
+      // aktif pada mesin kategori tersebut, kecuali dia juga punya akses
+      // eksplisit ke mesin itu lewat checklist per-mesin.
+      const currentGrants = await tx.userMachineCategory.findMany({
+        where: { tenant_id: tenant.id, user_id: userId },
+        select: { category: true },
+      });
+      const removedCategories = currentGrants
+        .map((grant) => grant.category)
+        .filter((c) => !requestedCategories.includes(c));
+      if (removedCategories.length > 0) {
+        const explicitMachineIds = (
+          await tx.userMachine.findMany({ where: { tenant_id: tenant.id, user_id: userId }, select: { machine_id: true } })
+        ).map((m) => m.machine_id);
+        const activeJobs = await tx.productionJob.findMany({
+          where: {
+            tenant_id: tenant.id,
+            operator_id: userId,
+            status: { in: ["PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"] },
+            machine: { category: { in: removedCategories }, id: { notIn: explicitMachineIds } },
+          },
+          select: { job_code: true },
+          orderBy: { job_code: "asc" },
+        });
+        if (activeJobs.length > 0) {
+          const codes = activeJobs.slice(0, 3).map((job) => job.job_code).join(", ");
+          const suffix = activeJobs.length > 3 ? " dan lainnya" : "";
+          throw new Error(`Akses kategori tidak dapat dicabut karena ${activeJobs.length} job masih aktif (${codes}${suffix}). Reassign job terlebih dahulu.`);
+        }
+      }
+
+      await tx.userMachineCategory.deleteMany({
+        where: { tenant_id: tenant.id, user_id: userId }
+      });
+
+      if (requestedCategories.length > 0) {
+        await tx.userMachineCategory.createMany({
+          data: requestedCategories.map((category) => ({
+            tenant_id: tenant.id,
+            user_id: userId,
+            category,
+            assigned_by: actor.id,
+          }))
+        });
+      }
+
+      await logAction(actor.id, "UPDATE_OPERATOR_CATEGORIES", "User", userId, "Assigned machine categories updated", { categories: requestedCategories });
+    });
+
+    revalidatePath("/owner/users");
+    return ok(null);
+  } catch (error) {
+    console.error("updateOperatorCategories error:", error);
+    return fail(safeError(error, "Terjadi kesalahan saat menyimpan kategori mesin."));
   }
 }
 

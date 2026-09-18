@@ -44,3 +44,10 @@ export async function validateCatalogMachine(tx: Prisma.TransactionClient, tenan
     throw new Error("Mesin default harus aktif dan milik toko ini.");
   }
 }
+
+/** Kategori dicek harus punya minimal 1 mesin ACTIVE milik toko ini saat produk disimpan; auto-release tetap mengecek ulang saat order dirilis (mesin bisa berubah status setelahnya). */
+export async function validateCatalogMachineCategory(tx: Prisma.TransactionClient, tenantId: string, category?: string | null) {
+  if (category && !await tx.machine.findFirst({ where: { tenant_id: tenantId, category, status: "ACTIVE" }, select: { id: true } })) {
+    throw new Error("Kategori mesin default harus punya minimal satu mesin aktif.");
+  }
+}

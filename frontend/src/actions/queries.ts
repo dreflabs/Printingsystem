@@ -714,6 +714,7 @@ export async function getProductionOverview() {
                 select: {
                   unit: true,
                   default_machine_id: true,
+                  default_machine_category: true,
                   material_options: {
                     where: { tenant_id: tenant.id, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
                     select: { material_id: true },
@@ -746,6 +747,7 @@ export async function getProductionOverview() {
             productId: i.product_id,
             productUnit: i.product?.unit ?? null,
             defaultMachineId: i.product?.default_machine_id ?? null,
+            defaultMachineCategory: i.product?.default_machine_category ?? null,
             quantity: i.quantity,
             size: i.size,
             materialId: i.material_id,
@@ -959,6 +961,7 @@ export async function getOrderDetail(orderId: string) {
                 name: true,
                 unit: true,
                 default_machine_id: true,
+                default_machine_category: true,
                 material_options: {
                   where: { tenant_id: tenant.id, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
                   select: { material_id: true },
@@ -993,6 +996,7 @@ export async function getOrderDetail(orderId: string) {
         productId: i.product_id,
         productUnit: i.product?.unit ?? null,
         defaultMachineId: i.product?.default_machine_id ?? null,
+        defaultMachineCategory: i.product?.default_machine_category ?? null,
         quantity: i.quantity,
         size: i.size,
         materialId: i.material_id,

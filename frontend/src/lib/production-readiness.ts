@@ -15,6 +15,8 @@ export interface ReadinessItem {
   productUnit: string | null;
   /** mesin default produk — sumber routing job otomatis */
   defaultMachineId: string | null;
+  /** alternatif defaultMachineId: routing per kategori mesin, dipilih auto-release saat release */
+  defaultMachineCategory?: string | null;
   quantity: number;
   size: string | null;
   materialId: string | null;
@@ -180,7 +182,7 @@ export function checkProductionReadiness(input: ReadinessInput): ReadinessResult
       missing.push(`Item "${it.label || "(tanpa nama)"}" — file desain final belum ada`);
     }
 
-    if (!it.defaultMachineId) {
+    if (!it.defaultMachineId && !it.defaultMachineCategory) {
       allItemsRouted = false;
     }
   }

@@ -19,7 +19,8 @@ type Retail = {
 };
 type Printing = {
   id: string; name: string; category: string; unit: string;
-  base_price: number | null; default_material_id: string | null; default_machine_id: string | null; active: boolean;
+  base_price: number | null; default_material_id: string | null; default_machine_id: string | null;
+  default_machine_category: string | null; active: boolean;
   material_options: { id: string; name: string; material_code: string; material_id: string; is_default: boolean; role: string; sort_order: number; unit_price: number | null }[];
 };
 type Machine = { id: string; machine_code: string; name: string; category: string; status: string; notes: string | null; default_operator_id: string | null; default_operator_name: string | null; max_active_jobs: number | null };
@@ -105,6 +106,11 @@ function PrintingModal({
   const [materialId, setMaterialId] = useState(editing?.default_material_id ?? "");
   const [materialIds, setMaterialIds] = useState<string[]>(editing?.material_options.map((m) => m.material_id) ?? []);
   const [machineId, setMachineId] = useState(editing?.default_machine_id ?? "");
+  const [machineCategory, setMachineCategory] = useState(editing?.default_machine_category ?? "");
+  const [routeMode, setRouteMode] = useState<"none" | "machine" | "category">(
+    editing?.default_machine_category ? "category" : editing?.default_machine_id ? "machine" : "none"
+  );
+  const machineCategories = [...new Set(machines.map((m) => m.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, "id"));
   const [materialSearch, setMaterialSearch] = useState("");
   const [materialGroup, setMaterialGroup] = useState("");
   const [rates, setRates] = useState<Record<string, string>>(Object.fromEntries((editing?.material_options ?? []).map(m => [m.material_id, m.unit_price == null ? "" : String(m.unit_price)])));
@@ -124,7 +130,8 @@ function PrintingModal({
       unit,
       base_price: basePrice ? Number(basePrice) : null,
       default_material_id: materialId || null,
-      default_machine_id: machineId || null,
+      default_machine_id: routeMode === "machine" ? machineId || null : null,
+      default_machine_category: routeMode === "category" ? machineCategory || null : null,
       material_ids: materialIds,
       material_rates: materialIds.map(id => ({ material_id: id, unit_price: rates[id]?.trim() ? Number(rates[id]) : null })),
     };
@@ -187,17 +194,36 @@ function PrintingModal({
           {primary.filter(m => materialIds.includes(m.id)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
       </Field>
-      <Field label="Mesin Default">
-        <select className={inp} value={machineId} onChange={(e) => setMachineId(e.target.value)}>
-          <option value="">— belum diset (order butuh assign manual)</option>
-          {machines.map((m) => (
-            <option key={m.id} value={m.id} disabled={m.status !== "ACTIVE"}>
-              {m.name} ({m.machine_code}){m.status !== "ACTIVE" ? ` — ${m.status}` : ""}
-            </option>
+      <Field label="Routing Produksi">
+        <div className="flex gap-3 text-xs text-primary mb-2">
+          {([["none", "Belum diset"], ["machine", "Mesin spesifik"], ["category", "Kategori mesin"]] as const).map(([v, label]) => (
+            <label key={v} className="flex items-center gap-1.5">
+              <input type="radio" name="routeMode" checked={routeMode === v} onChange={() => setRouteMode(v)} /> {label}
+            </label>
           ))}
-        </select>
+        </div>
+        {routeMode === "machine" && (
+          <select className={inp} value={machineId} onChange={(e) => setMachineId(e.target.value)}>
+            <option value="">— pilih mesin —</option>
+            {machines.map((m) => (
+              <option key={m.id} value={m.id} disabled={m.status !== "ACTIVE"}>
+                {m.name} ({m.machine_code}){m.status !== "ACTIVE" ? ` — ${m.status}` : ""}
+              </option>
+            ))}
+          </select>
+        )}
+        {routeMode === "category" && (
+          <select className={inp} value={machineCategory} onChange={(e) => setMachineCategory(e.target.value)}>
+            <option value="">— pilih kategori —</option>
+            {machineCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
       </Field>
-      <p className="text-[10px] text-muted -mt-2">Order yang semua itemnya punya mesin default + lolos syarat kelayakan akan turun ke antrian produksi otomatis, tanpa &quot;Assign ke Produksi&quot; manual.</p>
+      <p className="text-[10px] text-muted -mt-2">
+        {routeMode === "category"
+          ? "Order otomatis dirilis ke mesin ACTIVE di kategori ini dengan job terbuka paling sedikit — bukan satu mesin tetap."
+          : "Order yang semua itemnya punya mesin default + lolos syarat kelayakan akan turun ke antrian produksi otomatis, tanpa \"Assign ke Produksi\" manual."}
+      </p>
       {editing && (
         <label className="flex items-center gap-2 text-xs text-primary">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Aktif
@@ -468,7 +494,13 @@ export default function AdminProductsPage() {
                       {p.material_options.length === 0 ? "Belum dikonfigurasi" : `${p.material_options.length} material diizinkan`}
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-muted text-xs">{p.default_machine_id ? machName(p.default_machine_id) : <span className="text-status-yellow-text">belum diset</span>}</td>
+                  <td className="px-5 py-4 text-muted text-xs">
+                    {p.default_machine_id
+                      ? machName(p.default_machine_id)
+                      : p.default_machine_category
+                        ? <span className="text-accent-teal">Kategori: {p.default_machine_category}</span>
+                        : <span className="text-status-yellow-text">belum diset</span>}
+                  </td>
                   <td className="px-5 py-4"><Badge active={p.active} /></td>
                   <td className="px-5 py-4 text-right">
                     <RowActions 

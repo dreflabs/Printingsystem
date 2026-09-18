@@ -44,6 +44,9 @@ function blockedPayload(missing: string[]): string {
   return JSON.stringify(missing);
 }
 
+/** Job masih membebani mesin (belum lewat tahap cetak) — dipakai untuk load-balancing kategori. */
+const OPEN_JOB_STATUSES = ["PRODUCTION_QUEUED", "PRODUCTION_ASSIGNED", "PRODUCTION_STARTED", "PRODUCTION_PAUSED"];
+
 /**
  * Coba turunkan order ke produksi tanpa aksi Admin. Dipanggil di dalam transaksi
  * caller, tepat setelah order menjadi CONFIRMED.
@@ -51,7 +54,11 @@ function blockedPayload(missing: string[]): string {
  * - Idempotent: kalau order sudah punya ProductionJob, tidak melakukan apa-apa.
  * - Hanya bekerja saat `order.status === "CONFIRMED"`.
  * - Satu ProductionJob per MESIN (item dengan mesin default sama digabung, qty
- *   dijumlah). Mesin diambil dari `product.default_machine_id`.
+ *   dijumlah). Mesin diambil dari `product.default_machine_id`. Kalau produk
+ *   pakai `default_machine_category` sebagai gantinya, dipilihkan satu mesin
+ *   ACTIVE di kategori itu dengan job terbuka paling sedikit (load balance) —
+ *   ditolak (order tertahan) kalau kategori tidak punya mesin ACTIVE atau
+ *   tidak ada operator yang bisa melihat job di kategori/mesin itu sama sekali.
  * - Kalau mesin punya `default_operator_id` yang masih aktif → job di-pin ke dia
  *   (status PRODUCTION_ASSIGNED). Kalau tidak → PRODUCTION_QUEUED tanpa operator
  *   (operator klaim sendiri lewat SCAN 1).
@@ -82,6 +89,7 @@ export async function autoReleaseToProduction(
             select: {
               unit: true,
               default_machine_id: true,
+              default_machine_category: true,
               material_options: {
                 where: { tenant_id: tenantId, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
                 select: { material_id: true },
@@ -123,6 +131,7 @@ export async function autoReleaseToProduction(
       productId: it.product_id,
       productUnit: it.product?.unit ?? null,
       defaultMachineId: it.product?.default_machine_id ?? null,
+      defaultMachineCategory: it.product?.default_machine_category ?? null,
       quantity: it.quantity,
       size: it.size,
       materialId: it.material_id,
@@ -155,6 +164,54 @@ export async function autoReleaseToProduction(
       data: { auto_release_blocked: blockedPayload(gate.missing) },
     });
     return { released: false, jobCodes: [], missing: gate.missing };
+  }
+
+  // Item yang di-routing lewat kategori (bukan mesin spesifik) — pilihkan satu
+  // mesin ACTIVE per kategori: mesin dengan job terbuka paling sedikit (load
+  // balance), dan hanya kalau ada operator yang bisa melihatnya sama sekali.
+  const categoryItems = items.filter((it) => !it.defaultMachineId && it.defaultMachineCategory);
+  const categories = [...new Set(categoryItems.map((it) => it.defaultMachineCategory as string))];
+  for (const category of categories) {
+    const candidates = await tx.machine.findMany({
+      where: { tenant_id: tenantId, category, status: "ACTIVE" },
+      select: { id: true, name: true },
+    });
+    if (candidates.length === 0) {
+      const missing = [`Tidak ada mesin aktif di kategori "${category}"`];
+      await tx.order.update({ where: { id: orderId }, data: { auto_release_blocked: blockedPayload(missing) } });
+      return { released: false, jobCodes: [], missing };
+    }
+
+    const candidateIds = candidates.map((m) => m.id);
+    const [machineGrant, categoryGrant] = await Promise.all([
+      tx.userMachine.findFirst({
+        where: { tenant_id: tenantId, machine_id: { in: candidateIds }, user: { active: true } },
+        select: { id: true },
+      }),
+      tx.userMachineCategory.findFirst({
+        where: { tenant_id: tenantId, category, user: { active: true } },
+        select: { id: true },
+      }),
+    ]);
+    if (!machineGrant && !categoryGrant) {
+      const missing = [`Tidak ada operator untuk kategori "${category}" — atur akses mesin/kategori dulu`];
+      await tx.order.update({ where: { id: orderId }, data: { auto_release_blocked: blockedPayload(missing) } });
+      return { released: false, jobCodes: [], missing };
+    }
+
+    const openCounts = await tx.productionJob.groupBy({
+      by: ["machine_id"],
+      where: { tenant_id: tenantId, machine_id: { in: candidateIds }, status: { in: OPEN_JOB_STATUSES } },
+      _count: { _all: true },
+    });
+    const countByMachine = new Map(openCounts.map((c) => [c.machine_id, c._count._all]));
+    const chosen = [...candidates].sort((a, b) =>
+      (countByMachine.get(a.id) ?? 0) - (countByMachine.get(b.id) ?? 0) || a.name.localeCompare(b.name, "id")
+    )[0];
+
+    for (const it of categoryItems) {
+      if (it.defaultMachineCategory === category) it.defaultMachineId = chosen.id;
+    }
   }
 
   // Semua mesin default harus ACTIVE — kalau ada yang MAINTENANCE/INACTIVE,

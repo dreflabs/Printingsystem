@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
-import { saveProductMaterials, validateCatalogMachine, OPEN_ORDER_EXCLUSIONS, type MaterialRate } from "@/lib/product-materials";
+import { saveProductMaterials, validateCatalogMachine, validateCatalogMachineCategory, OPEN_ORDER_EXCLUSIONS, type MaterialRate } from "@/lib/product-materials";
 import { logAction } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
@@ -257,7 +257,7 @@ export async function getPrintingProducts() {
 
 type PrintingProductInput = {
   name: string; category: string; unit?: string; base_price?: number | null;
-  default_material_id?: string | null; default_machine_id?: string | null;
+  default_material_id?: string | null; default_machine_id?: string | null; default_machine_category?: string | null;
   material_ids?: string[]; material_rates?: MaterialRate[];
 };
 
@@ -268,12 +268,15 @@ export async function createPrintingProduct(data: PrintingProductInput) {
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengelola produk cetak.");
     if (!data.name?.trim()) return fail("Nama produk wajib diisi.");
     if (data.base_price != null && (!Number.isFinite(data.base_price) || data.base_price <= 0)) return fail("Harga dasar harus positif atau dikosongkan.");
+    if (data.default_machine_id && data.default_machine_category) return fail("Pilih salah satu: mesin spesifik atau kategori mesin, bukan keduanya.");
     const product = await prisma.$transaction(async (tx) => {
       await validateCatalogMachine(tx, tenant.id, data.default_machine_id);
+      await validateCatalogMachineCategory(tx, tenant.id, data.default_machine_category);
       const created = await tx.product.create({ data: {
         tenant_id: tenant.id, name: data.name.trim(), category: (data.category?.trim() || "LAINNYA").toUpperCase(),
         unit: PRINTING_UNITS.includes((data.unit ?? "PCS") as typeof PRINTING_UNITS[number]) ? data.unit : "PCS",
         base_price: data.base_price ?? null, default_machine_id: data.default_machine_id || null,
+        default_machine_category: data.default_machine_category || null,
       } });
       await saveProductMaterials(tx, tenant.id, created.id, {
         material_ids: data.material_ids ?? [], default_material_id: data.default_material_id || null, material_rates: data.material_rates,
@@ -298,8 +301,16 @@ export async function updatePrintingProduct(id: string, data: Partial<PrintingPr
       const existing = await tx.product.findFirst({ where: { id, tenant_id: tenant.id }, include: { material_options: { where: { active: true } } } });
       if (!existing) throw new Error("Produk tidak ditemukan.");
       if (data.default_machine_id !== undefined) await validateCatalogMachine(tx, tenant.id, data.default_machine_id);
+      if (data.default_machine_category !== undefined) await validateCatalogMachineCategory(tx, tenant.id, data.default_machine_category);
+      const effMachineId = data.default_machine_id !== undefined ? data.default_machine_id : existing.default_machine_id;
+      const effCategory = data.default_machine_category !== undefined ? data.default_machine_category : existing.default_machine_category;
+      if (effMachineId && effCategory) throw new Error("Pilih salah satu: mesin spesifik atau kategori mesin, bukan keduanya.");
       const { material_ids, material_rates, default_material_id, ...fields } = data;
-      const updated = await tx.product.update({ where: { id }, data: { ...fields, ...(fields.default_machine_id !== undefined ? { default_machine_id: fields.default_machine_id || null } : {}) } });
+      const updated = await tx.product.update({ where: { id }, data: {
+        ...fields,
+        ...(fields.default_machine_id !== undefined ? { default_machine_id: fields.default_machine_id || null } : {}),
+        ...(fields.default_machine_category !== undefined ? { default_machine_category: fields.default_machine_category || null } : {}),
+      } });
       if (material_ids !== undefined || default_material_id !== undefined || material_rates !== undefined) {
         await saveProductMaterials(tx, tenant.id, id, {
           material_ids: material_ids ?? existing.material_options.map(m => m.material_id),

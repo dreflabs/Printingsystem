@@ -76,10 +76,18 @@ Designer buat desain → upload preview/draft ke sistem
 ## Aturan Umum Desain
 
 - Setiap desain disimpan dengan versi (V1, V2, V3...)
+- Satu `DesignJob` hanya menjadi wadah satu order; order yang berbeda dari konsumen yang sama tetap memiliki job dan approval terpisah.
+- Untuk order multi-item, pilih target item saat upload. Setiap item harus memiliki versi APPROVED sendiri, kecuali satu file layout gabungan memang mencakup seluruh item (`order_item_id` kosong).
+- Setelah ACC sebagian, sistem menampilkan item yang masih menunggu. Order tidak boleh dirilis ke produksi sebelum seluruh item non-retail tertutup.
 - Hanya versi yang sudah APPROVED yang bisa masuk produksi
+- Approval hanya berlaku untuk versi PENDING terbaru pada setiap slot. Versi
+  approved yang digantikan oleh versi baru berubah menjadi SUPERSEDED dan tidak
+  boleh dipakai Operator.
 - Jika konsumen minta revisi setelah APPROVED, butuh re-approval sebelum bisa lanjut
 - Designer tidak bisa meng-approve desainnya sendiri untuk tipe Online (harus Admin)
 - File desain disimpan di sistem dan tidak bisa dihapus oleh Designer setelah order masuk produksi
+
+Jika Operator mengembalikan order sebelum produksi dimulai karena file bermasalah, seluruh job produksi pra-mulai dibatalkan dan versi terbaru pada setiap item ditandai REJECTED. Designer wajib mengunggah dan meng-ACC ulang item yang terdampak sebelum order dapat masuk produksi lagi.
 
 ---
 

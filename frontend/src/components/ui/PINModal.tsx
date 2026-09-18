@@ -37,14 +37,14 @@ export function PINModal({ open, onClose, onSuccess, title = "Otorisasi Admin", 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-base/80 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-card border border-status-yellow/30 rounded-2xl p-6 shadow-[0_8px_48px_rgba(0,0,0,0.6)]">
-        <button onClick={onClose} className="absolute right-4 top-4 text-muted hover:text-primary transition-colors cursor-pointer">
+      <div className="relative w-full max-w-sm bg-card border border-status-yellow/30 rounded-2xl p-6 shadow-modal">
+        <button aria-label="Tutup verifikasi PIN" onClick={onClose} className="absolute right-4 top-4 text-muted hover:text-primary transition-colors cursor-pointer">
           <X className="h-5 w-5" />
         </button>
         
         <div className="flex flex-col items-center text-center mb-6 mt-2">
           <div className="h-12 w-12 bg-status-yellow/10 rounded-full flex items-center justify-center mb-3">
-            <Lock className="h-6 w-6 text-status-yellow" />
+            <Lock className="h-6 w-6 text-status-yellow-text" />
           </div>
           <h3 className="text-lg font-bold text-primary">{title}</h3>
           <p className="text-sm text-muted mt-1">{description}</p>
@@ -71,7 +71,7 @@ export function PINModal({ open, onClose, onSuccess, title = "Otorisasi Admin", 
           <button
             type="submit"
             disabled={pin.length < 4 || isLoading}
-            className="w-full h-12 mt-5 rounded-xl bg-gradient-to-r from-status-yellow to-red-500 text-white text-sm font-bold shadow-lg shadow-status-yellow/20 hover:brightness-110 transition-all cursor-pointer disabled:opacity-40"
+            className="w-full h-12 mt-5 rounded-xl bg-gradient-to-r from-status-yellow to-status-red text-white text-sm font-bold shadow-lg shadow-status-yellow/20 hover:brightness-110 transition-all cursor-pointer disabled:opacity-40"
           >
             {isLoading ? "Memverifikasi..." : "Konfirmasi Otorisasi"}
           </button>

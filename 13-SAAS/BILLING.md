@@ -4,7 +4,7 @@ Sistem berlangganan bulanan SaaS Print Pilot akan diotomasi menggunakan **Midtra
 
 ## 1. Flow Siklus Tagihan (Subscription Cycle)
 
-> **Trial (7 Hari) dianggap bagian dari siklus tagihan ini, bukan alur terpisah.** Hari ke-7 trial = `H-0` di Section 2 (Perpanjangan Otomatis). Tenant baru tetap dapat invoice pertama + `Grace Period` 3 hari sebelum `SUSPENDED`, sama seperti pelanggan reguler yang telat bayar.
+> **Trial (14 Hari) dianggap bagian dari siklus tagihan ini, bukan alur terpisah.** Hari ke-14 trial = `H-0` di Section 2 (Perpanjangan Otomatis). Selama beta, invoice hanya simulasi/manual dan belum terhubung payment gateway. Setelah gateway production aktif, tenant baru mendapat invoice pertama + `Grace Period` 3 hari sebelum `SUSPENDED`, sama seperti pelanggan reguler yang telat bayar.
 
 1. **Trial Berakhir / Beli Paket:** Owner tenant masuk ke halaman `/billing` dan memilih paket (Starter/Pro).
 2. **Checkout (Midtrans SNAP):** 

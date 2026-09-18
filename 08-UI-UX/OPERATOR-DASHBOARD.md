@@ -33,7 +33,7 @@ Saat ada job PRODUCTION_STARTED:
 - Tombol "Selesai Produksi"
 - Tombol "Jeda Produksi" — pilih alasan wajib (Mesin Macet / Menunggu Material / Lainnya), job jadi status jeda sampai Operator klik "Lanjutkan Produksi" (lihat `02-WORKFLOW/05-PRODUCTION.md` bagian "Jeda Produksi")
 
-Karena sistem membatasi **1 job aktif per Operator**, tombol "SCAN QR MULAI JOB" otomatis nonaktif selama masih ada job berstatus PRODUCTION_STARTED atau PRODUCTION_PAUSED yang belum diselesaikan.
+Operator **boleh menjalankan beberapa job sekaligus** — tombol "SCAN QR MULAI JOB" / "AMBIL & MULAI" tetap aktif walau sudah ada job berjalan. Semua job aktif ditampilkan sebagai daftar kartu, masing-masing dengan tombol Jeda / Selesai sendiri. (Catatan: durasi job yang berjalan paralel tumpang-tindih di laporan — lihat `02-WORKFLOW/05-PRODUCTION.md`.)
 
 ---
 

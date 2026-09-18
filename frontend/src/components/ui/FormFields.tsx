@@ -96,11 +96,13 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   error?: string;
   hint?: string;
   placeholder?: string;
-  options: { label: string; value: string }[];
+  options?: { label: string; value: string }[];
+  /** Bila diisi, render <optgroup> per grup dan abaikan `options`. */
+  groups?: { label: string; options: { label: string; value: string }[] }[];
 }
 
 export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, label, error, hint, placeholder, options, id, ...props }, ref) => {
+  ({ className, label, error, hint, placeholder, options = [], groups, id, ...props }, ref) => {
     const inputId = id || label?.toLowerCase().replace(/\s/g, "-");
     return (
       <div className="flex flex-col gap-1.5">
@@ -126,11 +128,21 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
               {placeholder}
             </option>
           )}
-          {options.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
+          {groups
+            ? groups.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.options.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))
+            : options.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
         </select>
         {error && <p className="text-xs text-status-red">{error}</p>}
         {hint && !error && <p className="text-xs text-muted">{hint}</p>}

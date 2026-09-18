@@ -42,7 +42,7 @@ Ditujukan untuk *franchise* atau pabrik cetak multi-cabang.
 
 ## 3. Trial & Churn Policy
 
-- **Free Trial:** 7 Hari gratis paket Pro (tidak butuh kartu kredit).
+- **Free Trial:** 14 Hari gratis pada paket yang dipilih saat mendaftar (Starter atau Pro — Enterprise selalu via Sales, tidak self-serve), tidak butuh kartu kredit.
 - **Akhir Trial = Jatuh Tempo Pertama:** Hari terakhir trial diperlakukan sebagai `H-0` pada siklus billing (lihat `BILLING.md` Section 2) — tenant baru tetap mendapat invoice + link pembayaran dan `Grace Period` 3 hari yang sama seperti pelanggan reguler, bukan langsung `SUSPENDED` tanpa peringatan.
 - **Grace Period:** 3 Hari setelah jatuh tempo pembayaran (termasuk jatuh tempo pertama pasca-trial). Sistem tetap bisa diakses namun muncul peringatan.
 - **Suspension:** Jika tidak dibayar setelah masa tenggang, akun menjadi status `SUSPENDED`. Semua user tidak bisa login ke dalam subdomain tenant tersebut, kecuali untuk layar pembayaran.

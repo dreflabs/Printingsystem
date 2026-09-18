@@ -51,6 +51,18 @@ Finishing Complete
   → Notifikasi WhatsApp otomatis dikirim ke konsumen
 ```
 
+## Incident Storage
+
+Jika barang hilang, rusak, atau salah lokasi, Gudang memakai **Laporkan
+Incident**. Item berubah menjadi `INCIDENT` dan tidak dapat diserahkan ke
+konsumen. Owner/Admin meninjau antrean incident dan menyimpan keputusan:
+
+- `RESOLVED` — barang ditemukan/aman, status kembali `STORED` dan dapat diproses pickup.
+- `REPLACEMENT_REQUIRED` — perlu produksi/penggantian; item tetap diblokir.
+- `CANCELLED` — order membutuhkan keputusan pembatalan; item tetap diblokir sampai tindakan lanjutan dicatat.
+
+Catatan dan petugas penyelesaian wajib disimpan untuk audit.
+
 ---
 
 ## Lantai 1 — Counter Penyerahan (Pickup Counter)

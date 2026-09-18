@@ -63,7 +63,7 @@ Bahan yang ditambahkan langsung:
 
 ```
 Gudang
-  → Halaman Inventori → Stok Masuk
+  → Finishing & Gudang → Material & Stok → Stok Masuk
   → Pilih Bahan (dari daftar sesuai mesin)
   → Input:
       - Jumlah yang masuk
@@ -98,7 +98,7 @@ Operator saat selesai produksi
 
 **Aturan penting:**
 - Material OUT **selalu harus ada Job ID** — tidak bisa keluar tanpa terhubung ke produksi resmi
-- **TIDAK BLOCKING:** Operator disarankan menginput pemakaian bahan saat selesai produksi, namun jika dilewati, sistem **tidak memblokir** status `PRODUCTION_COMPLETE` (Sesuai `13-QR-SCAN-FLOW.md`). Admin dapat melakukan adjustment stok di kemudian hari jika diperlukan.
+- **TIDAK BLOCKING:** Operator disarankan menginput pemakaian bahan saat selesai produksi, namun jika dilewati, sistem **tidak memblokir** status `PRODUCTION_COMPLETE` (Sesuai `13-QR-SCAN-FLOW.md`). Owner dapat melakukan adjustment stok di kemudian hari jika diperlukan.
 
 ---
 
@@ -106,10 +106,34 @@ Operator saat selesai produksi
 
 Saat stok suatu bahan mencapai atau di bawah `min_stock`:
 - Badge merah muncul di dashboard Owner dan Admin
-- Notifikasi WhatsApp ke Owner: *"Stok [nama bahan] untuk [nama mesin] tinggal [X] [satuan]. Segera lakukan pembelian."*
-- Admin juga mendapat badge di dashboard (lihat saja, tidak ada aksi otomatis)
+- Panel Alert Operasional untuk Owner, Admin, dan Gudang sesuai permission
+- Integrasi WhatsApp dapat ditambahkan sebagai channel lanjutan; saat ini alert
+  in-app menjadi sumber status yang tercatat
 
 **Alert tidak memblokir produksi** — produksi tetap bisa jalan, tapi Owner sudah diperingatkan.
+
+Selain badge ringkas, dashboard Owner dan Gudang menampilkan panel **Alert
+Operasional**. Panel ini melakukan deduplikasi per material/job dan memuat:
+
+- stok minimum atau stok habis;
+- incident storage yang belum diselesaikan;
+- deadline produksi dalam 24 jam; dan
+- job yang tidak berubah selama lebih dari 24 jam.
+
+Alert memiliki status `OPEN`, `ACKNOWLEDGED`, atau `RESOLVED`. Admin/Owner dapat
+mengakui alert; perubahan status dan aktornya dicatat agar tindak lanjut tidak
+hilang ketika halaman dimuat ulang.
+
+## Purchase Order dan Supplier
+
+Tab **Pembelian** menyimpan supplier dan rencana pembelian bahan. Admin/Owner
+dapat membuat PO berisi beberapa material, jumlah, harga per satuan, dan target
+tiba. Gudang/Owner menerima PO secara parsial; setiap penerimaan menambah stok
+dan membuat movement `IN` yang terhubung ke supplier, PO, dan item PO.
+
+Status PO adalah `SUBMITTED`, `PARTIAL`, `RECEIVED`, atau `CANCELLED`. Sistem
+menolak penerimaan yang melebihi sisa jumlah dan memakai transaksi terkunci agar
+dua petugas tidak dapat menghitung penerimaan yang sama dua kali.
 
 ---
 
@@ -118,8 +142,8 @@ Saat stok suatu bahan mencapai atau di bawah `min_stock`:
 Jika ada selisih antara stok sistem dengan fisik aktual (saat stock opname):
 
 ```
-Owner/Admin
-  → Inventori → Adjustment Stok
+Owner
+  → Finishing & Gudang → Material & Stok → Adjustment Stok
   → Pilih bahan
   → Input: jumlah aktual fisik
   → Sistem hitung selisih otomatis
@@ -128,7 +152,23 @@ Owner/Admin
   → Dicatat di audit_log
 ```
 
-**Siapa yang bisa adjustment:** Admin dan Owner.
+**Siapa yang bisa adjustment:** Owner. Gudang mencatat penerimaan barang;
+adjustment opname dipisahkan agar selisih fisik tidak terlihat sebagai pembelian.
+
+## Stock Opname dengan Approval
+
+1. Gudang atau Owner membuka **Material & Stok → Stock Opname**.
+2. Sistem mengambil snapshot saldo semua material aktif.
+3. Gudang mengisi jumlah fisik dan catatan per material.
+4. Setelah semua baris terisi, klik **Kirim untuk Approval**.
+5. Owner meninjau dan klik **Approve & Terapkan Selisih**.
+6. Sistem menolak approval jika saldo berubah sejak snapshot; buat sesi baru
+   agar transaksi penerimaan/pemakaian tidak tertimpa.
+7. Selisih yang disetujui dicatat sebagai `ADJUSTMENT` dan masuk audit log.
+
+Satu tenant hanya memiliki satu sesi `DRAFT` atau `SUBMITTED` aktif pada satu
+waktu. Admin dapat melihat laporan, tetapi approval tetap menjadi tanggung jawab
+Owner.
 
 ---
 

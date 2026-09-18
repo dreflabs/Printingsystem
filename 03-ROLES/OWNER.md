@@ -1,5 +1,13 @@
 # OWNER — Role & Hak Akses
 
+## Absensi
+
+- Melihat ringkasan dan detail absensi seluruh pegawai sesuai tenant.
+- Mengatur kebijakan jam kerja, channel, selfie, geofence, kiosk, dan siapa yang
+  wajib absen melalui `attendance_eligible`.
+- Owner dapat ikut absen bila akunnya ditandai eligible; mode impersonate tidak
+  boleh membuat punch atas nama Owner tenant.
+
 ## Deskripsi
 
 Owner adalah level akses tertinggi dalam sistem. Owner memiliki visibilitas penuh ke semua data dan semua modul, serta menjadi satu-satunya pihak yang bisa mengambil keputusan pada kondisi-kondisi kritis.

@@ -55,6 +55,6 @@
 
 **Production Job** (`production_jobs`)
 - `order_id`, `machine_id`, `operator_id`, `planned_qty` (> 0)
-- `job_code` auto-generate sistem; `actual_qty` wajib diisi saat SCAN 2 (selesai produksi), tidak boleh 0
+- `job_code` auto-generate sistem; `actual_qty` wajib diisi saat **Selesaikan Produksi** (kode internal SCAN 2), tidak boleh 0
 - `waste_reason` wajib jika `waste_qty > 0`
 - `pause_reason` wajib diisi saat job dijeda (status → `PRODUCTION_PAUSED`) — request pause tanpa `pause_reason` ditolak (lihat `02-WORKFLOW/05-PRODUCTION.md` "Jeda Produksi")

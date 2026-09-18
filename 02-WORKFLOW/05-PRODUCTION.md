@@ -3,11 +3,22 @@
 ## Alur Normal
 
 ```
-Desain APPROVED + syarat pembayaran terpenuhi
-  → Admin assign job ke mesin & operator (PRODUCTION_ASSIGNED)
-  → Operator scan mulai produksi (PRODUCTION_STARTED)
-  → Operator scan selesai produksi, input actual qty & waste (PRODUCTION_COMPLETE)
+Desain APPROVED + syarat pembayaran terpenuhi + Completeness Gate lolos
+  → Sistem OTOMATIS buat Production Job per mesin
+     — item dengan mesin default yang sama digabung; job di-pin ke default Operator aktif
+       atau masuk PRODUCTION_QUEUED bila belum ada Operator
+  → Operator ter-pin mulai job, atau Operator ber-grant mesin ambil job dari antrian
+  → Operator menyelesaikan produksi, input actual qty & waste (PRODUCTION_COMPLETE)
 ```
+
+Jalur manual (fallback): kalau ada item tanpa mesin default, mesin default tidak
+routable, atau Admin perlu meng-override prioritas/mesin/operator, Admin memilih
+mesin **ACTIVE** pengganti melalui form **"Assign ke Produksi"** → job dibuat
+`PRODUCTION_ASSIGNED` (di-pin ke operator).
+Operator yang dipilih wajib memiliki akses ke mesin tersebut melalui `UserMachine`.
+Jika belum memiliki akses, Owner harus menambahkannya melalui **Pegawai → Akun &
+Akses** sebelum Admin dapat mengirim job ke produksi.
+Lihat `02-WORKFLOW/17-AUTO-RELEASE-PRODUKSI.md`.
 
 Dicatat per job:
 - Job ID, mesin, operator
@@ -21,7 +32,9 @@ Dicatat per job:
 
 **Ambang batas waste anomali:** waste di atas **20% dari total pemakaian material** pada satu job otomatis ditandai sebagai anomali oleh sistem dan muncul di panel "Anomali & Kecurangan" dashboard Owner berlabel merah — bukan cuma tercatat sebagai angka biasa (aturan ini sudah ada di `07-REPORTS/MATERIAL-REPORT.md` §4, dicatat ulang di sini karena langsung relevan ke pekerjaan Operator sehari-hari).
 
-**Batas 1 job aktif per Operator:** sistem sengaja membatasi Operator hanya bisa punya **1 job berstatus `PRODUCTION_STARTED` pada satu waktu** — scan mulai job baru diblokir selama masih ada job aktif yang belum di-scan selesai. Ini keputusan desain yang disengaja demi akuntabilitas (jelas siapa bertanggung jawab atas mesin/waktu/material yang sedang terpakai), bukan keterbatasan teknis. Kalau operasional butuh 1 orang memantau beberapa mesin otomatis sekaligus, itu didaftarkan sebagai job-job terpisah yang dikerjakan **berurutan** (selesaikan satu, baru mulai berikutnya), bukan paralel dalam sistem.
+**Multi-job per Operator:** Operator **boleh menjalankan lebih dari satu job sekaligus** (mis. memantau beberapa mesin otomatis). Tidak ada batas jumlah job berstatus `PRODUCTION_STARTED`/`PRODUCTION_PAUSED` per operator. Dashboard Operator menampilkan semua job aktifnya sebagai daftar; tiap job punya tombol Jeda / Selesai / lapor sendiri, dan tiap `PRODUCTION_STARTED` tetap tercatat atas nama operator itu di audit log.
+
+> **Catatan laporan:** durasi tiap job dihitung dari `actual_start` sampai scan-selesai (dikurangi total jeda). Job yang berjalan paralel akan **tumpang-tindih** di laporan durasi — angka "jam kerja" per job bukan waktu operator eksklusif. Analisis produktivitas per operator harus memperhitungkan overlap ini.
 
 ---
 
@@ -90,8 +103,15 @@ Job berstatus PRODUCTION_STARTED
 
 ---
 
-## Job Macet di Tahap QC / Finishing (Bukan Produksi) — Tidak Ada Reassignment
+## Penugasan QC / Finishing untuk Banyak Petugas Gudang
 
-Aturan reassignment di atas **hanya berlaku untuk tahap produksi** (`PRODUCTION_ASSIGNED`/`PRODUCTION_STARTED`, ditangani Operator). Untuk job yang sedang di tahap **QC atau Finishing** (ditangani role Gudang) dan staf yang mengerjakannya tiba-tiba tidak bisa lanjut (sakit mendadak, dsb) — **job tersebut menunggu**, bukan direassign ke staf Gudang lain di tengah jalan.
+Job QC dan Finishing menggunakan klaim atomik per tahap. Petugas Gudang memilih
+**Ambil & Inspeksi** atau **Ambil & Mulai**; hanya satu petugas yang dapat
+memegang job pada tahap tersebut. Nama petugas dan waktu klaim tersimpan pada
+job, sehingga dashboard tidak menampilkan tugas sebagai pekerjaan bebas yang
+dapat dikerjakan bersamaan.
 
-Alasan: berbeda dari job produksi yang statusnya jelas per mesin, satu record QC/Finishing yang sudah setengah jalan (misalnya checklist QC baru terisi sebagian) tidak punya mekanisme "pindah tangan" yang aman — memaksakan orang lain melanjutkan checklist yang sudah diisi orang lain berisiko salah tanggung jawab kalau hasil akhirnya keliru. Job baru bisa dilanjutkan staf Gudang lain kalau checklist/proses yang sudah berjalan dianggap batal dan diulang dari awal oleh orang yang sama atau berbeda, bukan "melanjutkan" pekerjaan orang lain.
+Jika petugas berhenti di tengah proses, Admin/Owner perlu membuka kembali atau
+menyelesaikan penanganan sesuai kebijakan operasional sebelum petugas lain
+melanjutkan. Checklist QC yang sudah disubmit tidak dapat ditimpa; untuk hasil
+FAIL, sistem membuat alur rework dan riwayat inspector tetap utuh.

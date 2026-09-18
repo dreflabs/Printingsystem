@@ -13,7 +13,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { PriceCalculator } from "@/components/marketing/PriceCalculator";
-import { SAAS_PLANS } from "@/lib/saas-catalog";
+import { SAAS_PLANS, TRIAL_DAYS } from "@/lib/saas-catalog";
 
 const SITE_URL = process.env.APP_URL || "https://printpilot.id";
 
@@ -141,7 +141,7 @@ export default function MarketingPage() {
                 </Link>
               </div>
 
-              <p className="mt-6 text-xs text-muted font-medium">Uji coba gratis 14 hari. Tanpa kartu kredit.</p>
+              <p className="mt-6 text-xs text-muted font-medium">Uji coba gratis {TRIAL_DAYS} hari. Tanpa kartu kredit.</p>
 
               <div className="mt-12 grid grid-cols-3 gap-6 max-w-md pt-8 border-t border-border">
                 {[
@@ -395,9 +395,9 @@ export default function MarketingPage() {
         <section className="py-24 border-t border-border bg-card">
           <div className="max-w-4xl mx-auto px-6 text-center">
             <h2 className="text-4xl font-bold text-primary mb-6">Siap merapikan percetakan Anda?</h2>
-            <p className="text-lg text-muted mb-10">Buat akun dan mulai pakai dalam waktu kurang dari 5 menit. Gratis 14 hari, tanpa kartu kredit.</p>
+            <p className="text-lg text-muted mb-10">Buat akun dan mulai pakai dalam waktu kurang dari 5 menit. Gratis {TRIAL_DAYS} hari, tanpa kartu kredit.</p>
             <Link href="/register" className="inline-flex h-14 px-8 items-center justify-center rounded-full bg-primary text-base font-bold gap-2 hover:scale-105 transition-transform">
-              Coba Gratis 14 Hari <ChevronRight className="h-5 w-5" />
+              Coba Gratis {TRIAL_DAYS} Hari <ChevronRight className="h-5 w-5" />
             </Link>
           </div>
         </section>

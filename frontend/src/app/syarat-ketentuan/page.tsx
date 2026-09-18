@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LegalShell } from "@/components/marketing/LegalShell";
+import { TRIAL_DAYS } from "@/lib/saas-catalog";
 
 export const metadata: Metadata = {
   title: "Syarat & Ketentuan",
@@ -7,7 +8,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/syarat-ketentuan" },
 };
 
-const UPDATED = "8 September 2026";
+const UPDATED = "18 September 2026";
 
 export default function SyaratKetentuanPage() {
   return (
@@ -39,7 +40,7 @@ export default function SyaratKetentuanPage() {
       <div>
         <h2>3. Uji coba, langganan &amp; pembayaran</h2>
         <ul>
-          <li>Uji coba gratis berlaku 14 hari, tanpa kartu kredit.</li>
+          <li>Uji coba gratis berlaku {TRIAL_DAYS} hari, tanpa kartu kredit.</li>
           <li>Setelah masa uji coba, Layanan berbayar sesuai paket yang dipilih dan ditagih per bulan di muka.</li>
           <li>Anda dapat berhenti berlangganan kapan saja; Layanan tetap aktif hingga akhir periode yang sudah dibayar.</li>
           <li>Biaya yang sudah dibayar tidak dikembalikan kecuali diwajibkan hukum yang berlaku.</li>

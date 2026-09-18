@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { registerTenant } from "@/actions/register";
-import { SAAS_PLANS } from "@/lib/saas-catalog";
+import { SAAS_PLANS, TRIAL_DAYS } from "@/lib/saas-catalog";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function InputField({ label, icon: Icon, ...props }: any) {
@@ -481,7 +481,7 @@ function RegisterWizard() {
                   <p className="text-muted text-sm max-w-sm mb-4">
                     {verificationRequired
                       ? "Kami mengirim tautan verifikasi ke email owner. Akun baru dapat masuk setelah tautan tersebut diklik."
-                      : <>Selamat datang di Print Pilot. Workspace Anda aktif di{" "}<span className="text-accent-teal font-mono font-bold">{formData.subdomain}.printpilot.id</span>{" "}(masa uji coba 14 hari).</>}
+                      : <>Selamat datang di Print Pilot. Workspace Anda aktif di{" "}<span className="text-accent-teal font-mono font-bold">{formData.subdomain}.printpilot.id</span>{" "}(masa uji coba {TRIAL_DAYS} hari).</>}
                   </p>
                   <div className="mb-8 rounded-xl border border-border bg-elevated px-4 py-3 text-xs text-muted max-w-sm space-y-1 text-left">
                     <p>

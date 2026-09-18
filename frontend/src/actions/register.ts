@@ -273,7 +273,7 @@ export async function registerTenant(
         body: [
           `Halo ${ownerName},`,
           ``,
-          `Workspace "${shopName}" sudah aktif. Masa uji coba 14 hari berlaku sampai ${TANGGAL_ID.format(result.trialEnds)}.`,
+          `Workspace "${shopName}" sudah aktif. Masa uji coba ${TRIAL_DAYS} hari berlaku sampai ${TANGGAL_ID.format(result.trialEnds)}.`,
           ``,
           `Login: ${loginUrl}`,
           `Username: ${result.ownerUsername}`,

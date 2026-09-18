@@ -2,7 +2,7 @@
  * Sumber kebenaran katalog SaaS untuk beta dan self-serve signup.
  * Enterprise tetap melalui Sales sehingga tidak masuk ke form registrasi.
  */
-export const TRIAL_DAYS = 14;
+export const TRIAL_DAYS = 7;
 
 export const SAAS_PLANS = {
   starter: {

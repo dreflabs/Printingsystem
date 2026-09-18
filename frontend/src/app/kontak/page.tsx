@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalShell } from "@/components/marketing/LegalShell";
+import { TRIAL_DAYS } from "@/lib/saas-catalog";
 
 export const metadata: Metadata = {
   title: "Kontak",
@@ -43,7 +44,7 @@ export default function KontakPage() {
       <div>
         <h2>Coba dulu tanpa bicara dengan sales</h2>
         <p>
-          Anda bisa langsung mendaftar dan memakai Print Pilot gratis selama 14 hari tanpa kartu kredit.{" "}
+          Anda bisa langsung mendaftar dan memakai Print Pilot gratis selama {TRIAL_DAYS} hari tanpa kartu kredit.{" "}
           <Link href="/register">Buat akun</Link>.
         </p>
       </div>

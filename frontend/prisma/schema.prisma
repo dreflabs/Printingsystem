@@ -844,6 +844,7 @@ model ProductionJob {
   job_code                String // JOB-YYYYMMDD-XXXX
   machine_id              String
   machine                 Machine         @relation(fields: [machine_id], references: [id])
+  machine_category        String? // beku dari Machine.category saat job dibuat — ganti kategori mesin nanti tidak mengubah job lama
   operator_id             String?
   operator                User?           @relation(fields: [operator_id], references: [id])
   qc_assignee_id          String?

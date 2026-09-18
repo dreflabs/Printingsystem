@@ -837,6 +837,7 @@ export async function assignProductionJob(
             order_id: orderId,
             job_code: code,
             machine_id: a.machineId,
+            machine_category: machines.find((m) => m.id === a.machineId)?.category ?? null,
             operator_id: a.operatorId,
             status: "PRODUCTION_ASSIGNED",
             priority: a.priority ?? 1,

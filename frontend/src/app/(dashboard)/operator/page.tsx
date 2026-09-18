@@ -19,6 +19,7 @@ type Job = {
   orderCode: string;
   customerName: string;
   machine: string;
+  machineCategory: string | null;
   status: string;
   priority: number;
   plannedQty: number;
@@ -205,7 +206,14 @@ function QueueCard({
       <JobItems items={job.items} />
       <DesignNotes files={job.files} />
 
-      <p className="mt-2 font-mono text-[11px] text-muted">{job.jobCode} · {job.machine}</p>
+      <p className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted">
+        <span>{job.jobCode} · {job.machine}</span>
+        {job.machineCategory && (
+          <span className="rounded-full bg-accent-teal/10 px-2 py-0.5 font-sans text-[10px] font-bold uppercase tracking-wide text-accent-teal">
+            {job.machineCategory}
+          </span>
+        )}
+      </p>
 
       <div className="mt-3 flex items-stretch gap-2">
         <button
@@ -605,6 +613,19 @@ export default function OperatorPage() {
   const pinned = mine.filter((j) => j.status === "PRODUCTION_ASSIGNED");
   const actives = mine.filter((j) => j.status === "PRODUCTION_STARTED" || j.status === "PRODUCTION_PAUSED");
   const queue = [...pinned, ...claimable];
+  // Kelompokkan antrian per kategori mesin hanya kalau operator memang
+  // melihat lebih dari satu kategori — kalau cuma satu, header hanya noise.
+  const queueCategories = [...new Set(queue.map((j) => j.machineCategory).filter((c): c is string => !!c))];
+  const groupQueueByCategory = queueCategories.length > 1;
+  const queueGroups = groupQueueByCategory
+    ? [
+        ...queueCategories.sort((a, b) => a.localeCompare(b, "id")).map((category) => ({
+          category,
+          jobs: queue.filter((j) => j.machineCategory === category),
+        })),
+        { category: null, jobs: queue.filter((j) => !j.machineCategory) },
+      ].filter((g) => g.jobs.length > 0)
+    : [{ category: null, jobs: queue }];
 
   async function act(fn: () => Promise<{ success: boolean; error?: string }>) {
     setBusy(true);
@@ -667,14 +688,25 @@ export default function OperatorPage() {
                 <Timer className="mb-2 h-9 w-9 opacity-20" /> Tidak ada job di antrian.
               </div>
             ) : (
-              queue.map((j) => (
-                <QueueCard
-                  key={j.jobCode}
-                  job={j}
-                  busy={busy}
-                  onStart={() => act(() => startProduction(j.jobCode))}
-                  onBounce={() => { setBounceReason(""); setBounceFor(j); }}
-                />
+              queueGroups.map((group) => (
+                <div key={group.category ?? "__none__"}>
+                  {groupQueueByCategory && (
+                    <p className="sticky top-0 z-10 -mx-2 bg-card/95 px-4 py-1.5 text-[11px] font-black uppercase tracking-wide text-muted backdrop-blur-sm">
+                      {group.category ?? "Tanpa kategori"} <span className="font-normal">· {group.jobs.length}</span>
+                    </p>
+                  )}
+                  <div className="space-y-2">
+                    {group.jobs.map((j) => (
+                      <QueueCard
+                        key={j.jobCode}
+                        job={j}
+                        busy={busy}
+                        onStart={() => act(() => startProduction(j.jobCode))}
+                        onBounce={() => { setBounceReason(""); setBounceFor(j); }}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))
             )}
           </div>

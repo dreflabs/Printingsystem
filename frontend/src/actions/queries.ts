@@ -62,7 +62,7 @@ export async function getOperatorJobs() {
 
     const include = {
       items: { where: { tenant_id: tenant.id }, select: { order_item_id: true, material_id: true, material: { select: { name: true, active: true } } } },
-      machine: { select: { name: true, machine_code: true, materials: { where: { tenant_id: tenant.id, material: { active: true, purpose: "CONSUMABLE" } }, select: { material_id: true } } } },
+      machine: { select: { name: true, machine_code: true, category: true, materials: { where: { tenant_id: tenant.id, material: { active: true, purpose: "CONSUMABLE" } }, select: { material_id: true } } } },
       order: {
         select: {
           order_code: true,
@@ -191,6 +191,9 @@ export async function getOperatorJobs() {
         orderCode: j.order.order_code,
         customerName: j.order.customer?.name ?? "-",
         machine: j.machine.name,
+        // Beku sejak job dibuat (machine_category); fallback ke kategori
+        // mesin saat ini untuk job lama yang dibuat sebelum kolom ini ada.
+        machineCategory: j.machine_category ?? j.machine.category,
         status: j.status,
         productUnit: relevant.find((it) => it.product?.unit)?.product?.unit ?? "PCS",
         firstItemSize: relevant.find((it) => it.size)?.size ?? null,

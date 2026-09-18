@@ -162,7 +162,7 @@ export async function autoReleaseToProduction(
   const machineIds = [...new Set(items.map((it) => it.defaultMachineId as string).filter(Boolean))];
   const machines = await tx.machine.findMany({
     where: { id: { in: machineIds }, tenant_id: tenantId },
-    select: { id: true, name: true, status: true, default_operator_id: true },
+    select: { id: true, name: true, status: true, default_operator_id: true, category: true },
   });
   const down = machines.find((m) => m.status !== "ACTIVE");
   if (down) {
@@ -253,6 +253,7 @@ export async function autoReleaseToProduction(
         order_id: orderId,
         job_code: code,
         machine_id: machineId,
+        machine_category: machine?.category ?? null,
         operator_id: pinned ? defOp : null,
         status: pinned ? "PRODUCTION_ASSIGNED" : "PRODUCTION_QUEUED",
         priority: priorityFromDeadline(jobDeadline),

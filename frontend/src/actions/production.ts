@@ -959,6 +959,7 @@ export async function decideRework(
           order_id: job.order_id,
           job_code: childCode,
           machine_id: job.machine_id,
+          machine_category: job.machine_category,
           operator_id: job.operator_id,
           status: "PRODUCTION_ASSIGNED",
           priority: job.priority,

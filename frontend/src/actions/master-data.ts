@@ -257,6 +257,9 @@ export async function getPrintingProducts() {
 
 type PrintingProductInput = {
   name: string; category: string; unit?: string; base_price?: number | null;
+  // Ukuran baku produk berformat tetap (mis. "A3", "10R") — hanya masuk akal
+  // untuk unit non-M2 (M2 selalu custom per order, lihat calculatePrintingUnitPrice).
+  fixed_size?: string | null;
   default_material_id?: string | null; default_machine_id?: string | null; default_machine_category?: string | null;
   material_ids?: string[]; material_rates?: MaterialRate[];
 };
@@ -268,6 +271,7 @@ export async function createPrintingProduct(data: PrintingProductInput) {
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengelola produk cetak.");
     if (!data.name?.trim()) return fail("Nama produk wajib diisi.");
     if (data.base_price != null && (!Number.isFinite(data.base_price) || data.base_price <= 0)) return fail("Harga dasar harus positif atau dikosongkan.");
+    if (data.fixed_size != null && data.fixed_size.trim().length > 30) return fail("Ukuran baku maksimal 30 karakter.");
     if (data.default_machine_id && data.default_machine_category) return fail("Pilih salah satu: mesin spesifik atau kategori mesin, bukan keduanya.");
     const product = await prisma.$transaction(async (tx) => {
       await validateCatalogMachine(tx, tenant.id, data.default_machine_id);
@@ -275,7 +279,7 @@ export async function createPrintingProduct(data: PrintingProductInput) {
       const created = await tx.product.create({ data: {
         tenant_id: tenant.id, name: data.name.trim(), category: (data.category?.trim() || "LAINNYA").toUpperCase(),
         unit: PRINTING_UNITS.includes((data.unit ?? "PCS") as typeof PRINTING_UNITS[number]) ? data.unit : "PCS",
-        base_price: data.base_price ?? null, default_machine_id: data.default_machine_id || null,
+        base_price: data.base_price ?? null, fixed_size: data.fixed_size?.trim() || null, default_machine_id: data.default_machine_id || null,
         default_machine_category: data.default_machine_category || null,
       } });
       await saveProductMaterials(tx, tenant.id, created.id, {
@@ -296,6 +300,7 @@ export async function updatePrintingProduct(id: string, data: Partial<PrintingPr
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh mengelola produk cetak.");
     if (data.name !== undefined && !data.name.trim()) return fail("Nama produk wajib diisi.");
     if (data.base_price != null && (!Number.isFinite(data.base_price) || data.base_price <= 0)) return fail("Harga dasar harus positif atau dikosongkan.");
+    if (data.fixed_size != null && data.fixed_size.trim().length > 30) return fail("Ukuran baku maksimal 30 karakter.");
     const result = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${id} AND tenant_id = ${tenant.id} FOR UPDATE`;
       const existing = await tx.product.findFirst({ where: { id, tenant_id: tenant.id }, include: { material_options: { where: { active: true } } } });
@@ -310,6 +315,7 @@ export async function updatePrintingProduct(id: string, data: Partial<PrintingPr
         ...fields,
         ...(fields.default_machine_id !== undefined ? { default_machine_id: fields.default_machine_id || null } : {}),
         ...(fields.default_machine_category !== undefined ? { default_machine_category: fields.default_machine_category || null } : {}),
+        ...(fields.fixed_size !== undefined ? { fixed_size: fields.fixed_size?.trim() || null } : {}),
       } });
       if (material_ids !== undefined || default_material_id !== undefined || material_rates !== undefined) {
         await saveProductMaterials(tx, tenant.id, id, {

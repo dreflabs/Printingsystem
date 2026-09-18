@@ -19,7 +19,7 @@ type Retail = {
 };
 type Printing = {
   id: string; name: string; category: string; unit: string;
-  base_price: number | null; default_material_id: string | null; default_machine_id: string | null;
+  base_price: number | null; fixed_size: string | null; default_material_id: string | null; default_machine_id: string | null;
   default_machine_category: string | null; active: boolean;
   material_options: { id: string; name: string; material_code: string; material_id: string; is_default: boolean; role: string; sort_order: number; unit_price: number | null }[];
 };
@@ -103,6 +103,7 @@ function PrintingModal({
   const [category, setCategory] = useState(editing?.category ?? "");
   const [unit, setUnit] = useState(editing?.unit ?? "M2");
   const [basePrice, setBasePrice] = useState(editing?.base_price != null ? String(editing.base_price) : "");
+  const [fixedSize, setFixedSize] = useState(editing?.fixed_size ?? "");
   const [materialId, setMaterialId] = useState(editing?.default_material_id ?? "");
   const [materialIds, setMaterialIds] = useState<string[]>(editing?.material_options.map((m) => m.material_id) ?? []);
   const [machineId, setMachineId] = useState(editing?.default_machine_id ?? "");
@@ -129,6 +130,7 @@ function PrintingModal({
       category: (category.trim() || "LAINNYA").toUpperCase(),
       unit,
       base_price: basePrice ? Number(basePrice) : null,
+      fixed_size: unit !== "M2" ? (fixedSize.trim() || null) : null,
       default_material_id: materialId || null,
       default_machine_id: routeMode === "machine" ? machineId || null : null,
       default_machine_category: routeMode === "category" ? machineCategory || null : null,
@@ -161,6 +163,14 @@ function PrintingModal({
         </Field>
       </Grid2>
       <p className="text-[10px] text-muted -mt-2">Harga dasar dipakai untuk mengisi otomatis &quot;Harga Total&quot; saat buat order (tetap bisa diubah). Kosongkan kalau harga selalu ditentukan manual.</p>
+      {unit !== "M2" && unit !== "PCS" && (
+        <Field label="Ukuran Baku (opsional)">
+          <input className={inp} value={fixedSize} onChange={(e) => setFixedSize(e.target.value)} placeholder="mis. A3, 10R — kosongkan kalau ukurannya bervariasi" maxLength={30} />
+          <p className="text-[10px] text-muted mt-1">
+            Kalau diisi, CS tidak perlu input lebar/tinggi lagi saat buat order — order langsung dianggap lengkap ukurannya (dipakai untuk produk format tetap seperti Poster A3, Cetak Foto 10R, dll).
+          </p>
+        </Field>
+      )}
       <Field label={`Bahan yang tersedia untuk produk (${materialIds.length} dipilih)`}>
         <div className="space-y-3">
           <input className={inp} aria-label="Cari bahan produk" placeholder="Cari bahan atau spesifikasi..." value={materialSearch} onChange={e => setMaterialSearch(e.target.value)} />
@@ -485,7 +495,10 @@ export default function AdminProductsPage() {
               ))}
               {tab === "printing" && fPrinting.map((p) => (
                 <tr key={p.id} className={cn("hover:bg-elevated/50 transition-colors", !p.active && "opacity-60")}>
-                  <td className="px-5 py-4 font-semibold text-primary">{p.name}</td>
+                  <td className="px-5 py-4 font-semibold text-primary">
+                    {p.name}
+                    {p.fixed_size && <div className="text-[10px] font-normal text-accent-teal mt-0.5">Ukuran baku: {p.fixed_size}</div>}
+                  </td>
                   <td className="px-5 py-4 text-muted text-xs">{p.category}</td>
                   <td className="px-5 py-4 font-mono text-xs">{p.base_price != null ? `${rupiah(p.base_price)} / ${p.unit === "M2" ? "m²" : p.unit.toLowerCase()}` : <span className="bg-muted/10 text-muted px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider">Harga Manual</span>}</td>
                   <td className="px-5 py-4 text-muted text-xs">

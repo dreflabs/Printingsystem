@@ -63,6 +63,7 @@ type ProductOpt = Opt & {
   category: string;
   unit: string;
   basePrice: number | null;
+  fixedSize: string | null;
   defaultMaterialId: string | null;
   allowedMaterials: (Opt & { unitPrice: number | null })[];
 };
@@ -304,19 +305,31 @@ function ItemsStep({
             groups={productGroups}
           />
 
-          <div className="grid grid-cols-3 gap-3">
-            <Input label="Lebar (cm)" type="number" placeholder="mis. 300" value={it.width} onChange={(e) => updateItem(it.key, { width: e.target.value })} />
-            <Input label="Tinggi (cm)" type="number" placeholder="mis. 100" value={it.height} onChange={(e) => updateItem(it.key, { height: e.target.value })} />
-            <Input label={`Qty (${printingUnitLabel(selectedProduct?.unit ?? "PCS")}) *`} type="number" min="1" value={it.qty} onChange={(e) => updateItem(it.key, { qty: e.target.value })} />
-          </div>
+          {selectedProduct?.fixedSize ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-border bg-elevated/50 px-3 py-2 flex flex-col justify-center">
+                <span className="text-[10px] font-bold uppercase text-muted">Ukuran</span>
+                <span className="text-sm font-semibold text-primary">{selectedProduct.fixedSize} <span className="text-xs font-normal text-muted">(ukuran baku produk)</span></span>
+              </div>
+              <Input label={`Qty (${printingUnitLabel(selectedProduct?.unit ?? "PCS")}) *`} type="number" min="1" value={it.qty} onChange={(e) => updateItem(it.key, { qty: e.target.value })} />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <Input label="Lebar (cm)" type="number" placeholder="mis. 300" value={it.width} onChange={(e) => updateItem(it.key, { width: e.target.value })} />
+                <Input label="Tinggi (cm)" type="number" placeholder="mis. 100" value={it.height} onChange={(e) => updateItem(it.key, { height: e.target.value })} />
+                <Input label={`Qty (${printingUnitLabel(selectedProduct?.unit ?? "PCS")}) *`} type="number" min="1" value={it.qty} onChange={(e) => updateItem(it.key, { qty: e.target.value })} />
+              </div>
 
-          <button
-            type="button"
-            onClick={() => setCalcFor(it.key)}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-teal hover:underline"
-          >
-            <Grid2x2 className="h-3.5 w-3.5" /> Kalkulator layout — potong/lembar
-          </button>
+              <button
+                type="button"
+                onClick={() => setCalcFor(it.key)}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-teal hover:underline"
+              >
+                <Grid2x2 className="h-3.5 w-3.5" /> Kalkulator layout — potong/lembar
+              </button>
+            </>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
@@ -535,6 +548,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
         category: p.category || "Lainnya",
         unit: p.unit,
         basePrice: p.basePrice ?? null,
+        fixedSize: p.fixedSize ?? null,
         defaultMaterialId: p.default_material_id ?? null,
         allowedMaterials: p.material_options.map((m) => ({
           value: m.id,

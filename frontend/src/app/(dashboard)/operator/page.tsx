@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   ScanLine, CheckCircle2, Timer, Layers, Pause, Play,
-  ShieldAlert, FileWarning, FileDown, MoreVertical, Clock,
+  FileWarning, FileDown, MoreVertical, Clock,
 } from "lucide-react";
 import { StatusPill, Modal, DropdownMenu, DropdownMenuItem, InfoTip , ErrorState} from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -566,7 +566,7 @@ function CardSkeleton() {
 export default function OperatorPage() {
   const [mine, setMine] = useState<Job[]>([]);
   const [claimable, setClaimable] = useState<Job[]>([]);
-  const [hasMachines, setHasMachines] = useState(true); // default true biar ga flash
+  const [machineFilter, setMachineFilter] = useState<string>("ALL");
   const [materials, setMaterials] = useState<MaterialOpt[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -589,7 +589,6 @@ export default function OperatorPage() {
     setClaimable(res.data.queue);
     setHistory(res.data.history);
     setHistorySummary(res.data.historySummary);
-    setHasMachines(res.data.hasMachines);
   }, []);
 
   useEffect(() => {
@@ -612,20 +611,13 @@ export default function OperatorPage() {
 
   const pinned = mine.filter((j) => j.status === "PRODUCTION_ASSIGNED");
   const actives = mine.filter((j) => j.status === "PRODUCTION_STARTED" || j.status === "PRODUCTION_PAUSED");
+  // Semua order cetak yang masuk tampil ke semua operator tanpa syarat akses
+  // mesin — dropdown di bawah cuma mempersempit tampilan, bukan gerbang akses.
   const queue = [...pinned, ...claimable];
-  // Kelompokkan antrian per kategori mesin hanya kalau operator memang
-  // melihat lebih dari satu kategori — kalau cuma satu, header hanya noise.
-  const queueCategories = [...new Set(queue.map((j) => j.machineCategory).filter((c): c is string => !!c))];
-  const groupQueueByCategory = queueCategories.length > 1;
-  const queueGroups = groupQueueByCategory
-    ? [
-        ...queueCategories.sort((a, b) => a.localeCompare(b, "id")).map((category) => ({
-          category,
-          jobs: queue.filter((j) => j.machineCategory === category),
-        })),
-        { category: null, jobs: queue.filter((j) => !j.machineCategory) },
-      ].filter((g) => g.jobs.length > 0)
-    : [{ category: null, jobs: queue }];
+  const queueCategories = [...new Set(queue.map((j) => j.machineCategory).filter((c): c is string => !!c))].sort((a, b) =>
+    a.localeCompare(b, "id")
+  );
+  const filteredQueue = machineFilter === "ALL" ? queue : queue.filter((j) => j.machineCategory === machineFilter);
 
   async function act(fn: () => Promise<{ success: boolean; error?: string }>) {
     setBusy(true);
@@ -657,19 +649,6 @@ export default function OperatorPage() {
         </a>
       </div>
 
-      {!hasMachines && (
-        <div className="bg-status-red/10 border border-status-red/30 p-5 rounded-2xl flex items-start gap-4">
-          <ShieldAlert className="h-6 w-6 text-status-red shrink-0 mt-0.5" />
-          <div>
-            <h3 className="font-bold text-status-red">Anda belum punya akses mesin</h3>
-            <p className="text-sm text-status-red mt-1">
-              Belum ditugaskan ke mesin cetak apa pun, jadi antrian job tidak akan muncul.
-              Hubungi Owner untuk mengatur penugasan mesin lewat Manajemen Pegawai.
-            </p>
-          </div>
-        </div>
-      )}
-
       {error && <ErrorState message={error} onRetry={load} />}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -678,36 +657,42 @@ export default function OperatorPage() {
           <div className="flex items-center gap-2 border-b border-border p-4">
             <Timer className="h-5 w-5 text-status-yellow-text" />
             <h2 className="text-base font-bold text-primary">Antrian Masuk</h2>
-            <span className="rounded-full bg-status-yellow px-2 py-0.5 text-xs font-black text-primary">{queue.length}</span>
+            <span className="rounded-full bg-status-yellow px-2 py-0.5 text-xs font-black text-primary">{filteredQueue.length}</span>
+            {queueCategories.length > 1 && (
+              <select
+                value={machineFilter}
+                onChange={(e) => setMachineFilter(e.target.value)}
+                className="ml-auto h-8 rounded-lg bg-elevated border border-border text-xs font-bold text-primary px-2 outline-none focus:border-accent-teal"
+              >
+                <option value="ALL">Semua Mesin ({queue.length})</option>
+                {queueCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category} ({queue.filter((j) => j.machineCategory === category).length})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="flex-1 space-y-2 overflow-y-auto p-2">
             {isLoading ? (
               <><CardSkeleton /><CardSkeleton /></>
-            ) : queue.length === 0 ? (
+            ) : filteredQueue.length === 0 ? (
               <div className="flex flex-col items-center p-10 text-center text-sm text-muted">
-                <Timer className="mb-2 h-9 w-9 opacity-20" /> Tidak ada job di antrian.
+                <Timer className="mb-2 h-9 w-9 opacity-20" />
+                {queue.length === 0 ? "Tidak ada job di antrian." : "Tidak ada job untuk filter mesin ini."}
               </div>
             ) : (
-              queueGroups.map((group) => (
-                <div key={group.category ?? "__none__"}>
-                  {groupQueueByCategory && (
-                    <p className="sticky top-0 z-10 -mx-2 bg-card/95 px-4 py-1.5 text-[11px] font-black uppercase tracking-wide text-muted backdrop-blur-sm">
-                      {group.category ?? "Tanpa kategori"} <span className="font-normal">· {group.jobs.length}</span>
-                    </p>
-                  )}
-                  <div className="space-y-2">
-                    {group.jobs.map((j) => (
-                      <QueueCard
-                        key={j.jobCode}
-                        job={j}
-                        busy={busy}
-                        onStart={() => act(() => startProduction(j.jobCode))}
-                        onBounce={() => { setBounceReason(""); setBounceFor(j); }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))
+              <div className="space-y-2">
+                {filteredQueue.map((j) => (
+                  <QueueCard
+                    key={j.jobCode}
+                    job={j}
+                    busy={busy}
+                    onStart={() => act(() => startProduction(j.jobCode))}
+                    onBounce={() => { setBounceReason(""); setBounceFor(j); }}
+                  />
+                ))}
+              </div>
             )}
           </div>
         </div>

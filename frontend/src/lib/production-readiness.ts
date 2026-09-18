@@ -19,6 +19,8 @@ export interface ReadinessItem {
   defaultMachineCategory?: string | null;
   quantity: number;
   size: string | null;
+  /** Ukuran baku dari katalog produk (Product.fixed_size) — kalau ada, menutupi syarat "ukuran" tanpa CS perlu isi manual. */
+  productFixedSize?: string | null;
   materialId: string | null;
   /** Active ProductMaterial ids; empty means product compatibility is unconfigured. */
   allowedMaterialIds?: string[];
@@ -166,7 +168,7 @@ export function checkProductionReadiness(input: ReadinessInput): ReadinessResult
       gaps.push("material tidak cocok dengan produk");
     }
     if (!(it.unitPrice > 0) || !(it.totalPrice > 0)) gaps.push("harga");
-    if ((it.productUnit ?? "PCS") !== "PCS" && !it.size?.trim()) gaps.push("ukuran");
+    if ((it.productUnit ?? "PCS") !== "PCS" && !it.size?.trim() && !it.productFixedSize?.trim()) gaps.push("ukuran");
     // Stok habis (0) bukan cuma "menipis" — job tidak akan bisa diselesaikan
     // operator sama sekali, jadi jangan ikut turun ke antrian produksi.
     if (it.materialId && it.materialCurrentStock != null && it.materialCurrentStock <= EPS) {

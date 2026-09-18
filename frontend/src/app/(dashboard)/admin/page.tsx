@@ -19,7 +19,7 @@ import { submitFinalAudit, getFinalAuditChecks, createCorrection, approveCorrect
 import { getSessionUser } from "@/actions/session";
 import { freezeOrder, unfreezeOrder } from "@/actions/hold";
 import { cancelOrder, requestOrderCancellation } from "@/actions/cancel";
-import { requestDiscount } from "@/actions/orders";
+import { requestDiscount, updateOrderItem } from "@/actions/orders";
 
 const FREEZE_BLOCKED = ["CLOSED", "CANCELLED", "PICKED_UP", "ON_HOLD"];
 /** Samakan dengan TERMINAL di actions/cancel.ts — tidak bisa dibatalkan sama sekali. */
@@ -91,6 +91,10 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
   const [correctionBusy, setCorrectionBusy] = useState(false);
   const [designApprovalNotes, setDesignApprovalNotes] = useState("");
   const [designApprovalBusy, setDesignApprovalBusy] = useState(false);
+  const [editItemIdx, setEditItemIdx] = useState<number | null>(null);
+  const [editItemSize, setEditItemSize] = useState("");
+  const [editItemDesc, setEditItemDesc] = useState("");
+  const [editItemBusy, setEditItemBusy] = useState(false);
   const reload = () => getOrderDetail(orderId).then((r) => (r.success ? setD(r.data as Detail) : setErr(r.error)));
   const reloadCorrections = () => listCorrections(orderId).then((r) => { if (r.success) setCorrections(r.data); });
   useEffect(() => {
@@ -127,6 +131,28 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
     if (!res.success) { setErr(res.error); return; }
     await reload();
     onChanged();
+  }
+
+  function openEditItem(idx: number) {
+    const it = d?.items[idx];
+    if (!it) return;
+    setEditItemIdx(idx);
+    setEditItemSize(it.size ?? "");
+    setEditItemDesc(it.description ?? "");
+    setErr(null);
+  }
+
+  async function doUpdateItem() {
+    if (editItemIdx === null || !d) return;
+    const it = d.items[editItemIdx];
+    if (!it.id) return;
+    setEditItemBusy(true); setErr(null);
+    const res = await updateOrderItem(orderId, it.id, { size: editItemSize, description: editItemDesc });
+    setEditItemBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    setEditItemIdx(null);
+    await reload();
+    if (res.data.autoReleasedJobs.length > 0) onChanged();
   }
 
   async function doFreeze() {
@@ -235,17 +261,64 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
                 <p className="text-xs font-bold text-primary mb-2">Item ({d.items.length})</p>
                 <div className="border border-border rounded-xl divide-y divide-border/60 text-xs">
                   {d.items.map((it, i) => (
-                    <div key={i} className="flex justify-between px-3 py-2">
-                      <span className="text-primary">
-                        {it.name} · {it.quantity} pcs {it.size ? `· ${it.size}` : ""}
-                        {it.deadline && (
-                          <span className="ml-1 text-[10px] font-bold text-status-yellow-text">· ⏱ {fmtDate(it.deadline)}</span>
-                        )}
-                      </span>
-                      <span className="font-mono text-muted">{fmtRp(it.totalPrice)}</span>
+                    <div key={i} className="px-3 py-2">
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="text-primary">
+                          {it.name} · {it.quantity} pcs {it.size ? `· ${it.size}` : ""}
+                          {it.sizeRequired && !it.size && (
+                            <span className="ml-1 text-[10px] font-bold text-status-red">· ukuran belum diisi</span>
+                          )}
+                          {it.deadline && (
+                            <span className="ml-1 text-[10px] font-bold text-status-yellow-text">· ⏱ {fmtDate(it.deadline)}</span>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-mono text-muted">{fmtRp(it.totalPrice)}</span>
+                          {d.editableItems && (
+                            <button
+                              onClick={() => (editItemIdx === i ? setEditItemIdx(null) : openEditItem(i))}
+                              className="text-[10px] font-bold text-accent-teal hover:underline whitespace-nowrap"
+                            >
+                              {editItemIdx === i ? "Batal" : "Edit"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {editItemIdx === i && (
+                        <div className="mt-2 space-y-2 rounded-lg border border-border bg-elevated/60 p-2.5">
+                          <div>
+                            <label className="text-[10px] font-bold text-muted uppercase">Ukuran</label>
+                            <input
+                              value={editItemSize}
+                              onChange={(e) => setEditItemSize(e.target.value)}
+                              placeholder="Contoh: 500x500 atau A3"
+                              className="w-full h-8 rounded-lg bg-card border border-border text-xs text-primary px-2.5 outline-none focus:border-accent-teal"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-muted uppercase">Deskripsi</label>
+                            <input
+                              value={editItemDesc}
+                              onChange={(e) => setEditItemDesc(e.target.value)}
+                              placeholder="Catatan/nama item"
+                              className="w-full h-8 rounded-lg bg-card border border-border text-xs text-primary px-2.5 outline-none focus:border-accent-teal"
+                            />
+                          </div>
+                          <button
+                            onClick={doUpdateItem}
+                            disabled={editItemBusy}
+                            className="h-8 rounded-lg bg-accent-teal px-3 text-xs font-bold text-white hover:brightness-110 disabled:opacity-40"
+                          >
+                            {editItemBusy ? "Menyimpan…" : "Simpan"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
+                {!d.editableItems && (
+                  <p className="mt-1.5 text-[10px] text-muted">Item tidak bisa diubah lagi — order sudah masuk produksi atau selesai.</p>
+                )}
               </div>
 
               {d.designJobs.length > 0 && (

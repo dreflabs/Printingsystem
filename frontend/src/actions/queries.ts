@@ -47,19 +47,6 @@ export async function getOperatorJobs() {
       return fail("Hanya Operator yang boleh melihat antrian produksi.");
     }
 
-    const [userMachines, userCategories] = await Promise.all([
-      prisma.userMachine.findMany({
-        where: { tenant_id: tenant.id, user_id: actor.id },
-        select: { machine_id: true }
-      }),
-      prisma.userMachineCategory.findMany({
-        where: { tenant_id: tenant.id, user_id: actor.id },
-        select: { category: true }
-      }),
-    ]);
-    const allowedMachineIds = userMachines.map(um => um.machine_id);
-    const allowedCategories = userCategories.map(uc => uc.category);
-
     const include = {
       items: { where: { tenant_id: tenant.id }, select: { order_item_id: true, material_id: true, material: { select: { name: true, active: true } } } },
       machine: { select: { name: true, machine_code: true, category: true, materials: { where: { tenant_id: tenant.id, material: { active: true, purpose: "CONSUMABLE" } }, select: { material_id: true } } } },
@@ -83,6 +70,7 @@ export async function getOperatorJobs() {
                   name: true,
                   default_machine_id: true,
                   unit: true,
+                  fixed_size: true,
                   material_options: {
                     where: { tenant_id: tenant.id, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
                     select: { material_id: true },
@@ -120,14 +108,13 @@ export async function getOperatorJobs() {
         orderBy: [{ priority: "desc" }, { created_at: "asc" }],
         include,
       }),
-      // Hanya ambil job dari mesin yang ditugaskan ke operator ini, baik lewat
-      // checklist per-mesin maupun lewat kategori mesin yang dipegangnya.
+      // Semua job yang belum diambil siapa pun — semua operator melihat seluruh
+      // antrian tanpa syarat akses mesin/kategori, lalu klaim sendiri (take order).
       prisma.productionJob.findMany({
         where: {
           tenant_id: tenant.id,
           operator_id: null,
           status: "PRODUCTION_QUEUED",
-          machine: { OR: [{ id: { in: allowedMachineIds } }, { category: { in: allowedCategories } }] },
         },
         orderBy: [{ priority: "desc" }, { order: { deadline: "asc" } }, { created_at: "asc" }],
         include,
@@ -163,7 +150,7 @@ export async function getOperatorJobs() {
       const relevant = j.order.items.filter(it => scope.has(it.id));
       const items = relevant.map((it) => ({
         product: it.product?.name ?? it.description?.trim() ?? "Item cetak",
-        size: it.size ?? null,
+        size: it.size ?? it.product?.fixed_size ?? null,
         qty: it.quantity,
         material: j.items.find(link => link.order_item_id === it.id)?.material?.name ?? it.material?.name ?? null,
         finishing: it.finishing?.trim() || null,
@@ -196,7 +183,7 @@ export async function getOperatorJobs() {
         machineCategory: j.machine_category ?? j.machine.category,
         status: j.status,
         productUnit: relevant.find((it) => it.product?.unit)?.product?.unit ?? "PCS",
-        firstItemSize: relevant.find((it) => it.size)?.size ?? null,
+        firstItemSize: items.find((it) => it.size)?.size ?? null,
         firstItemQty: relevant[0]?.quantity ?? j.planned_qty,
         suggestedMaterialId: plannedMaterialIds[0] ?? null,
         allowedMaterialIds,
@@ -251,7 +238,6 @@ export async function getOperatorJobs() {
       queue: queueRows.map(shape),
       history,
       historySummary,
-      hasMachines: allowedMachineIds.length > 0
     });
   } catch (e) {
     console.error("getOperatorJobs:", e);
@@ -960,6 +946,7 @@ export async function getOrderDetail(orderId: string) {
               select: {
                 name: true,
                 unit: true,
+                fixed_size: true,
                 default_machine_id: true,
                 default_machine_category: true,
                 material_options: {
@@ -999,6 +986,7 @@ export async function getOrderDetail(orderId: string) {
         defaultMachineCategory: i.product?.default_machine_category ?? null,
         quantity: i.quantity,
         size: i.size,
+        productFixedSize: i.product?.fixed_size ?? null,
         materialId: i.material_id,
         allowedMaterialIds: i.product?.material_options.map((option) => option.material_id) ?? [],
         materialCurrentStock: i.material ? num(i.material.current_stock) : null,
@@ -1044,15 +1032,22 @@ export async function getOrderDetail(orderId: string) {
       cancellationReason: o.cancellation_reason,
       cancelledAt: o.cancelled_at,
       items: o.items.map((i) => ({
+        id: i.id,
         name: i.product?.name ?? i.retail_product?.name ?? i.description ?? "-",
+        description: i.description,
         quantity: i.quantity,
-        size: i.size,
+        // Tampilkan size manual kalau ada, fallback ke ukuran baku katalog (mis. "A3").
+        size: i.size ?? i.product?.fixed_size ?? null,
+        // ukuran wajib diisi manual hanya kalau unit produk bukan PCS DAN produk
+        // tidak punya ukuran baku di katalog (lihat production-readiness.ts).
+        sizeRequired: i.product?.unit !== "PCS" && i.product?.unit != null && !i.product?.fixed_size,
         material: i.material?.name ?? null,
         finishing: i.finishing,
         deadline: i.deadline,
         unitPrice: num(i.unit_price),
         totalPrice: num(i.total_price),
       })),
+      editableItems: o.production_jobs.length === 0 && !["CANCELLED", "CLOSED", "FINAL_AUDIT_COMPLETE"].includes(o.status),
       payments: o.payments.map((p) => ({ id: p.id, amount: num(p.amount), method: p.method, status: p.status, receivedBy: p.receiver.name, paidAt: p.paid_at })),
       designJobs: o.design_jobs.map((d) => ({
         status: d.status,

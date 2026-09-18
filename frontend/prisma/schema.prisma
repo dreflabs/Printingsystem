@@ -410,6 +410,10 @@ model Product {
   name                     String
   category                 String
   unit                     String            @default("PCS") // PCS/M2/METER/LEMBAR/RIM — dasar hitung harga
+  // Ukuran baku produk berformat tetap (mis. "A3", "10R") — hanya relevan untuk
+  // unit non-M2/non-PCS. Kalau diisi, OrderItem.size ikut nilai ini otomatis
+  // saat order dibuat, dan Completeness Gate tidak lagi minta CS input manual.
+  fixed_size               String?
   base_price               Decimal?          @db.Decimal(15, 2) // harga per `unit`; null = harga selalu manual per order
   default_material_id      String?
   default_material         Material?         @relation(fields: [default_material_id], references: [id])

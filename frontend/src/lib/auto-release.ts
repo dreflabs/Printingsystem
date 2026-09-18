@@ -57,11 +57,13 @@ const OPEN_JOB_STATUSES = ["PRODUCTION_QUEUED", "PRODUCTION_ASSIGNED", "PRODUCTI
  *   dijumlah). Mesin diambil dari `product.default_machine_id`. Kalau produk
  *   pakai `default_machine_category` sebagai gantinya, dipilihkan satu mesin
  *   ACTIVE di kategori itu dengan job terbuka paling sedikit (load balance) —
- *   ditolak (order tertahan) kalau kategori tidak punya mesin ACTIVE atau
- *   tidak ada operator yang bisa melihat job di kategori/mesin itu sama sekali.
- * - Kalau mesin punya `default_operator_id` yang masih aktif → job di-pin ke dia
- *   (status PRODUCTION_ASSIGNED). Kalau tidak → PRODUCTION_QUEUED tanpa operator
- *   (operator klaim sendiri lewat SCAN 1).
+ *   ditolak (order tertahan) kalau kategori tidak punya mesin ACTIVE.
+ * - Semua job baru dibuat `PRODUCTION_QUEUED` tanpa operator — semua operator
+ *   melihat seluruh antrian tanpa syarat akses mesin/kategori apa pun, dan
+ *   mengambil sendiri job yang mereka kerjakan (take order, lewat dashboard
+ *   atau SCAN 1). `Machine.default_operator_id` tidak lagi dipakai untuk
+ *   auto-pin (lihat kasus operator tidak kebagian job karena semua mesin
+ *   default-nya ke satu akun).
  * - `priority` diturunkan dari deadline order.
  * - Kalau tenant mengaktifkan `require_admin_production_release`, order dibiarkan
  *   CONFIRMED + ditandai AWAITING_ADMIN_RELEASE (kecuali `opts.bypassGatekeeper`).
@@ -88,6 +90,7 @@ export async function autoReleaseToProduction(
           product: {
             select: {
               unit: true,
+              fixed_size: true,
               default_machine_id: true,
               default_machine_category: true,
               material_options: {
@@ -134,6 +137,7 @@ export async function autoReleaseToProduction(
       defaultMachineCategory: it.product?.default_machine_category ?? null,
       quantity: it.quantity,
       size: it.size,
+      productFixedSize: it.product?.fixed_size ?? null,
       materialId: it.material_id,
       allowedMaterialIds: it.product?.material_options.map((option) => option.material_id) ?? [],
       materialCurrentStock: it.material_id ? stockById.get(it.material_id) ?? null : null,
@@ -168,7 +172,8 @@ export async function autoReleaseToProduction(
 
   // Item yang di-routing lewat kategori (bukan mesin spesifik) — pilihkan satu
   // mesin ACTIVE per kategori: mesin dengan job terbuka paling sedikit (load
-  // balance), dan hanya kalau ada operator yang bisa melihatnya sama sekali.
+  // balance). Semua operator melihat semua job di antrian tanpa syarat akses
+  // mesin/kategori, jadi tidak perlu cek ada-tidaknya grant operator di sini.
   const categoryItems = items.filter((it) => !it.defaultMachineId && it.defaultMachineCategory);
   const categories = [...new Set(categoryItems.map((it) => it.defaultMachineCategory as string))];
   for (const category of categories) {
@@ -183,22 +188,6 @@ export async function autoReleaseToProduction(
     }
 
     const candidateIds = candidates.map((m) => m.id);
-    const [machineGrant, categoryGrant] = await Promise.all([
-      tx.userMachine.findFirst({
-        where: { tenant_id: tenantId, machine_id: { in: candidateIds }, user: { active: true } },
-        select: { id: true },
-      }),
-      tx.userMachineCategory.findFirst({
-        where: { tenant_id: tenantId, category, user: { active: true } },
-        select: { id: true },
-      }),
-    ]);
-    if (!machineGrant && !categoryGrant) {
-      const missing = [`Tidak ada operator untuk kategori "${category}" — atur akses mesin/kategori dulu`];
-      await tx.order.update({ where: { id: orderId }, data: { auto_release_blocked: blockedPayload(missing) } });
-      return { released: false, jobCodes: [], missing };
-    }
-
     const openCounts = await tx.productionJob.groupBy({
       by: ["machine_id"],
       where: { tenant_id: tenantId, machine_id: { in: candidateIds }, status: { in: OPEN_JOB_STATUSES } },
@@ -219,7 +208,7 @@ export async function autoReleaseToProduction(
   const machineIds = [...new Set(items.map((it) => it.defaultMachineId as string).filter(Boolean))];
   const machines = await tx.machine.findMany({
     where: { id: { in: machineIds }, tenant_id: tenantId },
-    select: { id: true, name: true, status: true, default_operator_id: true, category: true },
+    select: { id: true, name: true, status: true, category: true },
   });
   const down = machines.find((m) => m.status !== "ACTIVE");
   if (down) {
@@ -263,20 +252,6 @@ export async function autoReleaseToProduction(
     }
   }
 
-  // Operator default per mesin (hanya yang masih aktif).
-  const defaultOpIds = [
-    ...new Set(machines.map((m) => m.default_operator_id).filter((v): v is string => !!v)),
-  ];
-  const activeOps = defaultOpIds.length
-    ? await tx.user.findMany({
-        where: { id: { in: defaultOpIds }, tenant_id: tenantId, active: true },
-        select: { id: true, user_machines: { where: { machine_id: { in: machineIds } }, select: { machine_id: true } } },
-      })
-    : [];
-  // Operator default hanya boleh menerima job bila benar-benar diberi akses
-  // ke mesin tersebut. Referensi default_operator_id saja bukan grant akses.
-  const activeOpMachineSet = new Set(activeOps.flatMap((u) => u.user_machines.map((um) => `${u.id}:${um.machine_id}`)));
-
   // Gabungkan item per mesin default → 1 job per mesin, qty dijumlah.
   // Deadline job = yang PALING AWAL di antara item-itemnya (fallback deadline order).
   const qtyByMachine = new Map<string, number>();
@@ -300,8 +275,6 @@ export async function autoReleaseToProduction(
   const jobCodes: string[] = [];
   for (const [machineId, plannedQty] of qtyByMachine) {
     const machine = machineById.get(machineId);
-    const defOp = machine?.default_operator_id ?? null;
-    const pinned = defOp && activeOpMachineSet.has(`${defOp}:${machineId}`);
     const jobDeadline = deadlineByMachine.get(machineId) ?? orderDeadline;
     const code = await nextJobCode(tx, tenantId);
     await tx.productionJob.create({
@@ -311,8 +284,10 @@ export async function autoReleaseToProduction(
         job_code: code,
         machine_id: machineId,
         machine_category: machine?.category ?? null,
-        operator_id: pinned ? defOp : null,
-        status: pinned ? "PRODUCTION_ASSIGNED" : "PRODUCTION_QUEUED",
+        // Semua operator melihat & bisa mengambil job dari antrian (take order) —
+        // tidak ada lagi auto-pin ke default_operator_id (lihat diskusi kasus Hendra).
+        operator_id: null,
+        status: "PRODUCTION_QUEUED",
         priority: priorityFromDeadline(jobDeadline),
         deadline: jobDeadline,
         planned_qty: plannedQty,

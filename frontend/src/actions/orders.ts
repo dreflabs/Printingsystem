@@ -48,6 +48,9 @@ const DISCOUNT_LOCKED_ORDER_STATUSES = new Set([
   "FINAL_AUDIT_COMPLETE",
 ]);
 
+/** Order dengan ProductionJob (atau status di bawah) sudah "beku" — scope item tidak boleh diubah lagi (lihat ProductionJobItem). */
+const ITEM_LOCKED_ORDER_STATUSES = DISCOUNT_LOCKED_ORDER_STATUSES;
+
 export interface PrintingOrderItemInput {
   productId?: string | null;
   description?: string;
@@ -218,7 +221,7 @@ export async function createPrintingOrder(
       // 2. Totals — diskon TIDAK dipotong sebelum di-approve Owner (aturan 14).
       //    `discount` disimpan sebagai permintaan; total/dp/balance tetap harga penuh
       //    sampai decideDiscount(approve) dipanggil.
-      const resolvedItems = [] as (PrintingOrderItemInput & { unitPrice: number; catalogRate: number | null; productUnit: string | null })[];
+      const resolvedItems = [] as (PrintingOrderItemInput & { unitPrice: number; catalogRate: number | null; productUnit: string | null; productFixedSize: string | null })[];
       let subtotal = 0;
       for (const id of [...new Set(items.map(i => i.productId).filter((id): id is string => !!id))].sort()) {
         await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${id} AND tenant_id = ${tenant.id} FOR UPDATE`;
@@ -231,7 +234,7 @@ export async function createPrintingOrder(
         const product = i.productId
           ? await tx.product.findFirst({
               where: { id: i.productId, tenant_id: tenant.id, active: true },
-              select: { unit: true, base_price: true },
+              select: { unit: true, base_price: true, fixed_size: true },
             })
           : null;
         if (i.productId && !product) throw new Error("Produk tidak valid atau tidak aktif.");
@@ -275,7 +278,7 @@ export async function createPrintingOrder(
         } else if (!i.productId && !can(actor, "quote.edit_price")) {
           throw new Error("Item custom dengan harga manual memerlukan permission quote.edit_price.");
         }
-        resolvedItems.push({ ...i, unitPrice, catalogRate, productUnit: product?.unit ?? null });
+        resolvedItems.push({ ...i, unitPrice, catalogRate, productUnit: product?.unit ?? null, productFixedSize: product?.fixed_size ?? null });
         subtotal += unitPrice * Math.max(1, Number(i.quantity) || 1);
       }
       const total = subtotal;
@@ -309,7 +312,7 @@ export async function createPrintingOrder(
       // 4. Items
       for (const i of resolvedItems) {
         const size =
-          i.width && i.height ? `${i.width}x${i.height}` : i.width ? `${i.width}` : null;
+          i.width && i.height ? `${i.width}x${i.height}` : i.width ? `${i.width}` : i.productFixedSize || null;
         const itemDeadline = i.deadline ? new Date(i.deadline) : null;
         if (i.deadline && (!itemDeadline || Number.isNaN(itemDeadline.getTime()))) {
           throw new Error("Format deadline item tidak valid.");
@@ -661,6 +664,88 @@ export async function requestDiscount(
   }
 }
 
+/**
+ * Lengkapi/perbaiki ukuran & deskripsi item order sebelum turun ke produksi —
+ * dipakai Admin/Owner saat order tertahan di "Order Tertahan" karena data item
+ * kurang (mis. ukuran kosong untuk produk non-PCS). Kalau order sudah CONFIRMED,
+ * auto-release dicoba lagi setelah item diperbaiki.
+ * Tidak bisa dipakai lagi setelah ProductionJob dibuat — scope item sudah beku.
+ */
+export async function updateOrderItem(
+  orderId: string,
+  itemId: string,
+  input: { size?: string | null; description?: string | null }
+): Promise<ActionResult<{ autoReleasedJobs: string[] }>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireMutableActor();
+    if (!can(actor, "order.edit_pre_production")) {
+      return fail("Hanya Admin/Owner yang boleh mengubah item order.");
+    }
+
+    const size = input.size?.trim() || null;
+    const description = input.description?.trim() || null;
+    if (size && size.length > 100) return fail("Ukuran terlalu panjang (maks. 100 karakter).");
+    if (description && description.length > 500) return fail("Deskripsi terlalu panjang (maks. 500 karakter).");
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Serialisasi dengan jalur lain yang membuat ProductionJob (lihat autoReleaseToProduction).
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} AND tenant_id = ${tenant.id} FOR UPDATE`;
+      const order = await tx.order.findFirst({ where: { id: orderId, tenant_id: tenant.id } });
+      if (!order) throw new Error("Order tidak ditemukan.");
+      if (ITEM_LOCKED_ORDER_STATUSES.has(order.status)) {
+        throw new Error(`Item tidak dapat diubah setelah order berstatus ${order.status}.`);
+      }
+
+      const item = await tx.orderItem.findFirst({ where: { id: itemId, order_id: order.id, tenant_id: tenant.id } });
+      if (!item) throw new Error("Item order tidak ditemukan.");
+
+      const existingProductionJobs = await tx.productionJob.count({ where: { tenant_id: tenant.id, order_id: order.id } });
+      if (existingProductionJobs > 0) {
+        throw new Error("Item tidak dapat diubah setelah ProductionJob dibuat.");
+      }
+
+      await tx.orderItem.update({ where: { id: item.id }, data: { size, description } });
+
+      await logActionInTransaction(tx, {
+        tenantId: tenant.id,
+        actorId: actor.id,
+        action: "ORDER_ITEM_UPDATED",
+        entityType: "OrderItem",
+        entityId: item.id,
+        oldValueJson: { size: item.size, description: item.description },
+        newValueJson: { size, description },
+      });
+
+      const release =
+        order.status === "CONFIRMED"
+          ? await autoReleaseToProduction(tx, tenant.id, order.id)
+          : { released: false, jobCodes: [], missing: [] };
+
+      if (release.released) {
+        await logActionInTransaction(tx, {
+          tenantId: tenant.id,
+          actorId: actor.id,
+          action: "ORDER_AUTO_RELEASED",
+          entityType: "Order",
+          entityId: order.id,
+          newValueJson: { job_codes: release.jobCodes, trigger: "ORDER_ITEM_UPDATED" },
+        });
+      }
+
+      return release;
+    });
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/production");
+    revalidatePath("/operator");
+    return ok({ autoReleasedJobs: result.jobCodes });
+  } catch (e) {
+    console.error("updateOrderItem:", e);
+    return fail(safeError(e, "Gagal mengubah item order."));
+  }
+}
+
 /** Data pendukung form order baru. */
 export async function getOrderFormData() {
   try {
@@ -683,6 +768,7 @@ export async function getOrderFormData() {
           category: true,
           unit: true,
           base_price: true,
+          fixed_size: true,
           default_material_id: true,
           material_options: {
             where: { tenant_id: tenant.id, active: true, role: "PRIMARY", material: { active: true, purpose: "PRIMARY", type: { not: "INK" } } },
@@ -735,6 +821,7 @@ export async function getOrderFormData() {
         category: p.category,
         unit: p.unit,
         basePrice: canViewQuote && p.base_price != null ? Number(p.base_price) : null,
+        fixedSize: p.fixed_size,
         default_material_id: p.material_options.find(o => o.is_default)?.material_id ?? null,
         material_options: p.material_options.map((option) => ({
           id: option.material.id,

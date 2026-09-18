@@ -272,14 +272,10 @@ export async function startProduction(jobCode: string): Promise<ActionResult<{ j
         if (job.operator_id !== actor.id) {
           throw new Error("Anda bukan operator yang di-assign ke job ini.");
         }
-      } else if (!can(actor, "production.assign")) {
-        // Klaim job antrean bebas — pastikan operator memang ditugaskan ke mesin ini
-        // (Admin/Owner boleh klaim mesin mana pun sebagai override).
-        const grant = await tx.userMachine.findFirst({
-          where: { tenant_id: tenant.id, user_id: actor.id, machine_id: job.machine_id },
-        });
-        if (!grant) throw new Error("Anda tidak ditugaskan ke mesin job ini.");
       }
+      // Klaim job antrean bebas untuk siapa pun dengan permission production.execute —
+      // semua operator melihat & bisa mengambil job dari mesin mana pun (take order),
+      // tidak lagi mensyaratkan grant UserMachine (lihat auto-release.ts).
 
       await getJobMaterialPlan(tx, tenant.id, job);
 
@@ -517,12 +513,13 @@ export async function reassignProductionJob(
             { role: { name: "operator" } },
             { extra_roles: { some: { role: { name: "operator" } } } },
           ],
-          user_machines: { some: { tenant_id: tenant.id, machine_id: input.machineId } },
+          // Semua operator boleh dipegangkan job mesin apa pun (lihat auto-release.ts)
+          // — tidak lagi mensyaratkan grant UserMachine ke mesin target.
         },
       }),
     ]);
     if (!machine) return fail("Mesin tidak valid.");
-    if (!operator) return fail("Operator tidak valid, tidak aktif, atau belum ditugaskan ke mesin target.");
+    if (!operator) return fail("Operator tidak valid atau tidak aktif.");
     // Aturan 17: jangan pindahkan job ke mesin yang sedang MAINTENANCE / INACTIVE.
     if (machine.status !== "ACTIVE" && machine.id !== job.machine_id) {
       return fail(`Mesin ${machine.name} sedang ${machine.status} — tidak bisa menerima job.`);

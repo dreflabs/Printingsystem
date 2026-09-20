@@ -15,6 +15,7 @@ import { getOrders, getOrderDetail } from "@/actions/queries";
 import { addPayment } from "@/actions/orders";
 import { approveDesign, assignProductionJob, getProductionAssignData } from "@/actions/design";
 import { releaseOrderToProduction } from "@/actions/production";
+import { releaseOrder } from "@/actions/storage";
 import { submitFinalAudit, getFinalAuditChecks, createCorrection, approveCorrection, listCorrections, type AuditCheck } from "@/actions/audit";
 import { getSessionUser } from "@/actions/session";
 import { freezeOrder, unfreezeOrder } from "@/actions/hold";
@@ -91,6 +92,11 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
   const [correctionBusy, setCorrectionBusy] = useState(false);
   const [designApprovalNotes, setDesignApprovalNotes] = useState("");
   const [designApprovalBusy, setDesignApprovalBusy] = useState(false);
+  const [releaseMode, setReleaseMode] = useState(false);
+  const [receiverName, setReceiverName] = useState("");
+  const [qtyChecked, setQtyChecked] = useState(false);
+  const [releaseOverrideReason, setReleaseOverrideReason] = useState("");
+  const [pickupBusy, setPickupBusy] = useState(false);
   const [editItemIdx, setEditItemIdx] = useState<number | null>(null);
   const [editItemSize, setEditItemSize] = useState("");
   const [editItemDesc, setEditItemDesc] = useState("");
@@ -222,6 +228,20 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
     const res = await approveCorrection(id, { approve });
     if (!res.success) { setErr(res.error); return; }
     await reloadCorrections();
+  }
+
+  async function doPickup() {
+    if (!d || d.productionJobs.length === 0) return;
+    setPickupBusy(true); setErr(null);
+    const res = await releaseOrder(d.productionJobs[0].jobCode, {
+      receiverName,
+      ownerOverrideReason: releaseOverrideReason.trim() || undefined,
+    });
+    setPickupBusy(false);
+    if (!res.success) { setErr(res.error); return; }
+    setReleaseMode(false); setReceiverName(""); setQtyChecked(false); setReleaseOverrideReason("");
+    await reload();
+    onChanged();
   }
 
   async function doApproveOnline() {
@@ -549,6 +569,40 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
             )}
           </div>
         )}
+        {d && releaseMode && (
+          <div className="px-5 pb-3 pt-4 border-t border-border shrink-0 space-y-2">
+            <label className="text-[11px] font-bold text-primary uppercase">Serahkan ke Konsumen</label>
+            {d.items.length > 0 && (
+              <div className="rounded-lg border border-border bg-elevated p-2 text-xs">
+                <p className="font-semibold text-primary mb-1">Cek jumlah barang:</p>
+                {d.items.map((it, i) => (
+                  <div key={i} className="flex justify-between text-muted">
+                    <span className="truncate">{it.description || it.name}{it.size ? ` · ${it.size}` : ""}</span>
+                    <span className="font-mono shrink-0">{it.quantity} pcs</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <input type="checkbox" checked={qtyChecked} onChange={(e) => setQtyChecked(e.target.checked)} />
+              Jumlah &amp; kondisi barang sudah dicek, sesuai
+            </label>
+            <input value={receiverName} onChange={(e) => setReceiverName(e.target.value)} autoFocus
+              placeholder="Nama penerima"
+              className="w-full h-9 rounded-lg bg-elevated border border-border text-xs text-primary px-3 outline-none focus:border-accent-teal" />
+            {d.balance > 0 && (
+              isOwner ? (
+                <input value={releaseOverrideReason} onChange={(e) => setReleaseOverrideReason(e.target.value)}
+                  placeholder="Alasan override (sisa tagihan belum lunas)"
+                  className="w-full h-9 rounded-lg bg-elevated border border-border text-xs text-primary px-3 outline-none focus:border-accent-teal" />
+              ) : (
+                <p className="text-[11px] text-status-yellow-text">
+                  Sisa tagihan {fmtRp(d.balance)} belum lunas — hanya Owner yang bisa override.
+                </p>
+              )
+            )}
+          </div>
+        )}
         <div className="flex flex-wrap gap-3 p-5 border-t border-border shrink-0">
           <button onClick={onClose} className="flex-1 min-w-[120px] h-11 rounded-xl bg-elevated border border-border text-sm text-muted hover:text-primary">Tutup</button>
           {d && (
@@ -561,6 +615,20 @@ function DetailModal({ orderId, isOwner, onClose, onBayar, onChanged }: {
           )}
           {d && d.balance > 0 && (
             <button onClick={onBayar} className="flex-1 min-w-[140px] h-11 rounded-xl bg-status-yellow text-black text-sm font-bold hover:brightness-105">Catat Pembayaran</button>
+          )}
+          {d && d.productionJobs.length > 0 && ["READY_FOR_PICKUP", "IN_TRANSIT"].includes(d.status) && !releaseMode && (
+            <button onClick={() => setReleaseMode(true)}
+              className="flex-1 min-w-[160px] h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110">
+              Serahkan ke Konsumen
+            </button>
+          )}
+          {d && releaseMode && (
+            <button
+              onClick={doPickup}
+              disabled={pickupBusy || !receiverName.trim() || !qtyChecked || (d.balance > 0 && (!isOwner || !releaseOverrideReason.trim()))}
+              className="flex-1 min-w-[160px] h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110 disabled:opacity-40">
+              {pickupBusy ? "Memproses…" : "Konfirmasi Serah Terima"}
+            </button>
           )}
           {canAssign && !freezeMode && awaitingRelease && (
             <div className="flex-1 min-w-[160px]">
@@ -1158,6 +1226,7 @@ export default function AdminDashboardPage() {
               <option value="CONFIRMED">Confirmed</option>
               <option value="PRODUCTION_STARTED">Produksi</option>
               <option value="READY_FOR_PICKUP">Siap Diambil</option>
+              <option value="IN_TRANSIT">Di Counter Pengambilan</option>
               <option value="FINAL_AUDIT_PENDING">Menunggu Audit</option>
               <option value="CLOSED">Closed</option>
             </select>

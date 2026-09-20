@@ -41,6 +41,14 @@ export function renderNotificationTemplate(code: string, ctx: TemplateContext): 
         ``,
         `Pesanan dapat diambil setelah pelunasan sesuai ketentuan percetakan. Saat pengambilan, sebutkan Nomor Order ${ctx.orderCode} atau Nomor HP Anda.`,
       ].join("\n");
+    case "ORDER_PICKED_UP":
+      return [
+        `Halo Kak ${nama} 👋`,
+        ``,
+        `Pesanan Anda dengan nomor ${ctx.orderCode} sudah kami serahkan. Terima kasih sudah mengambil pesanannya.`,
+        ``,
+        `Kami tunggu pesanan berikutnya ya 🙏`,
+      ].join("\n");
     default:
       return null;
   }

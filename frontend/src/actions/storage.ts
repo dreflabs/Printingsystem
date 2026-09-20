@@ -636,6 +636,21 @@ export async function releaseOrder(
         data: { status: "FINAL_AUDIT_PENDING", closed_at: null },
       });
 
+      if (order.customer_id && order.customer?.phone) {
+        await tx.notificationEvent.create({
+          data: {
+            tenant_id: tenant.id,
+            order_id: order.id,
+            customer_id: order.customer_id,
+            event_type: "ORDER_PICKED_UP",
+            channel: "WHATSAPP",
+            recipient: order.customer.phone,
+            template_code: "ORDER_PICKED_UP",
+            status: "PENDING",
+          },
+        });
+      }
+
       return { jobCode: job.job_code, orderId: order.id, orderStatus: "FINAL_AUDIT_PENDING", overridden: !lunas };
     });
 

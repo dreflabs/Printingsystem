@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import Image from "next/image";
 import { Lock, User, LogIn, Eye, EyeOff, Building2 } from "lucide-react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
@@ -26,32 +27,45 @@ function workspaceFromHost(): string {
   }
 }
 
+function workspaceFromLocation(): string {
+  const fromHost = workspaceFromHost();
+  if (fromHost) return fromHost;
+  if (typeof window === "undefined") return "";
+  try {
+    const value = (new URLSearchParams(window.location.search).get("workspace") ?? "").toLowerCase().trim();
+    return /^[a-z0-9]{3,30}$/.test(value) ? value : "";
+  } catch {
+    return "";
+  }
+}
+
+function noticeFromLocation(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return new URLSearchParams(window.location.search).get("changed") === "1"
+      ? "Kata sandi berhasil diubah. Masuk lagi dengan kata sandi baru Anda — pastikan kolom Workspace terisi benar."
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 export function LoginForm() {
   const [loading, setLoading] = useState(false);
-  const [workspace, setWorkspace] = useState(workspaceFromHost);
+  const [workspace, setWorkspace] = useState(workspaceFromLocation);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [callbackUrl, setCallbackUrl] = useState("/");
-
-  useEffect(() => {
+  const [notice] = useState(noticeFromLocation);
+  const [callbackUrl] = useState(() => {
+    if (typeof window === "undefined") return "/";
     try {
-      const params = new URLSearchParams(window.location.search);
-      setCallbackUrl(safeCallback(params.get("callbackUrl")));
-      // Prefill workspace dari ?workspace= (link login pegawai) bila belum terisi dari subdomain.
-      const ws = (params.get("workspace") ?? "").toLowerCase().trim();
-      if (ws && /^[a-z0-9]{3,30}$/.test(ws)) setWorkspace((cur) => cur || ws);
-      if (params.get("changed") === "1") {
-        setNotice(
-          "Kata sandi berhasil diubah. Masuk lagi dengan kata sandi baru Anda — pastikan kolom Workspace terisi benar."
-        );
-      }
+      return safeCallback(new URLSearchParams(window.location.search).get("callbackUrl"));
     } catch {
-      /* keep default */
+      return "/";
     }
-  }, []);
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,13 +99,16 @@ export function LoginForm() {
       {/* Brand Header */}
       <div className="text-center mb-6">
         <div className="inline-flex items-center justify-center w-20 h-20 mb-4 overflow-hidden">
-          <img
+          <Image
             src="/PRINT_PILOT_LOGO.png"
             alt="Print Pilot Logo"
+            width={80}
+            height={80}
+            priority
             className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(14,165,233,0.3)]"
           />
         </div>
-        <h1 className="text-3xl font-bold text-primary tracking-tight">
+        <h1 className="text-3xl font-bold text-primary tracking-tight whitespace-nowrap">
           Print Pilot<span className="text-accent-teal">.id</span>
         </h1>
         <p className="text-sm text-muted">Sistem Manajemen Percetakan Modern</p>
@@ -118,7 +135,7 @@ export function LoginForm() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
-              <label htmlFor="login-workspace" className="text-xs font-medium text-muted ml-1">
+              <label htmlFor="login-workspace" className="text-sm font-semibold text-primary ml-1">
                 Workspace
               </label>
               <div className="relative group">
@@ -133,7 +150,7 @@ export function LoginForm() {
                   required
                   value={workspace}
                   onChange={(e) => setWorkspace(e.target.value)}
-                  className="w-full h-11 bg-elevated border border-border rounded-xl pl-10 pr-4 text-sm text-primary outline-none focus:border-accent-teal transition-all placeholder:text-muted"
+                  className="w-full h-12 bg-elevated border border-border rounded-xl pl-10 pr-4 text-sm text-primary outline-none focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/15 transition-all placeholder:text-muted"
                   placeholder="subdomain workspace, mis. narativa"
                 />
               </div>
@@ -143,7 +160,7 @@ export function LoginForm() {
             </div>
 
             <div className="space-y-1">
-              <label htmlFor="login-username" className="text-xs font-medium text-muted ml-1">
+              <label htmlFor="login-username" className="text-sm font-semibold text-primary ml-1">
                 Username
               </label>
               <div className="relative group">
@@ -158,7 +175,7 @@ export function LoginForm() {
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full h-11 bg-elevated border border-border rounded-xl pl-10 pr-4 text-sm text-primary outline-none focus:border-accent-teal transition-all placeholder:text-muted"
+                  className="w-full h-12 bg-elevated border border-border rounded-xl pl-10 pr-4 text-sm text-primary outline-none focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/15 transition-all placeholder:text-muted"
                   placeholder="Masukkan username…"
                 />
               </div>
@@ -166,7 +183,7 @@ export function LoginForm() {
 
             <div className="space-y-1">
               <div className="flex justify-between items-center ml-1">
-                <label htmlFor="login-password" className="text-xs font-medium text-muted">
+                <label htmlFor="login-password" className="text-sm font-semibold text-primary">
                   Kata Sandi
                 </label>
                 <Link href="/forgot-password" className="text-xs text-accent-teal hover:underline font-medium">
@@ -183,7 +200,7 @@ export function LoginForm() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full h-11 bg-elevated border border-border rounded-xl pl-10 pr-10 text-sm text-primary outline-none focus:border-accent-teal transition-all placeholder:text-muted"
+                  className="w-full h-12 bg-elevated border border-border rounded-xl pl-10 pr-10 text-sm text-primary outline-none focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/15 transition-all placeholder:text-muted"
                   placeholder="••••••••"
                 />
                 <button
@@ -200,7 +217,7 @@ export function LoginForm() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-11 bg-accent-teal hover:brightness-110 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-accent-teal/20 cursor-pointer mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full h-12 bg-accent-teal hover:brightness-110 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-accent-teal/20 cursor-pointer mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

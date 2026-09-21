@@ -7,7 +7,7 @@ Konvensi tipe data: `id`/`*_id` (FK) = `uuid`; harga/nominal = `decimal`; waktu 
 ## SAAS & MULTI-TENANCY
 
 ## tenants
-id (uuid, PK), slug (varchar, unique), name (varchar), plan (varchar, enum: STARTER/PRO/BUSINESS/ENTERPRISE), status (varchar, enum: UNPAID/ACTIVE/SUSPENDED/CHURNED; TRIAL = data lama), trial_ends_at (timestamptz, usang — selalu null), subscription_started_at (timestamptz), current_period_start (timestamptz), current_period_end (timestamptz), billing_email (varchar), owner_name (varchar), owner_phone (varchar), custom_domain (varchar, nullable), wa_provider (varchar), wa_api_key (varchar) [ENCRYPTED], max_users (integer), addon_users (integer, default 0 — kursi tambahan di luar kuota paket), created_at (timestamptz), updated_at (timestamptz)
+id (uuid, PK), slug (varchar, unique), name (varchar), plan (varchar, enum: STARTER/PRO/BUSINESS/ENTERPRISE), status (varchar, enum: UNPAID/ACTIVE/SUSPENDED/CHURNED; TRIAL = data lama), subscription_started_at (timestamptz), current_period_start (timestamptz), current_period_end (timestamptz), billing_email (varchar), owner_name (varchar), owner_phone (varchar), custom_domain (varchar, nullable), wa_provider (varchar), wa_api_key (varchar) [ENCRYPTED], max_users (integer), addon_users (integer, default 0 — kursi tambahan di luar kuota paket), created_at (timestamptz), updated_at (timestamptz)
 
 ## subscription_plans
 id (uuid, PK), name (varchar), slug (varchar, unique), price_monthly (decimal), max_users (integer), max_orders_per_month (integer), features_json (jsonb), active (boolean)
@@ -28,7 +28,7 @@ id (uuid, PK), code (varchar, unique), description (varchar, nullable), discount
 id (uuid, PK), voucher_id (uuid, FK → vouchers.id, cascade), tenant_id (uuid, FK → tenants.id), invoice_id (uuid, nullable), code (varchar), discount_amount (decimal), created_at (timestamptz)
 
 ## platform_settings
-key (varchar, PK), value_json (jsonb), updated_at (timestamptz) — mis. `payment.methods` berisi toggle gateway/manual, provider, dan instruksi transfer
+key (varchar, PK), value_json (jsonb), updated_at (timestamptz) — berisi `payment.methods` (toggle gateway/manual, provider, instruksi transfer) dan `billing.pricing` (harga kursi add-on, batas kursi, diskon termin, harga layanan, jatuh tempo invoice)
 
 ## bank_accounts
 id (uuid, PK), bank_name (varchar), account_number (varchar), account_holder (varchar), label (varchar, nullable), notes (varchar, nullable), active (boolean), sort_order (integer), created_at (timestamptz), updated_at (timestamptz)

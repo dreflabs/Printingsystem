@@ -34,7 +34,7 @@ export default function KebijakanPrivasiPage() {
           <li>Menyediakan dan mengoperasikan Layanan sesuai peran akses Anda.</li>
           <li>Mengamankan akun (deteksi percobaan masuk mencurigakan, penguncian sementara, jejak audit).</li>
           <li>Mengirim notifikasi terkait pesanan melalui WhatsApp/email bila fitur tersebut Anda aktifkan.</li>
-          <li>Menagih langganan dan mengelola masa uji coba.</li>
+          <li>Menagih langganan dan memverifikasi pembayaran.</li>
           <li>Meningkatkan keandalan dan performa Layanan.</li>
         </ul>
         <p>Kami tidak menjual data Anda dan tidak menggunakannya untuk iklan.</p>

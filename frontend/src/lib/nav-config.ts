@@ -125,15 +125,26 @@ export const GROUPED_NAV: NavEntry[] = [
   },
 ];
 
-/** Navigasi rata mode SOLO (percetakan 1 orang) — tak perlu grup. */
-export const SOLO_NAV: { label: string; href: string; icon: LucideIcon }[] = [
+/**
+ * Navigasi rata mode SOLO (percetakan 1 orang) — tak perlu grup, tetapi tetap
+ * LENGKAP: semua halaman yang dibutuhkan operator tunggal harus bisa dijangkau.
+ * `feature` opsional dipakai untuk menyembunyikan item yang tidak ada di paket
+ * (sama seperti penyaringan navigasi tim).
+ */
+export const SOLO_NAV: { label: string; href: string; icon: LucideIcon; feature?: string }[] = [
   { label: "Beranda", href: "/beranda", icon: LayoutDashboard },
   { label: "Order", href: "/admin", icon: ShoppingCart },
   { label: "Produksi", href: "/admin/production", icon: Factory },
-  { label: "Kasir", href: "/pos", icon: ShoppingCart },
-  { label: "Katalog & Harga", href: "/admin/products", icon: Tag },
   { label: "Scan QR", href: "/scan", icon: ScanLine },
+  { label: "Kasir", href: "/pos", icon: ShoppingCart, feature: "pos" },
+  { label: "Gudang & Finishing", href: "/finishing", icon: Package, feature: "storage" },
+  { label: "Katalog & Harga", href: "/admin/products", icon: Tag },
+  { label: "Pelanggan", href: "/admin/customers", icon: Users },
+  { label: "Laporan", href: "/admin/reports", icon: BarChart2, feature: "reports" },
   { label: "Pegawai & Akses", href: "/owner/users", icon: Users },
+  { label: "Absensi & Gaji", href: "/admin/payroll", icon: Clock3, feature: "hrm" },
+  { label: "Audit Log", href: "/audit-logs", icon: BookOpen, feature: "audit_trail" },
+  { label: "Pengaturan Toko", href: "/owner/toko", icon: Store },
   { label: "Paket & Tagihan", href: "/owner/billing", icon: CreditCard },
   { label: "Bantuan", href: "/bantuan", icon: BookOpen },
 ];

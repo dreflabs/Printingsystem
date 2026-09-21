@@ -13,6 +13,7 @@ type Suggestion = {
   staffCount: number;
   ownerOps: string[];
   sheddableRoles: string[];
+  gatesMismatch: boolean;
 };
 
 const ROLE_LABEL: Record<string, string> = {
@@ -30,6 +31,7 @@ export function WorkspaceModeNudge() {
   const [ready, setReady] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [shed, setShed] = useState<Set<string>>(new Set());
+  const [syncGates, setSyncGates] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [applied, setApplied] = useState<null | { prevMode: WorkspaceMode; prevOps: string[] }>(null);
@@ -37,10 +39,12 @@ export function WorkspaceModeNudge() {
   const load = useCallback(async () => {
     const r = await getWorkspaceModeSuggestion();
     if (r.success && r.data) {
-      setSug(r.data as Suggestion);
-      setShed(new Set((r.data as Suggestion).sheddableRoles));
+      const data = r.data as Suggestion;
+      setSug(data);
+      setShed(new Set(data.sheddableRoles));
+      setSyncGates(data.gatesMismatch);
       try {
-        setDismissed(localStorage.getItem(dismissKey(r.data as Suggestion)) === "1");
+        setDismissed(localStorage.getItem(dismissKey(data)) === "1");
       } catch { /* ignore */ }
     } else {
       setSug(null);
@@ -63,7 +67,7 @@ export function WorkspaceModeNudge() {
     const prevOps = [...sug.ownerOps];
     const prevMode = sug.current;
 
-    const m = await setWorkspaceMode(sug.suggested);
+    const m = await setWorkspaceMode(sug.suggested, { syncWorkflowGates: syncGates });
     if (!m.success) { setErr(m.error ?? "Gagal mengganti tampilan."); setBusy(false); return; }
 
     if (canShed && shed.size > 0) {
@@ -178,6 +182,23 @@ export function WorkspaceModeNudge() {
                 Bisa diambil lagi kapan saja di Pegawai &amp; Akses.
               </p>
             </div>
+          )}
+
+          {sug.gatesMismatch && (
+            <label className="mt-2.5 flex items-start gap-2 rounded-lg border border-border bg-elevated/50 p-2.5 text-xs text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={syncGates}
+                onChange={() => setSyncGates((v) => !v)}
+                className="mt-0.5"
+              />
+              <span>
+                Sesuaikan juga kebijakan alur kerja:{" "}
+                {sug.suggested === "TEAM_FULL"
+                  ? "order tidak auto-release (perlu rilis Admin) dan serah terima wajib konfirmasi counter."
+                  : "order otomatis turun ke produksi dan serah terima bisa langsung."}
+              </span>
+            </label>
           )}
 
           {err && <p className="text-xs text-status-red mt-1.5">{err}</p>}

@@ -7,6 +7,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { getTenantEntitlements } from "@/lib/entitlements";
 import { computeOrderEstimate, SAAS_PLANS, type SelfServePlanKey } from "@/lib/saas-catalog";
+import { getPricingConfig } from "@/lib/pricing-config";
 import { changePlanCore } from "@/lib/plan-change";
 import { validateVoucher } from "@/lib/voucher";
 import { getActiveBankAccounts, getAvailablePaymentMethods } from "@/lib/payment-settings";
@@ -159,7 +160,12 @@ export async function getTenantBillingSummary(): Promise<ActionResult<TenantBill
       prisma.tenantSubscription.findFirst({
         where: { tenant_id: tenant.id, status: "ACTIVE" },
         orderBy: { started_at: "desc" },
-        select: { term_months: true, service_keys: true, voucher_code: true },
+        select: {
+          term_months: true,
+          service_keys: true,
+          voucher_code: true,
+          plan: { select: { price_monthly: true } },
+        },
       }),
     ]);
     if (!t) return fail("Data tenant tidak ditemukan.");
@@ -169,14 +175,25 @@ export async function getTenantBillingSummary(): Promise<ActionResult<TenantBill
     const planKey = PLAN_KEY_BY_TENANT_PLAN[t.plan.toUpperCase()];
     const termMonths = subscription?.term_months ?? 1;
     const serviceKeys = subscription?.service_keys ?? [];
+    // Harga & parameter komersial dibaca dari pengaturan platform + baris
+    // SubscriptionPlan, bukan konstanta katalog.
+    const pricing = await getPricingConfig();
+    const planPriceMonthly = subscription?.plan ? Number(subscription.plan.price_monthly) : null;
     const estimate = planKey
-      ? computeOrderEstimate({ plan: planKey, months: termMonths, addonSeats: t.addon_users ?? 0, services: serviceKeys })
+      ? computeOrderEstimate({
+          plan: planKey,
+          months: termMonths,
+          addonSeats: t.addon_users ?? 0,
+          services: serviceKeys,
+          pricing,
+          planPriceMonthly,
+        })
       : null;
 
     return ok({
       plan: t.plan,
       planName: planDef?.name ?? t.plan,
-      priceMonthly: planDef ? Number(planDef.price_monthly) : null,
+      priceMonthly: planPriceMonthly ?? (planDef ? Number(planDef.price_monthly) : null),
       status: t.status,
       maxUsers: entitlements.maxUsers,
       activeUsers,
@@ -269,21 +286,26 @@ export async function applyVoucher(code: string): Promise<ActionResult<{ code: s
       prisma.tenantSubscription.findFirst({
         where: { tenant_id: tenant.id, status: "ACTIVE" },
         orderBy: { started_at: "desc" },
-        select: { id: true, term_months: true, service_keys: true },
+        select: { id: true, term_months: true, service_keys: true, plan: { select: { price_monthly: true } } },
       }),
     ]);
     if (!t || !sub) return fail("Langganan aktif tidak ditemukan.");
 
     const planKey = PLAN_KEY_BY_TENANT_PLAN[t.plan.toUpperCase()];
+    const pricing = await getPricingConfig();
     const estimate = planKey
       ? computeOrderEstimate({
           plan: planKey,
           months: sub.term_months ?? 1,
           addonSeats: t.addon_users ?? 0,
           services: sub.service_keys ?? [],
+          pricing,
+          planPriceMonthly: Number(sub.plan.price_monthly),
         })
       : null;
-    const subtotal = estimate ? estimate.total : Number(PLAN_BY_TENANT_PLAN[t.plan.toUpperCase()]?.price_monthly ?? 0);
+    const subtotal = estimate
+      ? estimate.total
+      : Number(sub.plan.price_monthly) || Number(PLAN_BY_TENANT_PLAN[t.plan.toUpperCase()]?.price_monthly ?? 0);
     if (subtotal <= 0) return fail("Belum ada tagihan yang bisa diberi voucher.");
 
     const check = await validateVoucher(code, subtotal);

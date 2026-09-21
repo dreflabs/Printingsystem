@@ -103,7 +103,11 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", fea
   const navItems: ResolvedNav[] = React.useMemo(() => {
     const featureSet = features ? new Set(features) : undefined;
     if (soloView) {
-      return SOLO_NAV.map((n) => ({ kind: "link" as const, label: n.label, href: n.href, icon: n.icon }));
+      // SOLO_NAV juga disaring entitlement supaya konsisten dengan nav tim:
+      // menu yang tidak ada di paket tenant tidak ditampilkan.
+      return SOLO_NAV
+        .filter((n) => !n.feature || !featureSet || featureSet.has(n.feature))
+        .map((n) => ({ kind: "link" as const, label: n.label, href: n.href, icon: n.icon }));
     }
     const scope: UserRole[] = teamOwnerView
       ? ["owner"]

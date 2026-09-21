@@ -176,18 +176,23 @@ function revalidateMode() {
 }
 
 /**
- * Saran ganti tampilan workspace untuk Owner, dihitung dari jumlah pegawai aktif
- * (bukan lagi tebakan "Owner belum punya peran"). Mengembalikan `null` kalau
- * tak ada yang perlu ditindak — jadi tenant yang sudah pas TIDAK di-nag.
+ * Saran ganti tampilan workspace untuk Owner, dihitung dari jumlah pegawai aktif.
+ * Mengembalikan `null` kalau tak ada yang perlu ditindak — jadi tenant yang sudah
+ * pas TIDAK di-nag.
  *
- * Aturan (hanya lintas batas SOLO ⟷ TIM; TEAM_SMALL/TEAM_FULL tidak saling nag):
- *   - SOLO + ada ≥1 pegawai   → sarankan TEAM_SMALL (≤4) / TEAM_FULL (≥5)
- *   - mode TIM + 0 pegawai + SUDAH pernah ada order → sarankan kembali ke SOLO
+ * Aturan (semua transisi antar mode):
+ *   - SOLO + ada ≥1 pegawai   → TEAM_SMALL (≤4) / TEAM_FULL (≥5)
+ *   - TEAM_SMALL + ≥5 pegawai → TEAM_FULL
+ *   - TEAM_FULL + 1–4 pegawai → TEAM_SMALL
+ *   - mode TIM + 0 pegawai + SUDAH pernah ada order → kembali ke SOLO
  *     (tenant TIM yang baru daftar & belum jalan TIDAK di-nag balik ke SOLO —
  *      dia memang sedang menuju merekrut, bukan "tim bubar")
  *
  * `sheddableRoles` = peran operasional yang masih dipegang Owner PADAHAL sudah
  * ada pegawai aktif yang meng-cover-nya → aman ditawarkan untuk dilepas.
+ *
+ * `gatesMismatch` = kebijakan alur kerja (rilis produksi & konfirmasi counter)
+ * belum sesuai dengan mode tujuan. Dipakai UI untuk menawarkan sinkronisasi.
  */
 export async function getWorkspaceModeSuggestion() {
   try {
@@ -197,13 +202,19 @@ export async function getWorkspaceModeSuggestion() {
 
     const current = normalizeWorkspaceMode((tenant as { workspace_mode?: string }).workspace_mode);
 
-    const staff = await prisma.user.findMany({
-      where: { tenant_id: tenant.id, active: true, role: { name: { not: "owner" } } },
-      select: {
-        role: { select: { name: true } },
-        extra_roles: { select: { role: { select: { name: true } } } },
-      },
-    });
+    const [staff, policy] = await Promise.all([
+      prisma.user.findMany({
+        where: { tenant_id: tenant.id, active: true, role: { name: { not: "owner" } } },
+        select: {
+          role: { select: { name: true } },
+          extra_roles: { select: { role: { select: { name: true } } } },
+        },
+      }),
+      prisma.tenant.findUnique({
+        where: { id: tenant.id },
+        select: { require_admin_production_release: true, require_counter_confirmation: true },
+      }),
+    ]);
     const staffCount = staff.length;
     const covered = new Set<string>();
     for (const s of staff) {
@@ -212,27 +223,77 @@ export async function getWorkspaceModeSuggestion() {
     }
 
     let suggested: WorkspaceMode = current;
-    if (current === "SOLO" && staffCount > 0) {
-      suggested = staffCount <= 4 ? "TEAM_SMALL" : "TEAM_FULL";
-    } else if (current !== "SOLO" && staffCount === 0) {
+    if (current !== "SOLO" && staffCount === 0) {
       const hasOrders = (await prisma.order.count({ where: { tenant_id: tenant.id } })) > 0;
       if (hasOrders) suggested = "SOLO";
+    } else if (current === "SOLO" && staffCount > 0) {
+      suggested = staffCount <= 4 ? "TEAM_SMALL" : "TEAM_FULL";
+    } else if (current === "TEAM_SMALL" && staffCount >= 5) {
+      suggested = "TEAM_FULL";
+    } else if (current === "TEAM_FULL" && staffCount > 0 && staffCount <= 4) {
+      suggested = "TEAM_SMALL";
     }
 
     const ownerOps = OPERATIONAL_ROLES.filter((r) => actor.roles.includes(r));
     const sheddableRoles = ownerOps.filter((r) => covered.has(r));
 
+    // Kebijakan alur kerja hanya "ketat" di TEAM_FULL. Kalau mode berubah dan
+    // gate masih mengikuti mode lama, tawarkan sinkronisasi (opt-in).
+    const strict = suggested === "TEAM_FULL";
+    const gatesMismatch =
+      current !== suggested &&
+      (policy?.require_admin_production_release !== strict || policy?.require_counter_confirmation !== strict);
+
     if (current === suggested && sheddableRoles.length === 0) return ok(null);
 
-    return ok({ current, suggested, staffCount, ownerOps, sheddableRoles });
+    return ok({ current, suggested, staffCount, ownerOps, sheddableRoles, gatesMismatch });
   } catch (e) {
     console.error("getWorkspaceModeSuggestion:", e);
     return fail(safeError(e, "Gagal memuat saran tampilan."));
   }
 }
 
-/** Ganti `Tenant.workspace_mode`. Owner saja. Tidak menyentuh izin/Role. */
-export async function setWorkspaceMode(mode: WorkspaceMode) {
+/** Pengaturan tampilan workspace + kebijakan alur kerja, untuk halaman Pengaturan Toko. */
+export async function getWorkspaceSettings() {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!actor.roles.includes("owner")) return fail("Hanya Owner yang bisa melihat pengaturan tampilan.");
+
+    const [t, staffCount] = await Promise.all([
+      prisma.tenant.findUnique({
+        where: { id: tenant.id },
+        select: {
+          workspace_mode: true,
+          require_admin_production_release: true,
+          require_counter_confirmation: true,
+        },
+      }),
+      prisma.user.count({ where: { tenant_id: tenant.id, active: true, role: { name: { not: "owner" } } } }),
+    ]);
+    if (!t) return fail("Data toko tidak ditemukan.");
+
+    return ok({
+      mode: normalizeWorkspaceMode(t.workspace_mode),
+      requireAdminRelease: t.require_admin_production_release,
+      requireCounterConfirmation: t.require_counter_confirmation,
+      staffCount,
+    });
+  } catch (e) {
+    console.error("getWorkspaceSettings:", e);
+    return fail(safeError(e, "Gagal memuat pengaturan tampilan."));
+  }
+}
+
+/**
+ * Ganti `Tenant.workspace_mode`. Owner saja. Tidak menyentuh izin/Role.
+ *
+ * `syncWorkflowGates: true` ikut menyetel dua kebijakan alur kerja mengikuti
+ * mode tujuan (TEAM_FULL = ketat). Tanpa opsi ini, gate dibiarkan apa adanya —
+ * perilaku lama, supaya tenant yang sengaja memakai kombinasi lain tidak
+ * diubah diam-diam.
+ */
+export async function setWorkspaceMode(mode: WorkspaceMode, opts: { syncWorkflowGates?: boolean } = {}) {
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
@@ -240,11 +301,30 @@ export async function setWorkspaceMode(mode: WorkspaceMode) {
     if (!WORKSPACE_MODES.includes(mode)) return fail("Mode tampilan tidak dikenal.");
 
     const before = normalizeWorkspaceMode((tenant as { workspace_mode?: string }).workspace_mode);
-    if (before === mode) return ok(null);
+    const strict = mode === "TEAM_FULL";
+    const syncGates = opts.syncWorkflowGates === true;
+    if (before === mode && !syncGates) return ok(null);
 
-    await prisma.tenant.update({ where: { id: tenant.id }, data: { workspace_mode: mode } });
-    await logAction(actor.id, "WORKSPACE_MODE_SET", "Tenant", tenant.id, { mode: before }, { mode }, impersonationNote(actor));
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: {
+        workspace_mode: mode,
+        ...(syncGates
+          ? { require_admin_production_release: strict, require_counter_confirmation: strict }
+          : {}),
+      },
+    });
+    await logAction(
+      actor.id,
+      "WORKSPACE_MODE_SET",
+      "Tenant",
+      tenant.id,
+      { mode: before },
+      { mode, sync_workflow_gates: syncGates },
+      impersonationNote(actor),
+    );
     revalidateMode();
+    revalidatePath("/owner/toko");
     return ok(null);
   } catch (e) {
     console.error("setWorkspaceMode:", e);
@@ -307,5 +387,6 @@ export async function setOwnerOperationalRoles(names: string[]) {
 export async function enableSoloMode() {
   const r1 = await setOwnerOperationalRoles([...OPERATIONAL_ROLES]);
   if (!r1.success) return r1;
-  return setWorkspaceMode("SOLO");
+  // Kembali ke solo = alur kerja kembali longgar (tanpa gate rilis/counter).
+  return setWorkspaceMode("SOLO", { syncWorkflowGates: true });
 }

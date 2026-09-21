@@ -27,9 +27,9 @@ test("requireEntitlement locks qc for Starter and allows it for Pro", { skip: pr
       data: { name: "Pro test", slug: `pro-${tag}`, price_monthly: 0, features_json: JSON.stringify(["dashboard", "kanban", "qc", "storage", "whatsapp_unlimited", "audit_trail"]) },
     });
     proPlanId = proPlan.id;
-    const starterTenant = await db.tenant.create({ data: { slug: `st-${tag}`, name: "Starter Co", plan: "STARTER", status: "TRIAL" } });
+    const starterTenant = await db.tenant.create({ data: { slug: `st-${tag}`, name: "Starter Co", plan: "STARTER", status: "ACTIVE" } });
     starterTenantId = starterTenant.id;
-    const proTenant = await db.tenant.create({ data: { slug: `pr-${tag}`, name: "Pro Co", plan: "PRO", status: "TRIAL" } });
+    const proTenant = await db.tenant.create({ data: { slug: `pr-${tag}`, name: "Pro Co", plan: "PRO", status: "ACTIVE" } });
     proTenantId = proTenant.id;
     await db.tenantSubscription.create({ data: { tenant_id: starterTenant.id, plan_id: starterPlan.id, status: "ACTIVE" } });
     await db.tenantSubscription.create({ data: { tenant_id: proTenant.id, plan_id: proPlan.id, status: "ACTIVE" } });
@@ -68,7 +68,7 @@ test("addon_users menambah maxUsers di atas kuota paket", { skip: process.env.PR
         slug: `ad-${tag}`,
         name: "Addon Co",
         plan: "STARTER",
-        status: "TRIAL",
+        status: "ACTIVE",
         max_users: 3,
         addon_users: 2,
       },

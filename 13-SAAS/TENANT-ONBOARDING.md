@@ -13,13 +13,18 @@ Onboarding dirancang agar mandiri (*self-service*) dengan target percetakan bisa
 - **Release:** Jika provider email sudah siap, sistem mengirim tautan verifikasi sekali pakai dan login baru memerlukan email terverifikasi.
 
 ### Langkah 2: Profil Percetakan
-- **Input:** Nama Percetakan (contoh: "Maju Jaya Print"), subdomain, alamat/kota (opsional), dan ukuran tim (solo / kecil / per divisi).
+- **Input:** Nama Percetakan (contoh: "Maju Jaya Print"), subdomain, alamat/kota (opsional), dan ukuran tim.
 - **Subdomain:** Sistem otomatis menyarankan `majujayaprint.printpilot.id` (user bisa mengedit).
 - Persetujuan Syarat & Ketentuan + Kebijakan Privasi wajib dicentang.
-- Ukuran tim menentukan `Tenant.workspace_mode` (tampilan navigasi/beranda, bukan izin).
+- Ukuran tim ditanyakan dua tingkat: **"Saya sendiri"** atau **"Dengan tim"** (lalu "Tim kecil 2–5" atau "Tim per divisi 6+"). Jawaban menentukan:
+  - `Tenant.workspace_mode` — tampilan navigasi & beranda untuk akun Owner (bukan izin; izin tetap berbasis role).
+  - Default dua kebijakan alur kerja: pada **Tim per divisi**, order tidak auto-release (perlu rilis Admin) dan serah terima wajib konfirmasi counter. Pada mode lain keduanya longgar.
+  - Saran paket minimum di langkah berikutnya: bila kuota user paket lebih kecil dari perkiraan jumlah orang, wizard menyarankan paket lebih besar atau menambah kursi add-on.
+- **Bisa diubah kapan saja** di **Pengaturan Toko → Tampilan Workspace**, dengan opsi menyinkronkan kedua kebijakan alur kerja. Nudge di dashboard Owner juga menyarankan perpindahan mode saat jumlah pegawai aktif berubah (SOLO ↔ Tim kecil ↔ Tim per divisi).
 
 ### Langkah 3: Pilih Paket
 - Tiga paket self-serve (Starter/Pro/Business) ditampilkan dengan harga, kuota, dan fitur utama; bisa diganti tanpa kehilangan isian sebelumnya.
+- **Validasi silang dengan ukuran tim:** paket yang kuota usernya lebih kecil dari perkiraan jumlah orang diberi peringatan, dan paket pertama yang cukup ditandai "Cukup untuk tim Anda". Perkiraan memakai batas bawah rentang (solo 1, tim kecil 2, tim per divisi 6).
 - Enterprise tidak muncul — kontraknya lewat Sales.
 
 ### Langkah 4: Durasi & Kapasitas
@@ -29,7 +34,7 @@ Onboarding dirancang agar mandiri (*self-service*) dengan target percetakan bisa
 ### Langkah 5: Layanan & Ringkasan
 - **Layanan tambahan:** Instalasi & Training Online / Onsite. Harga list ditampilkan dicoret dan gratis selama masa promo.
 - **Ringkasan Pesanan:** rincian per baris, total tagihan pertama, dan catatan bahwa invoice pertama terbit otomatis dengan jatuh tempo 3 hari serta pembayaran dikonfirmasi manual oleh tim.
-- Menekan **Buat Workspace** memanggil `registerTenant()` (satu transaksi): Tenant (TRIAL), TenantSubscription (`term_months`, `service_keys`), user Owner dengan SEMUA role operasional sebagai `extra_roles`, seed material starter, pengaturan absensi default, `OnboardingStep.WIZARD_DONE`, dan `TenantAuditLog` berisi rincian pilihan langganan.
+- Menekan **Buat Workspace** memanggil `registerTenant()` (satu transaksi): Tenant (`UNPAID`), TenantSubscription (`term_months`, `service_keys`), user Owner dengan SEMUA role operasional sebagai `extra_roles`, seed material starter, pengaturan absensi default, `OnboardingStep.WIZARD_DONE`, dan `TenantAuditLog` berisi rincian pilihan langganan. Invoice pertama diterbitkan setelah transaksi ini.
 
 ### Langkah 6: Selesai & Go Live
 - User diarahkan ke **Owner Dashboard** di subdomain mereka sendiri (misal: `https://majujayaprint.printpilot.id/owner`).

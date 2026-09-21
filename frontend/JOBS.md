@@ -140,7 +140,7 @@ HTTP `200` = semua terkirim, `502` = ada yang gagal.
   tabel `NotificationEvent` (tabel itu wajib punya `order_id` + `customer_id`).
 - Template pesan pelanggan: `src/lib/notification-templates.ts`.
 - `tenant-lifecycle`: ambang di `src/lib/tenant-lifecycle.ts`
-  (`TRIAL_GRACE_DAYS` 14, `SUSPENDED_GRACE_DAYS` 60, `PURGE_GRACE_DAYS` 30).
+  (`UNPAID_GRACE_DAYS` 7, `SUSPENDED_GRACE_DAYS` 60, `PURGE_GRACE_DAYS` 30).
   Saat churn, slug aktif di-rename `<slug>-retired-<id8>` sehingga nama aslinya
   bebas dipakai pendaftar baru; `retired_slug` menyimpan yang asli. Purge
   menghapus seluruh baris tenant (urut FK di `purgeTenant()`) dan menulis satu

@@ -187,8 +187,8 @@ meng-arsipkan `SUSPENDED` lama jadi `CHURNED` (melepas nama subdomain-nya) dan
 menghapus permanen tenant `CHURNED` yang lewat 30 hari. **Setelah deploy
 penghapusan free trial**, jalankan sekali di dalam container:
 `npm run backfill:trial-to-active` (DRY RUN — tambah `APPLY=true` untuk
-eksekusi) supaya tenant yang sedang trial tidak terputus. Untuk data lama yang
-sudah menumpuk, `npm run backfill:churn-stale-trials` tetap tersedia.
+eksekusi) supaya tenant yang sedang trial tidak terputus. Jalankan backfill ini
+**sebelum** migrasi `drop_trial_ends_at` diterapkan bila masih ada tenant TRIAL.
 
 ### 6b. Provider WhatsApp & email
 

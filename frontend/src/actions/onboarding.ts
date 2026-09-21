@@ -34,9 +34,10 @@ export async function getSetupChecklist() {
     // tambahan → item "pegawai" dianggap tuntas (memang tak perlu staf).
     const soloOwner = ["admin", "designer_sales", "operator", "gudang"].some((r) => actor.roles.includes(r));
     const totalProducts = printingProducts + retailProducts;
-    // Mode SOLO: langkah "tambah pegawai" tidak relevan — buang dari checklist
-    // (bukan sekadar ditandai selesai) supaya daftar penyiapan lebih ringkas.
-    const soloView = (tenant as { workspace_mode?: string }).workspace_mode === "SOLO";
+    // Mode SOLO: langkah "tambah pegawai" tidak relevan — tapi HANYA kalau
+    // memang belum ada pegawai. Kalau sudah ada pegawai aktif, mode SOLO berarti
+    // Owner belum sempat menyesuaikan tampilan; jangan sembunyikan langkahnya.
+    const soloView = (tenant as { workspace_mode?: string }).workspace_mode === "SOLO" && staff === 0;
 
     const items = [
       { key: "machine", done: machines > 0, count: machines },

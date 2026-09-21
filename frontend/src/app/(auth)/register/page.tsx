@@ -1,7 +1,8 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import {
@@ -24,17 +25,16 @@ import {
   UserPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { registerTenant, validateSignupVoucher } from "@/actions/register";
+import { getSignupPricingConfig, registerTenant, validateSignupVoucher } from "@/actions/register";
 import {
-  ADDON_SEAT_PRICE_MONTHLY,
   computeOrderEstimate,
-  MAX_ADDON_SEATS,
+  DEFAULT_PRICING_CONFIG,
   resolveSelfServePlan,
   SAAS_PLANS,
   SELF_SERVE_PLAN_KEYS,
   SERVICE_OPTIONS,
-  SERVICE_PROMO_ACTIVE,
   SUBSCRIPTION_TERMS,
+  type PricingConfig,
   type SelfServePlanKey,
   type ServiceKey,
   type TermMonths,
@@ -75,6 +75,9 @@ const TEAM_SIZE_OPTIONS: { value: TeamSize; label: string; hint: string; icon: t
   { value: "full", label: "Tim per divisi", hint: "6+ orang, tiap bagian ada penanggung jawabnya", icon: Building2 },
 ];
 
+/** Perkiraan kebutuhan kursi minimum dari jawaban ukuran tim (ambil batas bawah rentang). */
+const REQUIRED_USERS: Record<TeamSize, number> = { solo: 1, small: 2, full: 6 };
+
 const rupiah = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 const rupiahShort = (n: number) => `Rp${Math.round(n / 1000).toLocaleString("id-ID")}rb`;
 
@@ -103,6 +106,12 @@ function RegisterWizard() {
   const [voucher, setVoucher] = useState<{ code: string; label: string; discountAmount: number } | null>(null);
   const [voucherError, setVoucherError] = useState<string | null>(null);
   const [checkingVoucher, setCheckingVoucher] = useState(false);
+  // Harga & parameter komersial dari pengaturan platform (fallback ke default
+  // katalog sampai data tiba) supaya angka di wizard = angka yang ditagih.
+  const [remote, setRemote] = useState<{
+    pricing: PricingConfig;
+    planOverrides: Record<string, { price_monthly: number; max_users: number | null; max_orders_per_month: number | null }>;
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -117,10 +126,57 @@ function RegisterWizard() {
     consentAccepted: false,
   });
 
-  const planDef = SAAS_PLANS[plan];
+  useEffect(() => {
+    let alive = true;
+    getSignupPricingConfig().then((r) => {
+      if (alive && r.success) setRemote(r.data);
+    });
+    return () => { alive = false; };
+  }, []);
+
+  const pricing = remote?.pricing ?? DEFAULT_PRICING_CONFIG;
+  const planOverrides = remote?.planOverrides ?? {};
+
+  /** Definisi paket dengan harga & kuota dari DB (fallback ke katalog). */
+  const planView = (key: SelfServePlanKey) => {
+    const def = SAAS_PLANS[key];
+    const ov = planOverrides[def.slug];
+    return {
+      ...def,
+      price_monthly: ov?.price_monthly ?? def.price_monthly,
+      max_users: ov?.max_users ?? def.max_users,
+      max_orders_per_month: ov?.max_orders_per_month ?? def.max_orders_per_month,
+    };
+  };
+
+  /** Termin dengan bulan-dibayar dari pengaturan platform. */
+  const termView = (t: (typeof SUBSCRIPTION_TERMS)[number]) => ({
+    ...t,
+    paidMonths: pricing.terms.find((x) => x.months === t.months)?.paidMonths ?? t.paidMonths,
+  });
+
+  /** Layanan dengan harga & flag promo dari pengaturan platform. */
+  const serviceView = (s: (typeof SERVICE_OPTIONS)[number]) => {
+    const cfg = pricing.services.find((x) => x.key === s.key);
+    return {
+      ...s,
+      listPrice: cfg?.listPrice ?? s.listPrice,
+      promoFree: cfg?.promoFree ?? s.promoFree,
+    };
+  };
+
+  const planDef = planView(plan);
   const estimate = useMemo(
-    () => computeOrderEstimate({ plan, months, addonSeats, services }),
-    [plan, months, addonSeats, services],
+    () =>
+      computeOrderEstimate({
+        plan,
+        months,
+        addonSeats,
+        services,
+        pricing,
+        planPriceMonthly: planDef.price_monthly,
+      }),
+    [plan, months, addonSeats, services, pricing, planDef.price_monthly],
   );
 
   // Diskon voucher dihitung terhadap komposisi pesanan saat itu — begitu
@@ -132,6 +188,14 @@ function RegisterWizard() {
 
   const discount = voucher?.discountAmount ?? 0;
   const payable = Math.max(0, estimate.total - discount);
+
+  // Validasi silang ukuran tim vs kuota paket: jawaban langkah 2 dipakai untuk
+  // menyarankan paket minimum dan mengingatkan bila kursi kurang.
+  const requiredUsers = REQUIRED_USERS[formData.teamSize];
+  const recommendedPlanKey = SELF_SERVE_PLAN_KEYS.find((k) => planView(k).max_users >= requiredUsers) ?? null;
+  const planCapacity = planDef.max_users + addonSeats;
+  const capacityShort = planCapacity < requiredUsers;
+  const suggestedAddonSeats = Math.min(pricing.maxSeats, Math.max(0, requiredUsers - planDef.max_users));
 
   const checkVoucher = async () => {
     setCheckingVoucher(true);
@@ -181,6 +245,9 @@ function RegisterWizard() {
 
   const handleBack = () => setStep((s) => Math.max(s - 1, 1));
 
+  const mobileStep = Math.min(step, STEPS.length - 1);
+  const mobileStepLabel = step >= STEPS.length ? "Selesai" : STEPS[step - 1].title;
+
   const submitRegistration = async () => {
     setIsLoading(true);
     setError(null);
@@ -223,10 +290,10 @@ function RegisterWizard() {
 
   return (
     <div className="min-h-screen bg-base flex flex-col font-sans">
-      <header className="h-20 border-b border-border/50 flex items-center px-8">
+      <header className="h-20 border-b border-border/50 flex items-center px-6 sm:px-8">
         <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <img src="/PRINT_PILOT_LOGO.png" alt="Print Pilot Logo" className="h-8 w-8 object-contain" />
-          <span className="font-bold text-xl text-primary tracking-tight">
+          <Image src="/PRINT_PILOT_LOGO.png" alt="Print Pilot Logo" width={32} height={32} priority className="h-8 w-8 object-contain" />
+          <span className="font-bold text-xl text-primary tracking-tight whitespace-nowrap">
             Print Pilot<span className="text-accent-teal">.id</span>
           </span>
         </Link>
@@ -245,7 +312,7 @@ function RegisterWizard() {
                 Paket {planDef.name} — {rupiahShort(planDef.price_monthly)}/bln
               </span>
               <p className="text-muted text-sm">
-                Siapkan workspace percetakan Anda dalam {STEPS.length - 1} langkah.
+                Siapkan workspace percetakan Anda dalam {STEPS.length - 1} langkah utama.
                 <br />
                 Tanpa kartu kredit, bisa batal kapan saja.
               </p>
@@ -279,6 +346,18 @@ function RegisterWizard() {
 
           {/* Kolom Kanan: Wizard */}
           <div className="md:w-2/3">
+            <div className="md:hidden mb-4 rounded-2xl border border-border bg-card/80 px-4 py-3">
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="font-bold text-primary">Langkah {mobileStep} dari 5</span>
+                <span className="truncate text-muted">{mobileStepLabel}</span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border">
+                <div
+                  className="h-full rounded-full bg-accent-teal transition-all duration-500"
+                  style={{ width: `${(mobileStep / 5) * 100}%` }}
+                />
+              </div>
+            </div>
             <div className="bg-card/80 backdrop-blur-xl border border-border p-8 rounded-3xl shadow-2xl relative overflow-hidden min-h-[480px] flex flex-col">
               {error && (
                 <div className="mb-5 rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2.5 text-xs font-semibold text-status-red">
@@ -465,48 +544,78 @@ function RegisterWizard() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-sm font-semibold text-muted">Berapa orang yang menjalankan percetakan ini?</label>
-                      <div className="grid gap-2">
-                        {TEAM_SIZE_OPTIONS.map((opt) => {
-                          const selected = formData.teamSize === opt.value;
+                      <label className="text-sm font-semibold text-muted">Anda menjalankan sendiri atau dengan tim?</label>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { team: false, label: "Saya sendiri", icon: User },
+                          { team: true, label: "Dengan tim", icon: Users },
+                        ].map((opt) => {
+                          const selected = (formData.teamSize !== "solo") === opt.team;
                           return (
                             <button
-                              key={opt.value}
+                              key={opt.label}
                               type="button"
-                              onClick={() => setFormData({ ...formData, teamSize: opt.value })}
+                              onClick={() =>
+                                setFormData({ ...formData, teamSize: opt.team ? (formData.teamSize === "solo" ? "small" : formData.teamSize) : "solo" })
+                              }
                               className={cn(
-                                "flex items-start gap-3 rounded-xl border p-3 text-left transition-all",
-                                selected
-                                  ? "border-accent-teal bg-accent-teal/5"
-                                  : "border-border hover:border-accent-teal/40"
+                                "flex items-center gap-2 rounded-xl border p-3 text-left transition-all",
+                                selected ? "border-accent-teal bg-accent-teal/5" : "border-border hover:border-accent-teal/40"
                               )}
                             >
-                              <span
-                                className={cn(
-                                  "mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                                  selected ? "bg-accent-teal/15 text-accent-teal" : "bg-elevated text-muted"
-                                )}
-                              >
-                                <opt.icon className="h-4 w-4" />
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className={cn("block text-sm font-bold", selected ? "text-primary" : "text-muted")}>
-                                  {opt.label}
-                                </span>
-                                <span className="block text-[11px] text-muted mt-0.5 leading-relaxed">{opt.hint}</span>
-                              </span>
-                              <span
-                                className={cn(
-                                  "mt-1 h-4 w-4 shrink-0 rounded-full border-2 transition-all",
-                                  selected ? "border-accent-teal bg-accent-teal" : "border-muted/40"
-                                )}
-                              />
+                              <opt.icon className={cn("h-4 w-4 shrink-0", selected ? "text-accent-teal" : "text-muted")} />
+                              <span className={cn("text-sm font-bold", selected ? "text-primary" : "text-muted")}>{opt.label}</span>
                             </button>
                           );
                         })}
                       </div>
+
+                      {formData.teamSize !== "solo" && (
+                        <div className="grid gap-2">
+                          {TEAM_SIZE_OPTIONS.filter((o) => o.value !== "solo").map((opt) => {
+                            const selected = formData.teamSize === opt.value;
+                            return (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => setFormData({ ...formData, teamSize: opt.value })}
+                                className={cn(
+                                  "flex items-start gap-3 rounded-xl border p-3 text-left transition-all",
+                                  selected
+                                    ? "border-accent-teal bg-accent-teal/5"
+                                    : "border-border hover:border-accent-teal/40"
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                                    selected ? "bg-accent-teal/15 text-accent-teal" : "bg-elevated text-muted"
+                                  )}
+                                >
+                                  <opt.icon className="h-4 w-4" />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className={cn("block text-sm font-bold", selected ? "text-primary" : "text-muted")}>
+                                    {opt.label}
+                                  </span>
+                                  <span className="block text-[11px] text-muted mt-0.5 leading-relaxed">{opt.hint}</span>
+                                </span>
+                                <span
+                                  className={cn(
+                                    "mt-1 h-4 w-4 shrink-0 rounded-full border-2 transition-all",
+                                    selected ? "border-accent-teal bg-accent-teal" : "border-muted/40"
+                                  )}
+                                />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
                       <p className="text-[10px] text-muted">
-                        Menentukan tampilan awal — menu &amp; beranda menyesuaikan. Bisa diubah kapan saja di Pengaturan.
+                        Menentukan tampilan awal (menu &amp; beranda) dan default kebijakan alur kerja untuk akun Owner.
+                        Izin tetap berbasis role. Bisa diubah kapan saja di <b>Pengaturan Toko</b>.
                       </p>
                     </div>
                   </div>
@@ -563,7 +672,7 @@ function RegisterWizard() {
 
                   <div className="grid gap-3 flex-1">
                     {SELF_SERVE_PLAN_KEYS.map((key) => {
-                      const def = SAAS_PLANS[key];
+                      const def = planView(key);
                       const selected = plan === key;
                       const popular = key === "pro";
                       return (
@@ -588,6 +697,11 @@ function RegisterWizard() {
                                     PALING POPULER
                                   </span>
                                 )}
+                                {key === recommendedPlanKey && (
+                                  <span className="rounded-full bg-status-green/15 px-2 py-0.5 text-[9px] font-bold text-status-green">
+                                    CUKUP UNTUK TIM ANDA
+                                  </span>
+                                )}
                               </p>
                               <p className="text-[11px] text-muted mt-0.5">{def.tagline}</p>
                             </div>
@@ -606,6 +720,12 @@ function RegisterWizard() {
                           <p className="mt-3 text-[10px] text-muted">
                             {def.max_users} user{def.max_orders_per_month ? ` · ${def.max_orders_per_month} order/bulan` : " · order tanpa batas"}
                           </p>
+                          {def.max_users < requiredUsers && (
+                            <p className="mt-1.5 text-[10px] font-semibold text-status-yellow-text">
+                              Kuota {def.max_users} user — tim Anda sekitar {requiredUsers}+ orang. Tambah kursi di langkah
+                              berikutnya atau pilih paket lebih besar.
+                            </p>
+                          )}
                         </button>
                       );
                     })}
@@ -642,7 +762,8 @@ function RegisterWizard() {
 
                   <div className="space-y-5 flex-1">
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                      {SUBSCRIPTION_TERMS.map((t) => {
+                      {SUBSCRIPTION_TERMS.map((t0) => {
+                        const t = termView(t0);
                         const selected = months === t.months;
                         const perMonth = (planDef.price_monthly * t.paidMonths) / t.months;
                         return (
@@ -679,7 +800,7 @@ function RegisterWizard() {
                           </p>
                           <p className="text-[11px] text-muted mt-0.5">
                             Paket {planDef.name} sudah termasuk {planDef.max_users} user. Tambahan{" "}
-                            {rupiah(ADDON_SEAT_PRICE_MONTHLY)}/user/bulan.
+                            {rupiah(pricing.seatPriceMonthly)}/user/bulan.
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
@@ -699,7 +820,7 @@ function RegisterWizard() {
                             type="button"
                             onClick={() => {
                               resetVoucher();
-                              setAddonSeats((n) => Math.min(MAX_ADDON_SEATS, n + 1));
+                              setAddonSeats((n) => Math.min(pricing.maxSeats, n + 1));
                             }}
                             className="h-8 w-8 rounded-lg border border-border flex items-center justify-center text-muted hover:border-accent-teal hover:text-accent-teal transition-all"
                             aria-label="Tambah kursi"
@@ -711,8 +832,26 @@ function RegisterWizard() {
                       {addonSeats > 0 && (
                         <p className="mt-3 text-[11px] font-semibold text-accent-teal">
                           Total kapasitas {planDef.max_users + addonSeats} user ·{" "}
-                          {rupiah(addonSeats * ADDON_SEAT_PRICE_MONTHLY * estimate.paidMonths)} per {estimate.paidMonths} bulan
+                          {rupiah(addonSeats * pricing.seatPriceMonthly * estimate.paidMonths)} per {estimate.paidMonths} bulan
                         </p>
+                      )}
+                      {planDef.max_users < requiredUsers && (
+                        <div className="mt-3 rounded-lg border border-status-yellow/40 bg-status-yellow/10 p-2.5 space-y-2">
+                          <p className="text-[11px] font-semibold text-status-yellow-text">
+                            Tim Anda sekitar {requiredUsers}+ orang, sedangkan paket ini {planDef.max_users} kursi.
+                            Tambah minimal {suggestedAddonSeats} kursi supaya semua orang bisa login.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetVoucher();
+                              setAddonSeats(suggestedAddonSeats);
+                            }}
+                            className="h-8 px-3 rounded-lg bg-status-yellow text-white text-[11px] font-bold hover:brightness-110"
+                          >
+                            Tambah {suggestedAddonSeats} kursi otomatis
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -748,9 +887,10 @@ function RegisterWizard() {
 
                   <div className="space-y-4 flex-1">
                     <div className="grid sm:grid-cols-2 gap-3">
-                      {SERVICE_OPTIONS.map((s) => {
+                      {SERVICE_OPTIONS.map((s0) => {
+                        const s = serviceView(s0);
                         const selected = services.includes(s.key);
-                        const free = SERVICE_PROMO_ACTIVE && s.promoFree;
+                        const free = pricing.servicePromoActive && s.promoFree;
                         return (
                           <button
                             key={s.key}
@@ -844,6 +984,18 @@ function RegisterWizard() {
                           <span className="text-sm font-bold text-primary">Total tagihan pertama</span>
                           <span className="text-lg font-extrabold text-primary">{rupiah(payable)}</span>
                         </div>
+                        <div className="flex items-center justify-between text-[11px] pt-2 border-t border-border">
+                          <span className="text-muted">Kapasitas user</span>
+                          <span className={capacityShort ? "font-bold text-status-red" : "font-bold text-primary"}>
+                            {planCapacity} kursi · tim {requiredUsers}+ orang
+                          </span>
+                        </div>
+                        {capacityShort && (
+                          <p className="text-[10px] font-semibold text-status-red">
+                            Kursi kurang {requiredUsers - planCapacity}. Kembali ke langkah Durasi &amp; Kapasitas untuk
+                            menambah kursi, atau pilih paket lebih besar.
+                          </p>
+                        )}
                       </div>
                       <p className="mt-3 text-[10px] text-muted leading-relaxed">
                         Invoice pertama diterbitkan otomatis dengan jatuh tempo 3 hari. Akses aplikasi dibuka penuh
@@ -922,11 +1074,11 @@ function RegisterWizard() {
               )}
             </div>
 
-            <div className="mt-6 text-center flex items-center justify-center gap-6 opacity-60">
-              <span className="flex items-center gap-1.5 text-[10px] text-muted">
+            <div className="mt-6 text-center flex flex-wrap items-center justify-center gap-2.5">
+              <span className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-2 text-[11px] text-muted">
                 <Lock className="h-3 w-3" /> Kata sandi di-hash (bcrypt)
               </span>
-              <span className="flex items-center gap-1.5 text-[10px] text-muted">
+              <span className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-2 text-[11px] text-muted">
                 <ShieldCheck className="h-3 w-3" /> Data tiap tenant terisolasi
               </span>
             </div>

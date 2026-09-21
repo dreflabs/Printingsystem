@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { logPlatform, headerMeta } from "@/lib/platform-audit";
 import type { PlatformActor } from "@/lib/platform";
-import { computeOrderEstimate, PAYMENT_DUE_DAYS, SAAS_PLANS, type SelfServePlanKey } from "@/lib/saas-catalog";
+import { computeOrderEstimate, SAAS_PLANS, type PricingConfig, type SelfServePlanKey } from "@/lib/saas-catalog";
+import { getPricingConfig } from "@/lib/pricing-config";
 import { validateVoucher } from "@/lib/voucher";
 
 const num = (v: unknown) => Number(v ?? 0);
@@ -68,6 +69,7 @@ function buildLines(input: {
   termMonths: number;
   addonUsers: number;
   serviceKeys: string[];
+  pricing: PricingConfig;
 }) {
   const planKey = PLAN_KEY_BY_SLUG[input.planSlug];
   if (!planKey) {
@@ -93,6 +95,9 @@ function buildLines(input: {
     months: input.termMonths,
     addonSeats: input.addonUsers,
     services: input.serviceKeys,
+    pricing: input.pricing,
+    // Harga paket dari baris SubscriptionPlan — sumber kebenaran penagihan.
+    planPriceMonthly: input.planPriceMonthly,
   });
 
   const lines = estimate.lines.map((l) => ({
@@ -139,7 +144,9 @@ export async function createInvoiceForSubscription(input: {
   dueDate?: Date;
 }): Promise<{ ok: true; invoice: CreatedInvoice } | { ok: false; reason: string }> {
   const { start, yyyymm } = resolvePeriod(input.period);
-  const dueDays = input.dueInDays && input.dueInDays > 0 ? Math.round(input.dueInDays) : PAYMENT_DUE_DAYS;
+  const pricing = await getPricingConfig();
+  const dueDays =
+    input.dueInDays && input.dueInDays > 0 ? Math.round(input.dueInDays) : pricing.paymentDueDays;
   const dueDate = input.dueDate ?? new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000);
 
   const sub = await prisma.tenantSubscription.findFirst({
@@ -169,6 +176,7 @@ export async function createInvoiceForSubscription(input: {
     termMonths: sub.term_months ?? 1,
     addonUsers: sub.tenant.addon_users ?? 0,
     serviceKeys: sub.service_keys ?? [],
+    pricing,
   });
   if (subtotal <= 0) return { ok: false, reason: "harga paket 0" };
 
@@ -289,7 +297,6 @@ export async function activateTenantForPaidInvoice(
       subscription_started_at: now,
       current_period_start: now,
       current_period_end: periodEnd,
-      trial_ends_at: null,
     },
   });
   if (sub) {
@@ -310,7 +317,9 @@ export async function generateInvoicesForPeriod(opts: {
   actor: PlatformActor | null;
 }): Promise<GenerateResult> {
   const { yyyymm, label } = resolvePeriod(opts.period);
-  const dueDays = opts.dueInDays && opts.dueInDays > 0 ? Math.round(opts.dueInDays) : PAYMENT_DUE_DAYS;
+  const pricing = await getPricingConfig();
+  const dueDays =
+    opts.dueInDays && opts.dueInDays > 0 ? Math.round(opts.dueInDays) : pricing.paymentDueDays;
   const dueDate = new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000);
 
   const subs = await prisma.tenantSubscription.findMany({

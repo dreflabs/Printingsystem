@@ -30,8 +30,8 @@ test("cross-tenant queries never return another tenant's records", { skip: proce
       db.$transaction(async (tx) => {
         const tag = randomUUID();
 
-        const tenantA = await tx.tenant.create({ data: { slug: `iso-a-${tag}`, name: "Tenant A", plan: "STARTER", status: "TRIAL" } });
-        const tenantB = await tx.tenant.create({ data: { slug: `iso-b-${tag}`, name: "Tenant B", plan: "STARTER", status: "TRIAL" } });
+        const tenantA = await tx.tenant.create({ data: { slug: `iso-a-${tag}`, name: "Tenant A", plan: "STARTER", status: "ACTIVE" } });
+        const tenantB = await tx.tenant.create({ data: { slug: `iso-b-${tag}`, name: "Tenant B", plan: "STARTER", status: "ACTIVE" } });
 
         const userA = await tx.user.create({
           data: { tenant_id: tenantA.id, name: "User A", username: `usera-${tag}`, email: `a-${tag}@test.local`, password_hash: "x", role_id: role.id },

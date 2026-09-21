@@ -5,11 +5,11 @@
  *   node prisma/backfill-trial-to-active.mjs                 # DRY RUN
  *   APPLY=true node prisma/backfill-trial-to-active.mjs      # eksekusi
  *
- * Idempoten: hanya menyentuh baris yang masih TRIAL. `trial_ends_at`
- * dikosongkan agar tidak ada sisa data trial yang menyesatkan.
+ * Idempoten: hanya menyentuh baris yang masih TRIAL. Aman dijalankan sebelum
+ * maupun sesudah migrasi `drop_trial_ends_at` (tidak menyentuh kolom itu lagi).
  *
- * Setelah ini, `prisma/backfill-churn-stale-trials.mjs` tidak lagi relevan
- * (tidak akan menemukan tenant TRIAL).
+ * Setelah ini, `backfill-churn-stale-trials.mjs` sudah dihapus — tidak ada lagi
+ * alur churn khusus trial.
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -41,7 +41,7 @@ async function main() {
 
   const result = await prisma.tenant.updateMany({
     where: { status: "TRIAL" },
-    data: { status: "ACTIVE", trial_ends_at: null },
+    data: { status: "ACTIVE" },
   });
   console.log(`\n✔ ${result.count} tenant diubah menjadi ACTIVE.\n`);
 }

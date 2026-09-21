@@ -15,8 +15,7 @@ model Tenant {
   name                              String
   logo_url                          String? // URL/path gambar logo toko
   plan                              String // STARTER/PRO/BUSINESS/ENTERPRISE
-  status                            String // TRIAL/ACTIVE/SUSPENDED/CHURNED
-  trial_ends_at                     DateTime?
+  status                            String // UNPAID/ACTIVE/SUSPENDED/CHURNED (TRIAL hanya data lama, dikonversi backfill)
   subscription_started_at           DateTime?
   current_period_start              DateTime?
   current_period_end                DateTime?

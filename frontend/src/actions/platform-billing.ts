@@ -384,7 +384,7 @@ export async function getGrowthAnalytics(opts?: { months?: number }) {
     const firstMonth = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
 
     const [tenants, subs, paidInvoices] = await Promise.all([
-      prisma.tenant.findMany({ select: { created_at: true, churned_at: true, status: true } }),
+      prisma.tenant.findMany({ select: { created_at: true, churned_at: true, status: true, workspace_mode: true } }),
       prisma.tenantSubscription.findMany({
         select: { started_at: true, ends_at: true, plan: { select: { price_monthly: true } } },
       }),
@@ -443,6 +443,14 @@ export async function getGrowthAnalytics(opts?: { months?: number }) {
     const unpaidNow = tenants.filter((t) => t.status === "UNPAID").length;
     const mrrNow = series[series.length - 1]?.mrrEnd ?? 0;
 
+    // Segmentasi ukuran tim yang dipilih saat registrasi (di luar tenant churned).
+    const live = tenants.filter((t) => t.status !== "CHURNED");
+    const segments = {
+      solo: live.filter((t) => t.workspace_mode === "SOLO").length,
+      teamSmall: live.filter((t) => t.workspace_mode === "TEAM_SMALL").length,
+      teamFull: live.filter((t) => t.workspace_mode === "TEAM_FULL").length,
+    };
+
     return ok({
       series,
       summary: {
@@ -453,6 +461,7 @@ export async function getGrowthAnalytics(opts?: { months?: number }) {
         unpaidNow,
         mrrNow,
         arpa: activeNow > 0 ? mrrNow / activeNow : 0,
+        segments,
       },
     });
   } catch (e) {

@@ -1,12 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Store, Save, Loader2, Camera, Factory } from "lucide-react";
+import { Store, Save, Loader2, Camera, Factory, LayoutDashboard } from "lucide-react";
 import { useToast } from "@/components/ui";
 import {
   getShopIdentity, updateShopIdentity, createLogoUploadUrl, updateLogoUrl, type ShopIdentity,
   getProductionPolicy, setRequireAdminProductionRelease, setRequireCounterConfirmation,
 } from "@/actions/shop";
+import { getWorkspaceSettings, setWorkspaceMode } from "@/actions/solo";
+import { WORKSPACE_MODES, WORKSPACE_MODE_LABEL, type WorkspaceMode } from "@/lib/workspace-mode";
+
+const MODE_HINT: Record<WorkspaceMode, string> = {
+  SOLO: "1 orang — menu rata + Beranda \"langkah berikutnya\".",
+  TEAM_SMALL: "2–5 orang — navigasi per grup, dashboard per peran.",
+  TEAM_FULL: "6+ orang — navigasi per grup + gate rilis produksi & counter.",
+};
 
 const field =
   "w-full px-3 py-2 bg-base border border-border rounded-xl focus:outline-none focus:border-accent-teal focus:ring-1 focus:ring-accent-teal text-primary text-sm";
@@ -20,14 +28,23 @@ export default function ShopIdentityPage() {
   const [requireRelease, setRequireRelease] = useState(false);
   const [requireCounter, setRequireCounter] = useState(false);
   const [policyBusy, setPolicyBusy] = useState(false);
+  const [wsMode, setWsMode] = useState<WorkspaceMode>("SOLO");
+  const [wsStaff, setWsStaff] = useState(0);
+  const [pendingMode, setPendingMode] = useState<WorkspaceMode | null>(null);
+  const [syncGates, setSyncGates] = useState(false);
+  const [wsBusy, setWsBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [res, pol] = await Promise.all([getShopIdentity(), getProductionPolicy()]);
+    const [res, pol, ws] = await Promise.all([getShopIdentity(), getProductionPolicy(), getWorkspaceSettings()]);
     if (res.success) setS(res.data);
     else toast({ type: "error", title: "Gagal memuat", message: res.error });
     if (pol.success) {
       setRequireRelease(pol.data.requireAdminRelease);
       setRequireCounter(pol.data.requireCounterConfirmation);
+    }
+    if (ws.success) {
+      setWsMode(ws.data.mode);
+      setWsStaff(ws.data.staffCount);
     }
     setLoading(false);
   }, [toast]);
@@ -60,6 +77,34 @@ export default function ShopIdentityPage() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);
+
+  // Gate alur kerja hanya "ketat" di TEAM_FULL; tawarkan sinkronisasi bila
+  // mode tujuan berbeda dari kondisi gate saat ini.
+  const targetStrict = pendingMode === "TEAM_FULL";
+  const gatesMismatch = pendingMode != null && (requireRelease !== targetStrict || requireCounter !== targetStrict);
+
+  const applyMode = async () => {
+    if (!pendingMode) return;
+    setWsBusy(true);
+    const res = await setWorkspaceMode(pendingMode, { syncWorkflowGates: syncGates });
+    setWsBusy(false);
+    if (!res.success) {
+      toast({ type: "error", title: "Gagal mengubah tampilan", message: res.error });
+      return;
+    }
+    if (syncGates) {
+      setRequireRelease(targetStrict);
+      setRequireCounter(targetStrict);
+    }
+    setWsMode(pendingMode);
+    setPendingMode(null);
+    setSyncGates(false);
+    toast({
+      type: "success",
+      title: `Tampilan dialihkan ke ${WORKSPACE_MODE_LABEL[pendingMode]}`,
+      message: syncGates ? "Kebijakan alur kerja ikut disesuaikan." : undefined,
+    });
+  };
 
   const save = async () => {
     if (!s) return;
@@ -172,6 +217,78 @@ export default function ShopIdentityPage() {
         <p className="text-[11px] text-muted">
           Workspace (subdomain): <span className="font-mono">{s.slug}</span> — tidak bisa diubah di sini.
         </p>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-card">
+        <h2 className="text-sm font-bold text-primary flex items-center gap-2">
+          <LayoutDashboard className="h-4 w-4 text-accent-teal" /> Tampilan Workspace
+        </h2>
+        <p className="text-[11px] text-muted">
+          Menentukan menu &amp; beranda untuk akun Owner. Izin tetap berbasis role dan tidak berubah.
+          {wsStaff > 0 ? ` Saat ini ada ${wsStaff} pegawai aktif di luar Owner.` : " Saat ini belum ada pegawai aktif."}
+        </p>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          {WORKSPACE_MODES.map((m) => {
+            const selected = (pendingMode ?? wsMode) === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => {
+                  if (m === wsMode) { setPendingMode(null); setSyncGates(false); return; }
+                  setPendingMode(m);
+                  setSyncGates(requireRelease !== (m === "TEAM_FULL") || requireCounter !== (m === "TEAM_FULL"));
+                }}
+                className={
+                  "rounded-xl border p-3 text-left transition-all " +
+                  (selected ? "border-accent-teal bg-accent-teal/5" : "border-border hover:border-accent-teal/40")
+                }
+              >
+                <p className="text-xs font-bold text-primary flex items-center gap-1.5">
+                  {WORKSPACE_MODE_LABEL[m]}
+                  {m === wsMode && <span className="text-[9px] font-bold text-accent-teal">AKTIF</span>}
+                </p>
+                <p className="text-[10px] text-muted mt-1 leading-snug">{MODE_HINT[m]}</p>
+              </button>
+            );
+          })}
+        </div>
+
+        {pendingMode && (
+          <div className="rounded-xl border border-accent-teal/30 bg-accent-teal/5 p-3 space-y-2">
+            <p className="text-xs text-muted">
+              Ubah tampilan ke <b className="text-primary">{WORKSPACE_MODE_LABEL[pendingMode]}</b>?
+            </p>
+            {gatesMismatch && (
+              <label className="flex items-start gap-2 text-[11px] text-muted cursor-pointer">
+                <input type="checkbox" checked={syncGates} onChange={() => setSyncGates((v) => !v)} className="mt-0.5" />
+                <span>
+                  Sesuaikan juga kebijakan alur kerja:{" "}
+                  {targetStrict
+                    ? "rilis produksi perlu persetujuan Admin & serah terima wajib konfirmasi counter."
+                    : "order otomatis turun ke produksi & serah terima bisa langsung."}
+                </span>
+              </label>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={applyMode}
+                disabled={wsBusy}
+                className="h-8 px-3 rounded-lg bg-accent-teal text-white text-xs font-bold hover:brightness-110 disabled:opacity-40 inline-flex items-center gap-1.5"
+              >
+                {wsBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Terapkan
+              </button>
+              <button
+                onClick={() => { setPendingMode(null); setSyncGates(false); }}
+                disabled={wsBusy}
+                className="h-8 px-3 rounded-lg text-xs font-bold text-muted hover:text-primary disabled:opacity-40"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-card">

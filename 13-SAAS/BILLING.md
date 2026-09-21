@@ -21,6 +21,7 @@ Minimal satu metode harus aktif. Bukti pembayaran disajikan lewat `/api/payment-
 
 1. **Daftar & Pilih Paket:** Owner memilih paket self-serve (Starter/Pro/Business) di wizard. Enterprise dikontrak manual lewat Sales. Pilihan wizard (durasi `term_months`, kursi add-on `Tenant.addon_users`, layanan `service_keys`) menjadi baris invoice pertama.
    - Sejak Fase 2, invoice sudah **multi-baris** (`InvoiceLine`): baris paket (dengan termin), kursi add-on, layanan, dan baris `DISCOUNT` bila voucher dipakai.
+   - Angka tagihan diambil dari **data**, bukan konstanta kode: harga paket dari baris `SubscriptionPlan`, sedangkan harga kursi, diskon termin, harga layanan, dan jatuh tempo dari `PlatformSetting` (`billing.pricing`, diatur di `/platform/pricing`).
    - Invoice bertermin >1 bulan menutup seluruh termin lewat `period_end`, sehingga generator bulanan tidak menerbitkan invoice baru selama periode masih tercakup.
    - **Voucher** (`Voucher` + `VoucherRedemption`) dipakai sekali per invoice dan dikonsumsi di dalam transaksi pembuatan invoice.
 2. **Checkout (Midtrans SNAP):** 

@@ -12,15 +12,17 @@ import { rateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/mail";
 import {
   computeOrderEstimate,
-  PAYMENT_DUE_DAYS,
   planFeaturesJson,
   resolveAddonSeats,
   resolveSelfServePlan,
   resolveServices,
   resolveTerm,
   SAAS_PLANS,
+  SELF_SERVE_PLAN_KEYS,
+  type PricingConfig,
 } from "@/lib/saas-catalog";
 import { createInvoiceForSubscription } from "@/lib/billing";
+import { getPricingConfig } from "@/lib/pricing-config";
 import { validateVoucher } from "@/lib/voucher";
 
 const DEFAULT_ROLES = ["owner", "admin", "designer_sales", "operator", "gudang"] as const;
@@ -91,8 +93,9 @@ function tenantLoginUrl(slug: string): string {
 const TANGGAL_ID = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
 /**
- * Public self-serve signup. Creates Tenant + owner User + trial subscription +
- * onboarding marker in one transaction.
+ * Public self-serve signup. Creates Tenant + owner User + subscription +
+ * onboarding marker in one transaction, lalu menerbitkan invoice pertama
+ * (tenant berstatus UNPAID sampai dibayar — tanpa free trial).
  *
  * New production signups must verify the owner email before the first login.
  * Existing tenants are backfilled as verified by the migration so this does not
@@ -128,7 +131,7 @@ export async function registerTenant(
       });
     }
 
-    // Selama beta/trial verifikasi email sengaja dimatikan. Aktifkan eksplisit
+    // Selama beta verifikasi email sengaja dimatikan. Aktifkan eksplisit
     // saat product release melalui REQUIRE_EMAIL_VERIFICATION=true agar deploy
     // staging/production awal tidak tiba-tiba menahan akun baru.
     const verificationRequired = process.env.REQUIRE_EMAIL_VERIFICATION === "true";
@@ -143,10 +146,27 @@ export async function registerTenant(
     const usernameBase = slugify(email.split("@")[0]) || "owner";
     const planKey = resolveSelfServePlan(input.plan);
     const planDef = SAAS_PLANS[planKey];
-    const termMonths = resolveTerm(input.months);
-    const addonSeats = resolveAddonSeats(input.addonSeats);
-    const services = resolveServices(input.services);
-    const estimate = computeOrderEstimate({ plan: planKey, months: termMonths, addonSeats, services });
+    // Parameter komersial (harga kursi, diskon termin, layanan, jatuh tempo)
+    // dibaca dari pengaturan platform — bukan konstanta kode.
+    const pricing = await getPricingConfig();
+    // Harga paket mengikuti baris SubscriptionPlan (sumber kebenaran tagihan),
+    // bukan konstanta katalog, supaya perubahan di panel Super Admin berlaku.
+    const planRow = await prisma.subscriptionPlan.findUnique({
+      where: { slug: planDef.slug },
+      select: { price_monthly: true },
+    });
+    const planPriceMonthly = planRow ? Number(planRow.price_monthly) : planDef.price_monthly;
+    const termMonths = resolveTerm(input.months, pricing.terms);
+    const addonSeats = resolveAddonSeats(input.addonSeats, pricing.maxSeats);
+    const services = resolveServices(input.services, pricing.services);
+    const estimate = computeOrderEstimate({
+      plan: planKey,
+      months: termMonths,
+      addonSeats,
+      services,
+      pricing,
+      planPriceMonthly,
+    });
 
     // Voucher divalidasi server-side; kalau user mengetik kode, kode yang salah
     // harus terlihat error-nya, bukan diam-diam diabaikan.
@@ -201,7 +221,6 @@ export async function registerTenant(
           plan: planDef.tenantPlan,
           // Tanpa free trial: tenant menunggu pembayaran invoice pertama.
           status: "UNPAID",
-          trial_ends_at: null,
           billing_email: email,
           owner_name: ownerName,
           owner_phone: phone,
@@ -319,7 +338,7 @@ export async function registerTenant(
     const firstInvoice = await createInvoiceForSubscription({
       tenantId: result.tenantId,
       subscriptionId: result.subscriptionId,
-      dueInDays: PAYMENT_DUE_DAYS,
+      dueInDays: pricing.paymentDueDays,
     }).catch((e) => {
       console.error("registerTenant: gagal membuat invoice pertama:", e);
       return { ok: false as const, reason: "error" };
@@ -422,5 +441,42 @@ export async function validateSignupVoucher(input: {
   } catch (e) {
     console.error("validateSignupVoucher failed:", e);
     return fail("Gagal memeriksa voucher. Silakan coba lagi.");
+  }
+}
+
+/**
+ * Parameter harga untuk wizard pendaftaran (publik, hanya-baca): pengaturan
+ * komersial platform + harga/kuota paket dari baris `SubscriptionPlan`. Dipakai
+ * agar angka di wizard sama dengan yang akan ditagih, tanpa membocorkan data
+ * internal lain.
+ */
+export async function getSignupPricingConfig(): Promise<
+  ActionResult<{
+    pricing: PricingConfig;
+    planOverrides: Record<string, { price_monthly: number; max_users: number | null; max_orders_per_month: number | null }>;
+  }>
+> {
+  try {
+    const [pricing, plans] = await Promise.all([
+      getPricingConfig(),
+      prisma.subscriptionPlan.findMany({
+        where: { slug: { in: SELF_SERVE_PLAN_KEYS.map((k) => SAAS_PLANS[k].slug) } },
+        select: { slug: true, price_monthly: true, max_users: true, max_orders_per_month: true },
+      }),
+    ]);
+
+    const planOverrides: Record<string, { price_monthly: number; max_users: number | null; max_orders_per_month: number | null }> = {};
+    for (const p of plans) {
+      planOverrides[p.slug] = {
+        price_monthly: Number(p.price_monthly),
+        max_users: p.max_users,
+        max_orders_per_month: p.max_orders_per_month,
+      };
+    }
+
+    return ok({ pricing, planOverrides });
+  } catch (e) {
+    console.error("getSignupPricingConfig failed:", e);
+    return fail("Gagal memuat konfigurasi harga.");
   }
 }

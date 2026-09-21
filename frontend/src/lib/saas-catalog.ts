@@ -166,6 +166,39 @@ export type ServiceKey = (typeof SERVICE_OPTIONS)[number]["key"];
 /** Promo: seluruh layanan tambahan gratis selama masa promo Print Pilot. */
 export const SERVICE_PROMO_ACTIVE = true;
 
+/**
+ * Parameter komersial yang bisa diubah Super Admin tanpa deploy.
+ * Angka default di bawah dipakai sebagai fallback bila pengaturan di DB kosong.
+ */
+export interface PricingTermConfig {
+  months: TermMonths;
+  paidMonths: number;
+}
+
+export interface PricingServiceConfig {
+  key: ServiceKey;
+  listPrice: number;
+  promoFree: boolean;
+}
+
+export interface PricingConfig {
+  seatPriceMonthly: number;
+  maxSeats: number;
+  paymentDueDays: number;
+  terms: PricingTermConfig[];
+  services: PricingServiceConfig[];
+  servicePromoActive: boolean;
+}
+
+export const DEFAULT_PRICING_CONFIG: PricingConfig = {
+  seatPriceMonthly: ADDON_SEAT_PRICE_MONTHLY,
+  maxSeats: MAX_ADDON_SEATS,
+  paymentDueDays: PAYMENT_DUE_DAYS,
+  terms: SUBSCRIPTION_TERMS.map((t) => ({ months: t.months, paidMonths: t.paidMonths })),
+  services: SERVICE_OPTIONS.map((s) => ({ key: s.key, listPrice: s.listPrice, promoFree: s.promoFree })),
+  servicePromoActive: SERVICE_PROMO_ACTIVE,
+};
+
 export interface OrderLine {
   kind: "PLAN" | "ADDON_SEATS" | "SERVICE";
   label: string;
@@ -189,42 +222,57 @@ export interface OrderEstimate {
   total: number;
 }
 
-export function resolveTerm(months: unknown): TermMonths {
+export function resolveTerm(months: unknown, terms: PricingTermConfig[] = DEFAULT_PRICING_CONFIG.terms): TermMonths {
   const n = Number(months);
-  return (SUBSCRIPTION_TERMS.find((t) => t.months === n)?.months ?? 1) as TermMonths;
+  return (terms.find((t) => t.months === n)?.months ?? 1) as TermMonths;
 }
 
-export function resolveAddonSeats(value: unknown): number {
+export function resolveAddonSeats(value: unknown, maxSeats: number = MAX_ADDON_SEATS): number {
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.min(n, MAX_ADDON_SEATS);
+  return Math.min(n, maxSeats);
 }
 
-export function resolveServices(value: unknown): ServiceKey[] {
+export function resolveServices(value: unknown, services: PricingServiceConfig[] = DEFAULT_PRICING_CONFIG.services): ServiceKey[] {
   if (!Array.isArray(value)) return [];
-  const allowed = new Set<string>(SERVICE_OPTIONS.map((s) => s.key));
+  const allowed = new Set<string>(services.map((s) => s.key));
   return value.filter((v): v is ServiceKey => typeof v === "string" && allowed.has(v));
 }
 
+/**
+ * Hitung rincian pesanan. `pricing` membawa parameter komersial yang bisa
+ * diubah Super Admin; `planPriceMonthly` menimpa harga paket katalog dengan
+ * harga baris `SubscriptionPlan` (sumber kebenaran penagihan).
+ */
 export function computeOrderEstimate(input: {
   plan: SelfServePlanKey;
   months?: unknown;
   addonSeats?: unknown;
   services?: unknown;
+  pricing?: PricingConfig;
+  planPriceMonthly?: number | null;
 }): OrderEstimate {
   const planDef = SAAS_PLANS[input.plan];
-  const months = resolveTerm(input.months);
-  const term = SUBSCRIPTION_TERMS.find((t) => t.months === months) ?? SUBSCRIPTION_TERMS[0];
-  const addonSeats = resolveAddonSeats(input.addonSeats);
-  const services = resolveServices(input.services);
+  const cfg = input.pricing ?? DEFAULT_PRICING_CONFIG;
+  const months = resolveTerm(input.months, cfg.terms);
+  const term = cfg.terms.find((t) => t.months === months) ?? cfg.terms[0] ?? { months: 1, paidMonths: 1 };
+  const addonSeats = resolveAddonSeats(input.addonSeats, cfg.maxSeats);
+  const services = resolveServices(input.services, cfg.services);
+  const seatPrice = Math.max(0, Number(cfg.seatPriceMonthly) || 0);
+  const planPrice = Math.max(0, Number(input.planPriceMonthly ?? planDef.price_monthly) || 0);
 
-  const planSubtotal = planDef.price_monthly * term.paidMonths;
-  const addonSubtotal = addonSeats * ADDON_SEAT_PRICE_MONTHLY * term.paidMonths;
+  const planSubtotal = planPrice * term.paidMonths;
+  const addonSubtotal = addonSeats * seatPrice * term.paidMonths;
+  const serviceCfg = new Map(cfg.services.map((s) => [s.key, s]));
   const selectedServices = SERVICE_OPTIONS.filter((s) => services.includes(s.key));
-  const serviceListTotal = selectedServices.reduce((sum, s) => sum + s.listPrice, 0);
-  const serviceSubtotal = SERVICE_PROMO_ACTIVE
-    ? 0
-    : selectedServices.reduce((sum, s) => sum + s.listPrice, 0);
+  const servicePricing = selectedServices.map((s) => {
+    const listPrice = Math.max(0, serviceCfg.get(s.key)?.listPrice ?? s.listPrice);
+    // Flag `promoFree` per layanan hanya berlaku saat promo global aktif.
+    const free = cfg.servicePromoActive && (serviceCfg.get(s.key)?.promoFree ?? s.promoFree);
+    return { service: s, listPrice, free };
+  });
+  const serviceListTotal = servicePricing.reduce((sum, x) => sum + x.listPrice, 0);
+  const serviceSubtotal = servicePricing.reduce((sum, x) => sum + (x.free ? 0 : x.listPrice), 0);
 
   const lines: OrderLine[] = [
     {
@@ -243,22 +291,21 @@ export function computeOrderEstimate(input: {
     lines.push({
       kind: "ADDON_SEATS",
       label: "Kursi user tambahan",
-      detail: `${addonSeats} user x Rp${ADDON_SEAT_PRICE_MONTHLY.toLocaleString("id-ID")}/bulan x ${term.paidMonths} bulan`,
+      detail: `${addonSeats} user x Rp${seatPrice.toLocaleString("id-ID")}/bulan x ${term.paidMonths} bulan`,
       quantity: addonSeats,
-      unitPrice: ADDON_SEAT_PRICE_MONTHLY * term.paidMonths,
+      unitPrice: seatPrice * term.paidMonths,
       amount: addonSubtotal,
     });
   }
 
-  for (const s of selectedServices) {
-    const free = SERVICE_PROMO_ACTIVE && s.promoFree;
+  for (const { service: s, listPrice, free } of servicePricing) {
     lines.push({
       kind: "SERVICE",
       label: s.name,
       detail: free ? "Gratis selama masa promo" : s.description,
       quantity: 1,
-      unitPrice: s.listPrice,
-      amount: free ? 0 : s.listPrice,
+      unitPrice: listPrice,
+      amount: free ? 0 : listPrice,
       free,
     });
   }

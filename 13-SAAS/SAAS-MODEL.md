@@ -49,6 +49,8 @@ Wizard pendaftaran menawarkan pilihan berikut sebelum workspace dibuat:
   - Bulanan, 3, dan 6 bulan ditagih penuh (tanpa diskon).
   - **12 bulan: bayar 10 bulan, gratis 2 bulan** (setara diskon ~17%). Tujuan: memperbaiki cash flow platform dan menekan risiko churn akibat `Grace Period` yang pendek (3 hari) pada siklus bulanan.
 - **Add-on kursi user:** Rp80.000 per user per bulan di luar kuota paket. Harga sengaja disetara dengan selisih Business − Pro (Rp400 rb untuk 5 kursi = Rp80 rb/kursi) supaya menambah kursi tidak lebih murah daripada naik paket.
+  - Harga kursi, batas maksimum kursi, diskon termin, harga layanan, dan jatuh tempo invoice kini **dapat diubah Super Admin** di `/platform/pricing` (tersimpan sebagai `PlatformSetting` key `billing.pricing`), tanpa deploy. Nilai default di kode (`DEFAULT_PRICING_CONFIG`) dipakai sebagai fallback.
+- **Harga paket:** sumber kebenaran untuk penagihan adalah baris `SubscriptionPlan` di database (diatur di `/platform/plans`). Invoice memakai harga baris ini, bukan konstanta katalog.
 - **Layanan tambahan (jasa):** Instalasi & Training Online (harga list Rp1.500.000) dan Onsite (Rp3.500.000). Keduanya **gratis selama masa promo** Print Pilot; harga list ditampilkan dicoret sebagai pembanding nilai.
 - **Voucher:** kode diskon (persen atau nominal) dengan kuota pemakaian dan masa berlaku, dibuat lewat panel Super Admin (`/platform/vouchers`). Voucher dipakai **sekali** pada invoice berikutnya, baik dari wizard pendaftaran maupun halaman Paket & Tagihan.
 - **Pembayaran:** saat ini **transfer bank manual** (rekening + upload bukti bayar, diverifikasi Super Admin) — mengikuti alur BIMA. Integrasi payment gateway (Midtrans) **dipending** dan toggle-nya dikunci di `/platform/payments` sampai Snap + webhook siap. Lihat `BILLING.md` bagian 0.
@@ -70,4 +72,4 @@ Sumber kebenaran harga/termin/layanan ada di `frontend/src/lib/saas-catalog.ts` 
   - Menyediakan tombol **"Ekspor Semua Data"** (order, pelanggan, laporan keuangan dalam CSV/PDF) yang aktif sejak status `SUSPENDED` hingga sesaat sebelum `CHURNED` dieksekusi hard delete.
   - Detail teknis lihat `SUPER-ADMIN.md` Section B.
 
-Catatan data lama: tenant yang sebelumnya berstatus `TRIAL` dikonversi menjadi `ACTIVE` lewat `prisma/backfill-trial-to-active.mjs`. Kolom `Tenant.trial_ends_at` masih ada demi kompatibilitas data lama dan selalu dikosongkan saat aktivasi.
+Catatan data lama: tenant yang sebelumnya berstatus `TRIAL` dikonversi menjadi `ACTIVE` lewat `prisma/backfill-trial-to-active.mjs`. Kolom `Tenant.trial_ends_at` sudah **dihapus** dari skema (migrasi `drop_trial_ends_at`).

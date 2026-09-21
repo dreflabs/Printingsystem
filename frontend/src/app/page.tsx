@@ -13,7 +13,6 @@ import {
   ChevronDown,
   Clock3,
 } from "lucide-react";
-import { PriceCalculator } from "@/components/marketing/PriceCalculator";
 import { ALL_PLAN_INCLUDES, SAAS_PLANS } from "@/lib/saas-catalog";
 
 const SITE_URL = process.env.APP_URL || "https://printpilot.id";
@@ -104,21 +103,22 @@ export default function MarketingPage() {
       {/* ─── NAVBAR ──────────────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 bg-base/80 backdrop-blur-xl border-b border-border/50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Image src="/PRINT_PILOT_LOGO.png" alt="Print Pilot" width={32} height={32} priority className="h-8 w-8 object-contain" />
-            <span className="font-bold text-xl text-primary tracking-tight">Print Pilot<span className="text-accent-teal">.id</span></span>
+            <span className="font-bold text-xl text-primary tracking-tight whitespace-nowrap">Print Pilot<span className="text-accent-teal">.id</span></span>
           </div>
           <nav className="hidden md:flex gap-8 text-sm font-medium text-muted">
             <a href="#fitur" className="hover:text-primary transition-colors">Fitur</a>
             <a href="#harga" className="hover:text-primary transition-colors">Harga</a>
             <a href="#kegunaan" className="hover:text-primary transition-colors">Kegunaan</a>
           </nav>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <Link href="/login" className="text-sm font-bold text-primary hover:text-accent-teal transition-colors">
               Masuk
             </Link>
-            <Link href="/register" className="text-sm font-bold bg-primary text-base px-4 py-2 rounded-full hover:bg-primary/90 transition-all flex items-center gap-1.5">
-              Daftar Sekarang
+            <Link href="/register" className="text-sm font-bold bg-primary text-base px-3 sm:px-4 py-2 rounded-full hover:bg-primary/90 transition-all flex items-center gap-1.5 whitespace-nowrap">
+              <span className="sm:hidden">Daftar</span>
+              <span className="hidden sm:inline">Daftar Sekarang</span>
             </Link>
           </div>
         </div>
@@ -127,7 +127,7 @@ export default function MarketingPage() {
       <main className="flex-1">
         {/* ─── HERO SECTION ────────────────────────────────────────────────────── */}
         <section className="relative pt-20 pb-24 border-b border-border">
-          <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-[1.1fr_0.9fr] gap-16 items-center">
+          <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-[0.95fr_1.05fr] gap-12 lg:gap-16 items-center">
             <div>
               <p className="text-xs font-bold tracking-widest uppercase text-accent-teal mb-5 border-l-2 border-accent-teal pl-3">
                 Software Manajemen Percetakan
@@ -166,9 +166,25 @@ export default function MarketingPage() {
               </div>
             </div>
 
-            {/* Interactive product-led demo, not a static screenshot */}
+            {/* Hero photography: a clean visual anchor without overlapping UI */}
             <div className="flex justify-center lg:justify-end">
-              <PriceCalculator />
+              <figure className="relative w-full max-w-2xl overflow-hidden rounded-[2rem] border border-border bg-elevated shadow-[0_24px_70px_-36px_rgba(15,23,42,0.6)]">
+                <div className="relative aspect-[4/3] sm:aspect-[5/4] lg:aspect-[4/3]">
+                  <Image
+                    src="/images/hero-print-shop-id.jpg"
+                    alt="Pemilik percetakan dan operator memeriksa hasil cetak di samping mesin produksi"
+                    fill
+                    priority
+                    sizes="(min-width: 1024px) 52vw, 100vw"
+                    className="object-cover object-[65%_50%]"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-primary/85 via-primary/20 to-transparent" />
+                </div>
+                <figcaption className="absolute inset-x-0 bottom-0 px-6 py-5 text-white sm:px-8 sm:py-6">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/70">Alur kerja yang terlihat</p>
+                  <p className="mt-1 text-sm font-semibold sm:text-base">Order masuk, produksi bergerak, hasil siap diambil.</p>
+                </figcaption>
+              </figure>
             </div>
           </div>
         </section>
@@ -385,19 +401,36 @@ export default function MarketingPage() {
                 {
                   title: "Kasir & CS",
                   body: "Terima order, catat DP, dan cek status pesanan mana pun tanpa harus bertanya ke bagian produksi.",
+                  image: "/images/use-case-customer-service.jpg",
+                  alt: "Staf layanan pelanggan percetakan memeriksa contoh hasil cetak dan tablet",
                 },
                 {
                   title: "Desainer & Operator",
                   body: "Antrean job desain dan job mesin tampil jelas. Scan QR untuk mulai dan menyelesaikan tiap tahap; pemakaian bahan tercatat.",
+                  image: "/images/use-case-operator.jpg",
+                  alt: "Operator percetakan Indonesia memeriksa hasil cetak dari mesin format besar",
                 },
                 {
                   title: "Owner",
                   body: "Pantau omzet, produksi aktif, piutang, dan stok menipis dari satu layar. Bisa juga dari ponsel saat di luar pabrik.",
+                  image: "/images/use-case-owner.jpg",
+                  alt: "Pemilik percetakan Indonesia memantau bisnis dari laptop di ruang kerja percetakan",
                 },
               ].map((u, i) => (
-                <div key={i} className="bg-card border border-border p-8 rounded-2xl">
-                  <h3 className="text-lg font-bold text-primary mb-2">{u.title}</h3>
-                  <p className="text-muted text-sm leading-relaxed">{u.body}</p>
+                <div key={i} className="bg-card border border-border rounded-2xl overflow-hidden">
+                  <div className="relative aspect-[4/3] bg-elevated">
+                    <Image
+                      src={u.image}
+                      alt={u.alt}
+                      fill
+                      sizes="(min-width: 768px) 33vw, 100vw"
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="p-8">
+                    <h3 className="text-lg font-bold text-primary mb-2">{u.title}</h3>
+                    <p className="text-muted text-sm leading-relaxed">{u.body}</p>
+                  </div>
                 </div>
               ))}
             </div>

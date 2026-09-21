@@ -76,6 +76,28 @@ export default function PlatformAnalyticsPage() {
         ))}
       </div>
 
+      {s?.segments && (
+        <div className="bg-card border border-border rounded-2xl p-5">
+          <h2 className="text-sm font-semibold text-primary mb-1">Segmen Ukuran Tim</h2>
+          <p className="text-[11px] text-muted mb-4">
+            Jawaban &ldquo;berapa orang menjalankan percetakan&rdquo; saat registrasi — di luar tenant churned. Berguna untuk
+            memutuskan paket &amp; add-on kursi mana yang paling relevan ditawarkan.
+          </p>
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { label: "Solo (1 orang)", value: s.segments.solo },
+              { label: "Tim kecil (2–5)", value: s.segments.teamSmall },
+              { label: "Tim per divisi (6+)", value: s.segments.teamFull },
+            ].map((seg) => (
+              <div key={seg.label} className="rounded-xl border border-border bg-elevated px-4 py-3">
+                <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">{seg.label}</p>
+                <p className="text-lg font-bold text-primary mt-1 font-mono">{seg.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="bg-card border border-border rounded-2xl p-5">
         <h2 className="text-sm font-semibold text-primary mb-1">MRR &amp; Tenant Aktif</h2>
         <p className="text-[11px] text-muted mb-4">

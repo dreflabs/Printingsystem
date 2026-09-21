@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { createInvoiceForSubscription, activateTenantForPaidInvoice, resolvePeriod } from "../src/lib/billing";
+import { getPricingConfig } from "../src/lib/pricing-config";
 
 // Alur tanpa free trial: registrasi → invoice pertama (jatuh tempo 3 hari) →
 // bayar → tenant UNPAID diaktifkan.
@@ -57,16 +58,24 @@ test("invoice pertama memuat baris paket + layanan, memakai voucher sekali, lalu
     const { yyyymm } = resolvePeriod();
     assert.equal(res.invoice.number.startsWith(`INV-${yyyymm}-`), true);
 
-    // Paket 3 bulan = 597.000; kursi add-on 2 × 80.000 × 3 = 480.000;
-    // layanan training online gratis (promo). Subtotal 1.077.000, diskon 10%.
+    // Invoice memakai harga dari DATA, bukan konstanta kode: harga paket dari
+    // baris SubscriptionPlan dan harga kursi dari pengaturan platform. Ekspektasi
+    // dihitung dari sumber yang sama supaya test tidak rapuh saat harga berubah.
+    const pricing = await getPricingConfig();
+    const planPrice = Number(plan.price_monthly);
+    const seatPrice = pricing.seatPriceMonthly;
+    const paidMonths = pricing.terms.find((t) => t.months === 3)?.paidMonths ?? 3;
+    const expectedSubtotal = planPrice * paidMonths + 2 * seatPrice * paidMonths;
+    const expectedDiscount = Math.round(expectedSubtotal * 0.1);
+
     const invoice = await db.invoice.findUniqueOrThrow({
       where: { id: res.invoice.id },
       include: { lines: { orderBy: { created_at: "asc" } } },
     });
     ids.invoice = invoice.id;
-    assert.equal(Number(invoice.subtotal), 1_077_000);
-    assert.equal(Number(invoice.discount), 107_700);
-    assert.equal(Number(invoice.amount), 969_300);
+    assert.equal(Number(invoice.subtotal), expectedSubtotal);
+    assert.equal(Number(invoice.discount), expectedDiscount);
+    assert.equal(Number(invoice.amount), expectedSubtotal - expectedDiscount);
     assert.equal(invoice.status, "PENDING");
     assert.equal(invoice.voucher_code, voucher.code);
 
@@ -75,9 +84,9 @@ test("invoice pertama memuat baris paket + layanan, memakai voucher sekali, lalu
     const serviceLine = invoice.lines.find((l) => l.kind === "SERVICE");
     assert.equal(Number(serviceLine?.amount), 0, "layanan promo gratis");
 
-    // Jatuh tempo ≈ 3 hari dari sekarang.
+    // Jatuh tempo mengikuti pengaturan platform.
     const days = Math.round((invoice.due_date.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
-    assert.equal(days, 3);
+    assert.equal(days, pricing.paymentDueDays);
 
     // Voucher sekali pakai: terpakai + dikosongkan dari langganan.
     const afterVoucher = await db.voucher.findUniqueOrThrow({ where: { id: voucher.id } });
@@ -94,7 +103,6 @@ test("invoice pertama memuat baris paket + layanan, memakai voucher sekali, lalu
     const afterTenant = await db.tenant.findUniqueOrThrow({ where: { id: tenant.id } });
     assert.equal(afterTenant.status, "ACTIVE");
     assert.ok(afterTenant.current_period_end, "current_period_end terisi");
-    assert.equal(afterTenant.trial_ends_at, null);
   } finally {
     if (ids.invoice) await db.invoice.deleteMany({ where: { id: ids.invoice } }).catch(() => {});
     if (ids.sub) await db.tenantSubscription.deleteMany({ where: { tenant_id: ids.tenant } }).catch(() => {});

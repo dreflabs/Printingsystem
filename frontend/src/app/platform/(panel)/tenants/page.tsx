@@ -17,6 +17,7 @@ const PAGE = 20;
 const STATUS_STYLE: Record<string, string> = {
   ACTIVE: "bg-status-green/10 text-status-green border-status-green/30",
   UNPAID: "bg-status-yellow/10 text-status-yellow-text border-status-yellow/30",
+  // TRIAL hanya muncul pada data lama sebelum backfill:trial-to-active dijalankan.
   TRIAL: "bg-status-blue/10 text-status-blue border-status-blue/30",
   SUSPENDED: "bg-status-red/10 text-status-red border-status-red/30",
   CHURNED: "bg-muted/10 text-muted border-muted/30",

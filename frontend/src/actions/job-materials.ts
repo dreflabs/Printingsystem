@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
+import { requireEntitlement } from "@/lib/entitlements";
 import { requireMutableActor } from "@/lib/actor";
 import { can } from "@/lib/permissions";
 import { logAction } from "@/lib/logger";
@@ -13,6 +14,7 @@ import { revalidatePath } from "next/cache";
 export async function getJobMaterialReview(jobCode: string) {
   try {
     const tenant = await requireTenant(); const actor = await requireMutableActor();
+    await requireEntitlement(tenant.id, "inventory");
     if (!can(actor, "production.assign")) return fail("Hanya Admin/Owner yang boleh meninjau bahan job.");
     const job = await prisma.productionJob.findFirst({
       where: { tenant_id: tenant.id, job_code: jobCode },
@@ -55,6 +57,7 @@ export async function getJobMaterialReview(jobCode: string) {
 export async function saveJobMaterialReview(jobCode: string, input: { items: { itemId: string; materialId: string }[]; reason: string; confirmed: boolean }) {
   try {
     const tenant = await requireTenant(); const actor = await requireMutableActor();
+    await requireEntitlement(tenant.id, "inventory");
     if (!can(actor, "production.assign")) return fail("Hanya Admin/Owner yang boleh menetapkan bahan job.");
     if (input.confirmed !== true || (input.reason?.trim().length ?? 0) < 10) return fail("Konfirmasi kesesuaian desain/harga dan isi alasan minimal 10 karakter.");
     if (!input.items?.length || input.items.length !== new Set(input.items.map(i => i.itemId)).size) return fail("Pilih item job tanpa duplikasi.");

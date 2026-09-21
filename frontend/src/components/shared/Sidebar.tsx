@@ -24,6 +24,8 @@ interface SidebarProps {
   role: UserRole;
   roles?: string[]; // All roles this user has (multi-role support)
   workspaceMode?: WorkspaceMode;
+  /** Kunci entitlement tenant aktif; item menu yang tidak tersedia disembunyikan. */
+  features?: string[];
   isOpen: boolean;
   onClose: () => void;
 }
@@ -38,7 +40,7 @@ function hrefActive(pathname: string, href: string, hash = ""): boolean {
   return pathname === pathOnly || pathname.startsWith(pathOnly + "/");
 }
 
-export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isOpen, onClose }: SidebarProps) {
+export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", features, isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
@@ -99,6 +101,7 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
   //  - TIM  + Owner (lihat Owner)→ GROUPED_NAV disaring ke peran "owner" (pengawasan)
   //  - Owner sedang lihat peran lain, atau bukan Owner → GROUPED_NAV disaring ke peran aktif itu
   const navItems: ResolvedNav[] = React.useMemo(() => {
+    const featureSet = features ? new Set(features) : undefined;
     if (soloView) {
       return SOLO_NAV.map((n) => ({ kind: "link" as const, label: n.label, href: n.href, icon: n.icon }));
     }
@@ -107,8 +110,8 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", isO
       : userRoleSet.has("owner")
         ? [activeRole]
         : (roleKey.split(",").filter(Boolean) as UserRole[]);
-    return resolveNav(scope);
-  }, [soloView, teamOwnerView, roleKey, activeRole, userRoleSet]);
+    return resolveNav(scope, featureSet);
+  }, [soloView, teamOwnerView, roleKey, activeRole, userRoleSet, features]);
 
   // Preferensi buka/tutup grup yang di-set manual viewer (localStorage). Grup yang
   // memuat halaman aktif tetap terbuka otomatis kecuali viewer menutupnya sendiri.

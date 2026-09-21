@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { requireEntitlement } from "@/lib/entitlements";
 import { can } from "@/lib/permissions";
 import { requireOperationalCheckIn } from "@/lib/attendance-policy";
 import { logAction } from "@/lib/logger";
@@ -70,6 +71,7 @@ const STOCKTAKE_INCLUDE = {
 export async function getMaterialStocktake(): Promise<ActionResult<ReturnType<typeof shapeStocktake> | null>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "inventory");
     const actor = await requireUser();
     if (!can(actor, "material.view")) return fail("Anda tidak memiliki akses melihat stock opname.");
     const stocktake = await prisma.materialStocktake.findFirst({
@@ -87,6 +89,7 @@ export async function getMaterialStocktake(): Promise<ActionResult<ReturnType<ty
 export async function startMaterialStocktake(notes?: string): Promise<ActionResult<ReturnType<typeof shapeStocktake>>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "inventory");
     const actor = await requireUser();
     if (!can(actor, "material.stocktake")) return fail("Hanya Gudang/Owner yang boleh memulai stock opname.");
     await requireOperationalCheckIn(tenant.id, actor);
@@ -124,6 +127,7 @@ export async function recordMaterialStocktakeCount(
 ): Promise<ActionResult<{ variance: number }>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "inventory");
     const actor = await requireUser();
     if (!can(actor, "material.stocktake")) return fail("Anda tidak memiliki akses mengisi stock opname.");
     await requireOperationalCheckIn(tenant.id, actor);
@@ -148,6 +152,7 @@ export async function recordMaterialStocktakeCount(
 export async function submitMaterialStocktake(stocktakeId: string): Promise<ActionResult<null>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "inventory");
     const actor = await requireUser();
     if (!can(actor, "material.stocktake")) return fail("Hanya Gudang/Owner yang boleh mengirim stock opname.");
     await requireOperationalCheckIn(tenant.id, actor);
@@ -170,6 +175,7 @@ export async function submitMaterialStocktake(stocktakeId: string): Promise<Acti
 export async function approveMaterialStocktake(stocktakeId: string): Promise<ActionResult<{ adjustments: number }>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "inventory");
     const actor = await requireUser();
     if (!can(actor, "material.stocktake_approve")) return fail("Hanya Owner yang boleh menyetujui stock opname.");
     const result = await prisma.$transaction(async (tx) => {

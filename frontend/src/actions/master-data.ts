@@ -7,6 +7,7 @@ import { logAction } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { requireEntitlement } from "@/lib/entitlements";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 import { PRINTING_UNITS, MACHINE_CATEGORIES, MACHINE_STATUSES, validateMaterialUnitPair, validateMaterialConversionFactor } from "@/lib/catalog-constants";
@@ -565,6 +566,7 @@ export async function createMaterial(data: {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "inventory");
     if (!can(actor, "material.receive")) return fail("Hanya Gudang/Owner yang boleh menambah material baru.");
     if (!data.name?.trim()) return fail("Nama material wajib diisi.");
     if (!Number.isFinite(data.conversion_factor) || !(data.conversion_factor > 0)) return fail("Faktor konversi harus lebih dari 0.");
@@ -643,6 +645,7 @@ export async function updateMaterial(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "inventory");
     if (!can(actor, "material.receive")) return fail("Hanya Gudang/Owner yang boleh mengubah data material.");
     const existing = await prisma.material.findFirst({ where: { id, tenant_id: tenant.id } });
     if (!existing) return fail("Material tidak ditemukan.");
@@ -688,6 +691,7 @@ export async function adjustMaterialStock(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "inventory");
     if (!can(actor, "material.adjust")) return fail("Hanya Owner yang boleh melakukan adjustment stok.");
     if (!data.reason?.trim()) return fail("Alasan penyesuaian wajib diisi.");
     if (!Number.isFinite(data.newStock) || data.newStock < 0) return fail("Jumlah stok fisik tidak valid.");
@@ -747,6 +751,7 @@ export async function receiveMaterialStock(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "inventory");
     if (!can(actor, "material.receive")) return fail("Hanya Gudang/Owner yang boleh mencatat stok masuk.");
     let quantity: number;
     try {

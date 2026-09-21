@@ -12,7 +12,7 @@ import {
 
 type Detail = Extract<Awaited<ReturnType<typeof getTenantDetail>>, { success: true }>["data"];
 
-const PLANS: PlanName[] = ["STARTER", "PRO", "ENTERPRISE"];
+const PLANS: PlanName[] = ["STARTER", "PRO", "BUSINESS", "ENTERPRISE"];
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 const dt = (d: Date | string | null) => (d ? new Date(d).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : "—");
 
@@ -116,7 +116,7 @@ export function TenantDetailDrawer({ tenantId, onClose, onChanged }: { tenantId:
               <Row k="Email Billing" v={detail.billingEmail ?? "—"} />
               <Row k="Domain Kustom" v={detail.customDomain ?? "—"} />
               <Row k="Provider WA" v={detail.waProvider ?? "—"} />
-              <Row k="Trial berakhir" v={dt(detail.trialEndsAt)} />
+              <Row k="Periode berakhir" v={dt(detail.currentPeriodEnd)} />
               <Row k="Periode" v={`${dt(detail.currentPeriodStart)} — ${dt(detail.currentPeriodEnd)}`} />
               <Row k="Dibuat" v={dt(detail.createdAt)} />
             </Section>

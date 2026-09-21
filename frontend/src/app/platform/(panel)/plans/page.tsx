@@ -153,15 +153,15 @@ function PlanModal({ plan, onClose, onDone }: { plan: Plan | null; onClose: () =
         {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}
 
         <Field label="Nama">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Pro"
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Business"
             className="w-full h-10 rounded-lg bg-elevated border border-border px-3 text-sm text-primary outline-none focus:border-accent-teal" />
         </Field>
         <Field label="Slug (huruf kecil, dipakai internal — hati-hati mengubah)">
-          <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="pro"
+          <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="business"
             className="w-full h-10 rounded-lg bg-elevated border border-border px-3 text-sm text-primary outline-none focus:border-accent-teal font-mono" />
         </Field>
         <Field label="Harga / bulan (Rp)">
-          <input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="599000"
+          <input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="799000"
             className="w-full h-10 rounded-lg bg-elevated border border-border px-3 text-sm text-primary outline-none focus:border-accent-teal font-mono" />
         </Field>
         <div className="grid grid-cols-2 gap-3">

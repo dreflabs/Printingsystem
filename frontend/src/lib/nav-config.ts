@@ -21,10 +21,12 @@ export interface NavChild {
   label: string;
   href: string;
   roles: UserRole[];
+  /** Kunci entitlement yang dibutuhkan agar item tampil (lihat lib/entitlements.ts). */
+  feature?: string;
 }
 
 export type NavEntry =
-  | { type: "link"; label: string; href: string; icon: LucideIcon; roles: UserRole[] }
+  | { type: "link"; label: string; href: string; icon: LucideIcon; roles: UserRole[]; feature?: string }
   | { type: "group"; label: string; icon: LucideIcon; roles: UserRole[]; children: NavChild[] };
 
 /**
@@ -42,12 +44,12 @@ export const GROUPED_NAV: NavEntry[] = [
   { type: "link", label: "Dashboard", href: "/owner", icon: LayoutDashboard, roles: ["owner"] },
   { type: "link", label: "Dashboard", href: "/admin", icon: LayoutDashboard, roles: ["admin"] },
   { type: "link", label: "Dashboard Desainer", href: "/designer", icon: Palette, roles: ["designer_sales"] },
-  { type: "link", label: "Absensi Saya", href: "/designer#absensi", icon: Clock3, roles: ["designer_sales"] },
+  { type: "link", label: "Absensi Saya", href: "/designer#absensi", icon: Clock3, roles: ["designer_sales"], feature: "hrm" },
   { type: "link", label: "Dashboard Operator", href: "/operator", icon: Factory, roles: ["operator"] },
-  { type: "link", label: "Absensi Saya", href: "/operator#absensi", icon: Clock3, roles: ["operator"] },
-  { type: "link", label: "Finishing & QC", href: "/finishing", icon: Package, roles: ["gudang"] },
-  { type: "link", label: "Material & Stok", href: "/finishing#material", icon: Package, roles: ["gudang"] },
-  { type: "link", label: "Absensi Saya", href: "/finishing#absensi", icon: Clock3, roles: ["gudang"] },
+  { type: "link", label: "Absensi Saya", href: "/operator#absensi", icon: Clock3, roles: ["operator"], feature: "hrm" },
+  { type: "link", label: "Finishing & QC", href: "/finishing", icon: Package, roles: ["gudang"], feature: "storage" },
+  { type: "link", label: "Material & Stok", href: "/finishing#material", icon: Package, roles: ["gudang"], feature: "inventory" },
+  { type: "link", label: "Absensi Saya", href: "/finishing#absensi", icon: Clock3, roles: ["gudang"], feature: "hrm" },
 
   {
     type: "group",
@@ -55,7 +57,7 @@ export const GROUPED_NAV: NavEntry[] = [
     icon: ShoppingCart,
     roles: ["admin", "owner"],
     children: [
-      { label: "Kasir / POS", href: "/pos", roles: ["admin"] },
+      { label: "Kasir / POS", href: "/pos", roles: ["admin"], feature: "pos" },
       // TODO(modul): Pengeluaran, Top Up Deposit, Closing Kasir
     ],
   },
@@ -86,9 +88,9 @@ export const GROUPED_NAV: NavEntry[] = [
     roles: ["owner", "admin"],
     children: [
       { label: "Akun & Akses", href: "/owner/users", roles: ["owner"] },
-      { label: "Absensi Pegawai", href: "/admin/attendance", roles: ["owner", "admin"] },
-      { label: "Pengaturan Absensi", href: "/owner/attendance-settings", roles: ["owner"] },
-      { label: "Gaji Pegawai", href: "/admin/payroll", roles: ["owner", "admin"] },
+      { label: "Absensi Pegawai", href: "/admin/attendance", roles: ["owner", "admin"], feature: "hrm" },
+      { label: "Pengaturan Absensi", href: "/owner/attendance-settings", roles: ["owner"], feature: "hrm" },
+      { label: "Gaji Pegawai", href: "/admin/payroll", roles: ["owner", "admin"], feature: "hrm" },
       // TODO(modul): Cuti & Izin, Lembur, Kasbon
     ],
   },
@@ -98,8 +100,8 @@ export const GROUPED_NAV: NavEntry[] = [
     icon: BarChart2,
     roles: ["owner", "admin"],
     children: [
-      { label: "Laporan Operasional", href: "/admin/reports", roles: ["admin"] },
-      { label: "Laporan Bulanan", href: "/owner/reports", roles: ["owner"] },
+      { label: "Laporan Operasional", href: "/admin/reports", roles: ["admin"], feature: "reports" },
+      { label: "Laporan Bulanan", href: "/owner/reports", roles: ["owner"], feature: "reports_finance" },
     ],
   },
   {
@@ -110,7 +112,7 @@ export const GROUPED_NAV: NavEntry[] = [
     children: [
       { label: "Identitas & Kebijakan", href: "/owner/toko", roles: ["owner"] },
       { label: "Paket & Tagihan", href: "/owner/billing", roles: ["owner"] },
-      { label: "Audit Log", href: "/audit-logs", roles: ["owner"] },
+      { label: "Audit Log", href: "/audit-logs", roles: ["owner"], feature: "audit_trail" },
     ],
   },
 
@@ -152,18 +154,23 @@ export type ResolvedNav = ResolvedLink | ResolvedGroup;
 
 /**
  * Saring GROUPED_NAV untuk sekumpulan peran:
- * - link: tampil kalau perannya cocok
+ * - link: tampil kalau perannya cocok dan entitlement-nya ada
  * - group: buang anak yang tak cocok; 0 anak → grup hilang; 1 anak → jadi link;
  *   ≥2 anak → tetap grup (accordion)
+ *
+ * `features` opsional: kalau tidak diberikan (mis. gagal dimuat), semua item
+ * yang cocok peran tetap tampil supaya navigasi tidak pernah kosong.
  */
-export function resolveNav(roles: UserRole[]): ResolvedNav[] {
+export function resolveNav(roles: UserRole[], features?: ReadonlySet<string>): ResolvedNav[] {
   const set = new Set(roles);
+  const hasFeature = (feature?: string) => !feature || !features || features.has(feature);
   const out: ResolvedNav[] = [];
   const seenHref = new Set<string>();
 
   for (const entry of GROUPED_NAV) {
     if (entry.type === "link") {
       if (!entry.roles.some((r) => set.has(r))) continue;
+      if (!hasFeature(entry.feature)) continue;
       if (seenHref.has(entry.href)) continue;
       seenHref.add(entry.href);
       out.push({ kind: "link", label: entry.label, href: entry.href, icon: entry.icon });
@@ -171,7 +178,7 @@ export function resolveNav(roles: UserRole[]): ResolvedNav[] {
     }
     if (!entry.roles.some((r) => set.has(r))) continue;
     const children = entry.children
-      .filter((c) => c.roles.some((r) => set.has(r)) && !seenHref.has(c.href))
+      .filter((c) => c.roles.some((r) => set.has(r)) && hasFeature(c.feature) && !seenHref.has(c.href))
       .map((c) => ({ label: c.label, href: c.href }));
     if (children.length === 0) continue;
     children.forEach((c) => seenHref.add(c.href));

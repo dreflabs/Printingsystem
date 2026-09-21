@@ -14,7 +14,7 @@ const DEFAULT_EMPLOYEE_PASSWORD = "printpilot123!";
 /** Slug + nama workspace milik user yang sedang login — dipakai untuk menampilkan alamat login pegawai. */
 export async function getMyWorkspace(): Promise<{ slug: string; name: string } | null> {
   try {
-    const tenant = await requireTenant();
+    const tenant = await requireTenant({ allowUnpaid: true });
     await requireUser();
     const row = await prisma.tenant.findUnique({
       where: { id: tenant.id },
@@ -30,7 +30,7 @@ export async function getMyWorkspace(): Promise<{ slug: string; name: string } |
 /** Profil user berdasarkan ID (dipakai Header untuk user yang sedang login) — hanya profil milik sendiri. */
 export async function getUserProfileById(userId: string) {
   try {
-    const tenant = await requireTenant();
+    const tenant = await requireTenant({ allowUnpaid: true });
     const actor = await requireUser();
     if (userId !== actor.id) return null;
     return await prisma.user.findFirst({
@@ -45,7 +45,7 @@ export async function getUserProfileById(userId: string) {
 
 export async function updateProfile(userId: string, data: { name: string; username: string; email: string; phone: string; avatar_url: string }) {
   try {
-    const tenant = await requireTenant();
+    const tenant = await requireTenant({ allowUnpaid: true });
     const actor = await requireUser();
     if (userId !== actor.id) throw new Error("Tidak bisa mengubah profil pengguna lain.");
 
@@ -118,7 +118,7 @@ export async function updateProfile(userId: string, data: { name: string; userna
 
 export async function changePassword(userId: string, oldPassword: string, newPassword: string) {
   try {
-    const tenant = await requireTenant();
+    const tenant = await requireTenant({ allowUnpaid: true });
     const actor = await requireUser();
     if (userId !== actor.id) throw new Error("Tidak bisa mengubah password pengguna lain.");
 
@@ -159,7 +159,7 @@ export async function changePassword(userId: string, oldPassword: string, newPas
  */
 export async function forcePasswordChange(newPassword: string) {
   try {
-    const tenant = await requireTenant();
+    const tenant = await requireTenant({ allowUnpaid: true });
     const actor = await requireUser();
 
     const passwordError = validateTenantPassword(newPassword ?? "");

@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { requireEntitlement } from "@/lib/entitlements";
 import { logAction } from "@/lib/logger";
 import { hhmmToMinutes } from "@/lib/attendance";
 import { safeError } from "@/lib/safe-error";
@@ -38,6 +39,7 @@ const MODES = ["OFF", "FLAG", "ENFORCE"] as const;
 export async function getAttendanceSettings(): Promise<ActionResult<AttendanceSettings>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     if (!can(actor, "attendance.settings.read")) return fail("Anda tidak memiliki akses melihat pengaturan absensi.");
     const row = await prisma.tenantAttendanceSetting.upsert({
@@ -57,6 +59,7 @@ export async function updateAttendanceSettings(
 ): Promise<ActionResult<AttendanceSettings>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     if (!can(actor, "attendance.configure"))
       return fail("Hanya Owner yang boleh mengubah pengaturan absensi.");
@@ -147,6 +150,7 @@ export async function updateAttendanceSettings(
 export async function setEmployeePin(userId: string, pin: string): Promise<ActionResult<null>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     if (!actor.roles.includes("owner") && !actor.roles.includes("admin"))
       return fail("Hanya Owner/Admin yang boleh mengatur PIN kiosk.");

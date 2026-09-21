@@ -15,7 +15,7 @@ Aplikasi Print Pilot akan memiliki dua sisi yang terpisah secara logika dan doma
 
 ### A. Dashboard Utama (Metrics & Analytics)
 - **MRR (Monthly Recurring Revenue):** Total estimasi pendapatan per bulan dari seluruh langganan aktif.
-- **Tenant Count:** Jumlah tenant aktif, masa trial, suspended, dan churned.
+- **Tenant Count:** Jumlah tenant aktif, belum bayar (UNPAID), suspended, dan churned.
 - **System Health:** Status resource server dan API pihak ketiga (WA Provider, Midtrans).
 
 ### B. Tenant Management (Daftar Pelanggan)

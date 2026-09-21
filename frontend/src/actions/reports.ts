@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { requireEntitlement } from "@/lib/entitlements";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
 
@@ -119,6 +120,7 @@ export async function getOutstandingReceivables(filter: "all" | "overdue" | "rea
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "reports_finance");
     if (!isAdmin(actor.roles)) return fail("Hanya Owner/Admin yang boleh melihat laporan piutang.");
 
     const orders = await prisma.order.findMany({
@@ -256,6 +258,7 @@ export async function getMonthlyReport(monthStr?: string) {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "reports_finance");
     if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh melihat laporan bulanan.");
 
     const { start, end, label } = monthRange(monthStr);

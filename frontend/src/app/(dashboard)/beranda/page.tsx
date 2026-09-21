@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Home, LayoutDashboard, ArrowRight } from "lucide-react";
 import { WorkQueue } from "@/components/dashboard/WorkQueue";
-import { TrialBanner } from "@/components/dashboard/TrialBanner";
+import { UnpaidBanner } from "@/components/dashboard/UnpaidBanner";
 import { getSessionUser } from "@/actions/session";
 
 /**
@@ -42,7 +42,7 @@ export default function BerandaPage() {
         </Link>
       </div>
 
-      <TrialBanner />
+      <UnpaidBanner />
       <WorkQueue />
     </div>
   );

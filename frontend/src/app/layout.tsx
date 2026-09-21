@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui";
-import { TRIAL_DAYS } from "@/lib/saas-catalog";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -11,7 +10,7 @@ const inter = Inter({
 
 const SITE_URL = process.env.APP_URL || "https://printpilot.id";
 const SITE_NAME = "Print Pilot";
-const DESCRIPTION = `Software manajemen percetakan berbasis cloud: kasir & order, kanban produksi, potong stok bahan otomatis, dan notifikasi WhatsApp. Uji coba gratis ${TRIAL_DAYS} hari.`;
+const DESCRIPTION = `Software manajemen percetakan berbasis cloud: kasir & order, kanban produksi, potong stok bahan otomatis, dan notifikasi WhatsApp.`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

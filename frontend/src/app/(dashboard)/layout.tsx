@@ -9,7 +9,7 @@ import { getSessionUser, type WorkspaceMode } from "@/actions/session";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState<
-    { id: string; name: string; role: string; roles: string[]; workspaceMode: WorkspaceMode } | null
+    { id: string; name: string; role: string; roles: string[]; workspaceMode: WorkspaceMode; features?: string[] } | null
   >(null);
   const [ready, setReady] = useState(false);
 
@@ -40,6 +40,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         role={role}
         roles={roles}
         workspaceMode={user?.workspaceMode ?? "TEAM_FULL"}
+        features={user?.features ?? undefined}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />

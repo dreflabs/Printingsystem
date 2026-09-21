@@ -54,17 +54,17 @@ export async function getPlatformMetrics() {
   try {
     await requireSuperAdmin();
 
-    const [tenants, payingSubs, trialSubs] = await Promise.all([
+    const [tenants, payingSubs, unpaidSubs] = await Promise.all([
       prisma.tenant.groupBy({ by: ["status"], _count: { _all: true } }),
       // MRR = hanya langganan aktif milik tenant yang benar-benar berbayar
-      // (status ACTIVE). Tenant TRIAL/SUSPENDED/CHURNED juga punya baris
+      // (status ACTIVE). Tenant UNPAID/SUSPENDED/CHURNED juga punya baris
       // TenantSubscription ACTIVE — tanpa filter ini MRR ikut menghitung mereka.
       prisma.tenantSubscription.findMany({
         where: { status: "ACTIVE", tenant: { status: "ACTIVE" } },
         select: { plan: { select: { price_monthly: true } } },
       }),
       prisma.tenantSubscription.findMany({
-        where: { status: "ACTIVE", tenant: { status: "TRIAL" } },
+        where: { status: "ACTIVE", tenant: { status: "UNPAID" } },
         select: { plan: { select: { price_monthly: true } } },
       }),
     ]);
@@ -72,13 +72,13 @@ export async function getPlatformMetrics() {
     const byStatus: Record<string, number> = {};
     for (const t of tenants) byStatus[t.status] = t._count._all;
     const mrr = payingSubs.reduce((s, x) => s + num(x.plan.price_monthly), 0);
-    const trialMrr = trialSubs.reduce((s, x) => s + num(x.plan.price_monthly), 0);
+    const unpaidMrr = unpaidSubs.reduce((s, x) => s + num(x.plan.price_monthly), 0);
 
     return ok({
       mrr,
-      trialMrr, // potensi pendapatan bila semua trial berjalan konversi
+      unpaidMrr, // potensi pendapatan dari tenant yang belum membayar invoice pertama
       totalTenants: Object.values(byStatus).reduce((a, b) => a + b, 0),
-      trial: byStatus.TRIAL ?? 0,
+      unpaid: byStatus.UNPAID ?? 0,
       active: byStatus.ACTIVE ?? 0,
       suspended: byStatus.SUSPENDED ?? 0,
       churned: byStatus.CHURNED ?? 0,
@@ -228,7 +228,7 @@ export async function getImpersonationState() {
   return ok({ impersonating: !!slug, slug });
 }
 
-const PLANS = ["STARTER", "PRO", "ENTERPRISE"] as const;
+const PLANS = ["STARTER", "PRO", "BUSINESS", "ENTERPRISE"] as const;
 export type PlanName = (typeof PLANS)[number];
 
 /** Detail satu tenant: profil, langganan, onboarding, audit log terakhir. */
@@ -267,7 +267,6 @@ export async function getTenantDetail(tenantId: string) {
       status: t.status,
       plan: t.plan,
       maxUsers: t.max_users,
-      trialEndsAt: t.trial_ends_at,
       currentPeriodStart: t.current_period_start,
       currentPeriodEnd: t.current_period_end,
       billingEmail: t.billing_email,

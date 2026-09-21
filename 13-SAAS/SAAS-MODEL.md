@@ -12,41 +12,62 @@ Dokumen ini mendefinisikan model bisnis Software as a Service (SaaS) untuk Print
 
 ## 2. Pricing Tiers (Paket Berlangganan)
 
-Print Pilot menawarkan 3 tingkatan (tier) berlangganan bulanan:
+Print Pilot menawarkan **3 paket self-serve** bulanan (Starter, Pro, Business) plus **Enterprise** yang dikontrak lewat Sales. Paket self-serve dapat didaftar dan diganti sendiri oleh Owner; Enterprise tidak muncul di form registrasi maupun halaman harga self-serve.
 
-### 🟢 Starter (Rp 299.000 / bulan)
+### 🟢 Starter (Rp 199.000 / bulan)
 Ditujukan untuk *copy center* atau percetakan kecil yang baru mulai berdigitalisasi.
-- **Limit:** Maksimal 5 User, Maksimal 200 Order/bulan.
-- **Fitur Termasuk:** Order Management dasar, POS Retail, Role dasar (Admin, Operator), Notifikasi WhatsApp Otomatis (kuota template dasar, terbatas).
-- **Fitur Terkunci:** Scan QR Produksi, Modul QC, Manajemen Gudang.
+- **Limit:** Maksimal 3 User, Maksimal 200 Order/bulan.
+- **Fitur Termasuk:** Order Management, POS Retail, Kanban Produksi & Dashboard per Peran, Laporan Operasional Harian, Nota Online & Riwayat Pelanggan, Database Pelanggan (termasuk harga makloon), Notifikasi WhatsApp Pelanggan, Peringatan Deadline/Stok/Job Macet.
+- **Fitur Terkunci:** QC & Rework, QR Tracking produksi, Manajemen Gudang/Storage, Absensi & Payroll, Inventory Material, Purchase Order, Smart Layout, Laporan Keuangan, Audit Trail.
 
-### 🔵 Pro (Rp 599.000 / bulan)
-Ditujukan untuk percetakan menengah ke atas yang membutuhkan *workflow* ketat dan sistem anti-fraud.
-- **Limit:** Maksimal 15 User, Unlimited Order.
-- **Fitur Termasuk:** Semua fitur Starter + QR Code Tracking 100%, Modul QC & Rework, Manajemen Gudang (Slot), Material Inventory & Deductions, Notifikasi WhatsApp Unlimited via API terintegrasi (bukan lagi kuota terbatas), Audit Trail Lengkap.
-- **Akses Role:** Semua 5 role terbuka.
+### 🔵 Pro (Rp 399.000 / bulan)
+Ditujukan untuk percetakan menengah yang membutuhkan *workflow* ketat dan sistem anti-fraud.
+- **Limit:** Maksimal 5 User, Unlimited Order.
+- **Fitur Termasuk:** Semua Starter + QC & Rework, QR Code Tracking, Manajemen Gudang & Pickup/Counter, Inventory Material + Waste & Costing, Absensi & Payroll, Smart Layout Calculator, Laporan Keuangan Lengkap, Audit Trail & Anti-Fraud, Notifikasi WhatsApp Pelanggan.
+- **Fitur Terkunci:** Purchase Order & Supplier, Integrasi API, kuota user di atas 5.
+- **Roadmap:** Notifikasi WhatsApp Unlimited via API (kunci `whatsapp_unlimited` sudah ada di katalog, kuota API belum ditegakkan).
 
-> **Catatan:** Notifikasi WhatsApp sengaja tidak dikunci total di Starter — ini fitur inti yang dijual di landing page (`MARKETING-PAGE.md`), jadi semua paket tetap mendapatkannya. Diferensiasi upsell ke Pro dipindah ke **kuota & integrasi API**, bukan ada/tidaknya fitur.
+### 🟣 Business (Rp 799.000 / bulan)
+Ditujukan untuk percetakan dengan tim lebih besar, grosir, atau usaha yang mengintegrasikan sistem lain.
+- **Limit:** Maksimal 10 User, Unlimited Order.
+- **Fitur Termasuk:** Semua fitur Pro + Purchase Order & Supplier, kuota user lebih besar, dukungan prioritas (WA).
+- **Roadmap:** Integrasi API (belum ada endpoint publik/API key), kuota WhatsApp lebih besar.
 
 ### 👑 Enterprise (Harga Custom, mulai Rp 1.500.000+)
-Ditujukan untuk *franchise* atau pabrik cetak multi-cabang.
+Ditujukan untuk *franchise* atau pabrik cetak multi-cabang. Tidak self-serve — selalu melalui tim Sales.
 - **Limit:** Unlimited User, Unlimited Order, Multi-Cabang.
-- **Fitur Termasuk:** Semua fitur Pro + Laporan Konsolidasi Multi-Cabang, Dedicated Account Manager (SLA), akses API pihak ketiga.
-- **Custom Domain:** Opsi untuk menggunakan domain sendiri (contoh: `sistem.namatoko.com`). Lihat `06-SECURITY/MULTI-TENANT-ISOLATION.md` bagian "Isolasi Sesi di Custom Domain" untuk aturan keamanannya.
+- **Fitur Termasuk:** Semua fitur Business + Dedicated Account Manager (SLA).
+- **Roadmap (belum ada di kode):** Custom Domain (contoh: `sistem.namatoko.com`), Laporan Konsolidasi Multi-Cabang, akses API pihak ketiga. Lihat `06-SECURITY/MULTI-TENANT-ISOLATION.md` bagian "Isolasi Sesi di Custom Domain" untuk aturan keamanan saat fitur ini dibangun.
 
-## 2b. Siklus Berlangganan (Bulanan / Tahunan)
+> **Gating fitur:** Starter, Pro, Business, dan Enterprise boleh punya role yang sama, tetapi modul yang tidak ada di entitlement paket ditolak di server. Daftar kunci entitlement ada di `09-TECHNICAL/ENTITLEMENT-GATING.md`; harga dan fitur per paket adalah satu sumber di `frontend/src/lib/saas-catalog.ts`.
 
-- **Bulanan:** Harga normal sesuai tabel di atas, ditagih tiap 30 hari.
-- **Tahunan (Opsional, diskon):** Bayar 10 bulan, gratis 2 bulan (setara diskon ~17%). Tersedia untuk paket Starter & Pro. Tujuan: memperbaiki cash flow platform dan menekan risiko churn akibat `Grace Period` yang pendek (3 hari) pada siklus bulanan.
+## 2b. Siklus Berlangganan & Add-on
+
+Wizard pendaftaran menawarkan pilihan berikut sebelum workspace dibuat:
+
+- **Durasi:** Bulanan, 3 bulan, 6 bulan, atau 12 bulan.
+  - Bulanan, 3, dan 6 bulan ditagih penuh (tanpa diskon).
+  - **12 bulan: bayar 10 bulan, gratis 2 bulan** (setara diskon ~17%). Tujuan: memperbaiki cash flow platform dan menekan risiko churn akibat `Grace Period` yang pendek (3 hari) pada siklus bulanan.
+- **Add-on kursi user:** Rp80.000 per user per bulan di luar kuota paket. Harga sengaja disetara dengan selisih Business − Pro (Rp400 rb untuk 5 kursi = Rp80 rb/kursi) supaya menambah kursi tidak lebih murah daripada naik paket.
+- **Layanan tambahan (jasa):** Instalasi & Training Online (harga list Rp1.500.000) dan Onsite (Rp3.500.000). Keduanya **gratis selama masa promo** Print Pilot; harga list ditampilkan dicoret sebagai pembanding nilai.
+- **Voucher:** kode diskon (persen atau nominal) dengan kuota pemakaian dan masa berlaku, dibuat lewat panel Super Admin (`/platform/vouchers`). Voucher dipakai **sekali** pada invoice berikutnya, baik dari wizard pendaftaran maupun halaman Paket & Tagihan.
+- **Pembayaran:** saat ini **transfer bank manual** (rekening + upload bukti bayar, diverifikasi Super Admin) — mengikuti alur BIMA. Integrasi payment gateway (Midtrans) **dipending** dan toggle-nya dikunci di `/platform/payments` sampai Snap + webhook siap. Lihat `BILLING.md` bagian 0.
 - Enterprise selalu memakai kontrak custom (bukan siklus otomatis Midtrans), diatur manual oleh tim Sales.
 
-## 3. Trial & Churn Policy
+Sumber kebenaran harga/termin/layanan ada di `frontend/src/lib/saas-catalog.ts` (`SUBSCRIPTION_TERMS`, `ADDON_SEAT_PRICE_MONTHLY`, `SERVICE_OPTIONS`). Kursi add-on disimpan di `Tenant.addon_users`; termin dan layanan disimpan di `TenantSubscription.term_months` dan `TenantSubscription.service_keys`.
 
-- **Free Trial:** 14 Hari gratis pada paket yang dipilih saat mendaftar (Starter atau Pro — Enterprise selalu via Sales, tidak self-serve), tidak butuh kartu kredit.
-- **Akhir Trial = Jatuh Tempo Pertama:** Hari terakhir trial diperlakukan sebagai `H-0` pada siklus billing (lihat `BILLING.md` Section 2) — tenant baru tetap mendapat invoice + link pembayaran dan `Grace Period` 3 hari yang sama seperti pelanggan reguler, bukan langsung `SUSPENDED` tanpa peringatan.
-- **Grace Period:** 3 Hari setelah jatuh tempo pembayaran (termasuk jatuh tempo pertama pasca-trial). Sistem tetap bisa diakses namun muncul peringatan.
-- **Suspension:** Jika tidak dibayar setelah masa tenggang, akun menjadi status `SUSPENDED`. Semua user tidak bisa login ke dalam subdomain tenant tersebut, kecuali untuk layar pembayaran.
-- **Data Retention & Penghapusan Bertahap:** Jika akun tidak dibayar selama 90 hari sejak `SUSPENDED`, status menjadi `CHURNED` dan data dijadwalkan untuk dihapus permanen (hard delete). Sebelum itu, sistem **wajib**:
+## 3. Tanpa Free Trial: Pembayaran di Muka & Churn Policy
+
+> **Keputusan 2026-09-21:** seluruh fitur free trial dihapus. Tidak ada masa uji coba gratis; tenant baru harus membayar invoice pertama sebelum aplikasi terbuka penuh.
+
+- **Status awal `UNPAID`:** saat mendaftar, tenant langsung dibuat dan **invoice pertama diterbitkan otomatis** dengan rincian paket + termin + kursi add-on + layanan, jatuh tempo **3 hari** (`PAYMENT_DUE_DAYS`). Status tenant `UNPAID`.
+- **Akses selama `UNPAID`:** user tetap bisa login, tetapi hanya halaman Paket & Tagihan + invoice + Bantuan. Sisa aplikasi dialihkan ke `/owner/billing` oleh middleware.
+- **Aktivasi:** begitu bukti transfer disetujui Super Admin (atau invoice ditandai lunas dari panel platform), status tenant otomatis menjadi `ACTIVE`, periode langganan diisi sesuai termin, dan akses penuh terbuka.
+- **Grace Period:** 7 hari setelah jatuh tempo invoice (`UNPAID_GRACE_DAYS`). Banner peringatan tampil sejak hari pertama.
+- **Suspension:** jika tetap tidak dibayar setelah tenggang, job lifecycle harian mengubah status menjadi `SUSPENDED`. Semua user tidak bisa login.
+- **Data Retention & Penghapusan Bertahap:** jika akun `SUSPENDED` tidak tersentuh selama 60 hari, status menjadi `CHURNED` dan data dijadwalkan untuk dihapus permanen (hard delete) 30 hari kemudian. Sebelum itu, sistem **wajib**:
   - Mengirim reminder bertahap ke Owner via Email + WA pada **H-30, H-7, dan H-1** sebelum penghapusan permanen.
   - Menyediakan tombol **"Ekspor Semua Data"** (order, pelanggan, laporan keuangan dalam CSV/PDF) yang aktif sejak status `SUSPENDED` hingga sesaat sebelum `CHURNED` dieksekusi hard delete.
   - Detail teknis lihat `SUPER-ADMIN.md` Section B.
+
+Catatan data lama: tenant yang sebelumnya berstatus `TRIAL` dikonversi menjadi `ACTIVE` lewat `prisma/backfill-trial-to-active.mjs`. Kolom `Tenant.trial_ends_at` masih ada demi kompatibilitas data lama dan selalu dikosongkan saat aktivasi.

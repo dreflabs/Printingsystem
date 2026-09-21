@@ -30,6 +30,7 @@ export const authConfig = {
         // Simpan tenant info di JWT agar context tenant tersedia tanpa subdomain
         token.tenantId = (user as { tenantId?: string }).tenantId ?? null;
         token.tenantSlug = (user as { tenantSlug?: string }).tenantSlug ?? null;
+        token.tenantStatus = (user as { tenantStatus?: string }).tenantStatus ?? null;
       }
       return token;
     },
@@ -47,6 +48,7 @@ export const authConfig = {
         // Ekspos tenant info di session
         (session.user as unknown as Record<string, unknown>).tenantId = (token.tenantId as string | null) ?? null;
         (session.user as unknown as Record<string, unknown>).tenantSlug = (token.tenantSlug as string | null) ?? null;
+        (session.user as unknown as Record<string, unknown>).tenantStatus = (token.tenantStatus as string | null) ?? null;
       }
       return session;
     },

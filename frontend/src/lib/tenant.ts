@@ -118,9 +118,13 @@ export async function getCurrentTenant() {
 }
 
 /**
- * Requires a tenant to exist, otherwise throws an error (useful for API routes)
+ * Requires a tenant to exist, otherwise throws an error (useful for API routes).
+ *
+ * `allowUnpaid: true` dipakai oleh aksi billing/pembayaran — tenant UNPAID
+ * memang harus bisa membuka halaman tagihan, mengunggah bukti, dan mengganti
+ * voucher. Aksi operasional lain memakai default (diblokir saat UNPAID).
  */
-export async function requireTenant() {
+export async function requireTenant(opts: { allowUnpaid?: boolean } = {}) {
   const tenant = await getCurrentTenant();
   if (!tenant) {
     throw new Error("Tenant context is missing. Request must be made from a valid tenant subdomain.");
@@ -141,6 +145,26 @@ export async function requireTenant() {
     if (!impersonating) {
       const label = tenant.status === "SUSPENDED" ? "dinonaktifkan sementara" : "tidak aktif";
       throw new Error(`TENANT_SUSPENDED: Akun percetakan ini ${label}. Silakan hubungi tim Print Pilot.`);
+    }
+  }
+
+  // Tanpa free trial: tenant UNPAID hanya boleh memakai alur tagihan sampai
+  // invoice pertama dibayar. Middleware sudah mengalihkan halaman, tetapi
+  // server action tetap harus menolak agar bukan sekadar kontrol UI.
+  if (tenant.status === "UNPAID" && !opts.allowUnpaid) {
+    let impersonating = false;
+    try {
+      const imp = (await cookies()).get(IMPERSONATE_COOKIE)?.value;
+      if (imp) {
+        impersonating = (await getPlatformActor()) !== null;
+      }
+    } catch {
+      /* cookies() unavailable outside request scope */
+    }
+    if (!impersonating) {
+      throw new Error(
+        "TENANT_UNPAID: Pembayaran invoice pertama belum selesai. Buka halaman Paket & Tagihan untuk menyelesaikannya.",
+      );
     }
   }
 

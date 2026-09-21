@@ -93,6 +93,7 @@ export default auth((req) => {
     path.startsWith("/api/jobs") ||
     path.startsWith("/api/health") ||
     path.startsWith("/api/kiosk") ||
+    path.startsWith("/api/payment-proof") ||
     path.startsWith("/kiosk") ||
     path.startsWith("/print") ||
     PUBLIC_PATHS.includes(path)
@@ -138,6 +139,20 @@ export default auth((req) => {
     const url = new URL("/login", nextUrl);
     url.searchParams.set("callbackUrl", path);
     return NextResponse.redirect(url);
+  }
+
+  // ── Tenant UNPAID (tanpa free trial) ──
+  // Belum bayar invoice pertama → hanya boleh membuka halaman tagihan/invoice
+  // dan bantuan. Sisa aplikasi dibuka setelah pembayaran diverifikasi.
+  const tenantStatus =
+    (req.auth?.user as { tenantStatus?: string | null } | undefined)?.tenantStatus ?? null;
+  if (!isPlatform && tenantStatus === "UNPAID") {
+    const allowedUnpaid =
+      path === "/owner/billing" ||
+      path.startsWith("/owner/billing/") ||
+      path === "/bantuan" ||
+      path === FORCE_PW_PATH;
+    if (!allowedUnpaid) return NextResponse.redirect(new URL("/owner/billing", nextUrl));
   }
 
   // Platform user on tenant routes: allowed only while impersonating; otherwise send home.

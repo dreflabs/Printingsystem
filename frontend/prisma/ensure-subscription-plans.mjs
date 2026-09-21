@@ -37,18 +37,33 @@ const TARGET_PLANS = [
   {
     name: "Starter",
     slug: "starter",
-    price_monthly: 299000,
-    max_users: 5,
+    price_monthly: 199000,
+    max_users: 3,
     max_orders_per_month: 200,
-    features_json: JSON.stringify(["dashboard", "kanban"]),
+    features_json: JSON.stringify(["dashboard", "kanban", "pos", "reports"]),
   },
   {
     name: "Pro",
     slug: "pro",
-    price_monthly: 599000,
-    max_users: 15,
+    price_monthly: 399000,
+    max_users: 5,
     max_orders_per_month: null,
-    features_json: JSON.stringify(["dashboard", "kanban", "qc", "storage", "whatsapp_unlimited", "audit_trail"]),
+    features_json: JSON.stringify([
+      "dashboard", "kanban", "pos", "reports", "qc", "storage", "audit_trail",
+      "hrm", "inventory", "layout", "reports_finance", "whatsapp_unlimited",
+    ]),
+  },
+  {
+    name: "Business",
+    slug: "business",
+    price_monthly: 799000,
+    max_users: 10,
+    max_orders_per_month: null,
+    features_json: JSON.stringify([
+      "dashboard", "kanban", "pos", "reports", "qc", "storage", "audit_trail",
+      "hrm", "inventory", "layout", "reports_finance", "whatsapp_unlimited",
+      "purchase_orders", "api",
+    ]),
   },
 ];
 

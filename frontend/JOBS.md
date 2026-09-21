@@ -25,7 +25,7 @@ Middleware sudah dikonfigurasi untuk membiarkan `/api/jobs/*` lewat tanpa sesi.
 | `/api/jobs/deadline-alerts` | Buat baris `deadline_alerts` H1_WARNING (deadline ≤24 jam) & OVERDUE (lewat). Tutup alert saat order `READY_FOR_PICKUP`+. | tiap 1 jam |
 | `/api/jobs/break-warnings` | Menit ke-45 istirahat → WA ke pegawai. Lewat 60 menit → status `EXCEEDED` + WA ke Owner. | tiap 2–5 menit |
 | `/api/jobs/attendance-autoclose` | Tutup absen yang lupa pulang (`check_out_status=AUTO_CLOSED`), tutup istirahat menggantung (`EXCEEDED`), hapus selfie lebih tua dari `selfie_retention_days`. | 1× sehari (sesudah `auto_close_at`) |
-| `/api/jobs/tenant-lifecycle` | Housekeeping tenant: TRIAL lewat `trial_ends_at` >14 hari → `CHURNED` + slug dilepas; `SUSPENDED` tak tersentuh >60 hari → `CHURNED`; `CHURNED` >30 hari → **purge permanen** + nisan `RetiredTenant`. | 1× sehari |
+| `/api/jobs/tenant-lifecycle` | Housekeeping tenant: `UNPAID` lewat jatuh tempo >7 hari → `SUSPENDED`; `SUSPENDED` tak tersentuh >60 hari → `CHURNED` + slug dilepas; `CHURNED` >30 hari → **purge permanen** + nisan `RetiredTenant`. | 1× sehari |
 
 ## Menjalankan: pakai `scripts/run-job.sh`
 
@@ -144,5 +144,7 @@ HTTP `200` = semua terkirim, `502` = ada yang gagal.
   Saat churn, slug aktif di-rename `<slug>-retired-<id8>` sehingga nama aslinya
   bebas dipakai pendaftar baru; `retired_slug` menyimpan yang asli. Purge
   menghapus seluruh baris tenant (urut FK di `purgeTenant()`) dan menulis satu
-  baris `RetiredTenant` sebagai nisan. Backlog data lama: sekali jalankan
-  `npm run backfill:churn-stale-trials` (DRY RUN; `APPLY=true` untuk eksekusi).
+  baris `RetiredTenant` sebagai nisan. Sejak free trial dihapus, tenant `UNPAID`
+  yang lewat jatuh tempo 7 hari di-`SUSPENDED`, lalu `SUSPENDED` basi di-`CHURNED`.
+  Setelah deploy penghapusan trial, jalankan sekali `npm run backfill:trial-to-active`
+  (DRY RUN; `APPLY=true` untuk eksekusi) untuk mengonversi tenant `TRIAL` lama.

@@ -10,7 +10,18 @@ import {
 import { validateTenantPassword } from "@/lib/password-policy";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/mail";
-import { planFeaturesJson, resolveSelfServePlan, SAAS_PLANS, TRIAL_DAYS } from "@/lib/saas-catalog";
+import {
+  computeOrderEstimate,
+  PAYMENT_DUE_DAYS,
+  planFeaturesJson,
+  resolveAddonSeats,
+  resolveSelfServePlan,
+  resolveServices,
+  resolveTerm,
+  SAAS_PLANS,
+} from "@/lib/saas-catalog";
+import { createInvoiceForSubscription } from "@/lib/billing";
+import { validateVoucher } from "@/lib/voucher";
 
 const DEFAULT_ROLES = ["owner", "admin", "designer_sales", "operator", "gudang"] as const;
 const BCRYPT_ROUNDS = 12;
@@ -25,8 +36,16 @@ export type RegisterTenantInput = {
   address?: string;
   /** Wajib true — centang persetujuan Syarat & Ketentuan + Kebijakan Privasi di Langkah 2. */
   consentAccepted: boolean;
-  /** Paket yang diklik di landing page ("starter" default, "pro" opsional). Enterprise tidak self-serve. */
+  /** Paket yang diklik di landing page ("starter" default, "pro"/"business" opsional). Enterprise tidak self-serve. */
   plan?: string;
+  /** Durasi berlangganan yang dipilih di wizard: 1/3/6/12 bulan (12 bulan = bayar 10). */
+  months?: number;
+  /** Kursi user tambahan di luar kuota paket (Rp80 rb/user/bulan). */
+  addonSeats?: number;
+  /** Layanan tambahan yang dipilih (training_online/training_onsite); gratis selama masa promo. */
+  services?: string[];
+  /** Kode voucher opsional; divalidasi server-side dan dipakai sekali pada invoice pertama. */
+  voucherCode?: string;
   /**
    * Jawaban wizard "berapa orang yang menjalankan percetakan ini?".
    * "solo" (default) → 1 orang · "small" → 2–5 · "full" → 6+.
@@ -47,6 +66,10 @@ export type RegisterTenantResult = {
   ownerUsername: string;
   tenantId: string;
   verificationRequired: boolean;
+  /** Nomor invoice pertama yang otomatis diterbitkan (null kalau gagal dibuat). */
+  invoiceNumber: string | null;
+  invoiceAmount: number | null;
+  invoiceDueDate: string | null;
 };
 
 function slugify(v: string) {
@@ -120,6 +143,24 @@ export async function registerTenant(
     const usernameBase = slugify(email.split("@")[0]) || "owner";
     const planKey = resolveSelfServePlan(input.plan);
     const planDef = SAAS_PLANS[planKey];
+    const termMonths = resolveTerm(input.months);
+    const addonSeats = resolveAddonSeats(input.addonSeats);
+    const services = resolveServices(input.services);
+    const estimate = computeOrderEstimate({ plan: planKey, months: termMonths, addonSeats, services });
+
+    // Voucher divalidasi server-side; kalau user mengetik kode, kode yang salah
+    // harus terlihat error-nya, bukan diam-diam diabaikan.
+    const voucherInput = input.voucherCode?.trim();
+    let voucherCode: string | null = null;
+    let voucherDiscount = 0;
+    if (voucherInput) {
+      const check = await validateVoucher(voucherInput, estimate.total);
+      if (!check.ok) return fail(check.error, { voucher: check.error });
+      voucherCode = check.voucher.code;
+      voucherDiscount = check.discountAmount;
+    }
+    const firstInvoiceTotal = estimate.total - voucherDiscount;
+
     const workspaceMode = resolveWorkspaceMode(input.teamSize);
     const verificationRaw = verificationRequired ? crypto.randomBytes(32).toString("hex") : null;
     const verificationHash = verificationRaw
@@ -152,19 +193,20 @@ export async function registerTenant(
       });
 
       const now = new Date();
-      const trialEnds = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
 
       const tenant = await tx.tenant.create({
         data: {
           slug,
           name: shopName,
           plan: planDef.tenantPlan,
-          status: "TRIAL",
-          trial_ends_at: trialEnds,
+          // Tanpa free trial: tenant menunggu pembayaran invoice pertama.
+          status: "UNPAID",
+          trial_ends_at: null,
           billing_email: email,
           owner_name: ownerName,
           owner_phone: phone,
           max_users: plan.max_users,
+          addon_users: addonSeats,
           workspace_mode: workspaceMode,
           // Tim per-divisi: default minta Admin merilis order ke produksi &
           // wajib konfirmasi counter sebelum serah terima. SOLO / tim kecil:
@@ -174,13 +216,16 @@ export async function registerTenant(
         },
       });
 
-      await tx.tenantSubscription.create({
+      const subscription = await tx.tenantSubscription.create({
         data: {
           tenant_id: tenant.id,
           plan_id: plan.id,
           status: "ACTIVE",
           started_at: now,
-          ends_at: trialEnds,
+          ends_at: null,
+          term_months: termMonths,
+          service_keys: services,
+          voucher_code: voucherCode,
         },
       });
 
@@ -234,7 +279,24 @@ export async function registerTenant(
           tenant_id: tenant.id,
           actor_type: "SYSTEM",
           action: "TENANT_SELF_SIGNUP",
-          detail_json: JSON.stringify({ slug, email, plan: planDef.tenantPlan, address, workspace_mode: workspaceMode }),
+          detail_json: JSON.stringify({
+            slug,
+            email,
+            plan: planDef.tenantPlan,
+            address,
+            workspace_mode: workspaceMode,
+            subscription: {
+              months: estimate.months,
+              paid_months: estimate.paidMonths,
+              addon_seats: estimate.addonSeats,
+              services: estimate.services,
+              service_list_total: estimate.serviceListTotal,
+              voucher_code: voucherCode,
+              voucher_discount: voucherDiscount,
+              total_first_term: firstInvoiceTotal,
+              lines: estimate.lines,
+            },
+          }),
         },
       });
 
@@ -248,8 +310,23 @@ export async function registerTenant(
         });
       }
 
-      return { slug, ownerUsername: usernameBase, tenantId: tenant.id, verificationRequired, verificationRaw, trialEnds };
+      return { slug, ownerUsername: usernameBase, tenantId: tenant.id, subscriptionId: subscription.id, verificationRequired, verificationRaw };
     });
+
+    // Invoice pertama diterbitkan otomatis (tanpa free trial). Dibuat di luar
+    // transaksi tenant supaya kegagalan invoice tidak membatalkan workspace
+    // yang sudah jadi — Owner tetap bisa membayar/menghubungi tim.
+    const firstInvoice = await createInvoiceForSubscription({
+      tenantId: result.tenantId,
+      subscriptionId: result.subscriptionId,
+      dueInDays: PAYMENT_DUE_DAYS,
+    }).catch((e) => {
+      console.error("registerTenant: gagal membuat invoice pertama:", e);
+      return { ok: false as const, reason: "error" };
+    });
+    const invoiceNumber = firstInvoice.ok ? firstInvoice.invoice.number : null;
+    const invoiceAmount = firstInvoice.ok ? firstInvoice.invoice.amount : null;
+    const invoiceDueDate = firstInvoice.ok ? firstInvoice.invoice.dueDate.toISOString() : null;
 
     if (result.verificationRequired && result.verificationRaw) {
       const link = `${process.env.APP_URL?.replace(/\/$/, "") || "http://localhost:3000"}/verify-email?token=${result.verificationRaw}`;
@@ -273,7 +350,12 @@ export async function registerTenant(
         body: [
           `Halo ${ownerName},`,
           ``,
-          `Workspace "${shopName}" sudah aktif. Masa uji coba ${TRIAL_DAYS} hari berlaku sampai ${TANGGAL_ID.format(result.trialEnds)}.`,
+          `Workspace "${shopName}" sudah dibuat.`,
+          ``,
+          invoiceNumber
+            ? `Invoice pertama ${invoiceNumber} sebesar Rp ${(invoiceAmount ?? 0).toLocaleString("id-ID")} jatuh tempo ${invoiceDueDate ? TANGGAL_ID.format(new Date(invoiceDueDate)) : "-"}.`
+            : `Invoice pertama sedang disiapkan — buka halaman Paket & Tagihan untuk melihatnya.`,
+          `Akses aplikasi dibuka penuh setelah pembayaran diverifikasi.`,
           ``,
           `Login: ${loginUrl}`,
           `Username: ${result.ownerUsername}`,
@@ -286,9 +368,59 @@ export async function registerTenant(
       }
     }
 
-    return ok({ slug: result.slug, ownerUsername: result.ownerUsername, tenantId: result.tenantId, verificationRequired: result.verificationRequired });
+    return ok({
+      slug: result.slug,
+      ownerUsername: result.ownerUsername,
+      tenantId: result.tenantId,
+      verificationRequired: result.verificationRequired,
+      invoiceNumber,
+      invoiceAmount,
+      invoiceDueDate,
+    });
   } catch (e) {
     console.error("registerTenant failed:", e);
     return fail("Gagal membuat workspace. Silakan coba lagi.");
+  }
+}
+
+/**
+ * Pratinjau kode voucher di wizard pendaftaran (belum login). Rate-limited dan
+ * hanya mengembalikan label + nominal diskon — tidak pernah membocorkan daftar
+ * voucher. Validasi final tetap diulang di `registerTenant`.
+ */
+export async function validateSignupVoucher(input: {
+  code: string;
+  plan?: string;
+  months?: number;
+  addonSeats?: number;
+  services?: string[];
+}): Promise<ActionResult<{ code: string; label: string; discountAmount: number; subtotal: number }>> {
+  try {
+    const code = input.code?.trim();
+    if (!code) return fail("Masukkan kode voucher.");
+
+    const limit = rateLimit(`voucher:${code.toUpperCase()}`, 20, 10 * 60_000);
+    if (!limit.ok) return fail("Terlalu banyak percobaan. Coba lagi nanti.");
+
+    const planKey = resolveSelfServePlan(input.plan);
+    const estimate = computeOrderEstimate({
+      plan: planKey,
+      months: input.months,
+      addonSeats: input.addonSeats,
+      services: input.services,
+    });
+
+    const check = await validateVoucher(code, estimate.total);
+    if (!check.ok) return fail(check.error);
+
+    return ok({
+      code: check.voucher.code,
+      label: check.label,
+      discountAmount: check.discountAmount,
+      subtotal: estimate.total,
+    });
+  } catch (e) {
+    console.error("validateSignupVoucher failed:", e);
+    return fail("Gagal memeriksa voucher. Silakan coba lagi.");
   }
 }

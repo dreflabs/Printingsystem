@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { getPlatformMetrics, listPlatformAuditLog } from "@/actions/platform";
 
-type Metrics = { mrr: number; trialMrr: number; totalTenants: number; trial: number; active: number; suspended: number; churned: number };
+type Metrics = { mrr: number; unpaidMrr: number; totalTenants: number; unpaid: number; active: number; suspended: number; churned: number };
 type Entry = {
   id: string; actorName: string; actorSubLevel: string | null; action: string;
   targetLabel: string | null; createdAt: Date | string;
@@ -38,10 +38,10 @@ export default function PlatformDashboard() {
       label: "MRR (tenant aktif)",
       value: metrics ? rupiah(metrics.mrr) : "—",
       icon: DollarSign,
-      hint: metrics && metrics.trialMrr > 0 ? `+ ${rupiah(metrics.trialMrr)} potensi dari trial` : undefined,
+      hint: metrics && metrics.unpaidMrr > 0 ? `+ ${rupiah(metrics.unpaidMrr)} menunggu pembayaran` : undefined,
     },
     { label: "Total Tenant", value: metrics?.totalTenants ?? "—", icon: Building2 },
-    { label: "Aktif / Trial", value: metrics ? `${metrics.active} / ${metrics.trial}` : "—", icon: Users },
+    { label: "Aktif / Belum Bayar", value: metrics ? `${metrics.active} / ${metrics.unpaid}` : "—", icon: Users },
     { label: "Suspended / Churned", value: metrics ? `${metrics.suspended} / ${metrics.churned}` : "—", icon: PauseCircle },
   ];
 

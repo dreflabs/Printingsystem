@@ -4,7 +4,7 @@ import {
   churnTenant,
   purgeTenant,
   daysAgo,
-  TRIAL_GRACE_DAYS,
+  UNPAID_GRACE_DAYS,
   SUSPENDED_GRACE_DAYS,
   PURGE_GRACE_DAYS,
 } from "@/lib/tenant-lifecycle";
@@ -15,9 +15,9 @@ export const dynamic = "force-dynamic";
  * POST/GET /api/jobs/tenant-lifecycle
  *
  * Housekeeping tenant (`src/lib/tenant-lifecycle.ts`). Jalan sekali sehari:
- *  A. TRIAL yang lewat `trial_ends_at` > 14 hari         → CHURNED + slug dilepas
- *  B. SUSPENDED yang tak tersentuh > 60 hari             → CHURNED + slug dilepas
- *  C. CHURNED yang lewat `churned_at` > 30 hari          → purge permanen + nisan
+ *  A. UNPAID yang lewat jatuh tempo invoice > 7 hari        → SUSPENDED
+ *  B. SUSPENDED yang tak tersentuh > 60 hari                → CHURNED + slug dilepas
+ *  C. CHURNED yang lewat `churned_at` > 30 hari             → purge permanen + nisan
  *
  * Idempoten & per-tenant try/catch — satu tenant gagal tidak menghentikan sisanya.
  * Auth: header `Authorization: Bearer <JOBS_SECRET>`.
@@ -25,22 +25,40 @@ export const dynamic = "force-dynamic";
 
 async function handle(): Promise<Response> {
   return runJob("tenant-lifecycle", async () => {
-    const churnedFromTrial: string[] = [];
+    const suspendedUnpaid: string[] = [];
     const churnedFromSuspended: string[] = [];
     const purged: string[] = [];
     const errors: { slug: string; step: string; error: string }[] = [];
 
-    // ── A. TRIAL kedaluwarsa → CHURNED ──────────────────────────────
-    const staleTrials = await prisma.tenant.findMany({
-      where: { status: "TRIAL", trial_ends_at: { lt: daysAgo(TRIAL_GRACE_DAYS) } },
-      select: { id: true, slug: true, status: true, retired_slug: true },
+    // ── A. UNPAID lewat jatuh tempo → SUSPENDED ─────────────────────
+    // Tanpa free trial: tenant baru berstatus UNPAID sampai invoice pertama
+    // dibayar. Kalau lewat tenggang, aksesnya ditutup (SUSPENDED) — bukan
+    // langsung churn, supaya masih bisa dipulihkan setelah bayar.
+    const staleUnpaid = await prisma.tenant.findMany({
+      where: {
+        status: "UNPAID",
+        invoices: {
+          some: { status: { in: ["PENDING", "FAILED"] }, due_date: { lt: daysAgo(UNPAID_GRACE_DAYS) } },
+        },
+      },
+      select: { id: true, slug: true, status: true },
     });
-    for (const t of staleTrials) {
+    for (const t of staleUnpaid) {
       try {
-        await prisma.$transaction((tx) => churnTenant(tx, t, "TRIAL_EXPIRED"));
-        churnedFromTrial.push(t.slug);
+        await prisma.$transaction(async (tx) => {
+          await tx.tenant.update({ where: { id: t.id }, data: { status: "SUSPENDED" } });
+          await tx.tenantAuditLog.create({
+            data: {
+              tenant_id: t.id,
+              actor_type: "SYSTEM",
+              action: "TENANT_SUSPENDED",
+              detail_json: JSON.stringify({ source: "UNPAID_OVERDUE", grace_days: UNPAID_GRACE_DAYS }),
+            },
+          });
+        });
+        suspendedUnpaid.push(t.slug);
       } catch (e) {
-        errors.push({ slug: t.slug, step: "churn-trial", error: e instanceof Error ? e.message : String(e) });
+        errors.push({ slug: t.slug, step: "suspend-unpaid", error: e instanceof Error ? e.message : String(e) });
       }
     }
 
@@ -79,10 +97,10 @@ async function handle(): Promise<Response> {
     }
 
     return {
-      churnedFromTrial: churnedFromTrial.length,
+      suspendedUnpaid: suspendedUnpaid.length,
       churnedFromSuspended: churnedFromSuspended.length,
       purged: purged.length,
-      details: { churnedFromTrial, churnedFromSuspended, purged },
+      details: { suspendedUnpaid, churnedFromSuspended, purged },
       errors,
     };
   });

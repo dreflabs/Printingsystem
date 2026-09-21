@@ -33,7 +33,7 @@ export default function PlatformAnalyticsPage() {
   const s = data?.summary;
   const cards = [
     { label: "MRR sekarang", value: s ? rupiah(s.mrrNow) : "—", icon: DollarSign, hint: "langganan aktif" },
-    { label: "Tenant aktif", value: s?.activeNow ?? "—", icon: Users, hint: s ? `${s.trialNow} masih trial` : "" },
+    { label: "Tenant aktif", value: s?.activeNow ?? "—", icon: Users, hint: s ? `${s.unpaidNow} belum bayar` : "" },
     { label: "Tenant baru (30h)", value: s?.newLast30 ?? "—", icon: TrendingUp, hint: "" },
     { label: "Churn (30h)", value: s ? `${s.churnedLast30} · ${pct(s.churnRate30)}` : "—", icon: TrendingDown, hint: "dari tenant aktif" },
     { label: "ARPA", value: s ? rupiah(Math.round(s.arpa)) : "—", icon: DollarSign, hint: "rata-rata / tenant aktif" },

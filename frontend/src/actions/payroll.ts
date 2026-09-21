@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser, requireMutableActor, impersonationNote } from "@/lib/actor";
+import { requireEntitlement } from "@/lib/entitlements";
 import { can } from "@/lib/permissions";
 import { logAction } from "@/lib/logger";
 import { safeError } from "@/lib/safe-error";
@@ -35,6 +36,7 @@ function monthRangeUTC(year: number, month: number) {
 export async function generatePayrollPeriod(year: number, month: number) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireMutableActor();
     if (!can(actor, "payroll.manage")) return fail("Hanya Owner yang boleh membuat periode payroll.");
     if (month < 1 || month > 12) return fail("Bulan tidak valid.");
@@ -186,6 +188,7 @@ export async function generatePayrollPeriod(year: number, month: number) {
 export async function finalizePayrollPeriod(periodId: string) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireMutableActor();
     if (!can(actor, "payroll.manage")) return fail("Hanya Owner yang boleh finalisasi payroll.");
 
@@ -212,6 +215,7 @@ export async function finalizePayrollPeriod(periodId: string) {
 export async function markPayrollRecordPaid(recordId: string) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireMutableActor();
     if (!can(actor, "payroll.manage")) return fail("Hanya Owner yang boleh menandai gaji sudah dibayar.");
 
@@ -243,6 +247,7 @@ export async function markPayrollRecordPaid(recordId: string) {
 export async function setEmployeeBaseSalary(userId: string, amount: number) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireMutableActor();
     if (!can(actor, "payroll.manage")) return fail("Hanya Owner yang boleh mengubah gaji pokok pegawai.");
     if (!Number.isFinite(amount) || amount < 0) return fail("Nominal gaji tidak valid.");
@@ -269,6 +274,7 @@ export async function setEmployeeBaseSalary(userId: string, amount: number) {
 export async function updatePayrollLateDeductionRate(rupiahPerMinute: number) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireMutableActor();
     if (!can(actor, "payroll.manage")) return fail("Hanya Owner yang boleh mengubah pengaturan payroll.");
     if (!Number.isFinite(rupiahPerMinute) || rupiahPerMinute < 0) return fail("Nominal tidak valid.");
@@ -293,6 +299,7 @@ export async function updatePayrollLateDeductionRate(rupiahPerMinute: number) {
 export async function getPayrollPeriods() {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     if (!can(actor, "payroll.view")) return fail("Hanya Owner/Admin yang boleh melihat payroll.");
 
@@ -326,6 +333,7 @@ export async function getPayrollPeriods() {
 export async function getPayrollPeriodDetail(periodId: string) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     if (!can(actor, "payroll.view")) return fail("Hanya Owner/Admin yang boleh melihat payroll.");
 
@@ -381,6 +389,7 @@ export async function getPayrollPeriodDetail(periodId: string) {
 export async function getPayslip(recordId: string) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     // Slip gaji tidak punya varian tanpa nominal — SUPPORT (readOnly) yang
     // impersonate ditolak sepenuhnya di sini, bukan cuma disembunyikan angkanya.

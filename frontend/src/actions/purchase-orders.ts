@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { requireEntitlement } from "@/lib/entitlements";
 import { can } from "@/lib/permissions";
 import { logAction } from "@/lib/logger";
 import { safeError } from "@/lib/safe-error";
@@ -24,6 +25,7 @@ const dateOnly = (value?: string) => {
 export async function getSuppliers() {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "purchase_orders");
     const actor = await requireUser();
     if (!can(actor, "purchase.view")) return fail("Anda tidak memiliki akses melihat supplier.");
     const rows = await prisma.supplier.findMany({ where: { tenant_id: tenant.id }, orderBy: [{ active: "desc" }, { name: "asc" }] });
@@ -37,6 +39,7 @@ export async function getSuppliers() {
 export async function createSupplier(data: { name: string; code?: string; phone?: string; email?: string; address?: string; notes?: string }) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "purchase_orders");
     const actor = await requireUser();
     if (!can(actor, "purchase.create")) return fail("Hanya Admin/Owner yang boleh mengelola supplier.");
     const name = data.name?.trim();
@@ -55,6 +58,7 @@ export async function createSupplier(data: { name: string; code?: string; phone?
 export async function getPurchaseOrders() {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "purchase_orders");
     const actor = await requireUser();
     if (!can(actor, "purchase.view")) return fail("Anda tidak memiliki akses melihat purchase order.");
     const rows = await prisma.purchaseOrder.findMany({
@@ -77,6 +81,7 @@ export async function getPurchaseOrders() {
 export async function createPurchaseOrder(data: { supplierId: string; expectedDate?: string; notes?: string; items: PurchaseItemInput[] }) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "purchase_orders");
     const actor = await requireUser();
     if (!can(actor, "purchase.create")) return fail("Hanya Admin/Owner yang boleh membuat purchase order.");
     if (!data.supplierId) return fail("Supplier wajib dipilih.");
@@ -117,6 +122,7 @@ export async function createPurchaseOrder(data: { supplierId: string; expectedDa
 export async function receivePurchaseOrder(poItemId: string, quantity: number, data?: { receivedAt?: string; referenceNo?: string; notes?: string }) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "purchase_orders");
     const actor = await requireUser();
     if (!can(actor, "purchase.receive")) return fail("Anda tidak memiliki akses menerima purchase order.");
     let normalizedQuantity: number;

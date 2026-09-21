@@ -66,24 +66,56 @@ async function main() {
     }
   })
 
-  // 3. Buat Subscription Plans
-  const planStarter = await prisma.subscriptionPlan.create({
+  // 3. Buat Subscription Plans (3 paket self-serve, sinkron dengan
+  // src/lib/saas-catalog.ts SAAS_PLANS). Enterprise tidak punya baris katalog.
+  await prisma.subscriptionPlan.create({
     data: {
       name: 'Starter',
       slug: 'starter',
-      price_monthly: 299000,
-      max_users: 5,
+      price_monthly: 199000,
+      max_users: 3,
       max_orders_per_month: 200,
-      features_json: JSON.stringify(['dashboard', 'kanban', 'qc'])
+      features_json: JSON.stringify(['dashboard', 'kanban', 'pos', 'reports'])
+    }
+  })
+
+  await prisma.subscriptionPlan.create({
+    data: {
+      name: 'Pro',
+      slug: 'pro',
+      price_monthly: 399000,
+      max_users: 5,
+      max_orders_per_month: null,
+      features_json: JSON.stringify([
+        'dashboard', 'kanban', 'pos', 'reports', 'qc', 'storage', 'audit_trail',
+        'hrm', 'inventory', 'layout', 'reports_finance', 'whatsapp_unlimited'
+      ])
+    }
+  })
+
+  const planBusiness = await prisma.subscriptionPlan.create({
+    data: {
+      name: 'Business',
+      slug: 'business',
+      price_monthly: 799000,
+      max_users: 10,
+      max_orders_per_month: null,
+      features_json: JSON.stringify([
+        'dashboard', 'kanban', 'pos', 'reports', 'qc', 'storage', 'audit_trail',
+        'hrm', 'inventory', 'layout', 'reports_finance', 'whatsapp_unlimited',
+        'purchase_orders', 'api'
+      ])
     }
   })
 
   // 4. Buat Tenant Pertama (Dummy)
+  // Demo memakai paket Business (10 user) supaya 6 user contoh + fitur penuh
+  // (QC, storage, HRM, inventory, PO) konsisten dengan kuota & entitlement.
   const tenant1 = await prisma.tenant.create({
     data: {
       name: 'Maju Jaya Print',
       slug: 'majujayaprint',
-      plan: 'STARTER',
+      plan: 'BUSINESS',
       status: 'ACTIVE',
       owner_name: 'Hendra',
       owner_phone: '081234567890',
@@ -96,7 +128,7 @@ async function main() {
   await prisma.tenantSubscription.create({
     data: {
       tenant_id: tenant1.id,
-      plan_id: planStarter.id,
+      plan_id: planBusiness.id,
       status: 'ACTIVE',
       started_at: new Date()
     }

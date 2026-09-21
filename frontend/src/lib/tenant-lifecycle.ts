@@ -3,7 +3,7 @@
  *
  * Kenapa ada:
  *   `Tenant.slug` (@unique) bersifat GLOBAL dan tidak pernah dilepas. Tenant
- *   TRIAL yang ditinggalkan / SUSPENDED lama menyandera nama subdomain-nya
+ *   UNPAID yang ditinggalkan / SUSPENDED lama menyandera nama subdomain-nya
  *   selamanya — pendaftar baru tak bisa memakai nama itu, dan barisnya jadi
  *   sampah.
  *
@@ -22,15 +22,16 @@
  *   - `/api/jobs/tenant-lifecycle` (cron harian) — otomatis, dengan masa tenggang.
  *   - `markTenantChurned()` / `purgeTenantPermanently()` di actions/platform.ts —
  *     manual dari panel Super Admin.
- *   - `prisma/backfill-churn-stale-trials.mjs` — sekali, untuk data lama.
+ *   - `prisma/backfill-trial-to-active.mjs` — sekali, konversi tenant TRIAL lama
+ *     ke ACTIVE setelah free trial dihapus (2026-09-21).
  */
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { deleteObjects } from "@/lib/storage";
 
-/** TRIAL yang lewat `trial_ends_at` lebih lama dari ini → otomatis CHURNED. */
-export const TRIAL_GRACE_DAYS = 14;
+/** Tenant UNPAID yang lewat jatuh tempo invoice lebih dari ini → SUSPENDED. */
+export const UNPAID_GRACE_DAYS = 7;
 /** SUSPENDED yang tidak tersentuh (`updated_at`) selama ini → otomatis CHURNED. */
 export const SUSPENDED_GRACE_DAYS = 60;
 /** CHURNED yang lewat `churned_at` lebih lama dari ini → otomatis di-purge. */
@@ -49,7 +50,7 @@ export function archivedSlug(slug: string, tenantId: string): string {
   return `${slug}-retired-${tenantId.slice(0, 8)}`;
 }
 
-export type ChurnSource = "TRIAL_EXPIRED" | "SUSPENDED_STALE" | "MANUAL" | "BACKFILL";
+export type ChurnSource = "UNPAID_EXPIRED" | "SUSPENDED_STALE" | "MANUAL" | "BACKFILL";
 
 type ChurnableTenant = {
   id: string;

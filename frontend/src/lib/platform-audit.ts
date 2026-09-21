@@ -30,6 +30,14 @@ export type PlatformAuditAction =
   | "TENANT_PURGED"
   | "PLAN_CATALOG_CREATED"
   | "PLAN_CATALOG_UPDATED"
+  | "VOUCHER_CREATED"
+  | "VOUCHER_UPDATED"
+  | "PAYMENT_SETTINGS_UPDATED"
+  | "BANK_ACCOUNT_CREATED"
+  | "BANK_ACCOUNT_UPDATED"
+  | "BANK_ACCOUNT_DELETED"
+  | "PAYMENT_PROOF_APPROVED"
+  | "PAYMENT_PROOF_REJECTED"
   | "INVOICE_GENERATED"
   | "INVOICE_PAID"
   | "INVOICE_WAIVED"
@@ -46,7 +54,7 @@ export interface PlatformAuditInput {
   actorName?: string;
   actorSubLevel?: string | null;
   action: PlatformAuditAction;
-  targetType?: "Tenant" | "SuperAdmin" | null;
+  targetType?: "Tenant" | "SuperAdmin" | "BankAccount" | "PlatformSetting" | null;
   targetId?: string | null;
   /** Label target yang tahan-hapus: slug tenant / email Super Admin. */
   targetLabel?: string | null;

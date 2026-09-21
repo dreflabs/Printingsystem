@@ -182,11 +182,13 @@ Resource aplikasi → **Scheduled Tasks**, tambah task berikut:
 Jalankan sekali manual dan pastikan lognya berisi `ok`. Detail dan alternatif
 crontab ada di [`JOBS.md`](./JOBS.md).
 
-`tenant-lifecycle` meng-arsipkan TRIAL basi / SUSPENDED lama jadi `CHURNED`
-(melepas nama subdomain-nya) lalu menghapus permanen tenant `CHURNED` yang
-lewat 30 hari. Untuk membersihkan data lama yang sudah menumpuk, sekali jalankan
-di dalam container: `npm run backfill:churn-stale-trials` (DRY RUN — tambah
-`APPLY=true` untuk eksekusi).
+`tenant-lifecycle` men-`SUSPENDED` tenant `UNPAID` yang lewat jatuh tempo, lalu
+meng-arsipkan `SUSPENDED` lama jadi `CHURNED` (melepas nama subdomain-nya) dan
+menghapus permanen tenant `CHURNED` yang lewat 30 hari. **Setelah deploy
+penghapusan free trial**, jalankan sekali di dalam container:
+`npm run backfill:trial-to-active` (DRY RUN — tambah `APPLY=true` untuk
+eksekusi) supaya tenant yang sedang trial tidak terputus. Untuk data lama yang
+sudah menumpuk, `npm run backfill:churn-stale-trials` tetap tersedia.
 
 ### 6b. Provider WhatsApp & email
 

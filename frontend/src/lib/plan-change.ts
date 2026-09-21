@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { logActionInTransaction } from "@/lib/logger";
 import { ok, fail, type ActionResult } from "@/types";
 
-export type ChangePlanTarget = "STARTER" | "PRO" | "ENTERPRISE";
+export type ChangePlanTarget = "STARTER" | "PRO" | "BUSINESS" | "ENTERPRISE";
 
 export type ChangePlanActor =
   | { type: "owner"; userId: string }
@@ -60,9 +60,11 @@ export async function changePlanCore(input: ChangePlanInput): Promise<ActionResu
   // (mis. kasus dukungan) seperti perilaku `updateTenantPlan` sebelumnya.
   if (input.actor.type === "owner" && input.maxUsers != null) {
     const activeUsers = await prisma.user.count({ where: { tenant_id: input.tenantId, active: true } });
-    if (activeUsers > input.maxUsers) {
+    // Kursi add-on ikut dihitung — kursi yang dibeli tetap berlaku di paket baru.
+    const effectiveMax = input.maxUsers + (tenant.addon_users ?? 0);
+    if (activeUsers > effectiveMax) {
       return fail(
-        `Tidak bisa turun ke paket ini: ${activeUsers} pegawai aktif melebihi batas ${input.maxUsers}. Nonaktifkan pegawai dulu, atau hubungi halo@printpilot.id.`,
+        `Tidak bisa turun ke paket ini: ${activeUsers} pegawai aktif melebihi batas ${effectiveMax}. Nonaktifkan pegawai dulu, atau hubungi halo@printpilot.id.`,
       );
     }
   }

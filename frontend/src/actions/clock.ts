@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { requireEntitlement } from "@/lib/entitlements";
 import { logAction } from "@/lib/logger";
 import { clientIpFromHeaders, shortDeviceLabel } from "@/lib/attendance";
 import {
@@ -53,6 +54,7 @@ async function todayRecord(userId: string, tenantId: string, timeZone: string) {
 export async function getMyBreakStatus(): Promise<ActionResult<BreakStatus>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     await requireAttendanceEligible(tenant.id, actor);
     const set = await tenantSetting(tenant.id);
@@ -88,6 +90,7 @@ export async function getMyBreakStatus(): Promise<ActionResult<BreakStatus>> {
 export async function startBreak(): Promise<ActionResult<{ recordId: string; breakStart: Date }>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     await requireAttendanceEligible(tenant.id, actor);
 
@@ -123,6 +126,7 @@ export async function startBreak(): Promise<ActionResult<{ recordId: string; bre
 export async function endBreak(): Promise<ActionResult<{ durationMin: number; status: string }>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     await requireAttendanceEligible(tenant.id, actor);
     const set = await tenantSetting(tenant.id);
@@ -195,6 +199,7 @@ async function tenantSetting(tenantId: string) {
 export async function getMyAttendanceToday(): Promise<ActionResult<AttendanceToday>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     await requireAttendanceEligible(tenant.id, actor);
     const set = await tenantSetting(tenant.id);
@@ -238,6 +243,7 @@ export async function getMyAttendanceToday(): Promise<ActionResult<AttendanceTod
 export async function clockIn(input: ClockPunchInput = {}): Promise<ActionResult<ClockInResult>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     await requireAttendanceEligible(tenant.id, actor);
     const set = await tenantSetting(tenant.id);
@@ -270,6 +276,7 @@ export async function clockIn(input: ClockPunchInput = {}): Promise<ActionResult
 export async function clockOut(input: ClockPunchInput = {}): Promise<ActionResult<ClockOutResult>> {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     await requireAttendanceEligible(tenant.id, actor);
     const set = await tenantSetting(tenant.id);

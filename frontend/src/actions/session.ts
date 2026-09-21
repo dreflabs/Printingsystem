@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { auth, signOut } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/actor";
 import { getCurrentTenant } from "@/lib/tenant";
+import { getTenantEntitlements } from "@/lib/entitlements";
 import { IMPERSONATE_COOKIE } from "@/lib/platform";
 import { normalizeWorkspaceMode, type WorkspaceMode } from "@/lib/workspace-mode";
 
@@ -17,6 +18,8 @@ export interface SessionUser {
   roles: string[];
   /** Tampilan navigasi & beranda tenant — BUKAN izin. */
   workspaceMode: WorkspaceMode;
+  /** Kunci entitlement aktif tenant — untuk menyembunyikan menu yang tidak tersedia di paket. `undefined` = jangan sembunyikan apa pun. */
+  features?: string[];
 }
 
 /**
@@ -38,6 +41,17 @@ export async function getSessionUser(): Promise<
   const workspaceMode = normalizeWorkspaceMode(
     (tenant as { workspace_mode?: string } | null)?.workspace_mode
   );
+  const tenantId = (tenant as { id?: string } | null)?.id;
+  // Gagal membaca entitlement JANGAN menyembunyikan seluruh menu — biarkan
+  // `undefined` supaya sidebar menampilkan item sesuai peran saja.
+  let features: string[] | undefined;
+  if (tenantId) {
+    try {
+      features = Array.from((await getTenantEntitlements(tenantId)).features);
+    } catch {
+      features = undefined;
+    }
+  }
 
   if (u?.id && !u.platform) {
     return {
@@ -48,12 +62,13 @@ export async function getSessionUser(): Promise<
         role: u.role ?? "admin",
         roles: u.roles ?? (u.role ? [u.role] : []),
         workspaceMode,
+        features,
       },
     };
   }
 
   const fb = await getCurrentUser();
-  if (fb) return { ok: true, user: { id: fb.id, name: fb.name, role: fb.role, roles: [fb.role], workspaceMode } };
+  if (fb) return { ok: true, user: { id: fb.id, name: fb.name, role: fb.role, roles: [fb.role], workspaceMode, features } };
   return { ok: false };
 }
 

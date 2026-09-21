@@ -1,12 +1,21 @@
 import { prisma } from "@/lib/prisma";
+import { SAAS_PLANS } from "@/lib/saas-catalog";
 
 export type EntitlementKey =
   | "dashboard"
   | "kanban"
+  | "pos"
+  | "reports"
+  | "reports_finance"
   | "qc"
   | "storage"
+  | "audit_trail"
+  | "hrm"
+  | "inventory"
+  | "layout"
   | "whatsapp_unlimited"
-  | "audit_trail";
+  | "purchase_orders"
+  | "api";
 
 export interface TenantEntitlements {
   plan: string;
@@ -26,10 +35,43 @@ function parseFeatures(value: string | null | undefined): ReadonlySet<string> {
   }
 }
 
+const ALL_ENTITLEMENTS: EntitlementKey[] = [
+  "dashboard",
+  "kanban",
+  "pos",
+  "reports",
+  "reports_finance",
+  "qc",
+  "storage",
+  "audit_trail",
+  "hrm",
+  "inventory",
+  "layout",
+  "whatsapp_unlimited",
+  "purchase_orders",
+  "api",
+];
+
+/** Default per paket self-serve dibangun dari `SAAS_PLANS` agar tidak ada dua sumber kebenaran. */
+const SELF_SERVE_DEFAULTS = Object.fromEntries(
+  Object.values(SAAS_PLANS).map((plan) => [
+    plan.tenantPlan,
+    {
+      maxUsers: plan.max_users as number | null,
+      maxOrdersPerMonth: plan.max_orders_per_month as number | null,
+      features: new Set<string>(plan.features),
+    },
+  ]),
+) as Record<string, { maxUsers: number | null; maxOrdersPerMonth: number | null; features: ReadonlySet<string> }>;
+
+/**
+ * Fallback untuk tenant yang `Tenant.plan`-nya tidak punya baris
+ * `TenantSubscription` aktif (mis. data lama / import manual). Enterprise
+ * mendapat seluruh entitlement.
+ */
 const LEGACY_PLAN_DEFAULTS: Record<string, { maxUsers: number | null; maxOrdersPerMonth: number | null; features: ReadonlySet<string> }> = {
-  STARTER: { maxUsers: 5, maxOrdersPerMonth: 200, features: new Set(["dashboard", "kanban"]) },
-  PRO: { maxUsers: 15, maxOrdersPerMonth: null, features: new Set(["dashboard", "kanban", "qc", "storage", "whatsapp_unlimited", "audit_trail"]) },
-  ENTERPRISE: { maxUsers: null, maxOrdersPerMonth: null, features: new Set(["dashboard", "kanban", "qc", "storage", "whatsapp_unlimited", "audit_trail"]) },
+  ...SELF_SERVE_DEFAULTS,
+  ENTERPRISE: { maxUsers: null, maxOrdersPerMonth: null, features: new Set<string>(ALL_ENTITLEMENTS) },
 };
 
 /** Sumber entitlement aktif tenant. Subscription aktif menjadi sumber utama. */
@@ -39,6 +81,7 @@ export async function getTenantEntitlements(tenantId: string): Promise<TenantEnt
     select: {
       plan: true,
       max_users: true,
+      addon_users: true,
       subscription_plans: {
         where: { status: "ACTIVE" },
         orderBy: { started_at: "desc" },
@@ -51,9 +94,12 @@ export async function getTenantEntitlements(tenantId: string): Promise<TenantEnt
   const plan = tenant.subscription_plans[0]?.plan;
   const activePlan = plan?.active ? plan : undefined;
   const legacy = LEGACY_PLAN_DEFAULTS[tenant.plan.toUpperCase()] ?? LEGACY_PLAN_DEFAULTS.STARTER;
+  // Kursi add-on menambah kuota paket tanpa mengubah fitur. `null` = unlimited.
+  const baseMaxUsers = tenant.max_users ?? activePlan?.max_users ?? legacy.maxUsers;
+  const addonUsers = tenant.addon_users ?? 0;
   return {
     plan: tenant.plan,
-    maxUsers: tenant.max_users ?? activePlan?.max_users ?? legacy.maxUsers,
+    maxUsers: baseMaxUsers == null ? null : baseMaxUsers + addonUsers,
     maxOrdersPerMonth: activePlan?.max_orders_per_month ?? legacy.maxOrdersPerMonth,
     features: activePlan ? parseFeatures(activePlan.features_json) : legacy.features,
   };

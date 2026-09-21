@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { requireEntitlement } from "@/lib/entitlements";
 import { logAction } from "@/lib/logger";
 import { parseCsv } from "@/lib/csv";
 import { sendWhatsApp } from "@/lib/wa";
@@ -144,6 +145,7 @@ export async function commitAttendanceImport(input: {
 }) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     if (!can(actor, "attendance.import")) return fail("Hanya Owner/Admin yang boleh mengimpor absensi.");
     const attendanceSet = await prisma.tenantAttendanceSetting.upsert({
@@ -453,6 +455,7 @@ async function notifyOwnersLateImport(
 export async function listAttendanceImports() {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     if (!can(actor, "attendance.report")) return fail("Hanya Owner/Admin yang boleh melihat riwayat impor.");
 
@@ -483,6 +486,7 @@ export async function listAttendanceImports() {
 export async function getAttendanceReport(params?: { from?: string; to?: string; importId?: string }) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     if (!can(actor, "attendance.report")) return fail("Hanya Owner/Admin yang boleh melihat laporan absensi.");
     const attendanceSet = await prisma.tenantAttendanceSetting.upsert({
@@ -612,6 +616,7 @@ export async function getAttendanceReport(params?: { from?: string; to?: string;
 export async function addAttendanceOwnerNote(recordId: string, note: string) {
   try {
     const tenant = await requireTenant();
+    await requireEntitlement(tenant.id, "hrm");
     const actor = await requireUser();
     if (!actor.roles.includes("owner")) return fail("Hanya Owner yang boleh menambah catatan absensi.");
 

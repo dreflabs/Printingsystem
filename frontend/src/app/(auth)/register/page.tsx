@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -16,10 +16,29 @@ import {
   ArrowLeft,
   Loader2,
   Lock,
+  Clock3,
+  GraduationCap,
+  Minus,
+  Plus,
+  ShoppingCart,
+  UserPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { registerTenant } from "@/actions/register";
-import { SAAS_PLANS, TRIAL_DAYS } from "@/lib/saas-catalog";
+import { registerTenant, validateSignupVoucher } from "@/actions/register";
+import {
+  ADDON_SEAT_PRICE_MONTHLY,
+  computeOrderEstimate,
+  MAX_ADDON_SEATS,
+  resolveSelfServePlan,
+  SAAS_PLANS,
+  SELF_SERVE_PLAN_KEYS,
+  SERVICE_OPTIONS,
+  SERVICE_PROMO_ACTIVE,
+  SUBSCRIPTION_TERMS,
+  type SelfServePlanKey,
+  type ServiceKey,
+  type TermMonths,
+} from "@/lib/saas-catalog";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function InputField({ label, icon: Icon, ...props }: any) {
@@ -42,7 +61,10 @@ function InputField({ label, icon: Icon, ...props }: any) {
 const STEPS = [
   { s: 1, title: "Akun Owner", desc: "Informasi login Anda" },
   { s: 2, title: "Profil Percetakan", desc: "Data, subdomain & ukuran tim" },
-  { s: 3, title: "Selesai", desc: "Masuk dashboard" },
+  { s: 3, title: "Pilih Paket", desc: "Sesuaikan dengan skala bisnis" },
+  { s: 4, title: "Durasi & Kapasitas", desc: "Lama langganan & kursi tambahan" },
+  { s: 5, title: "Layanan & Ringkasan", desc: "Training dan rincian biaya" },
+  { s: 6, title: "Selesai", desc: "Masuk dashboard" },
 ];
 
 type TeamSize = "solo" | "small" | "full";
@@ -52,6 +74,9 @@ const TEAM_SIZE_OPTIONS: { value: TeamSize; label: string; hint: string; icon: t
   { value: "small", label: "Tim kecil", hint: "2–5 orang, tugas kadang tumpang tindih", icon: Users },
   { value: "full", label: "Tim per divisi", hint: "6+ orang, tiap bagian ada penanggung jawabnya", icon: Building2 },
 ];
+
+const rupiah = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+const rupiahShort = (n: number) => `Rp${Math.round(n / 1000).toLocaleString("id-ID")}rb`;
 
 export default function RegisterPage() {
   return (
@@ -63,12 +88,21 @@ export default function RegisterPage() {
 
 function RegisterWizard() {
   const searchParams = useSearchParams();
-  const plan = searchParams.get("plan") === "pro" ? "pro" : "starter";
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ownerUsername, setOwnerUsername] = useState("");
   const [verificationRequired, setVerificationRequired] = useState(false);
+  const [invoice, setInvoice] = useState<{ number: string | null; amount: number | null; dueDate: string | null } | null>(null);
+
+  const [plan, setPlan] = useState<SelfServePlanKey>(() => resolveSelfServePlan(searchParams.get("plan")));
+  const [months, setMonths] = useState<TermMonths>(1);
+  const [addonSeats, setAddonSeats] = useState(0);
+  const [services, setServices] = useState<ServiceKey[]>([]);
+  const [voucherInput, setVoucherInput] = useState("");
+  const [voucher, setVoucher] = useState<{ code: string; label: string; discountAmount: number } | null>(null);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [checkingVoucher, setCheckingVoucher] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -83,6 +117,41 @@ function RegisterWizard() {
     consentAccepted: false,
   });
 
+  const planDef = SAAS_PLANS[plan];
+  const estimate = useMemo(
+    () => computeOrderEstimate({ plan, months, addonSeats, services }),
+    [plan, months, addonSeats, services],
+  );
+
+  // Diskon voucher dihitung terhadap komposisi pesanan saat itu — begitu
+  // paket/durasi/kapasitas/layanan berubah, voucher perlu diverifikasi ulang.
+  const resetVoucher = () => {
+    setVoucher(null);
+    setVoucherError(null);
+  };
+
+  const discount = voucher?.discountAmount ?? 0;
+  const payable = Math.max(0, estimate.total - discount);
+
+  const checkVoucher = async () => {
+    setCheckingVoucher(true);
+    setVoucherError(null);
+    const res = await validateSignupVoucher({
+      code: voucherInput,
+      plan,
+      months,
+      addonSeats,
+      services,
+    });
+    setCheckingVoucher(false);
+    if (!res.success) {
+      setVoucher(null);
+      setVoucherError(res.error);
+      return;
+    }
+    setVoucher(res.data);
+  };
+
   const pw = formData.password;
   const pwHasLen = pw.length >= 12;
   const pwHasMix = /[a-zA-Z]/.test(pw) && /[0-9]/.test(pw);
@@ -90,17 +159,24 @@ function RegisterWizard() {
   const pwMatch = pw.length > 0 && pw === formData.passwordConfirm;
 
   const step1Valid = !!formData.name && !!formData.email && pwStrong && pwMatch;
+  const step2Valid = !!formData.shopName && formData.subdomain.length >= 3 && formData.consentAccepted;
 
   const autoGenerateSubdomain = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "");
 
+  const toggleService = (key: ServiceKey) => {
+    resetVoucher();
+    setServices((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  };
+
   const handleNext = () => {
     setError(null);
-    if (step === 1) {
-      if (!step1Valid) return;
-      setStep(2);
+    if (step === 1 && !step1Valid) return;
+    if (step === 2 && !step2Valid) return;
+    if (step === 5) {
+      void submitRegistration();
       return;
     }
-    void submitRegistration();
+    setStep((s) => Math.min(s + 1, 6));
   };
 
   const handleBack = () => setStep((s) => Math.max(s - 1, 1));
@@ -119,6 +195,10 @@ function RegisterWizard() {
       plan,
       teamSize: formData.teamSize,
       consentAccepted: formData.consentAccepted,
+      months,
+      addonSeats,
+      services,
+      voucherCode: voucher?.code,
     });
     if (!res.success) {
       setIsLoading(false);
@@ -127,6 +207,7 @@ function RegisterWizard() {
     }
     setOwnerUsername(res.data.ownerUsername);
     setVerificationRequired(res.data.verificationRequired);
+    setInvoice({ number: res.data.invoiceNumber, amount: res.data.invoiceAmount, dueDate: res.data.invoiceDueDate });
     setFormData((f) => ({ ...f, subdomain: res.data.slug }));
     if (!res.data.verificationRequired) {
       await signIn("credentials", {
@@ -137,7 +218,7 @@ function RegisterWizard() {
       });
     }
     setIsLoading(false);
-    setStep(3);
+    setStep(6);
   };
 
   return (
@@ -159,12 +240,12 @@ function RegisterWizard() {
           {/* Kolom Kiri: Progress */}
           <div className="md:w-1/3 space-y-8">
             <div className="mb-10">
-              <h1 className="text-3xl font-bold text-primary mb-2">Mulai Gratis.</h1>
+              <h1 className="text-3xl font-bold text-primary mb-2">Buat Workspace.</h1>
               <span className="inline-block mb-3 px-2.5 py-1 rounded-full bg-accent-teal/10 text-accent-teal text-xs font-bold">
-                Paket {plan === "pro" ? `${SAAS_PLANS.pro.name} — Rp ${Math.round(SAAS_PLANS.pro.price_monthly / 1000)}rb/bln` : `${SAAS_PLANS.starter.name} — Rp ${Math.round(SAAS_PLANS.starter.price_monthly / 1000)}rb/bln`} setelah trial
+                Paket {planDef.name} — {rupiahShort(planDef.price_monthly)}/bln
               </span>
               <p className="text-muted text-sm">
-                Siapkan workspace percetakan Anda dalam 3 langkah.
+                Siapkan workspace percetakan Anda dalam {STEPS.length - 1} langkah.
                 <br />
                 Tanpa kartu kredit, bisa batal kapan saja.
               </p>
@@ -199,6 +280,12 @@ function RegisterWizard() {
           {/* Kolom Kanan: Wizard */}
           <div className="md:w-2/3">
             <div className="bg-card/80 backdrop-blur-xl border border-border p-8 rounded-3xl shadow-2xl relative overflow-hidden min-h-[480px] flex flex-col">
+              {error && (
+                <div className="mb-5 rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2.5 text-xs font-semibold text-status-red">
+                  {error}
+                </div>
+              )}
+
               {/* STEP 1: AKUN OWNER */}
               {step === 1 && (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-500 flex-1 flex flex-col">
@@ -210,12 +297,6 @@ function RegisterWizard() {
                       Akun ini menjadi pemilik (Owner) dengan akses penuh ke percetakan.
                     </p>
                   </div>
-
-                  {error && (
-                    <div className="mb-5 rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2.5 text-xs font-semibold text-status-red">
-                      {error}
-                    </div>
-                  )}
 
                   <div className="space-y-5 flex-1">
                     <InputField
@@ -332,12 +413,6 @@ function RegisterWizard() {
                     </h2>
                     <p className="text-xs text-muted mt-1">Buat workspace khusus untuk toko Anda.</p>
                   </div>
-
-                  {error && (
-                    <div className="mb-5 rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2.5 text-xs font-semibold text-status-red">
-                      {error}
-                    </div>
-                  )}
 
                   <div className="space-y-5 flex-1">
                     <div className="space-y-1.5">
@@ -459,8 +534,329 @@ function RegisterWizard() {
                   <div className="mt-6 flex justify-end">
                     <button
                       onClick={handleNext}
-                      disabled={isLoading || !formData.shopName || formData.subdomain.length < 3 || !formData.consentAccepted}
-                      className="h-11 px-8 rounded-xl bg-status-green text-white font-bold flex items-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-[0_0_20px_rgba(52,211,153,0.3)]"
+                      disabled={!step2Valid}
+                      className="h-11 px-8 rounded-xl bg-accent-teal text-white font-bold flex items-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      Lanjutkan <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: PILIH PAKET */}
+              {step === 3 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-500 flex-1 flex flex-col">
+                  <button
+                    onClick={handleBack}
+                    className="text-muted hover:text-primary mb-4 flex items-center gap-1 text-xs font-semibold w-fit"
+                  >
+                    <ArrowLeft className="h-3 w-3" /> Kembali
+                  </button>
+                  <div className="mb-6">
+                    <h2 className="text-xl font-bold text-primary flex items-center gap-2">
+                      <ShoppingCart className="h-5 w-5 text-accent-teal" /> 3. Pilih Paket Langganan
+                    </h2>
+                    <p className="text-xs text-muted mt-1">
+                      Pilih paket, durasi, dan layanan. Invoice pertama terbit otomatis dengan jatuh tempo 3 hari.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 flex-1">
+                    {SELF_SERVE_PLAN_KEYS.map((key) => {
+                      const def = SAAS_PLANS[key];
+                      const selected = plan === key;
+                      const popular = key === "pro";
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            resetVoucher();
+                            setPlan(key);
+                          }}
+                          className={cn(
+                            "rounded-2xl border p-4 text-left transition-all",
+                            selected ? "border-accent-teal bg-accent-teal/5" : "border-border hover:border-accent-teal/40"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-primary flex items-center gap-2">
+                                {def.name}
+                                {popular && (
+                                  <span className="rounded-full bg-accent-teal px-2 py-0.5 text-[9px] font-bold text-white">
+                                    PALING POPULER
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-[11px] text-muted mt-0.5">{def.tagline}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-lg font-extrabold text-primary">{rupiahShort(def.price_monthly)}</p>
+                              <p className="text-[10px] text-muted">/bulan</p>
+                            </div>
+                          </div>
+                          <ul className="mt-3 grid sm:grid-cols-2 gap-x-4 gap-y-1">
+                            {def.highlights.slice(0, 4).map((h) => (
+                              <li key={h} className="flex items-start gap-1.5 text-[11px] text-muted">
+                                <CheckCircle2 className="h-3 w-3 text-accent-teal shrink-0 mt-0.5" /> {h}
+                              </li>
+                            ))}
+                          </ul>
+                          <p className="mt-3 text-[10px] text-muted">
+                            {def.max_users} user{def.max_orders_per_month ? ` · ${def.max_orders_per_month} order/bulan` : " · order tanpa batas"}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      onClick={handleNext}
+                      className="h-11 px-8 rounded-xl bg-accent-teal text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                    >
+                      Lanjutkan <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 4: DURASI & KAPASITAS */}
+              {step === 4 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-500 flex-1 flex flex-col">
+                  <button
+                    onClick={handleBack}
+                    className="text-muted hover:text-primary mb-4 flex items-center gap-1 text-xs font-semibold w-fit"
+                  >
+                    <ArrowLeft className="h-3 w-3" /> Kembali
+                  </button>
+                  <div className="mb-6">
+                    <h2 className="text-xl font-bold text-primary flex items-center gap-2">
+                      <Clock3 className="h-5 w-5 text-accent-teal" /> 4. Durasi &amp; Kapasitas
+                    </h2>
+                    <p className="text-xs text-muted mt-1">
+                      Makin lama durasinya, makin tenang operasionalnya. 12 bulan bayar 10.
+                    </p>
+                  </div>
+
+                  <div className="space-y-5 flex-1">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                      {SUBSCRIPTION_TERMS.map((t) => {
+                        const selected = months === t.months;
+                        const perMonth = (planDef.price_monthly * t.paidMonths) / t.months;
+                        return (
+                          <button
+                            key={t.months}
+                            type="button"
+                            onClick={() => {
+                              resetVoucher();
+                              setMonths(t.months);
+                            }}
+                            className={cn(
+                              "rounded-xl border p-3 text-left transition-all relative",
+                              selected ? "border-accent-teal bg-accent-teal/5" : "border-border hover:border-accent-teal/40"
+                            )}
+                          >
+                            {t.badge && (
+                              <span className="absolute -top-2 right-2 rounded-full bg-status-yellow px-2 py-0.5 text-[8px] font-bold text-status-yellow-text">
+                                {t.badge}
+                              </span>
+                            )}
+                            <p className="text-sm font-bold text-primary">{t.label}</p>
+                            <p className="text-[10px] text-muted mt-0.5 leading-snug">{t.description}</p>
+                            <p className="mt-2 text-xs font-bold text-accent-teal">≈ {rupiahShort(perMonth)}/bln</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="rounded-xl border border-border p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-bold text-primary flex items-center gap-2">
+                            <UserPlus className="h-4 w-4 text-accent-teal" /> Kursi user tambahan
+                          </p>
+                          <p className="text-[11px] text-muted mt-0.5">
+                            Paket {planDef.name} sudah termasuk {planDef.max_users} user. Tambahan{" "}
+                            {rupiah(ADDON_SEAT_PRICE_MONTHLY)}/user/bulan.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetVoucher();
+                              setAddonSeats((n) => Math.max(0, n - 1));
+                            }}
+                            className="h-8 w-8 rounded-lg border border-border flex items-center justify-center text-muted hover:border-accent-teal hover:text-accent-teal transition-all"
+                            aria-label="Kurangi kursi"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <span className="w-8 text-center text-sm font-bold text-primary">{addonSeats}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetVoucher();
+                              setAddonSeats((n) => Math.min(MAX_ADDON_SEATS, n + 1));
+                            }}
+                            className="h-8 w-8 rounded-lg border border-border flex items-center justify-center text-muted hover:border-accent-teal hover:text-accent-teal transition-all"
+                            aria-label="Tambah kursi"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      {addonSeats > 0 && (
+                        <p className="mt-3 text-[11px] font-semibold text-accent-teal">
+                          Total kapasitas {planDef.max_users + addonSeats} user ·{" "}
+                          {rupiah(addonSeats * ADDON_SEAT_PRICE_MONTHLY * estimate.paidMonths)} per {estimate.paidMonths} bulan
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      onClick={handleNext}
+                      className="h-11 px-8 rounded-xl bg-accent-teal text-white font-bold flex items-center gap-2 hover:brightness-110 transition-all"
+                    >
+                      Lanjutkan <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 5: LAYANAN & RINGKASAN */}
+              {step === 5 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-500 flex-1 flex flex-col">
+                  <button
+                    onClick={handleBack}
+                    className="text-muted hover:text-primary mb-4 flex items-center gap-1 text-xs font-semibold w-fit"
+                  >
+                    <ArrowLeft className="h-3 w-3" /> Kembali
+                  </button>
+                  <div className="mb-6">
+                    <h2 className="text-xl font-bold text-primary flex items-center gap-2">
+                      <GraduationCap className="h-5 w-5 text-accent-teal" /> 5. Layanan &amp; Ringkasan
+                    </h2>
+                    <p className="text-xs text-muted mt-1">
+                      Layanan tambahan gratis selama masa promo Print Pilot.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4 flex-1">
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {SERVICE_OPTIONS.map((s) => {
+                        const selected = services.includes(s.key);
+                        const free = SERVICE_PROMO_ACTIVE && s.promoFree;
+                        return (
+                          <button
+                            key={s.key}
+                            type="button"
+                            onClick={() => toggleService(s.key)}
+                            className={cn(
+                              "rounded-xl border p-4 text-left transition-all",
+                              selected ? "border-accent-teal bg-accent-teal/5" : "border-border hover:border-accent-teal/40"
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-bold text-primary">{s.name}</p>
+                              {free && (
+                                <span className="shrink-0 rounded-full bg-status-green/15 px-2 py-0.5 text-[9px] font-bold text-status-green">
+                                  GRATIS
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-muted mt-1 leading-relaxed">{s.description}</p>
+                            <p className="mt-2 text-xs">
+                              {free ? (
+                                <>
+                                  <span className="text-muted line-through">{rupiah(s.listPrice)}</span>{" "}
+                                  <span className="font-bold text-status-green">Rp 0 (promo)</span>
+                                </>
+                              ) : (
+                                <span className="font-bold text-primary">{rupiah(s.listPrice)}</span>
+                              )}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="rounded-xl border border-border bg-elevated p-4">
+                      <p className="text-xs font-bold uppercase tracking-wide text-muted mb-3">Kode Voucher</p>
+                      <div className="flex gap-2">
+                        <input
+                          value={voucherInput}
+                          onChange={(e) => setVoucherInput(e.target.value.toUpperCase())}
+                          placeholder="Masukkan kode voucher"
+                          className="flex-1 bg-base border border-border rounded-lg h-10 px-3 text-sm text-primary font-mono placeholder:text-muted/50 focus:border-accent-teal outline-none transition-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={checkVoucher}
+                          disabled={checkingVoucher || !voucherInput.trim()}
+                          className="h-10 px-4 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          {checkingVoucher ? "Memeriksa…" : "Gunakan"}
+                        </button>
+                      </div>
+                      {voucherError && <p className="mt-2 text-[11px] font-semibold text-status-red">{voucherError}</p>}
+                      {voucher && (
+                        <p className="mt-2 text-[11px] font-semibold text-status-green">
+                          Voucher {voucher.code} aktif — potongan {voucher.label} ({rupiah(voucher.discountAmount)}).
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-border bg-elevated p-4">
+                      <p className="text-xs font-bold uppercase tracking-wide text-muted mb-3">Ringkasan Pesanan</p>
+                      <div className="space-y-2">
+                        {estimate.lines.map((line) => (
+                          <div key={line.label} className="flex items-start justify-between gap-3 text-xs">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-primary">{line.label}</p>
+                              {line.detail && <p className="text-[10px] text-muted">{line.detail}</p>}
+                            </div>
+                            <div className="text-right shrink-0">
+                              {line.free && <p className="text-[10px] text-muted line-through">{rupiah(line.unitPrice)}</p>}
+                              <p className={cn("font-bold", line.free ? "text-status-green" : "text-primary")}>
+                                {line.free ? "Gratis" : rupiah(line.amount)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                        {estimate.serviceListTotal > 0 && estimate.serviceSubtotal === 0 && (
+                          <div className="flex items-center justify-between text-xs pt-2 border-t border-border">
+                            <span className="text-muted">Hemat dari promo layanan</span>
+                            <span className="font-bold text-status-green">- {rupiah(estimate.serviceListTotal)}</span>
+                          </div>
+                        )}
+                        {discount > 0 && (
+                          <div className="flex items-center justify-between text-xs pt-2 border-t border-border">
+                            <span className="text-muted">Diskon voucher {voucher?.code}</span>
+                            <span className="font-bold text-status-green">- {rupiah(discount)}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between pt-2 border-t border-border">
+                          <span className="text-sm font-bold text-primary">Total tagihan pertama</span>
+                          <span className="text-lg font-extrabold text-primary">{rupiah(payable)}</span>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-[10px] text-muted leading-relaxed">
+                        Invoice pertama diterbitkan otomatis dengan jatuh tempo 3 hari. Akses aplikasi dibuka penuh
+                        setelah pembayaran diverifikasi tim Print Pilot.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      onClick={handleNext}
+                      disabled={isLoading}
+                      className="h-11 px-8 rounded-xl bg-status-green text-white font-bold flex items-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                       {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buat Workspace"}
                     </button>
@@ -468,8 +864,8 @@ function RegisterWizard() {
                 </div>
               )}
 
-              {/* STEP 3: SELESAI */}
-              {step === 3 && (
+              {/* STEP 6: SELESAI */}
+              {step === 6 && (
                 <div className="animate-in zoom-in duration-500 flex-1 flex flex-col items-center justify-center text-center pb-6">
                   <div className="w-20 h-20 bg-status-green/10 rounded-full flex items-center justify-center mb-6 relative">
                     <div className="absolute inset-0 bg-status-green/20 rounded-full animate-ping opacity-50" />
@@ -481,7 +877,7 @@ function RegisterWizard() {
                   <p className="text-muted text-sm max-w-sm mb-4">
                     {verificationRequired
                       ? "Kami mengirim tautan verifikasi ke email owner. Akun baru dapat masuk setelah tautan tersebut diklik."
-                      : <>Selamat datang di Print Pilot. Workspace Anda aktif di{" "}<span className="text-accent-teal font-mono font-bold">{formData.subdomain}.printpilot.id</span>{" "}(masa uji coba {TRIAL_DAYS} hari).</>}
+                      : <>Workspace Anda siap di{" "}<span className="text-accent-teal font-mono font-bold">{formData.subdomain}.printpilot.id</span>. Selesaikan pembayaran invoice pertama untuk membuka akses penuh.</>}
                   </p>
                   <div className="mb-8 rounded-xl border border-border bg-elevated px-4 py-3 text-xs text-muted max-w-sm space-y-1 text-left">
                     <p>
@@ -492,14 +888,35 @@ function RegisterWizard() {
                       Username Owner:{" "}
                       <span className="font-mono font-bold text-primary">{ownerUsername}</span>
                     </p>
+                    <p className="pt-1">
+                      Paket: <span className="font-bold text-primary">{planDef.name}</span> · {estimate.months} bulan ·{" "}
+                      {planDef.max_users + estimate.addonSeats} user
+                    </p>
+                    <p>
+                      Invoice pertama:{" "}
+                      <span className="font-mono font-bold text-primary">{invoice?.number ?? "sedang disiapkan"}</span>
+                      {invoice?.amount != null && (
+                        <>
+                          {" "}· <span className="font-bold text-primary">{rupiah(invoice.amount)}</span>
+                        </>
+                      )}
+                    </p>
+                    {invoice?.dueDate && (
+                      <p>
+                        Jatuh tempo:{" "}
+                        <span className="font-bold text-primary">
+                          {new Date(invoice.dueDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })}
+                        </span>
+                      </p>
+                    )}
                     <p className="pt-1">Simpan keduanya — dipakai bersama untuk login berikutnya.</p>
                   </div>
 
                   <a
-                    href={verificationRequired ? "/login" : "/owner"}
+                    href={verificationRequired ? "/login" : "/owner/billing"}
                     className="h-12 px-8 rounded-xl bg-primary text-base font-bold flex items-center gap-2 text-white hover:scale-105 transition-transform"
                   >
-                    {verificationRequired ? "Ke halaman masuk" : "Buka Dashboard"} <ChevronRight className="h-4 w-4" />
+                    {verificationRequired ? "Ke halaman masuk" : "Lihat Invoice & Bayar"} <ChevronRight className="h-4 w-4" />
                   </a>
                 </div>
               )}

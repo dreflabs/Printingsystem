@@ -2,11 +2,27 @@
 
 Sistem berlangganan bulanan SaaS Print Pilot akan diotomasi menggunakan **Midtrans**.
 
+## 0. Dua Metode Pembayaran (dapat diatur Super Admin)
+
+> **Status 2026-09-21:** integrasi payment gateway **dipending**. Yang aktif dan dipakai saat ini **hanya transfer bank manual** (mengikuti alur BIMA). Toggle gateway di panel sengaja dikunci nonaktif sampai Snap + webhook selesai dibangun dan diuji — `GATEWAY_INTEGRATION_PENDING = true` di `frontend/src/lib/payment-settings.ts`.
+
+Metode pembayaran dikonfigurasi di panel Super Admin `/platform/payments` dan disimpan sebagai `PlatformSetting` (`payment.methods`):
+
+1. **Payment Gateway** — toggle on/off + pilih provider (Midtrans). **Dipending**: toggle tidak bisa dinyalakan (`canEnableGateway()` selalu false) dan `updatePaymentSettings` menolak percobaan mengaktifkannya.
+2. **Transfer Bank Manual** — toggle on/off + daftar `BankAccount` (nama bank, nomor rekening, pemilik, label, catatan, urutan tampil, aktif) + instruksi pembayaran bebas.
+
+Alur manual: Owner membuka halaman invoice (`/owner/billing/invoice/<id>`), menyalin nomor rekening, mengunggah bukti transfer (JPG/PNG/PDF, maks 5 MB) melalui `createPaymentProofUploadUrl` → `submitPaymentProof`, lalu Super Admin memverifikasi di `/platform/payments`. Persetujuan menandai invoice `PAID` (`payment_method = MANUAL_TRANSFER`) dalam satu transaksi dan tercatat di `PlatformAuditLog` (`PAYMENT_PROOF_APPROVED` / `PAYMENT_PROOF_REJECTED`).
+
+Minimal satu metode harus aktif. Bukti pembayaran disajikan lewat `/api/payment-proof/<id>` yang hanya bisa diakses Super Admin atau anggota tenant pemilik invoice.
+
 ## 1. Flow Siklus Tagihan (Subscription Cycle)
 
-> **Trial (14 Hari) dianggap bagian dari siklus tagihan ini, bukan alur terpisah.** Hari ke-14 trial = `H-0` di Section 2 (Perpanjangan Otomatis). Selama beta, invoice hanya simulasi/manual dan belum terhubung payment gateway. Setelah gateway production aktif, tenant baru mendapat invoice pertama + `Grace Period` 3 hari sebelum `SUSPENDED`, sama seperti pelanggan reguler yang telat bayar.
+> **Tanpa free trial (2026-09-21).** Invoice pertama diterbitkan otomatis saat pendaftaran dengan jatuh tempo 3 hari; tenant berstatus `UNPAID` sampai dibayar. Hari jatuh tempo = `H-0` di Section 2 (Perpanjangan Otomatis). Selama beta, invoice masih manual/transfer bank (lihat bagian 0). Setelah gateway production aktif, alur tetap sama — hanya metode pembayarannya bertambah.
 
-1. **Trial Berakhir / Beli Paket:** Owner tenant masuk ke halaman `/billing` dan memilih paket (Starter/Pro).
+1. **Daftar & Pilih Paket:** Owner memilih paket self-serve (Starter/Pro/Business) di wizard. Enterprise dikontrak manual lewat Sales. Pilihan wizard (durasi `term_months`, kursi add-on `Tenant.addon_users`, layanan `service_keys`) menjadi baris invoice pertama.
+   - Sejak Fase 2, invoice sudah **multi-baris** (`InvoiceLine`): baris paket (dengan termin), kursi add-on, layanan, dan baris `DISCOUNT` bila voucher dipakai.
+   - Invoice bertermin >1 bulan menutup seluruh termin lewat `period_end`, sehingga generator bulanan tidak menerbitkan invoice baru selama periode masih tercakup.
+   - **Voucher** (`Voucher` + `VoucherRedemption`) dipakai sekali per invoice dan dikonsumsi di dalam transaksi pembuatan invoice.
 2. **Checkout (Midtrans SNAP):** 
    - Sistem melakukan request ke API Midtrans.
    - Owner memilih metode pembayaran (QRIS, VA Bank, e-Wallet).
@@ -27,14 +43,14 @@ Karena pembayaran di Indonesia mayoritas menggunakan metode transfer/VA yang buk
 
 ## 3. Upgrade & Downgrade Paket
 
-- **Upgrade (Starter → Pro):** 
+- **Upgrade (mis. Starter → Pro, Pro → Business):** 
   - Tagihan akan diprorata (*prorated*). 
-  - Sisa hari di paket Starter akan dikonversi menjadi kredit diskon untuk tagihan paket Pro yang baru.
+  - Sisa hari di paket lama akan dikonversi menjadi kredit diskon untuk tagihan paket baru.
   - Akses fitur langsung terbuka sesaat setelah sukses bayar.
-- **Downgrade (Pro → Starter):**
+- **Downgrade (mis. Business → Pro, Pro → Starter):**
   - Hanya efektif di siklus bulan berikutnya. Tidak ada *refund* selisih dana di bulan berjalan.
-  - Sistem harus memvalidasi apakah tenant masih memenuhi batas Starter (max 5 user). Jika user mereka ada 8, sistem menolak downgrade sampai mereka menonaktifkan 3 user.
-  - **Validasi tambahan — job aktif di modul yang akan terkunci:** downgrade **ditolak** jika masih ada job produksi yang berstatus aktif (belum `PICKED_UP`/`CLOSED`) di modul yang hanya tersedia di Pro (Scan QR Produksi, QC, Gudang). Alasan: menutup akses saat job sedang berjalan di titik scan tertentu akan memutus alur kerja fisik di lantai produksi.
+  - Sistem harus memvalidasi apakah tenant masih memenuhi batas paket tujuan. Contoh: turun ke Starter (max 3 user) ditolak jika tenant masih punya lebih dari 3 user aktif.
+  - **Validasi tambahan — job aktif di modul yang akan terkunci:** downgrade **ditolak** jika masih ada job produksi yang berstatus aktif (belum `PICKED_UP`/`CLOSED`) di modul yang hanya tersedia di paket atas (Scan QR Produksi, QC, Gudang). Alasan: menutup akses saat job sedang berjalan di titik scan tertentu akan memutus alur kerja fisik di lantai produksi.
   - **Data lama tetap bisa dibaca:** begitu downgrade berhasil, data historis dari modul yang terkunci (riwayat QC, riwayat gudang, dsb.) tetap bisa **dibaca (read-only)**, hanya fitur input/aksi barunya yang dinonaktifkan. Ini mencegah tenant merasa kehilangan data saat downgrade.
 
 ## 4. Keamanan Webhook Midtrans

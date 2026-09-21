@@ -37,8 +37,33 @@ function resolveWorkspaceSlug(
   return null;
 }
 
+const baseJwtCallback = authConfig.callbacks?.jwt;
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  callbacks: {
+    ...authConfig.callbacks,
+    async jwt(params) {
+      const token = baseJwtCallback ? await baseJwtCallback(params) : params.token;
+
+      // Segarkan status tenant dari DB. Tanpa ini, tenant UNPAID yang baru
+      // lunas tetap terjebak dialihkan ke halaman tagihan oleh middleware
+      // sampai dia logout — status di JWT hanya berubah saat login.
+      if (!params.user && token?.tenantId && token.tenantStatus === "UNPAID") {
+        try {
+          const t = await prisma.tenant.findUnique({
+            where: { id: token.tenantId as string },
+            select: { status: true },
+          });
+          if (t) token.tenantStatus = t.status;
+        } catch {
+          /* biarkan status lama kalau DB tidak bisa dihubungi */
+        }
+      }
+
+      return token;
+    },
+  },
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -206,6 +231,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           roles: allRoles,     // all roles (new multi-role support)
           tenantId: tenant.id,
           tenantSlug: tenant.slug,
+          tenantStatus: tenant.status,
           pwChangedAt: user.password_changed_at ? user.password_changed_at.getTime() : 0,
           mustChangePassword: user.must_change_password === true,
         };

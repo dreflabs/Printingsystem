@@ -1,5 +1,4 @@
 import { ImageResponse } from "next/og";
-import { TRIAL_DAYS } from "@/lib/saas-catalog";
 
 export const alt = "Print Pilot — Software Manajemen Percetakan & Kasir Produksi";
 export const size = { width: 1200, height: 630 };
@@ -55,7 +54,7 @@ export default function OpengraphImage() {
         </div>
 
         <div style={{ display: "flex", gap: 16 }}>
-          {[`Uji coba gratis ${TRIAL_DAYS} hari`, "Tanpa kartu kredit", "100% berbasis cloud"].map((t) => (
+          {["Setup kurang dari 15 menit", "Tanpa kartu kredit", "100% berbasis cloud"].map((t) => (
             <div
               key={t}
               style={{

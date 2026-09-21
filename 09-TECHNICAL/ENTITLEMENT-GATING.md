@@ -30,8 +30,26 @@ can(actor, "qc.submit")
   + policy status job
 ```
 
-Starter, Pro, dan Enterprise boleh memiliki role yang sama di database, tetapi
-permission tidak dapat dipakai jika entitlement modulnya tidak aktif.
+Starter, Pro, Business, dan Enterprise boleh memiliki role yang sama di database,
+tetapi permission tidak dapat dipakai jika entitlement modulnya tidak aktif.
+
+## Kunci entitlement dan paket
+
+Sumber tunggal harga/kuota/fitur self-serve: `frontend/src/lib/saas-catalog.ts`
+(`SAAS_PLANS`). Daftar kunci entitlement ada di `frontend/src/lib/entitlements.ts`
+(`EntitlementKey`). Matriks paket self-serve:
+
+| Entitlement | Starter | Pro | Business |
+|---|---|---|---|
+| `dashboard`, `kanban`, `pos`, `reports` | ✅ | ✅ | ✅ |
+| `qc`, `storage`, `audit_trail` | — | ✅ | ✅ |
+| `hrm` (absensi & payroll), `inventory`, `layout`, `reports_finance` | — | ✅ | ✅ |
+| `whatsapp_unlimited` | dasar | ✅ | ✅ |
+| `purchase_orders`, `api` | — | — | ✅ |
+
+Enterprise menerima seluruh entitlement (dikontrak manual lewat Sales). Penegakan
+berjalan di server action lewat `requireEntitlement()`; menu yang tidak tersedia
+disembunyikan di sidebar sebagai lapisan UX, bukan sebagai kontrol keamanan.
 
 ## Upgrade dan downgrade
 

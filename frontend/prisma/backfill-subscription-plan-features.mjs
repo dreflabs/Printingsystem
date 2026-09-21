@@ -33,8 +33,16 @@ const APPLY = process.env.APPLY === "true";
 
 // Harus sama persis dengan SAAS_PLANS.<slug>.features di src/lib/saas-catalog.ts
 const TARGET_FEATURES = {
-  starter: ["dashboard", "kanban"],
-  pro: ["dashboard", "kanban", "qc", "storage", "whatsapp_unlimited", "audit_trail"],
+  starter: ["dashboard", "kanban", "pos", "reports"],
+  pro: [
+    "dashboard", "kanban", "pos", "reports", "qc", "storage", "audit_trail",
+    "hrm", "inventory", "layout", "reports_finance", "whatsapp_unlimited",
+  ],
+  business: [
+    "dashboard", "kanban", "pos", "reports", "qc", "storage", "audit_trail",
+    "hrm", "inventory", "layout", "reports_finance", "whatsapp_unlimited",
+    "purchase_orders", "api",
+  ],
 };
 
 async function main() {

@@ -17,6 +17,8 @@ import {
   Receipt,
   CreditCard,
   TrendingUp,
+  Ticket,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SuperAdminSubLevel } from "@/lib/platform";
@@ -49,7 +51,9 @@ const NAV: NavGroup[] = [
     label: "Keuangan",
     items: [
       { label: "Billing & Invoice", href: "/platform/billing", icon: <Receipt className="h-[18px] w-[18px]" /> },
+      { label: "Pembayaran", href: "/platform/payments", icon: <Wallet className="h-[18px] w-[18px]" /> },
       { label: "Paket Langganan", href: "/platform/plans", icon: <CreditCard className="h-[18px] w-[18px]" /> },
+      { label: "Voucher", href: "/platform/vouchers", icon: <Ticket className="h-[18px] w-[18px]" /> },
     ],
   },
   {

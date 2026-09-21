@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
+import { requireEntitlement } from "@/lib/entitlements";
 import { logAction } from "@/lib/logger";
 import { hashKioskToken, newKioskToken } from "@/lib/kiosk";
 import { safeError } from "@/lib/safe-error";
@@ -29,6 +30,7 @@ async function ownerGuard() {
   const tenant = await requireTenant();
   const actor = await requireUser();
   if (!actor.roles.includes("owner")) throw new Error("Hanya Owner yang boleh mengelola perangkat kiosk.");
+  await requireEntitlement(tenant.id, "hrm");
   return { tenant, actor };
 }
 

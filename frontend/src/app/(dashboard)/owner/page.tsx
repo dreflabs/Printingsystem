@@ -18,7 +18,7 @@ import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { SoloNextSteps } from "@/components/dashboard/SoloNextSteps";
 import { WorkspaceModeNudge } from "@/components/dashboard/WorkspaceModeNudge";
-import { TrialBanner } from "@/components/dashboard/TrialBanner";
+import { UnpaidBanner } from "@/components/dashboard/UnpaidBanner";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
 import { OperationalAlerts } from "@/components/dashboard/OperationalAlerts";
 import { decideDiscount } from "@/actions/orders";
@@ -293,7 +293,7 @@ export default function OwnerPage() {
         actions={<span className="px-3 py-1 rounded-full text-xs font-bold bg-accent-teal/10 text-accent-teal border border-border">Akses Penuh</span>}
       />
 
-      <TrialBanner />
+      <UnpaidBanner />
       <WorkspaceModeNudge />
       <RoleGuide role="owner" checklist={checklist} workspaceMode={workspaceMode} defaultCollapsed />
       <SoloNextSteps />

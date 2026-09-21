@@ -14,7 +14,7 @@ model Tenant {
   slug                              String    @unique // subdomain (e.g. majujayaprint)
   name                              String
   logo_url                          String? // URL/path gambar logo toko
-  plan                              String // STARTER/PRO/ENTERPRISE
+  plan                              String // STARTER/PRO/BUSINESS/ENTERPRISE
   status                            String // TRIAL/ACTIVE/SUSPENDED/CHURNED
   trial_ends_at                     DateTime?
   subscription_started_at           DateTime?
@@ -28,6 +28,7 @@ model Tenant {
   wa_provider                       String?
   wa_api_key                        String? // [ENCRYPTED]
   max_users                         Int?
+  addon_users                       Int       @default(0) // kursi user tambahan yang dibeli di luar kuota paket (Rp80 rb/user/bulan)
   payroll_late_deduction_per_minute Decimal   @default(0) @db.Decimal(15, 2) // Rp potongan gaji per menit keterlambatan
   workspace_mode                    String    @default("SOLO") // SOLO / TEAM_SMALL / TEAM_FULL — hanya mengatur tampilan navigasi & beranda, BUKAN izin (izin tetap berbasis Role)
   require_admin_production_release  Boolean   @default(false) // true = order CONFIRMED tidak auto-release; Admin harus menekan "Rilis ke Produksi" dulu
@@ -85,6 +86,8 @@ model Tenant {
   payroll_periods          PayrollPeriod[]
   payroll_records          PayrollRecord[]
   product_materials        ProductMaterial[]
+  voucher_redemptions      VoucherRedemption[]
+  payment_proofs           PaymentProof[]
 }
 
 model SubscriptionPlan {
@@ -109,6 +112,9 @@ model TenantSubscription {
   status                   String // ACTIVE/CANCELLED/PAST_DUE
   started_at               DateTime         @default(now())
   ends_at                  DateTime?
+  term_months              Int              @default(1) // durasi berlangganan yang dipilih: 1/3/6/12 bulan
+  service_keys             String[]         @default([]) // layanan tambahan yang dipilih (training_online/training_onsite)
+  voucher_code             String? // kode voucher yang menunggu dipakai pada invoice berikutnya (sekali pakai)
   payment_gateway          String?
   external_subscription_id String?
   created_at               DateTime         @default(now())
@@ -126,7 +132,10 @@ model Invoice {
   billing_period         String // YYYYMM; one invoice per tenant per period
   period_start           DateTime?
   period_end             DateTime?
-  amount                 Decimal            @db.Decimal(15, 2)
+  amount                 Decimal            @db.Decimal(15, 2) // total yang harus dibayar (setelah diskon)
+  subtotal               Decimal            @default(0) @db.Decimal(15, 2) // sebelum diskon
+  discount               Decimal            @default(0) @db.Decimal(15, 2)
+  voucher_code           String?
   currency               String             @default("IDR")
   status                 String // PENDING/PAID/FAILED/WAIVED
   due_date               DateTime
@@ -139,8 +148,104 @@ model Invoice {
   pdf_path               String?
   created_at             DateTime           @default(now())
 
+  lines InvoiceLine[]
+  payment_proofs PaymentProof[]
+
   @@unique([tenant_id, billing_period])
   @@unique([idempotency_key])
+}
+
+model InvoiceLine {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  invoice_id  String
+  invoice     Invoice  @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  kind        String // PLAN / ADDON_SEATS / SERVICE / DISCOUNT
+  description String
+  quantity    Decimal  @default(1) @db.Decimal(12, 2)
+  unit_price  Decimal  @default(0) @db.Decimal(15, 2)
+  amount      Decimal  @default(0) @db.Decimal(15, 2)
+  created_at  DateTime @default(now())
+
+  @@index([tenant_id, invoice_id])
+}
+
+model Voucher {
+  id             String              @id @default(uuid())
+  code           String              @unique
+  description    String?
+  discount_type  String // PERCENT / FIXED
+  discount_value Decimal             @db.Decimal(15, 2)
+  max_uses       Int?
+  used_count     Int                 @default(0)
+  valid_from     DateTime?
+  valid_until    DateTime?
+  active         Boolean             @default(true)
+  created_at     DateTime            @default(now())
+  updated_at     DateTime            @updatedAt
+
+  redemptions VoucherRedemption[]
+}
+
+model VoucherRedemption {
+  id              String   @id @default(uuid())
+  voucher_id      String
+  voucher         Voucher  @relation(fields: [voucher_id], references: [id], onDelete: Cascade)
+  tenant_id       String
+  tenant          Tenant   @relation(fields: [tenant_id], references: [id])
+  invoice_id      String?
+  code            String
+  discount_amount Decimal  @db.Decimal(15, 2)
+  created_at      DateTime @default(now())
+
+  @@index([tenant_id])
+  @@index([voucher_id])
+}
+
+/// Pengaturan platform (key-value JSON) — mis. metode pembayaran yang aktif,
+/// instruksi transfer, dan konfigurasi provider gateway.
+model PlatformSetting {
+  key        String   @id
+  value_json String
+  updated_at DateTime @updatedAt
+}
+
+/// Rekening bank tujuan transfer manual yang ditampilkan di halaman invoice.
+model BankAccount {
+  id             String   @id @default(uuid())
+  bank_name      String
+  account_number String
+  account_holder String
+  label          String?
+  notes          String?
+  active         Boolean  @default(true)
+  sort_order     Int      @default(0)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+}
+
+/// Bukti pembayaran manual yang diunggah Owner untuk satu invoice. Direview
+/// Super Admin; saat disetujui, invoice ditandai PAID.
+model PaymentProof {
+  id          String      @id @default(uuid())
+  tenant_id   String
+  tenant      Tenant      @relation(fields: [tenant_id], references: [id])
+  invoice_id  String
+  invoice     Invoice     @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  file_key    String
+  file_name   String?
+  note        String?
+  status      String      @default("PENDING") // PENDING/APPROVED/REJECTED
+  uploaded_by String
+  uploader    User        @relation("PaymentProofUploader", fields: [uploaded_by], references: [id])
+  reviewed_by String?
+  reviewer    SuperAdmin? @relation("PaymentProofReviewer", fields: [reviewed_by], references: [id])
+  reviewed_at DateTime?
+  review_note String?
+  created_at  DateTime    @default(now())
+
+  @@index([tenant_id, invoice_id])
+  @@index([status])
 }
 
 model SuperAdmin {
@@ -160,6 +265,7 @@ model SuperAdmin {
 
   tenant_audit_logs   TenantAuditLog[]
   platform_audit_logs PlatformAuditLog[]
+  reviewed_payment_proofs PaymentProof[] @relation("PaymentProofReviewer")
 }
 
 /// Jejak audit tingkat-platform: aksi Super Admin yang TIDAK terikat satu tenant
@@ -328,6 +434,7 @@ model User {
   password_reset_tokens       PasswordResetToken[]
   email_verification_tokens   EmailVerificationToken[]
   payroll_records             PayrollRecord[]
+  payment_proofs              PaymentProof[]           @relation("PaymentProofUploader")
 
   @@unique([tenant_id, username])
   @@unique([tenant_id, email])

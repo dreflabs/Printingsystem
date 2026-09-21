@@ -6,6 +6,7 @@ import { requireSuperAdmin, requireSubLevel, type PlatformActor } from "@/lib/pl
 import { logPlatform, headerMeta, type PlatformAuditAction } from "@/lib/platform-audit";
 import {
   generateInvoicesForPeriod as generateInvoicesCore,
+  activateTenantForPaidInvoice,
   UNPAID_STATUSES,
   type InvoiceStatus,
 } from "@/lib/billing";
@@ -315,14 +316,18 @@ export async function markInvoicePaid(
     const paidAt = input.paidAt ? new Date(input.paidAt) : new Date();
     if (Number.isNaN(paidAt.getTime())) return fail("Tanggal bayar tidak valid.");
 
-    await prisma.invoice.update({
-      where: { id },
-      data: {
-        status: "PAID",
-        paid_at: paidAt,
-        payment_method: method,
-        payment_reference: input.reference?.trim() || null,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.invoice.update({
+        where: { id },
+        data: {
+          status: "PAID",
+          paid_at: paidAt,
+          payment_method: method,
+          payment_reference: input.reference?.trim() || null,
+        },
+      });
+      // Tanpa free trial: invoice pertama lunas → tenant UNPAID diaktifkan.
+      await activateTenantForPaidInvoice(tx, inv.tenant_id);
     });
     await log(actor, "INVOICE_PAID", { type: "Tenant", label: inv.tenant.slug }, {
       number: inv.invoice_number,
@@ -435,7 +440,7 @@ export async function getGrowthAnalytics(opts?: { months?: number }) {
     const churnedLast30 = tenants.filter((t) => t.churned_at && t.churned_at >= d30).length;
     const newLast30 = tenants.filter((t) => t.created_at >= d30).length;
     const activeNow = tenants.filter((t) => t.status === "ACTIVE").length;
-    const trialNow = tenants.filter((t) => t.status === "TRIAL").length;
+    const unpaidNow = tenants.filter((t) => t.status === "UNPAID").length;
     const mrrNow = series[series.length - 1]?.mrrEnd ?? 0;
 
     return ok({
@@ -445,7 +450,7 @@ export async function getGrowthAnalytics(opts?: { months?: number }) {
         churnedLast30,
         newLast30,
         activeNow,
-        trialNow,
+        unpaidNow,
         mrrNow,
         arpa: activeNow > 0 ? mrrNow / activeNow : 0,
       },
@@ -457,3 +462,156 @@ export async function getGrowthAnalytics(opts?: { months?: number }) {
 }
 
 export type { InvoiceStatus };
+
+// ═════════════════════════════════════════════════════════════════════════════
+// B3 — Voucher diskon
+// ═════════════════════════════════════════════════════════════════════════════
+
+const VOUCHER_CODE_RE = /^[A-Z0-9][A-Z0-9-]{2,29}$/;
+
+export type VoucherInput = {
+  code: string;
+  description?: string;
+  discountType: "PERCENT" | "FIXED";
+  discountValue: number;
+  maxUses?: number | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  active: boolean;
+};
+
+function validateVoucherInput(input: VoucherInput): string | null {
+  if (!VOUCHER_CODE_RE.test(input.code?.trim().toUpperCase() ?? "")) {
+    return "Kode harus 3–30 karakter, huruf besar/angka/strip.";
+  }
+  if (input.discountType !== "PERCENT" && input.discountType !== "FIXED") return "Jenis diskon tidak valid.";
+  if (!Number.isFinite(input.discountValue) || input.discountValue <= 0) return "Nilai diskon harus lebih dari 0.";
+  if (input.discountType === "PERCENT" && input.discountValue > 100) return "Diskon persen maksimal 100.";
+  if (input.maxUses != null && (!Number.isInteger(input.maxUses) || input.maxUses < 1)) {
+    return "Kuota pemakaian harus bilangan bulat ≥ 1 (atau kosong).";
+  }
+  if (input.validFrom && input.validUntil && new Date(input.validFrom) > new Date(input.validUntil)) {
+    return "Tanggal mulai tidak boleh melewati tanggal berakhir.";
+  }
+  return null;
+}
+
+function voucherData(input: VoucherInput) {
+  return {
+    code: input.code.trim().toUpperCase(),
+    description: input.description?.trim() || null,
+    discount_type: input.discountType,
+    discount_value: input.discountValue,
+    max_uses: input.maxUses ?? null,
+    valid_from: input.validFrom ? new Date(input.validFrom) : null,
+    valid_until: input.validUntil ? new Date(input.validUntil) : null,
+    active: input.active,
+  };
+}
+
+/** Daftar voucher + jumlah pemakaian. */
+export async function listVouchers() {
+  try {
+    await requireSuperAdmin();
+    const rows = await prisma.voucher.findMany({
+      orderBy: { created_at: "desc" },
+      include: { _count: { select: { redemptions: true } } },
+    });
+    return ok(
+      rows.map((v) => ({
+        id: v.id,
+        code: v.code,
+        description: v.description,
+        discountType: v.discount_type,
+        discountValue: num(v.discount_value),
+        maxUses: v.max_uses,
+        usedCount: v.used_count,
+        redemptionCount: v._count.redemptions,
+        validFrom: v.valid_from?.toISOString() ?? null,
+        validUntil: v.valid_until?.toISOString() ?? null,
+        active: v.active,
+      })),
+    );
+  } catch (e) {
+    console.error("listVouchers:", e);
+    return fail(safeError(e, "Gagal memuat voucher."));
+  }
+}
+
+export async function createVoucher(input: VoucherInput) {
+  try {
+    const actor = await requireSubLevel("SUPER_ADMIN", "FINANCE");
+    const err = validateVoucherInput(input);
+    if (err) return fail(err);
+
+    const data = voucherData(input);
+    const exists = await prisma.voucher.findUnique({ where: { code: data.code } });
+    if (exists) return fail(`Kode "${data.code}" sudah dipakai voucher lain.`);
+
+    const created = await prisma.voucher.create({ data });
+    await log(actor, "VOUCHER_CREATED", { type: "Tenant", label: created.code }, {
+      discountType: created.discount_type,
+      discountValue: num(created.discount_value),
+      maxUses: created.max_uses,
+    });
+    revalidatePath("/platform/vouchers");
+    return ok({ id: created.id, code: created.code });
+  } catch (e) {
+    console.error("createVoucher:", e);
+    return fail(safeError(e, "Gagal membuat voucher."));
+  }
+}
+
+export async function updateVoucher(id: string, input: VoucherInput) {
+  try {
+    const actor = await requireSubLevel("SUPER_ADMIN", "FINANCE");
+    const err = validateVoucherInput(input);
+    if (err) return fail(err);
+
+    const existing = await prisma.voucher.findUnique({ where: { id } });
+    if (!existing) return fail("Voucher tidak ditemukan.");
+
+    const data = voucherData(input);
+    if (data.code !== existing.code) {
+      const clash = await prisma.voucher.findUnique({ where: { code: data.code } });
+      if (clash) return fail(`Kode "${data.code}" sudah dipakai voucher lain.`);
+    }
+
+    await prisma.voucher.update({ where: { id }, data });
+    await log(actor, "VOUCHER_UPDATED", { type: "Tenant", label: data.code }, {
+      active: data.active,
+      maxUses: data.max_uses,
+    });
+    revalidatePath("/platform/vouchers");
+    return ok({ id });
+  } catch (e) {
+    console.error("updateVoucher:", e);
+    return fail(safeError(e, "Gagal memperbarui voucher."));
+  }
+}
+
+/** Daftar pemakaian voucher (redemption) terbaru. */
+export async function listVoucherRedemptions(voucherId: string) {
+  try {
+    await requireSuperAdmin();
+    const rows = await prisma.voucherRedemption.findMany({
+      where: { voucher_id: voucherId },
+      orderBy: { created_at: "desc" },
+      take: 50,
+      include: { tenant: { select: { slug: true, name: true } } },
+    });
+    return ok(
+      rows.map((r) => ({
+        id: r.id,
+        tenantSlug: r.tenant.slug,
+        tenantName: r.tenant.name,
+        invoiceId: r.invoice_id,
+        discountAmount: num(r.discount_amount),
+        createdAt: r.created_at.toISOString(),
+      })),
+    );
+  } catch (e) {
+    console.error("listVoucherRedemptions:", e);
+    return fail(safeError(e, "Gagal memuat pemakaian voucher."));
+  }
+}

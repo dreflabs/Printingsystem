@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { CreditCard, Loader2, Mail, Users, ShoppingCart, AlertTriangle, ArrowUpCircle, ArrowDownCircle, Check } from "lucide-react";
 import { useToast } from "@/components/ui";
-import { getTenantBillingSummary, changeTenantPlan, type TenantBillingSummary } from "@/actions/billing";
+import { getTenantBillingSummary, changeTenantPlan, applyVoucher, removeVoucher, type TenantBillingSummary } from "@/actions/billing";
 import { BILLING_CONTACT_EMAIL } from "@/lib/billing-contact";
+import { SERVICE_OPTIONS } from "@/lib/saas-catalog";
 
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+
+const SERVICE_LABEL: Record<string, string> = Object.fromEntries(
+  SERVICE_OPTIONS.map((s) => [s.key, s.name]),
+);
 
 const INVOICE_STATUS_LABEL: Record<string, string> = {
   PENDING: "Menunggu bayar",
@@ -50,11 +56,16 @@ export default function BillingPage() {
   const [data, setData] = useState<TenantBillingSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [changingPlan, setChangingPlan] = useState<string | null>(null);
+  const [voucherInput, setVoucherInput] = useState("");
+  const [voucherBusy, setVoucherBusy] = useState(false);
+  const [nowTs, setNowTs] = useState(0);
 
   const load = useCallback(async () => {
     const res = await getTenantBillingSummary();
-    if (res.success) setData(res.data);
-    else toast({ type: "error", title: "Gagal memuat", message: res.error });
+    if (res.success) {
+      setData(res.data);
+      setNowTs(Date.now());
+    } else toast({ type: "error", title: "Gagal memuat", message: res.error });
     setLoading(false);
   }, [toast]);
 
@@ -73,6 +84,31 @@ export default function BillingPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);
 
+  const submitVoucher = async () => {
+    setVoucherBusy(true);
+    const res = await applyVoucher(voucherInput);
+    setVoucherBusy(false);
+    if (res.success) {
+      toast({ type: "success", title: `Voucher ${res.data.code} dipasang`, message: `Potongan ${res.data.label} (${rupiah(res.data.discountAmount)}) akan dipakai pada invoice berikutnya.` });
+      setVoucherInput("");
+      void load();
+    } else {
+      toast({ type: "error", title: "Voucher gagal", message: res.error });
+    }
+  };
+
+  const dropVoucher = async () => {
+    setVoucherBusy(true);
+    const res = await removeVoucher();
+    setVoucherBusy(false);
+    if (res.success) {
+      toast({ type: "success", title: "Voucher dihapus" });
+      void load();
+    } else {
+      toast({ type: "error", title: "Gagal menghapus voucher", message: res.error });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted p-4">
@@ -82,10 +118,10 @@ export default function BillingPage() {
   }
   if (!data) return null;
 
-  const trialActive = data.status === "TRIAL";
-  const trialUrgent = trialActive && data.trialDaysLeft != null && data.trialDaysLeft <= 3;
+  const unpaid = data.status === "UNPAID";
   const userQuotaFull = data.maxUsers != null && data.activeUsers >= data.maxUsers;
   const orderQuotaFull = data.maxOrdersPerMonth != null && data.ordersThisMonth >= data.maxOrdersPerMonth;
+  const pendingInvoice = data.invoices.find((i) => i.status === "PENDING" || i.status === "FAILED") ?? null;
 
   return (
     <div className="space-y-6 max-w-xl">
@@ -94,23 +130,22 @@ export default function BillingPage() {
         <p className="text-sm text-muted mt-0.5">Paket aktif, sisa kuota, dan riwayat tagihan workspace Anda.</p>
       </div>
 
-      {trialActive && (
+      {unpaid && (
         <div
           className={
             "rounded-2xl border px-4 py-3 text-sm flex items-start gap-3 " +
-            (trialUrgent
+            (pendingInvoice && nowTs > 0 && new Date(pendingInvoice.dueDate).getTime() < nowTs
               ? "border-status-red/30 bg-status-red/10 text-status-red"
               : "border-status-yellow/30 bg-status-yellow/10 text-status-yellow-text")
           }
         >
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           <div>
-            <p className="font-bold">
-              {data.trialDaysLeft != null && data.trialDaysLeft > 0
-                ? `Masa uji coba berakhir ${data.trialDaysLeft} hari lagi`
-                : "Masa uji coba sudah berakhir"}
+            <p className="font-bold">Selesaikan pembayaran untuk membuka akses penuh</p>
+            <p className="mt-0.5 opacity-90">
+              Selama status UNPAID, aplikasi hanya bisa dibuka di halaman tagihan ini. Transfer ke rekening di bawah,
+              unggah bukti bayar, dan akses dibuka setelah diverifikasi.
             </p>
-            <p className="mt-0.5 opacity-90">Berlangganan sekarang supaya workspace tidak terhenti saat trial habis.</p>
           </div>
         </div>
       )}
@@ -132,7 +167,7 @@ export default function BillingPage() {
               "text-[11px] font-bold px-2.5 py-1 rounded-full border " +
               (data.status === "ACTIVE"
                 ? "bg-status-green/10 text-status-green border-status-green/20"
-                : data.status === "TRIAL"
+                : data.status === "UNPAID"
                 ? "bg-status-yellow/10 text-status-yellow-text border-status-yellow/20"
                 : "bg-status-red/10 text-status-red border-status-red/20")
             }
@@ -146,23 +181,52 @@ export default function BillingPage() {
           <QuotaBar label="Order bulan ini" used={data.ordersThisMonth} max={data.maxOrdersPerMonth} icon={ShoppingCart} />
         </div>
 
+        <div className="grid grid-cols-2 gap-3 border-t border-border pt-3 text-xs">
+          <div>
+            <p className="text-muted">Durasi langganan</p>
+            <p className="font-bold text-primary">
+              {data.termMonths} bulan{data.termMonths === 12 ? " — bayar 10" : ""}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted">Kursi tambahan</p>
+            <p className="font-bold text-primary">{data.addonUsers > 0 ? `${data.addonUsers} user` : "—"}</p>
+          </div>
+          <div>
+            <p className="text-muted">Layanan tambahan</p>
+            <p className="font-bold text-primary">
+              {data.serviceKeys.length > 0 ? data.serviceKeys.map((k) => SERVICE_LABEL[k] ?? k).join(", ") : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted">Estimasi tagihan / termin</p>
+            <p className="font-bold text-primary">{data.estimateTotal != null ? rupiah(data.estimateTotal) : "—"}</p>
+          </div>
+        </div>
+
         {(userQuotaFull || orderQuotaFull) && (
           <p className="text-[11px] text-status-red">
             Kuota paket Anda sudah penuh. Upgrade paket supaya tidak terblokir saat menambah pegawai atau order baru.
           </p>
         )}
 
-        <a
-          href={upgradeMailto(
-            trialActive
-              ? "Ingin berlangganan sebelum masa trial berakhir"
-              : `Ingin mengatur pembayaran paket ${data.planName}`,
-          )}
-          className="w-full inline-flex items-center justify-center gap-2 px-5 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110"
-        >
-          <Mail className="h-4 w-4" />
-          {trialActive ? "Berlangganan Sekarang" : "Atur Pembayaran"}
-        </a>
+        {pendingInvoice ? (
+          <Link
+            href={`/owner/billing/invoice/${pendingInvoice.id}`}
+            className="w-full inline-flex items-center justify-center gap-2 px-5 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110"
+          >
+            <CreditCard className="h-4 w-4" />
+            Bayar Tagihan {pendingInvoice.number} — {rupiah(pendingInvoice.amount)}
+          </Link>
+        ) : (
+          <a
+            href={upgradeMailto(`Ingin mengatur pembayaran paket ${data.planName}`)}
+            className="w-full inline-flex items-center justify-center gap-2 px-5 h-11 rounded-xl bg-accent-teal text-white text-sm font-bold hover:brightness-110"
+          >
+            <Mail className="h-4 w-4" />
+            Hubungi Tim Billing
+          </a>
+        )}
         <p className="text-[11px] text-muted text-center">
           Mengirim email ke <span className="font-mono">{BILLING_CONTACT_EMAIL}</span> — tim kami akan membalas dengan cara pembayaran.
         </p>
@@ -176,7 +240,7 @@ export default function BillingPage() {
               Ganti sendiri kapan saja, berlaku langsung. Tagihan bulanan menyesuaikan paket baru.
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {data.availablePlans.map((p) => {
               const isUp = p.priceMonthly > (data.priceMonthly ?? 0);
               return (
@@ -223,34 +287,108 @@ export default function BillingPage() {
       )}
 
       <section className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-card">
+        <div>
+          <h2 className="text-sm font-bold text-primary">Kode Voucher</h2>
+          <p className="text-[11px] text-muted mt-0.5">Voucher dipakai sekali pada invoice berikutnya.</p>
+        </div>
+        {data.voucherCode ? (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-accent-teal bg-accent-teal/5 px-3 py-2">
+            <div>
+              <p className="text-sm font-bold text-primary font-mono">{data.voucherCode}</p>
+              <p className="text-[10px] text-muted">Menunggu dipakai pada invoice berikutnya.</p>
+            </div>
+            <button
+              onClick={dropVoucher}
+              disabled={voucherBusy}
+              className="h-8 px-3 rounded-lg bg-elevated border border-border text-xs font-bold text-primary hover:border-status-red/50 disabled:opacity-50"
+            >
+              {voucherBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Hapus"}
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              value={voucherInput}
+              onChange={(e) => setVoucherInput(e.target.value.toUpperCase())}
+              placeholder="Masukkan kode voucher"
+              className="flex-1 bg-base border border-border rounded-lg h-10 px-3 text-sm text-primary font-mono placeholder:text-muted/50 focus:border-accent-teal outline-none transition-all"
+            />
+            <button
+              onClick={submitVoucher}
+              disabled={voucherBusy || !voucherInput.trim()}
+              className="h-10 px-4 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {voucherBusy ? "Memeriksa…" : "Gunakan"}
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-card">
         <h2 className="text-sm font-bold text-primary">Riwayat Tagihan</h2>
         {data.invoices.length === 0 ? (
           <p className="text-xs text-muted">Belum ada invoice untuk workspace ini.</p>
         ) : (
           <div className="divide-y divide-border">
             {data.invoices.map((inv) => (
-              <div key={inv.id} className="py-2.5 flex items-center justify-between text-xs">
-                <div className="min-w-0">
-                  <p className="font-semibold text-primary truncate">{inv.number}</p>
-                  <p className="text-muted mt-0.5">
-                    Periode {inv.period} · Jatuh tempo {new Date(inv.dueDate).toLocaleDateString("id-ID")}
-                  </p>
+              <div key={inv.id} className="py-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0">
+                    <Link href={`/owner/billing/invoice/${inv.id}`} className="font-semibold text-accent-teal hover:underline truncate block">
+                      {inv.number}
+                    </Link>
+                    <p className="text-muted mt-0.5">
+                      Periode {inv.period} · Jatuh tempo {new Date(inv.dueDate).toLocaleDateString("id-ID")}
+                    </p>
+                    {inv.proofStatus && (
+                      <p
+                        className={
+                          "mt-0.5 text-[10px] font-bold " +
+                          (inv.proofStatus === "APPROVED"
+                            ? "text-status-green"
+                            : inv.proofStatus === "REJECTED"
+                            ? "text-status-red"
+                            : "text-status-yellow-text")
+                        }
+                      >
+                        Bukti bayar: {inv.proofStatus === "APPROVED" ? "disetujui" : inv.proofStatus === "REJECTED" ? "ditolak" : "menunggu verifikasi"}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0 ml-3">
+                    <p className="font-bold text-primary">{rupiah(inv.amount)}</p>
+                    <p
+                      className={
+                        "mt-0.5 " +
+                        (inv.status === "PAID"
+                          ? "text-status-green"
+                          : inv.status === "PENDING"
+                          ? "text-status-yellow-text"
+                          : "text-muted")
+                      }
+                    >
+                      {INVOICE_STATUS_LABEL[inv.status] ?? inv.status}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-right shrink-0 ml-3">
-                  <p className="font-bold text-primary">{rupiah(inv.amount)}</p>
-                  <p
-                    className={
-                      "mt-0.5 " +
-                      (inv.status === "PAID"
-                        ? "text-status-green"
-                        : inv.status === "PENDING"
-                        ? "text-status-yellow-text"
-                        : "text-muted")
-                    }
-                  >
-                    {INVOICE_STATUS_LABEL[inv.status] ?? inv.status}
-                  </p>
-                </div>
+                {inv.lines.length > 0 && (
+                  <div className="mt-2 rounded-lg bg-elevated px-3 py-2 space-y-1">
+                    {inv.lines.map((l, i) => (
+                      <div key={i} className="flex items-start justify-between gap-3 text-[11px]">
+                        <span className="text-muted min-w-0">{l.description}</span>
+                        <span className={"shrink-0 " + (l.amount < 0 ? "text-status-green font-semibold" : "text-primary")}>
+                          {rupiah(l.amount)}
+                        </span>
+                      </div>
+                    ))}
+                    {inv.discount > 0 && (
+                      <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border">
+                        <span className="text-muted">Subtotal</span>
+                        <span className="text-primary">{rupiah(inv.subtotal)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

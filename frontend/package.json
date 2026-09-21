@@ -10,9 +10,11 @@
     "postinstall": "prisma generate",
     "bootstrap:superadmin": "node prisma/bootstrap-superadmin.mjs",
     "backfill:churn-stale-trials": "node prisma/backfill-churn-stale-trials.mjs",
+    "backfill:trial-to-active": "node prisma/backfill-trial-to-active.mjs",
     "backfill:workspace-mode": "node prisma/backfill-workspace-mode.mjs",
     "backfill:storage-slots": "node prisma/backfill-storage-slot-count.mjs",
     "backfill:subscription-features": "node prisma/backfill-subscription-plan-features.mjs",
+    "backfill:subscription-catalog": "node prisma/backfill-subscription-plan-catalog.mjs",
     "ensure:subscription-plans": "node prisma/ensure-subscription-plans.mjs"
   },
   "dependencies": {

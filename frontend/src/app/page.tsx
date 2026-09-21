@@ -11,11 +11,15 @@ import {
   X,
   Check,
   ChevronDown,
+  Clock3,
 } from "lucide-react";
 import { PriceCalculator } from "@/components/marketing/PriceCalculator";
-import { SAAS_PLANS, TRIAL_DAYS } from "@/lib/saas-catalog";
+import { ALL_PLAN_INCLUDES, SAAS_PLANS } from "@/lib/saas-catalog";
 
 const SITE_URL = process.env.APP_URL || "https://printpilot.id";
+
+const SELF_SERVE_PLANS = Object.values(SAAS_PLANS);
+const ENTRY_PRICE_RIBU = Math.round(SAAS_PLANS.starter.price_monthly / 1000);
 
 const FAQS: { q: string; a: string }[] = [
   {
@@ -32,7 +36,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "Bagaimana jika pesanan saya melebihi limit paket Starter?",
-    a: "Jika Anda mendekati batas 200 pesanan per bulan pada paket Starter, Anda bisa pindah ke paket Pro (tanpa batas) kapan saja tanpa kehilangan data.",
+    a: "Jika Anda mendekati batas 200 pesanan per bulan pada paket Starter, Anda bisa pindah ke paket Pro atau Business (tanpa batas) kapan saja tanpa kehilangan data.",
   },
 ];
 
@@ -65,8 +69,13 @@ function StructuredData() {
         publisher: { "@id": `${SITE_URL}/#organization` },
         brand: { "@type": "Brand", name: "Print Pilot" },
         offers: [
-          { "@type": "Offer", name: SAAS_PLANS.starter.name, price: String(SAAS_PLANS.starter.price_monthly), priceCurrency: "IDR", url: `${SITE_URL}/register?plan=starter` },
-          { "@type": "Offer", name: SAAS_PLANS.pro.name, price: String(SAAS_PLANS.pro.price_monthly), priceCurrency: "IDR", url: `${SITE_URL}/register?plan=pro` },
+          ...SELF_SERVE_PLANS.map((p) => ({
+            "@type": "Offer",
+            name: p.name,
+            price: String(p.price_monthly),
+            priceCurrency: "IDR",
+            url: `${SITE_URL}/register?plan=${p.slug}`,
+          })),
           { "@type": "Offer", name: "Enterprise", priceCurrency: "IDR", url: `${SITE_URL}/kontak` },
         ],
       },
@@ -109,7 +118,7 @@ export default function MarketingPage() {
               Masuk
             </Link>
             <Link href="/register" className="text-sm font-bold bg-primary text-base px-4 py-2 rounded-full hover:bg-primary/90 transition-all flex items-center gap-1.5">
-              Coba Gratis
+              Daftar Sekarang
             </Link>
           </div>
         </div>
@@ -134,20 +143,20 @@ export default function MarketingPage() {
 
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 <Link href="/register" className="h-14 px-8 rounded-full bg-primary text-base font-bold flex items-center gap-2 hover:scale-105 transition-transform">
-                  Mulai dari Rp 299rb/bln <ArrowRight className="h-5 w-5" />
+                  Mulai dari Rp {ENTRY_PRICE_RIBU}rb/bln <ArrowRight className="h-5 w-5" />
                 </Link>
                 <Link href="#fitur" className="h-14 px-8 rounded-full text-primary font-bold border border-border flex items-center hover:bg-elevated transition-colors">
                   Pelajari Fitur
                 </Link>
               </div>
 
-              <p className="mt-6 text-xs text-muted font-medium">Uji coba gratis {TRIAL_DAYS} hari. Tanpa kartu kredit.</p>
+              <p className="mt-6 text-xs text-muted font-medium">Setup kurang dari 15 menit. Tanpa kartu kredit.</p>
 
               <div className="mt-12 grid grid-cols-3 gap-6 max-w-md pt-8 border-t border-border">
                 {[
                   { label: "Titik Scan QR Produksi", value: "10" },
                   { label: "Role Akses Terpisah", value: "5" },
-                  { label: "Hari Trial Gratis", value: "14" },
+                  { label: "Paket Self-serve", value: "3" },
                 ].map((s) => (
                   <div key={s.label}>
                     <p className="text-2xl font-extrabold text-primary font-mono">{s.value}</p>
@@ -267,51 +276,61 @@ export default function MarketingPage() {
               <p className="text-muted">Biaya transparan, bayar bulanan, batalkan kapan saja. Jauh lebih hemat daripada membangun sistem sendiri.</p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-              {/* Starter */}
-              <div className="rounded-3xl bg-card border border-border p-8 flex flex-col">
-                <h3 className="text-xl font-bold text-primary mb-2">Starter</h3>
-                <p className="text-sm text-muted mb-6">Cocok untuk percetakan baru</p>
-                <div className="mb-6">
-                  <span className="text-4xl font-extrabold text-primary">Rp {Math.round(SAAS_PLANS.starter.price_monthly / 1000)}rb</span>
-                  <span className="text-muted">/bln</span>
-                </div>
-                <ul className="space-y-4 mb-8 flex-1">
-                  {['Maksimal 5 Pengguna', '200 Pesanan per bulan', '1 Lokasi Finishing', 'Dukungan via Email'].map((feat, i) => (
-                    <li key={i} className="flex items-start gap-3 text-sm font-medium text-muted">
-                      <CheckCircle2 className="h-5 w-5 text-accent-teal shrink-0" /> {feat}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/register?plan=starter" className="w-full h-12 flex items-center justify-center rounded-xl bg-elevated border border-border text-primary font-bold hover:bg-border/50 transition-colors">
-                  Pilih Starter
-                </Link>
-              </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-6xl mx-auto">
+              {SELF_SERVE_PLANS.map((p) => {
+                const popular = p.slug === "pro";
+                return (
+                  <div
+                    key={p.slug}
+                    className={
+                      popular
+                        ? "rounded-3xl bg-card border-2 border-accent-teal p-8 flex flex-col relative shadow-sm transform md:-translate-y-4"
+                        : "rounded-3xl bg-card border border-border p-8 flex flex-col"
+                    }
+                  >
+                    {popular && (
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-1 rounded-full bg-accent-teal text-white text-xs font-bold tracking-wide">
+                        PALING POPULER
+                      </div>
+                    )}
+                    <h3 className="text-xl font-bold text-primary mb-2">{p.name}</h3>
+                    <p className="text-sm text-muted mb-6">{p.tagline}</p>
+                    <div className="mb-6">
+                      <span className="text-4xl font-extrabold text-primary">Rp {Math.round(p.price_monthly / 1000)}rb</span>
+                      <span className="text-muted">/bln</span>
+                    </div>
+                    <ul className="space-y-4 mb-8 flex-1">
+                      {p.highlights.map((feat) => (
+                        <li key={feat} className={`flex items-start gap-3 text-sm font-medium ${popular ? "text-primary" : "text-muted"}`}>
+                          <CheckCircle2 className="h-5 w-5 text-accent-teal shrink-0" /> {feat}
+                        </li>
+                      ))}
+                      {p.roadmap.length > 0 && (
+                        <li className="pt-2 border-t border-border">
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Segera hadir</span>
+                        </li>
+                      )}
+                      {p.roadmap.map((feat) => (
+                        <li key={feat} className="flex items-start gap-3 text-sm font-medium text-muted">
+                          <Clock3 className="h-5 w-5 text-muted shrink-0" /> {feat}
+                        </li>
+                      ))}
+                    </ul>
+                    <Link
+                      href={`/register?plan=${p.slug}`}
+                      className={
+                        popular
+                          ? "w-full h-12 flex items-center justify-center rounded-xl bg-accent-teal text-white font-bold hover:brightness-110 transition-colors"
+                          : "w-full h-12 flex items-center justify-center rounded-xl bg-elevated border border-border text-primary font-bold hover:bg-border/50 transition-colors"
+                      }
+                    >
+                      {popular ? `Mulai dengan ${p.name}` : `Pilih ${p.name}`}
+                    </Link>
+                  </div>
+                );
+              })}
 
-              {/* Pro */}
-              <div className="rounded-3xl bg-card border-2 border-accent-teal p-8 flex flex-col relative shadow-sm transform md:-translate-y-4">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-1 rounded-full bg-accent-teal text-white text-xs font-bold tracking-wide">
-                  PALING POPULER
-                </div>
-                <h3 className="text-xl font-bold text-primary mb-2">Pro</h3>
-                <p className="text-sm text-muted mb-6">Untuk percetakan berkembang</p>
-                <div className="mb-6">
-                  <span className="text-4xl font-extrabold text-primary">Rp {Math.round(SAAS_PLANS.pro.price_monthly / 1000)}rb</span>
-                  <span className="text-muted">/bln</span>
-                </div>
-                <ul className="space-y-4 mb-8 flex-1">
-                  {['Maksimal 15 Pengguna', 'Pesanan tanpa batas', 'Multi-lokasi Finishing', 'Notifikasi WhatsApp Otomatis', 'Dukungan Prioritas (WA)'].map((feat, i) => (
-                    <li key={i} className="flex items-start gap-3 text-sm font-medium text-primary">
-                      <CheckCircle2 className="h-5 w-5 text-accent-teal shrink-0" /> {feat}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/register?plan=pro" className="w-full h-12 flex items-center justify-center rounded-xl bg-accent-teal text-white font-bold hover:brightness-110 transition-colors">
-                  Mulai dengan Pro
-                </Link>
-              </div>
-
-              {/* Enterprise */}
+              {/* Enterprise — sales-only, tidak masuk katalog self-serve */}
               <div className="rounded-3xl bg-card border border-border p-8 flex flex-col">
                 <h3 className="text-xl font-bold text-primary mb-2">Enterprise</h3>
                 <p className="text-sm text-muted mb-6">Untuk pabrik & multi-cabang</p>
@@ -319,9 +338,17 @@ export default function MarketingPage() {
                   <span className="text-4xl font-extrabold text-primary">Custom</span>
                 </div>
                 <ul className="space-y-4 mb-8 flex-1">
-                  {['Pengguna tanpa batas', 'Pesanan tanpa batas', 'Custom Domain (namatoko.id)', 'Integrasi API Khusus', 'Opsi On-Premise', 'SLA 99.9%'].map((feat, i) => (
-                    <li key={i} className="flex items-start gap-3 text-sm font-medium text-muted">
+                  {['Pengguna tanpa batas', 'Pesanan tanpa batas', 'Semua fitur Business', 'Dedicated Account Manager', 'SLA 99.9%'].map((feat) => (
+                    <li key={feat} className="flex items-start gap-3 text-sm font-medium text-muted">
                       <CheckCircle2 className="h-5 w-5 text-accent-teal shrink-0" /> {feat}
+                    </li>
+                  ))}
+                  <li className="pt-2 border-t border-border">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Segera hadir</span>
+                  </li>
+                  {['Custom Domain (namatoko.id)', 'Integrasi API Khusus', 'Multi-cabang & Laporan Konsolidasi'].map((feat) => (
+                    <li key={feat} className="flex items-start gap-3 text-sm font-medium text-muted">
+                      <Clock3 className="h-5 w-5 text-muted shrink-0" /> {feat}
                     </li>
                   ))}
                 </ul>
@@ -329,6 +356,18 @@ export default function MarketingPage() {
                   Hubungi Tim Sales
                 </Link>
               </div>
+            </div>
+
+            {/* Fitur yang aktif di semua paket — supaya nilai Starter tidak terlihat lebih kecil */}
+            <div className="mt-12 max-w-6xl mx-auto rounded-2xl border border-border bg-elevated p-6">
+              <p className="text-xs font-bold uppercase tracking-widest text-accent-teal mb-4">Termasuk di semua paket</p>
+              <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {ALL_PLAN_INCLUDES.map((feat) => (
+                  <li key={feat} className="flex items-start gap-2.5 text-sm font-medium text-muted">
+                    <CheckCircle2 className="h-4 w-4 text-accent-teal shrink-0 mt-0.5" /> {feat}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </section>
@@ -395,9 +434,9 @@ export default function MarketingPage() {
         <section className="py-24 border-t border-border bg-card">
           <div className="max-w-4xl mx-auto px-6 text-center">
             <h2 className="text-4xl font-bold text-primary mb-6">Siap merapikan percetakan Anda?</h2>
-            <p className="text-lg text-muted mb-10">Buat akun dan mulai pakai dalam waktu kurang dari 5 menit. Gratis {TRIAL_DAYS} hari, tanpa kartu kredit.</p>
+            <p className="text-lg text-muted mb-10">Buat akun dan mulai pakai dalam waktu kurang dari 5 menit. Pilih paket, bayar, langsung jalan.</p>
             <Link href="/register" className="inline-flex h-14 px-8 items-center justify-center rounded-full bg-primary text-base font-bold gap-2 hover:scale-105 transition-transform">
-              Coba Gratis {TRIAL_DAYS} Hari <ChevronRight className="h-5 w-5" />
+              Mulai Sekarang <ChevronRight className="h-5 w-5" />
             </Link>
           </div>
         </section>

@@ -73,3 +73,5 @@ Sumber kebenaran harga/termin/layanan ada di `frontend/src/lib/saas-catalog.ts` 
   - Detail teknis lihat `SUPER-ADMIN.md` Section B.
 
 Catatan data lama: tenant yang sebelumnya berstatus `TRIAL` dikonversi menjadi `ACTIVE` lewat `prisma/backfill-trial-to-active.mjs`. Kolom `Tenant.trial_ends_at` sudah **dihapus** dari skema (migrasi `drop_trial_ends_at`).
+
+**Kuota tidak di-grandfathering (keputusan 2026-09-21):** setelah baris paket disinkronkan, `Tenant.max_users` tenant lama ikut diselaraskan ke kuota paketnya lewat `prisma/backfill-tenant-plan-quota.mjs` (kursi add-on tetap dipertahankan). Tenant yang pegawai aktifnya melebihi kuota baru tidak diputus, tetapi tidak dapat menambah pegawai sampai naik paket atau membeli kursi add-on.

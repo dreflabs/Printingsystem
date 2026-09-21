@@ -239,7 +239,7 @@ function Step1({
 
 // ─── Step 2: Item pesanan (multi) ────────────────────────────────────────────
 function ItemsStep({
-  form, products, finishings, subtotal, role,
+  form, products, finishings, subtotal, role, features,
   updateItem, addItem, removeItem,
 }: {
   form: OrderForm;
@@ -250,6 +250,8 @@ function ItemsStep({
   addItem: () => void;
   removeItem: (key: string) => void;
   role: string;
+  /** Fitur aktif tenant; `undefined` = belum terbaca (jangan sembunyikan apa pun). */
+  features?: string[];
 }) {
   const [calcFor, setCalcFor] = useState<string | null>(null);
   const canEditPrice = role !== "designer_sales";
@@ -264,6 +266,7 @@ function ItemsStep({
     .map(([label, options]) => ({ label, options }));
 
   const calcItem = form.items.find((i) => i.key === calcFor) ?? null;
+  const canUseLayout = !features || features.includes("layout");
 
   return (
     <div className="space-y-4">
@@ -321,13 +324,15 @@ function ItemsStep({
                 <Input label={`Qty (${printingUnitLabel(selectedProduct?.unit ?? "PCS")}) *`} type="number" min="1" value={it.qty} onChange={(e) => updateItem(it.key, { qty: e.target.value })} />
               </div>
 
-              <button
-                type="button"
-                onClick={() => setCalcFor(it.key)}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-teal hover:underline"
-              >
-                <Grid2x2 className="h-3.5 w-3.5" /> Kalkulator layout — potong/lembar
-              </button>
+              {canUseLayout && (
+                <button
+                  type="button"
+                  onClick={() => setCalcFor(it.key)}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-teal hover:underline"
+                >
+                  <Grid2x2 className="h-3.5 w-3.5" /> Kalkulator layout — potong/lembar
+                </button>
+              )}
             </>
           )}
 
@@ -394,8 +399,8 @@ function ItemsStep({
         {finishings.map((f) => <option key={f} value={f} />)}
       </datalist>
 
-      <Modal open={!!calcItem} onClose={() => setCalcFor(null)} title="Kalkulator Layout" size="lg">
-        {calcItem && (
+      <Modal open={!!calcItem && canUseLayout} onClose={() => setCalcFor(null)} title="Kalkulator Layout" size="lg">
+        {calcItem && canUseLayout && (
           <LayoutCalculator
             initialPieceW={calcItem.width}
             initialPieceH={calcItem.height}
@@ -521,6 +526,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
   const [form, setForm] = useState<OrderForm>(() => ({ ...INITIAL_FORM, items: [blankItem()], deadline: defaultDeadline() }));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [role, setRole] = useState("");
+  const [features, setFeatures] = useState<string[] | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [discountTouched, setDiscountTouched] = useState(false);
 
@@ -530,7 +536,12 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
 
   useEffect(() => {
     getSessionUser().then((r) => {
-      if (r.ok) setRole(r.user.role);
+      if (r.ok) {
+        setRole(r.user.role);
+        // Fitur `layout` (Pro+) dipakai untuk menyembunyikan kalkulator layout.
+        // `undefined` = jangan sembunyikan apa pun (gagal baca sesi).
+        setFeatures(r.user.features);
+      }
     });
   }, []);
 
@@ -700,6 +711,7 @@ export function NewOrderModal({ open, onClose, onCreated }: NewOrderModalProps) 
               finishings={finishings}
               subtotal={subtotal}
               role={role}
+              features={features}
               updateItem={updateItem}
               addItem={addItem}
               removeItem={removeItem}

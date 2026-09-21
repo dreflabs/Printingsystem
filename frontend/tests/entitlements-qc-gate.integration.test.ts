@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
-import { getTenantEntitlements, requireEntitlement } from "../src/lib/entitlements";
+import { getTenantEntitlements, requireEntitlement, type EntitlementKey } from "../src/lib/entitlements";
+import { SAAS_PLANS } from "../src/lib/saas-catalog";
 
 // Explicit opt-in. Fixtures are committed then deleted in a finally block —
 // unlike the rollback-only pattern elsewhere, `requireEntitlement` reads
@@ -78,6 +79,57 @@ test("addon_users menambah maxUsers di atas kuota paket", { skip: process.env.PR
 
     const entitlements = await getTenantEntitlements(tenant.id);
     assert.equal(entitlements.maxUsers, 5, "3 kursi paket + 2 kursi add-on = 5");
+  } finally {
+    if (tenantId) await db.tenantSubscription.deleteMany({ where: { tenant_id: tenantId } });
+    if (tenantId) await db.tenant.delete({ where: { id: tenantId } }).catch(() => {});
+    if (planId) await db.subscriptionPlan.delete({ where: { id: planId } }).catch(() => {});
+    await db.$disconnect();
+  }
+});
+
+// Regresi audit paket Starter (2026-09-21): seluruh fitur Pro/Business harus
+// terkunci di Starter, dan fitur Starter harus terbuka. Daftar fitur dibangun
+// dari katalog supaya test ikut berubah saat katalog berubah.
+test("Starter mengunci seluruh fitur Pro/Business dan membuka fitur Starter", { skip: process.env.PRINT_PILOT_DB_TEST !== "1" }, async () => {
+  const db = new PrismaClient();
+  const tag = randomUUID();
+  let tenantId: string | undefined;
+  let planId: string | undefined;
+  try {
+    const starterFeatures: string[] = [...SAAS_PLANS.starter.features];
+    const allKeys: EntitlementKey[] = [
+      "dashboard", "kanban", "pos", "reports",
+      "qc", "storage", "audit_trail", "hrm", "inventory", "layout",
+      "reports_finance", "whatsapp_unlimited", "purchase_orders", "api",
+    ];
+    const shouldBeOpen = allKeys.filter((k) => starterFeatures.includes(k));
+    const shouldBeLocked = allKeys.filter((k) => !starterFeatures.includes(k));
+
+    const plan = await db.subscriptionPlan.create({
+      data: {
+        name: "Starter regresi",
+        slug: `starter-regress-${tag}`,
+        price_monthly: 199000,
+        max_users: 3,
+        max_orders_per_month: 200,
+        features_json: JSON.stringify(starterFeatures),
+      },
+    });
+    planId = plan.id;
+    const tenant = await db.tenant.create({
+      data: { slug: `sr-${tag}`, name: "Starter Regresi", plan: "STARTER", status: "ACTIVE", max_users: 3 },
+    });
+    tenantId = tenant.id;
+    await db.tenantSubscription.create({ data: { tenant_id: tenant.id, plan_id: plan.id, status: "ACTIVE" } });
+
+    assert.ok(shouldBeLocked.length >= 8, "katalog Starter seharusnya mengunci banyak fitur Pro");
+
+    for (const key of shouldBeOpen) {
+      await assert.doesNotReject(requireEntitlement(tenant.id, key), `${key} harus terbuka di Starter`);
+    }
+    for (const key of shouldBeLocked) {
+      await assert.rejects(requireEntitlement(tenant.id, key), /belum tersedia/, `${key} harus terkunci di Starter`);
+    }
   } finally {
     if (tenantId) await db.tenantSubscription.deleteMany({ where: { tenant_id: tenantId } });
     if (tenantId) await db.tenant.delete({ where: { id: tenantId } }).catch(() => {});

@@ -106,8 +106,11 @@ test("invoice pertama memuat baris paket + layanan, memakai voucher sekali, lalu
   } finally {
     if (ids.invoice) await db.invoice.deleteMany({ where: { id: ids.invoice } }).catch(() => {});
     if (ids.sub) await db.tenantSubscription.deleteMany({ where: { tenant_id: ids.tenant } }).catch(() => {});
-    if (ids.tenant) await db.tenant.delete({ where: { id: ids.tenant } }).catch(() => {});
+    // Voucher dihapus SEBELUM tenant: VoucherRedemption punya FK ke Tenant
+    // (onDelete default = Restrict), jadi menghapus voucher setelahnya membuat
+    // tenant tidak pernah terhapus dan menyisakan data uji.
     if (ids.voucher) await db.voucher.delete({ where: { id: ids.voucher } }).catch(() => {});
+    if (ids.tenant) await db.tenant.delete({ where: { id: ids.tenant } }).catch(() => {});
     if (ids.plan) await db.subscriptionPlan.delete({ where: { id: ids.plan } }).catch(() => {});
     await db.$disconnect();
   }

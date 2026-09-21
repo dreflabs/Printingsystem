@@ -69,6 +69,9 @@ export const GROUPED_NAV: NavEntry[] = [
     children: [
       { label: "Pantau Produksi", href: "/admin/production", roles: ["admin", "owner"] },
       { label: "Scan QR", href: "/scan", roles: ["admin", "owner", "operator", "gudang"] },
+      // Pintasan ke modul gudang (QC, storage, material) untuk Owner/Admin —
+      // sebelumnya hanya bisa dijangkau dengan berpindah ke tampilan role Gudang.
+      { label: "Gudang & Finishing", href: "/finishing", roles: ["admin", "owner"], feature: "storage" },
     ],
   },
   {

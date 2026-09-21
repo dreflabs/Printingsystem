@@ -414,6 +414,7 @@ export async function resolveStorageIncident(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "storage");
     if (!can(actor, "storage.resolve_incident")) return fail("Hanya Admin/Owner yang boleh menyelesaikan incident storage.");
     if (!input.notes?.trim()) return fail("Catatan penyelesaian wajib diisi.");
 
@@ -539,6 +540,7 @@ export async function releaseOrder(
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
+    await requireEntitlement(tenant.id, "storage");
     if (!can(actor, "pickup.release")) {
       return fail("Hanya Admin/Owner yang boleh melakukan release final.");
     }

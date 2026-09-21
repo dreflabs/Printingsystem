@@ -14,6 +14,8 @@
     "backfill:storage-slots": "node prisma/backfill-storage-slot-count.mjs",
     "backfill:subscription-features": "node prisma/backfill-subscription-plan-features.mjs",
     "backfill:subscription-catalog": "node prisma/backfill-subscription-plan-catalog.mjs",
+    "backfill:tenant-plan-quota": "node prisma/backfill-tenant-plan-quota.mjs",
+    "backfill:subscription-periods": "node prisma/backfill-subscription-periods.mjs",
     "ensure:subscription-plans": "node prisma/ensure-subscription-plans.mjs"
   },
   "dependencies": {

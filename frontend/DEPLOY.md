@@ -190,6 +190,19 @@ penghapusan free trial**, jalankan sekali di dalam container:
 eksekusi) supaya tenant yang sedang trial tidak terputus. Jalankan backfill ini
 **sebelum** migrasi `drop_trial_ends_at` diterapkan bila masih ada tenant TRIAL.
 
+**Sinkronisasi katalog & kuota (wajib setelah perubahan harga/paket):** invoice,
+entitlement, dan kuota membaca baris `SubscriptionPlan` serta `Tenant.max_users`,
+bukan konstanta kode. Setelah deploy, jalankan berurutan:
+`npm run ensure:subscription-plans`, lalu
+`APPLY=true npm run backfill:subscription-catalog` (harga/kuota/fitur paket), dan
+`APPLY=true npm run backfill:tenant-plan-quota` (kuota tenant lama → sesuai paket,
+tanpa menyentuh kursi add-on). Skrip terakhir melaporkan tenant yang pegawainya
+melebihi kuota baru — mereka tidak diputus, tetapi tidak bisa menambah pegawai.
+Terakhir, `APPLY=true npm run backfill:subscription-periods` mengisi
+`Tenant.current_period_*` dan `TenantSubscription.ends_at` dari invoice PAID
+terakhir (atau `started_at` + termin) supaya MRR & analitik akurat; tenant yang
+periodenya sudah lewat tetap dilaporkan, bukan diperpanjang otomatis.
+
 ### 6b. Provider WhatsApp & email
 
 Selama belum dikonfigurasi, notifikasi berjalan dalam **mode simulasi**: pesan

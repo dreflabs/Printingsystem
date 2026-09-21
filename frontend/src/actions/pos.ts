@@ -9,6 +9,7 @@ import { requireMutableActor } from "@/lib/actor";
 import { retryOnUnique } from "@/lib/retry";
 import { logAction } from "@/lib/logger";
 import { safeError } from "@/lib/safe-error";
+import { checkMonthlyOrderQuota } from "@/lib/order-quota";
 import { ok, fail, type ActionResult } from "@/types";
 
 /** Diskon retail sampai persentase ini boleh diinput kasir/admin tanpa persetujuan. Di atasnya wajib konfirmasi Owner. */
@@ -80,6 +81,11 @@ export async function processRetailOrder(
     if (!["CASH", "TRANSFER", "QRIS"].includes(input.payment?.method)) return fail("Metode pembayaran tidak valid.");
     if (!Number.isSafeInteger(input.payment?.amountPaid) || input.payment.amountPaid <= 0) return fail("Nominal pembayaran tidak valid.");
     if (input.payment.method === "TRANSFER" && !input.payment.reference?.trim()) return fail("Referensi transfer wajib diisi.");
+
+    // Kuota order bulanan paket juga berlaku untuk penjualan kasir — tanpa ini
+    // batas Starter 200/bulan bisa dilewati lewat POS.
+    const quotaError = await checkMonthlyOrderQuota(tenant.id);
+    if (quotaError) return fail(quotaError);
 
     const discount = Math.max(0, Math.round(input.discount ?? 0));
 

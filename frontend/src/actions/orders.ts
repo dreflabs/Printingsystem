@@ -10,7 +10,7 @@ import { retryOnUnique } from "@/lib/retry";
 import { autoReleaseToProduction } from "@/lib/auto-release";
 import { safeError } from "@/lib/safe-error";
 import { can, canAny } from "@/lib/permissions";
-import { getTenantEntitlements } from "@/lib/entitlements";
+import { checkMonthlyOrderQuota } from "@/lib/order-quota";
 import { ok, fail, type ActionResult } from "@/types";
 import { calculatePrintingUnitPrice } from "@/lib/catalog-constants";
 
@@ -126,19 +126,10 @@ export async function createPrintingOrder(
     if (!Object.prototype.hasOwnProperty.call(APPROVAL_METHOD, input.orderType)) return fail("Tipe order tidak valid.");
     const designerRestricted = actor.roles.includes("designer_sales") && !actor.roles.some((r) => r === "admin" || r === "owner");
 
-    const entitlements = await getTenantEntitlements(tenant.id);
-    if (entitlements.maxOrdersPerMonth != null) {
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const ordersThisMonth = await prisma.order.count({
-        where: { tenant_id: tenant.id, created_at: { gte: startOfMonth } },
-      });
-      if (ordersThisMonth >= entitlements.maxOrdersPerMonth) {
-        return fail(
-          `Kuota order bulanan paket Anda sudah penuh (${ordersThisMonth}/${entitlements.maxOrdersPerMonth}). Owner bisa upgrade paket sendiri di /owner/billing, atau hubungi halo@printpilot.id.`,
-        );
-      }
-    }
+    // Kuota order bulanan paket (mis. Starter 200/bulan) — helper bersama agar
+    // jalur POS ikut dibatasi.
+    const quotaError = await checkMonthlyOrderQuota(tenant.id);
+    if (quotaError) return fail(quotaError);
 
     const items = (input.items ?? []).filter((i) => i.quantity > 0);
     if (items.length === 0) return fail("Order harus punya minimal 1 item.");

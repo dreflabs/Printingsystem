@@ -251,10 +251,19 @@ export async function changeTenantPlan(planKey: SelfServePlanKey): Promise<Actio
     const def = SAAS_PLANS[planKey];
     if (!def) return fail("Paket tidak dikenal.");
 
+    // Kuota user mengikuti baris SubscriptionPlan (sumber yang sama dengan
+    // registrasi & invoice), bukan konstanta katalog — supaya perubahan kuota
+    // di panel Super Admin juga berlaku untuk upgrade/downgrade self-serve.
+    const planRow = await prisma.subscriptionPlan.findUnique({
+      where: { slug: def.slug },
+      select: { max_users: true },
+    });
+    const maxUsers = planRow?.max_users ?? def.max_users;
+
     const result = await changePlanCore({
       tenantId: tenant.id,
       targetPlan: def.tenantPlan,
-      maxUsers: def.max_users,
+      maxUsers,
       actor: { type: "owner", userId: actor.id },
     });
     if (!result.success) return result;

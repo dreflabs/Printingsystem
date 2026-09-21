@@ -1007,6 +1007,7 @@ export async function claimFinishingJob(jobCode: string): Promise<ActionResult<{
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "storage");
     if (!can(actor, "finishing.execute")) return fail("Anda tidak memiliki akses mengambil tugas finishing.");
     await requireOperationalCheckIn(tenant.id, actor);
 
@@ -1038,6 +1039,7 @@ export async function startFinishing(jobCode: string): Promise<ActionResult<{ jo
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "storage");
     if (!can(actor, "finishing.execute")) return fail("Hanya role Gudang yang boleh mulai finishing.");
     await requireOperationalCheckIn(tenant.id, actor);
 
@@ -1095,6 +1097,7 @@ export async function finishFinishing(
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "storage");
     if (!can(actor, "finishing.execute")) return fail("Hanya role Gudang yang boleh menyelesaikan finishing.");
     await requireOperationalCheckIn(tenant.id, actor);
     if (!(input.actualQty > 0)) return fail("Jumlah aktual finishing tidak boleh 0.");
@@ -1151,6 +1154,7 @@ export async function getFinishingHistory() {
   try {
     const tenant = await requireTenant();
     const actor = await requireUser();
+    await requireEntitlement(tenant.id, "storage");
     if (!can(actor, "finishing.execute")) return fail("Anda tidak memiliki akses melihat riwayat finishing.");
     const records = await prisma.finishingJob.findMany({
       where: { tenant_id: tenant.id, status: "COMPLETE" },

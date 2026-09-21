@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { getTenantEntitlements } from "@/lib/entitlements";
 
 /**
  * Perangkat kiosk absensi (02-WORKFLOW/18-ABSENSI-IN-APP.md Fase B).
@@ -10,6 +11,23 @@ import { prisma } from "@/lib/prisma";
 
 export const KIOSK_COOKIE = "pp_kiosk";
 export const KIOSK_MAX_AGE_SEC = 60 * 60 * 24 * 365; // 1 tahun
+
+export const KIOSK_PLAN_ERROR = "Fitur absensi belum aktif di paket langganan workspace ini.";
+
+/**
+ * Absensi lewat kiosk hanya untuk paket yang memuat entitlement `hrm`.
+ * Route kiosk memakai token perangkat (bukan sesi), jadi gate entitlement harus
+ * diperiksa di sini — kalau tidak, perangkat yang sudah aktif tetap bisa dipakai
+ * setelah tenant turun paket.
+ */
+export async function kioskAttendanceAllowed(tenantId: string): Promise<boolean> {
+  try {
+    const entitlements = await getTenantEntitlements(tenantId);
+    return entitlements.features.has("hrm");
+  } catch {
+    return false;
+  }
+}
 
 export function hashKioskToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");

@@ -10,7 +10,7 @@ import { parseCsv } from "@/lib/csv";
 import { sendWhatsApp } from "@/lib/wa";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
-import { hhmmToMinutes, tenantDateTime, tenantDayDate, tenantMinutesOfDay } from "@/lib/attendance";
+import { hhmmToMinutes, tenantDateTime, tenantMinutesOfDay } from "@/lib/attendance";
 import { can } from "@/lib/permissions";
 
 export type AttendanceColumnMapping = {
@@ -283,13 +283,24 @@ export async function commitAttendanceImport(input: {
 
     // Guard konflik dengan absen in-app (02-WORKFLOW/18-ABSENSI-IN-APP.md §5).
     // Prioritas kepercayaan: IN_APP/KIOSK > MANUAL > FINGERPRINT_IMPORT.
+    //
+    // Kunci pencocokan memakai `attendance_day` (hari kerja menurut timezone
+    // tenant, UTC midnight) — BUKAN `date` (timestamp, zona server). Kalau
+    // memakai `date`, punch dini hari bisa punya hari-server berbeda dari hari
+    // tenant sehingga guard tidak menemukan baris yang sama dan INSERT-nya
+    // menabrak unique (tenant_id, user_id, attendance_day) → impor gagal total.
     const CONFLICT_MS = 15 * 60 * 1000;
-    const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-    const recKey = (userId: string | null, name: string, d: Date) =>
-      `${userId ?? "name:" + normName(name)}|${dayKey(d)}`;
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+    const recKey = (userId: string | null, name: string, day: Date) =>
+      `${userId ?? "name:" + normName(name)}|${dayKey(day)}`;
 
-    const rangeStart = new Date(periodStart); rangeStart.setHours(0, 0, 0, 0);
-    const rangeEnd = new Date(periodEnd); rangeEnd.setHours(23, 59, 59, 999);
+    const importDays = recordData.map((r) => r.attendance_day.getTime());
+    const firstDay = new Date(Math.min(...importDays));
+    const lastDay = new Date(Math.max(...importDays));
+    // Setelah guard identitas di atas lolos, setiap baris pasti punya user_id.
+    const matched = recordData.filter(
+      (r): r is (typeof recordData)[number] & { user_id: string } => r.user_id !== null,
+    );
 
     const created = { count: 0 };
     const filled: string[] = [];
@@ -310,13 +321,13 @@ export async function commitAttendanceImport(input: {
       });
 
       const existing = await tx.attendanceRecord.findMany({
-        where: { tenant_id: tenant.id, date: { gte: rangeStart, lte: rangeEnd } },
+        where: { tenant_id: tenant.id, attendance_day: { gte: firstDay, lte: lastDay } },
       });
       const byKey = new Map<string, (typeof existing)[number]>();
-      for (const e of existing) byKey.set(recKey(e.user_id, e.employee_name, e.date), e);
+      for (const e of existing) byKey.set(recKey(e.user_id, e.employee_name, e.attendance_day), e);
 
-      for (const r of recordData) {
-        const prior = byKey.get(recKey(r.user_id, r.employee_name, r.date));
+      for (const r of matched) {
+        const prior = byKey.get(recKey(r.user_id, r.employee_name, r.attendance_day));
 
         if (!prior) {
           await tx.attendanceRecord.create({

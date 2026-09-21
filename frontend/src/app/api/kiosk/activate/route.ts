@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
-import { KIOSK_COOKIE, KIOSK_MAX_AGE_SEC, hashKioskToken, kioskCookieSecure } from "@/lib/kiosk";
+import { KIOSK_COOKIE, KIOSK_MAX_AGE_SEC, hashKioskToken, kioskCookieSecure, kioskAttendanceAllowed, KIOSK_PLAN_ERROR } from "@/lib/kiosk";
 import { clientIpFromHeaders } from "@/lib/attendance";
 
 export const dynamic = "force-dynamic";
@@ -23,9 +23,11 @@ export async function POST(req: Request) {
 
   const device = await prisma.kioskDevice.findFirst({
     where: { token_hash: hashKioskToken(token), active: true },
-    select: { id: true, label: true },
+    select: { id: true, label: true, tenant_id: true },
   });
   if (!device) return NextResponse.json({ ok: false, error: "Token tidak dikenal atau perangkat dicabut." }, { status: 401 });
+  if (!(await kioskAttendanceAllowed(device.tenant_id)))
+    return NextResponse.json({ ok: false, error: KIOSK_PLAN_ERROR }, { status: 403 });
 
   await prisma.kioskDevice.update({ where: { id: device.id }, data: { last_seen_at: new Date() } });
 

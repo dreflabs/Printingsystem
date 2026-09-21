@@ -37,7 +37,7 @@ export function minutesOfDay(d: Date): number {
 
 /** Tanggal kerja tenant dalam bentuk DATE UTC-midnight, tanpa bergantung TZ OS. */
 export function tenantDayDate(now: Date, timeZone: string): Date {
-  let parts: Record<string, string> = {};
+  const parts: Record<string, string> = {};
   try {
     for (const p of new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now)) {
       if (p.type !== "literal") parts[p.type] = p.value;

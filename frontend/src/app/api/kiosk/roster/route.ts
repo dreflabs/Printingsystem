@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveKioskDevice } from "@/lib/kiosk";
+import { resolveKioskDevice, kioskAttendanceAllowed, KIOSK_PLAN_ERROR } from "@/lib/kiosk";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +16,8 @@ const ROLE_LABEL: Record<string, string> = {
 export async function GET() {
   const kiosk = await resolveKioskDevice();
   if (!kiosk) return NextResponse.json({ ok: false, error: "Perangkat belum diaktifkan." }, { status: 401 });
+  if (!(await kioskAttendanceAllowed(kiosk.tenantId)))
+    return NextResponse.json({ ok: false, error: KIOSK_PLAN_ERROR }, { status: 403 });
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);

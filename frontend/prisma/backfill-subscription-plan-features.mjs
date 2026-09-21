@@ -41,7 +41,7 @@ const TARGET_FEATURES = {
   business: [
     "dashboard", "kanban", "pos", "reports", "qc", "storage", "audit_trail",
     "hrm", "inventory", "layout", "reports_finance", "whatsapp_unlimited",
-    "purchase_orders", "api",
+    "purchase_orders",
   ],
 };
 

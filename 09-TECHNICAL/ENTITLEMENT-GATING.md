@@ -45,7 +45,8 @@ Sumber tunggal harga/kuota/fitur self-serve: `frontend/src/lib/saas-catalog.ts`
 | `qc`, `storage`, `audit_trail` | — | ✅ | ✅ |
 | `hrm` (absensi & payroll), `inventory`, `layout`, `reports_finance` | — | ✅ | ✅ |
 | `whatsapp_unlimited` | dasar | ✅ | ✅ |
-| `purchase_orders`, `api` | — | — | ✅ |
+| `purchase_orders` | — | — | ✅ |
+| `api` | roadmap | roadmap | roadmap |
 
 Enterprise menerima seluruh entitlement (dikontrak manual lewat Sales). Penegakan
 berjalan di server action lewat `requireEntitlement()`; menu yang tidak tersedia
@@ -64,6 +65,7 @@ disembunyikan di sidebar sebagai lapisan UX, bukan sebagai kontrol keamanan.
 | `purchase_orders` | supplier & PO (baca + tulis) |
 | `layout` | **UI-level**: kalkulator layout di form order disembunyikan bila paket tidak memuat `layout`. Tidak ada data server yang dilindungi — perhitungannya murni di klien |
 | `whatsapp_unlimited` | **belum ditegakkan** — belum ada mekanisme kuota WhatsApp |
+| `api` | **roadmap** — belum ada endpoint publik/API key, jadi sengaja TIDAK diberikan ke paket self-serve (hanya tampil sebagai "Segera hadir" di kartu Business) |
 | `pos`, `reports`, `dashboard`, `kanban` | tidak bergate karena tersedia di semua paket self-serve |
 
 Kuota order bulanan (`max_orders_per_month`) ditegakkan lewat helper bersama

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, resetRateLimit } from "@/lib/rate-limit";
-import { resolveKioskDevice } from "@/lib/kiosk";
+import { resolveKioskDevice, kioskAttendanceAllowed, KIOSK_PLAN_ERROR } from "@/lib/kiosk";
 import { clientIpFromHeaders } from "@/lib/attendance";
 import { performClockIn, performClockOut, PunchError } from "@/lib/attendance-punch";
 
@@ -15,6 +15,10 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const kiosk = await resolveKioskDevice();
   if (!kiosk) return NextResponse.json({ ok: false, error: "Perangkat belum diaktifkan." }, { status: 401 });
+  // Gate entitlement `hrm`: perangkat yang masih aktif tidak boleh dipakai
+  // setelah tenant turun ke paket tanpa absensi.
+  if (!(await kioskAttendanceAllowed(kiosk.tenantId)))
+    return NextResponse.json({ ok: false, error: KIOSK_PLAN_ERROR }, { status: 403 });
 
   let body: Record<string, unknown>;
   try {

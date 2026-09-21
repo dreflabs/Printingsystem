@@ -15,3 +15,9 @@ Lihat spesifikasi lengkap di: `04-MODULES/WHATSAPP-NOTIFICATION.md`
   - perlu keputusan produk soal angka kuota dasar Starter dan perilaku saat kuota habis (antre, tolak, atau jatuh ke email);
   - menyentuh alur kirim yang sekarang best-effort + retry, jadi gate tidak boleh menggagalkan notifikasi yang sedang berjalan.
   Rujukan penegakan entitlement: `09-TECHNICAL/ENTITLEMENT-GATING.md`.
+- **Antrean notifikasi absensi (ditunda 2026-09-21)**: notifikasi "terlambat masuk"
+  saat ini dikirim langsung (`sendWhatsApp`) dari `lib/attendance-punch.ts`, bukan
+  lewat `NotificationEvent`, karena tabel itu mewajibkan `order_id` + `customer_id`.
+  Akibatnya tidak ada retry maupun jejak kegagalan di database. Saat WhatsApp
+  produksi aktif, jadikan `order_id`/`customer_id` opsional (atau tambah tabel
+  notifikasi internal) lalu alihkan pengiriman ke `dispatch-notifications`.

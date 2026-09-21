@@ -163,6 +163,11 @@ export default function PayrollPage() {
               onChange={(e) => setLateRateDraft(e.target.value)}
               className="mt-1 w-full sm:w-48 px-3 py-2 bg-base border border-border rounded-xl text-sm text-primary focus:outline-none focus:border-accent-teal"
             />
+            {(Number(lateRateDraft) || 0) === 0 && (
+              <p className="mt-1 text-[11px] font-semibold text-status-yellow-text">
+                Belum diatur — keterlambatan tidak akan memotong gaji (potongan Rp0).
+              </p>
+            )}
           </div>
           <button
             onClick={handleSaveLateRate}

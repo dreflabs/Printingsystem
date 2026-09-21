@@ -18,7 +18,7 @@ test("ganti paket: upgrade pakai kuota baris paket, downgrade dibatasi pegawai a
   const tag = randomUUID();
   const created: { tenantId?: string; planIds: string[] } = { planIds: [] };
 
-  const ensurePlan = async (key: "starter" | "pro") => {
+  const ensurePlan = async (key: "starter" | "pro" | "business") => {
     const def = SAAS_PLANS[key];
     const found = await db.subscriptionPlan.findUnique({ where: { slug: def.slug } });
     if (found) return found;
@@ -95,6 +95,19 @@ test("ganti paket: upgrade pakai kuota baris paket, downgrade dibatasi pegawai a
     assert.equal(afterUp.maxUsers, (pro.max_users ?? 0) + 1, "kuota baris paket + add-on");
     assert.ok(afterUp.features.has("qc") && afterUp.features.has("layout"), "fitur Pro terbuka");
     assert.equal(afterUp.features.has("purchase_orders"), false, "Business tetap terkunci");
+
+    // ── Lanjut naik ke Business: purchase order terbuka, kapasitas 10 + add-on ──
+    const business = await ensurePlan("business");
+    const upTop = await changePlanCore({
+      tenantId: tenant.id,
+      targetPlan: "BUSINESS",
+      maxUsers: business.max_users ?? null,
+      actor: { type: "platform" },
+    });
+    assert.equal(upTop.success, true);
+    const afterTop = await getTenantEntitlements(tenant.id);
+    assert.equal(afterTop.maxUsers, (business.max_users ?? 0) + 1);
+    assert.ok(afterTop.features.has("purchase_orders"), "purchase order terbuka di Business");
 
     // ── Downgrade ke Starter: 5 pegawai aktif > kapasitas 3 + 1 add-on → ditolak ──
     const downBlocked = await changePlanCore({

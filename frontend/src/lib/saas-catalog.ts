@@ -102,7 +102,9 @@ export const SAAS_PLANS = {
       "reports_finance",
       "whatsapp_unlimited",
       "purchase_orders",
-      "api",
+      // "api" sengaja BELUM diberikan: integrasinya masih roadmap ("Segera
+      // hadir" di kartu paket). Tambahkan kembali di sini saat endpoint publik
+      // dan API key benar-benar tersedia.
     ],
     highlights: [
       "Maksimal 10 Pengguna",

@@ -12,6 +12,7 @@ const SOURCE_LABEL: Record<string, string> = {
   MANUAL: "Manual",
 };
 import { getSessionUser } from "@/actions/session";
+import { toCsv, downloadCsv, stampedName } from "@/lib/csv";
 import {
   previewAttendanceImport,
   commitAttendanceImport,
@@ -157,14 +158,56 @@ export default function AttendancePage() {
   const activeFields: MapField[] =
     format === "daily" ? ["name", "date", "checkIn", "checkOut"] : ["name", "date", "dateTime", "direction"];
 
+  /**
+   * Ekspor detail punch (bukan hanya ringkasan) untuk audit eksternal atau
+   * payroll pihak ketiga: sumber, jam, status, istirahat, flag lokasi/IP,
+   * hari libur, dan catatan Owner.
+   */
+  const exportDetail = () => {
+    if (!report) return;
+    const fmtTime = (d: Date | string | null) =>
+      d ? new Date(d).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false }) : "";
+    const rows: (string | number)[][] = report.records.map((r) => [
+      r.employeeName,
+      new Date(r.date).toLocaleDateString("id-ID"),
+      fmtTime(r.checkIn),
+      fmtTime(r.checkOut),
+      r.checkInStatus,
+      r.lateMinutes,
+      r.breakDurationMin,
+      r.breakStatus ?? "",
+      r.source,
+      r.checkOutStatus ?? "",
+      r.geoFlag ? "ya" : "",
+      r.ipFlag ? "ya" : "",
+      r.offDay ? "ya" : "",
+      (r.ownerNote ?? "").replace(/\s+/g, " "),
+    ]);
+    const csv = toCsv([
+      ["Nama", "Tanggal", "Masuk", "Pulang", "Status masuk", "Telat (menit)", "Istirahat (menit)", "Status istirahat", "Sumber", "Status pulang", "Luar area", "Luar jaringan", "Hari libur", "Catatan Owner"],
+      ...rows,
+    ]);
+    downloadCsv(stampedName(`absensi-detail-${range.from}-${range.to}`), csv);
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-primary">Absensi Pegawai</h1>
-        <p className="text-sm text-muted mt-0.5">
-          Impor CSV mesin fingerprint &amp; laporan kehadiran. Batas masuk{" "}
-          <span className="font-mono font-bold">{report?.lateThreshold ?? "09:15"}</span> WIB.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-primary">Absensi Pegawai</h1>
+          <p className="text-sm text-muted mt-0.5">
+            Impor CSV mesin fingerprint &amp; laporan kehadiran. Batas masuk{" "}
+            <span className="font-mono font-bold">{report?.lateThreshold ?? "09:15"}</span> WIB.
+          </p>
+        </div>
+        <button
+          onClick={exportDetail}
+          disabled={!report || report.records.length === 0}
+          className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-elevated border border-border text-xs font-bold text-primary hover:border-accent-teal/50 disabled:opacity-50"
+          title="Ekspor detail punch (sumber, flag lokasi/IP, istirahat, catatan) untuk audit atau payroll"
+        >
+          <Upload className="h-3.5 w-3.5 rotate-180" /> Ekspor Detail CSV
+        </button>
       </div>
 
       {/* ── IMPORT ─────────────────────────────────────────────── */}

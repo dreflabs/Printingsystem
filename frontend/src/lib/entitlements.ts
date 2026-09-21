@@ -15,7 +15,7 @@ export type EntitlementKey =
   | "layout"
   | "whatsapp_unlimited"
   | "purchase_orders"
-  | "api";
+  | "api"; // roadmap — belum ada endpoint publik; jangan dicantumkan di paket self-serve
 
 export interface TenantEntitlements {
   plan: string;

@@ -384,6 +384,34 @@ bukan menimpa — sesuai kata "lampiran" di doc lama §63. (Perbaikan kecil pada
 - Shift per pegawai, dan integrasi langsung ke mesin fingerprint (di luar scope —
   import CSV sudah menutupi).
 
+## 14. Perbaikan hasil audit (2026-09-21)
+
+- **Gate entitlement di route kiosk.** `/api/kiosk/punch`, `/api/kiosk/roster`, dan
+  `/api/kiosk/activate` kini memeriksa entitlement `hrm` milik tenant perangkat
+  (`kioskAttendanceAllowed`). Sebelumnya perangkat kiosk yang masih aktif tetap
+  bisa dipakai setelah tenant turun ke paket tanpa absensi.
+- **Kunci guard impor disamakan dengan kunci unik.** Pencocokan baris import
+  memakai `attendance_day` (hari kerja menurut timezone tenant), bukan `date`
+  (timestamp, zona server). Sebelumnya punch dini hari bisa memakai hari-server
+  berbeda sehingga guard tidak menemukan baris yang sama dan INSERT-nya menabrak
+  unique `(tenant_id, user_id, attendance_day)` → impor gagal total.
+- **`AttendanceRecord.user_id` wajib (NOT NULL).** Unique satu-baris-per-hari
+  hanya benar-benar berlaku bila `user_id` terisi (NULL tidak saling bentrok di
+  Postgres). Migrasi `attendance_user_required` berhenti dengan pesan jelas bila
+  masih ada baris tanpa `user_id`, agar direkonsiliasi manual lebih dulu.
+- **Ekspor detail absensi.** Halaman `/admin/attendance` punya tombol "Ekspor
+  Detail CSV" (sumber, jam, status, istirahat, flag area/jaringan, hari libur,
+  catatan Owner) untuk audit dan payroll pihak ketiga.
+- **Peringatan tarif potongan.** Halaman payroll menandai bila potongan
+  keterlambatan masih Rp0 (keterlambatan tidak akan memotong gaji).
+- **Test absensi** (`tests/attendance.integration.test.ts`): helper murni
+  (timezone, status telat/pulang cepat, workdays, geofence, allowlist IP, selfie)
+  dan inti punch (anti dobel, istirahat menggantung, geofence ENFORCE, selfie
+  wajib, selfie tersimpan).
+- **Masih ditunda:** antrean notifikasi "terlambat masuk" lewat `NotificationEvent`
+  (lihat `11-FUTURE/WHATSAPP.md`); akses Admin ke riwayat perubahan pengaturan
+  absensi; shift per pegawai (`EmployeeShift`).
+
 ## 13. Perbaikan integritas dan policy (2026-09-15)
 
 - `User.attendance_eligible` memisahkan kewajiban absensi dari role dan dipakai

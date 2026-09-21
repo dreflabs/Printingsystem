@@ -1316,8 +1316,12 @@ model AttendanceRecord {
   tenant               Tenant            @relation(fields: [tenant_id], references: [id])
   import_id            String? // null = baris dibuat dari tombol istirahat Print Pilot, belum ada import fingerprint
   import               AttendanceImport? @relation(fields: [import_id], references: [id])
-  user_id              String?
-  user                 User?             @relation(fields: [user_id], references: [id])
+  // Wajib terisi: import ditolak bila nama pegawai tidak bisa dicocokkan tepat
+  // satu user, sehingga unique (tenant_id, user_id, attendance_day) benar-benar
+  // menjaga satu baris per pegawai per hari (kolom nullable akan bocor di
+  // Postgres karena NULL tidak saling bentrok).
+  user_id              String
+  user                 User              @relation(fields: [user_id], references: [id])
   employee_name        String
   // Hari kerja menurut timezone tenant, disimpan terpisah dari timestamp punch.
   attendance_day       DateTime          @default(dbgenerated("CURRENT_DATE")) @db.Date

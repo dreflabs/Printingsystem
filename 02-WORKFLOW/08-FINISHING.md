@@ -5,6 +5,7 @@ Finishing is the controlled handoff from production to finished-goods storage.
 ## Required flow
 
 QC PASS
+-> AMBIL & MULAI FINISHING (klaim atomik per petugas)
 -> FINISHING
 -> PACKING
 -> SCAN JOB QR/BARCODE

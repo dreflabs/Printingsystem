@@ -29,11 +29,11 @@
 
 ```
 PRODUKSI
-  ├── [SCAN 1] Operator scan Job QR → Mulai Produksi
-  └── [SCAN 2] Operator scan Job QR → Selesai Produksi
+  ├── [Mulai Produksi · internal SCAN 1] Operator scan Job QR → Ambil & mulai produksi
+  └── [Selesaikan Produksi · internal SCAN 2] Operator scan Job QR → Catat hasil & selesaikan produksi
 
 QC
-  └── [SCAN 3] Gudang scan Job QR → Buka Form QC
+  └── [Pemeriksaan Kualitas · internal SCAN 3] Gudang scan Job QR → Buka Form QC
 
 FINISHING
   ├── [SCAN 4] Gudang scan Job QR → Mulai Finishing
@@ -58,7 +58,7 @@ AUDIT
 
 ---
 
-### 🔵 SCAN 1 — Mulai Produksi
+### 🔵 Mulai Produksi (kode internal: SCAN 1)
 **Siapa:** Operator Mesin  
 **Di mana:** Stasiun mesin / area produksi (HP/tablet operator)  
 **Kapan:** Saat mulai mengerjakan job  
@@ -66,28 +66,28 @@ AUDIT
 
 **Alur:**
 1. Operator buka browser → Login → Masuk halaman "Produksi Aktif Saya"
-2. Klik "Scan Mulai Job"
-3. Scan Job QR dari Work Order / print-out
+2. Klik **Ambil & Mulai Produksi**
+3. Pindai Job QR dari Work Order / print-out
 4. Sistem tampilkan: nama produk, spesifikasi, quantity, deadline
-5. Operator klik "MULAI PRODUKSI"
+5. Operator klik **AMBIL & MULAI PRODUKSI**
 6. Status → `PRODUCTION_STARTED`, `actual_start` tercatat
 
 **Validasi server:**
-- Apakah user ini adalah operator yang di-assign ke job ini?
-- Apakah status job adalah `PRODUCTION_ASSIGNED`?
+- Apakah user ini adalah operator yang di-assign ke job ini, atau memiliki grant pada mesin job?
+- Apakah status job adalah `PRODUCTION_ASSIGNED` atau `PRODUCTION_QUEUED` tanpa operator?
 - Jika tidak → tampilkan error, jangan ubah status
 
 ---
 
-### 🔵 SCAN 2 — Selesai Produksi
+### 🔵 Selesaikan Produksi (kode internal: SCAN 2)
 **Siapa:** Operator Mesin  
 **Di mana:** Stasiun mesin  
 **Kapan:** Setelah produksi fisik selesai  
 **QR yang di-scan:** Job QR  
 
 **Alur:**
-1. Operator buka halaman "Job Aktif" → Klik "Scan Selesai"
-2. Scan Job QR
+1. Operator buka halaman "Job Aktif" → klik **Selesaikan Produksi**
+2. Jika diperlukan, pindai Job QR
 3. Sistem tampilkan form:
    - Actual quantity: ___
    - Waste quantity: ___ (wajib jika > 0, disertai alasan)
@@ -101,17 +101,17 @@ AUDIT
 
 ---
 
-### 🟡 SCAN 3 — QC Inspection
+### 🟡 Pemeriksaan Kualitas / QC (kode internal: SCAN 3)
 **Siapa:** Gudang  
 **Di mana:** Area QC / meja inspeksi  
-**Kapan:** Setelah SCAN 2 selesai  
+**Kapan:** Setelah proses **Selesaikan Produksi** selesai
 **QR yang di-scan:** Job QR  
 
 **Alur:**
 1. Gudang buka halaman "Antrian QC"
-2. Klik "Scan Job"
-3. Scan Job QR dari barang fisik
-4. Sistem tampilkan checklist QC + spesifikasi order (qty, ukuran, finishing)
+2. Klik **Ambil & Inspeksi**; sistem mengunci job untuk petugas tersebut
+3. Jika diperlukan, pindai Job QR dari barang fisik
+4. Sistem tampilkan checklist QC + spesifikasi order (qty, ukuran, material, finishing, mesin, file desain approved)
 5. Inspector isi checklist: quantity ✓, ukuran ✓, warna ✓, kualitas cetak ✓, defect ✓
 6. Inspector pilih: **PASS** atau **FAIL**
 7. Jika FAIL: wajib isi kategori masalah + deskripsi + upload foto
@@ -131,9 +131,9 @@ AUDIT
 
 **Alur:**
 1. Gudang buka halaman "Antrian Finishing"
-2. Scan Job QR
-3. Sistem tampilkan: spesifikasi finishing (laminating, cutting, welding, dll)
-4. Klik "MULAI FINISHING"
+2. Klik **Ambil & Mulai**; sistem mengunci job untuk petugas tersebut
+3. Scan Job QR bila diperlukan
+4. Sistem tampilkan spesifikasi finishing (laminating, cutting, welding, dll)
 5. Status → `FINISHING_STARTED`
 
 **Validasi:**

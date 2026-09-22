@@ -7,16 +7,34 @@ Konvensi tipe data: `id`/`*_id` (FK) = `uuid`; harga/nominal = `decimal`; waktu 
 ## SAAS & MULTI-TENANCY
 
 ## tenants
-id (uuid, PK), slug (varchar, unique), name (varchar), plan (varchar, enum: STARTER/PRO/ENTERPRISE), status (varchar, enum: TRIAL/ACTIVE/SUSPENDED/CHURNED), trial_ends_at (timestamptz), subscription_started_at (timestamptz), current_period_start (timestamptz), current_period_end (timestamptz), billing_email (varchar), owner_name (varchar), owner_phone (varchar), custom_domain (varchar, nullable), wa_provider (varchar), wa_api_key (varchar) [ENCRYPTED], max_users (integer), created_at (timestamptz), updated_at (timestamptz)
+id (uuid, PK), slug (varchar, unique), name (varchar), plan (varchar, enum: STARTER/PRO/BUSINESS/ENTERPRISE), status (varchar, enum: UNPAID/ACTIVE/SUSPENDED/CHURNED; TRIAL = data lama), subscription_started_at (timestamptz), current_period_start (timestamptz), current_period_end (timestamptz), billing_email (varchar), owner_name (varchar), owner_phone (varchar), custom_domain (varchar, nullable), wa_provider (varchar), wa_api_key (varchar) [ENCRYPTED], max_users (integer), addon_users (integer, default 0 — kursi tambahan di luar kuota paket), created_at (timestamptz), updated_at (timestamptz)
 
 ## subscription_plans
 id (uuid, PK), name (varchar), slug (varchar, unique), price_monthly (decimal), max_users (integer), max_orders_per_month (integer), features_json (jsonb), active (boolean)
 
 ## tenant_subscriptions
-id (uuid, PK), tenant_id (uuid, FK → tenants.id), plan_id (uuid, FK → subscription_plans.id), status (varchar, enum: ACTIVE/CANCELLED/PAST_DUE), started_at (timestamptz), ends_at (timestamptz), payment_gateway (varchar), external_subscription_id (varchar), created_at (timestamptz)
+id (uuid, PK), tenant_id (uuid, FK → tenants.id), plan_id (uuid, FK → subscription_plans.id), status (varchar, enum: ACTIVE/CANCELLED/PAST_DUE), started_at (timestamptz), ends_at (timestamptz), term_months (integer, default 1 — 1/3/6/12), service_keys (text[], layanan tambahan), voucher_code (varchar, nullable — voucher sekali pakai untuk invoice berikutnya), payment_gateway (varchar), external_subscription_id (varchar), created_at (timestamptz)
 
 ## invoices
-id (uuid, PK), tenant_id (uuid, FK → tenants.id), subscription_id (uuid, FK → tenant_subscriptions.id), invoice_number (varchar, unique, INV-YYYYMM-XXXXX), amount (decimal), status (varchar, enum: PENDING/PAID/FAILED/WAIVED), due_date (timestamptz), paid_at (timestamptz), payment_method (varchar), payment_reference (varchar), pdf_path (varchar), created_at (timestamptz)
+id (uuid, PK), tenant_id (uuid, FK → tenants.id), subscription_id (uuid, FK → tenant_subscriptions.id), invoice_number (varchar, unique, INV-YYYYMM-XXXXX), billing_period (varchar, YYYYMM), period_start (timestamptz), period_end (timestamptz), subtotal (decimal), discount (decimal), voucher_code (varchar, nullable), amount (decimal — total setelah diskon), status (varchar, enum: PENDING/PAID/FAILED/WAIVED), due_date (timestamptz), paid_at (timestamptz), payment_method (varchar), payment_reference (varchar), pdf_path (varchar), created_at (timestamptz)
+
+## invoice_lines
+id (uuid, PK), tenant_id (uuid, FK → tenants.id), invoice_id (uuid, FK → invoices.id, cascade), kind (varchar, enum: PLAN/ADDON_SEATS/SERVICE/DISCOUNT), description (varchar), quantity (decimal), unit_price (decimal), amount (decimal), created_at (timestamptz)
+
+## vouchers
+id (uuid, PK), code (varchar, unique), description (varchar, nullable), discount_type (varchar, enum: PERCENT/FIXED), discount_value (decimal), max_uses (integer, nullable), used_count (integer, default 0), valid_from (timestamptz, nullable), valid_until (timestamptz, nullable), active (boolean), created_at (timestamptz), updated_at (timestamptz)
+
+## voucher_redemptions
+id (uuid, PK), voucher_id (uuid, FK → vouchers.id, cascade), tenant_id (uuid, FK → tenants.id), invoice_id (uuid, nullable), code (varchar), discount_amount (decimal), created_at (timestamptz)
+
+## platform_settings
+key (varchar, PK), value_json (jsonb), updated_at (timestamptz) — berisi `payment.methods` (toggle gateway/manual, provider, instruksi transfer) dan `billing.pricing` (harga kursi add-on, batas kursi, diskon termin, harga layanan, jatuh tempo invoice)
+
+## bank_accounts
+id (uuid, PK), bank_name (varchar), account_number (varchar), account_holder (varchar), label (varchar, nullable), notes (varchar, nullable), active (boolean), sort_order (integer), created_at (timestamptz), updated_at (timestamptz)
+
+## payment_proofs
+id (uuid, PK), tenant_id (uuid, FK → tenants.id), invoice_id (uuid, FK → invoices.id, cascade), file_key (varchar), file_name (varchar, nullable), note (varchar, nullable), status (varchar, enum: PENDING/APPROVED/REJECTED), uploaded_by (uuid, FK → users.id), reviewed_by (uuid, FK → super_admins.id, nullable), reviewed_at (timestamptz), review_note (varchar, nullable), created_at (timestamptz)
 
 ## super_admins
 id (uuid, PK), name (varchar), email (varchar, unique), password_hash (varchar), role (varchar, enum: SUPER_ADMIN/SUPPORT/FINANCE), active (boolean), last_login_at (timestamptz), created_at (timestamptz)

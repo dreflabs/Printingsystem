@@ -1,7 +1,7 @@
 # Print Pilot SaaS — Marketing Landing Page Specification
 
 ## 1. Tujuan & Target Audiens
-- **Tujuan Utama:** Mengkonversi pengunjung (pemilik percetakan) menjadi pendaftar (Tenant baru) dengan mencoba paket Starter atau Trial.
+- **Tujuan Utama:** Mengkonversi pengunjung (pemilik percetakan) menjadi pendaftar (Tenant baru) dengan memilih salah satu paket self-serve (Starter/Pro/Business).
 - **Target Audiens:** Pemilik bisnis percetakan (digital printing, offset, sablon, merchandise) berskala kecil hingga menengah (UMKM) yang masih menggunakan sistem manual (Excel/kertas) dan sering mengalami masalah operasional (order terselip, stok tidak sinkron, deadline terlewat).
 
 ## 2. Struktur Halaman (Anatomi Landing Page)
@@ -14,7 +14,7 @@ Halaman marketing (`printpilot.id`) akan terdiri dari beberapa seksi yang diranc
 - **Sub-headline:** *Contoh: "Tinggalkan buku catatan dan Excel. Print Pilot membantu Anda mencegah order terselip, memantau produksi real-time, dan menghemat biaya operasional."*
 - **Call-to-Action (CTA):** Tombol **"Mulai dari Rp 299rb/bln"** (primary) + **"Pelajari Fitur"** (secondary, scroll ke section fitur).
 - **Elemen yang SENGAJA dihilangkan** (terlalu umum dipakai template SaaS lain): badge pill "✨ Versi baru tersedia", radial background glow, gambar mockup device 3D.
-- **Statistik produk** (bukan social proof dummy): jumlah titik scan QR produksi, jumlah role akses, hari trial gratis — fakta tentang produk, ditampilkan ringkas di bawah CTA.
+- **Statistik produk** (bukan social proof dummy): jumlah titik scan QR produksi, jumlah role akses, jumlah paket self-serve — fakta tentang produk, ditampilkan ringkas di bawah CTA.
 
 ### Section 2: Social Proof & Trust
 - **Dihapus dari versi ini:** baris logo grayscale "Dipercaya oleh 50+ percetakan" dengan nama perusahaan dummy — pola ini terlalu generik dan tidak kredibel selama belum ada logo klien asli. Digantikan oleh baris statistik produk di Section 1. Baris logo nyata boleh ditambahkan kembali begitu tersedia data klien riil.
@@ -33,9 +33,10 @@ Menampilkan screenshot fitur dengan penjelasan singkat:
 
 ### Section 5: Harga (Pricing Table)
 Tabel perbandingan paket (Sesuai dokumen `SAAS-MODEL.md`):
-- **Starter (Rp 299.000/bln):** Cocok untuk percetakan baru (5 User, 200 Order).
-- **Pro (Rp 599.000/bln):** Untuk percetakan berkembang (15 User, Unlimited Order).
-- **Enterprise:** Untuk skala pabrik / multi-cabang (Custom SLA).
+- **Starter (Rp 199.000/bln):** Cocok untuk copy center & percetakan baru (3 User, 200 Order/bulan).
+- **Pro (Rp 399.000/bln):** Untuk percetakan berkembang (5 User, Unlimited Order, QC/Gudang/Absensi/Laporan).
+- **Business (Rp 799.000/bln):** Untuk tim lebih besar & grosir (10 User, semua Pro + Purchase Order & Supplier; Integrasi API menyusul).
+- **Enterprise:** Untuk skala pabrik / multi-cabang (Custom SLA; custom domain & laporan konsolidasi menyusul).
 - CTA di setiap tabel paket.
 
 ### Section 6: Testimoni (Social Proof)

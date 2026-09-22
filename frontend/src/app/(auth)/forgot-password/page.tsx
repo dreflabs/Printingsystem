@@ -1,29 +1,52 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
-import { ArrowLeft, KeyRound, Mail, ShieldCheck, CheckCircle2, Printer } from "lucide-react";
+import { ArrowLeft, KeyRound, Mail, ShieldCheck, CheckCircle2, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { requestPasswordReset } from "@/actions/password-reset";
+
+/** Jika dibuka dari subdomain workspace (mis. narativa.printpilot.id), ambil slug-nya. */
+function workspaceFromHost(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const host = window.location.hostname;
+    const m =
+      host.match(/^([a-z0-9]{3,30})\.printpilot\.id$/) ||
+      host.match(/^([a-z0-9]{3,30})\.localhost$/);
+    return m ? m[1] : "";
+  } catch {
+    return "";
+  }
+}
 
 export default function ForgotPasswordPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [workspace, setWorkspace] = useState(workspaceFromHost);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      setIsSubmitted(true);
-    }, 800);
+    setError(null);
+    const res = await requestPasswordReset(email, workspace.trim().toLowerCase());
+    setIsLoading(false);
+    if (!res.success) {
+      setError(res.error);
+      return;
+    }
+    setIsSubmitted(true);
   };
   return (
     <div className="min-h-screen bg-base flex flex-col font-sans">
       {/* Header Minimalis */}
-      <header className="absolute top-0 left-0 w-full h-20 flex items-center px-8 z-50">
+      <header className="absolute top-0 left-0 w-full h-20 flex items-center px-6 sm:px-8 z-50">
         <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <img src="/PRINT_PILOT_LOGO.png" alt="Print Pilot Logo" className="h-8 w-8 object-contain" />
-          <span className="font-bold text-xl text-primary tracking-tight">Print Pilot<span className="text-accent-teal">.id</span></span>
+          <Image src="/PRINT_PILOT_LOGO.png" alt="Print Pilot Logo" width={32} height={32} priority className="h-8 w-8 object-contain" />
+          <span className="font-bold text-xl text-primary tracking-tight whitespace-nowrap">Print Pilot<span className="text-accent-teal">.id</span></span>
         </Link>
       </header>
 
@@ -40,12 +63,14 @@ export default function ForgotPasswordPage() {
               <KeyRound className="h-6 w-6 text-accent-teal" />
             </div>
             
-            <h1 className="text-2xl font-bold text-primary mb-2">Lupa Password?</h1>
+            <h1 className="text-2xl font-bold text-primary mb-2">Lupa kata sandi?</h1>
             <p className="text-muted text-sm leading-relaxed">
-              Masukkan email yang terdaftar sebagai Owner. Kami akan mengirimkan tautan untuk mereset password Anda. 
-              <br/><br/>
-              <span className="font-semibold text-status-yellow">Catatan:</span> Pegawai harus meminta Owner untuk mereset password mereka.
+              Masukkan workspace dan email yang terdaftar sebagai Owner. Kami akan mengirimkan tautan untuk mereset kata sandi Anda.
             </p>
+            <div className="mt-4 flex items-start gap-2 rounded-xl border border-status-yellow/20 bg-status-yellow/10 px-3 py-2.5 text-xs leading-relaxed text-status-yellow-text">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+              <span><b>Catatan:</b> Reset kata sandi hanya tersedia untuk Owner. Pegawai perlu meminta bantuan Owner.</span>
+            </div>
           </div>
 
           {isSubmitted ? (
@@ -58,6 +83,31 @@ export default function ForgotPasswordPage() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
+              {error && (
+                <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2.5 text-xs font-semibold text-status-red">
+                  {error}
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-primary">Workspace</label>
+                <div className="relative">
+                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
+                  <input
+                    type="text"
+                    required
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    value={workspace}
+                    onChange={(e) => setWorkspace(e.target.value)}
+                    placeholder="Contoh: narativa"
+                    className="w-full h-12 pl-10 pr-4 rounded-xl border border-border bg-base outline-none focus:border-accent-teal focus:ring-1 focus:ring-accent-teal transition-all"
+                  />
+                </div>
+                <p className="text-[11px] text-muted">
+                  Bagian sebelum <span className="font-mono">.printpilot.id</span> pada alamat workspace Anda.
+                </p>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-primary">Email Owner</label>
                 <div className="relative">
@@ -65,6 +115,8 @@ export default function ForgotPasswordPage() {
                   <input
                     type="email"
                     required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     placeholder="admin@perusahaan.com"
                     className="w-full h-12 pl-10 pr-4 rounded-xl border border-border bg-base outline-none focus:border-accent-teal focus:ring-1 focus:ring-accent-teal transition-all"
                   />
@@ -81,12 +133,20 @@ export default function ForgotPasswordPage() {
 
       {/* RIGHT SIDE - SHOWCASE */}
       <div className="hidden lg:flex w-1/2 min-h-[calc(100vh-80px)] mt-20 lg:mt-0 bg-elevated/30 relative overflow-hidden items-center justify-center p-12">
-        <div className="absolute inset-0 opacity-20 bg-[url('https://images.unsplash.com/photo-1562664377-709f2c337eb2?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center mix-blend-luminosity" />
-        <div className="absolute inset-0 bg-gradient-to-br from-base via-base/90 to-accent-teal/20" />
+        <Image
+          src="/images/hero-print-shop-id.jpg"
+          alt=""
+          fill
+          sizes="50vw"
+          priority
+          aria-hidden="true"
+          className="object-cover object-[65%_50%] opacity-20 mix-blend-luminosity"
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-base/95 via-base/85 to-accent-teal/20" />
         
         <div className="relative z-10 max-w-lg">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-teal/10 border border-accent-teal/20 text-accent-teal text-xs font-semibold mb-6 shadow-[0_0_20px_rgba(14,165,233,0.15)]">
-            <ShieldCheck className="h-4 w-4" /> Secure Reset Flow
+            <ShieldCheck className="h-4 w-4" /> Alur Reset yang Aman
           </div>
           
           <h2 className="text-4xl font-bold text-primary leading-tight mb-6 tracking-tight">

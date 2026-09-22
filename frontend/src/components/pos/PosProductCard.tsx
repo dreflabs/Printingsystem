@@ -57,7 +57,7 @@ export function PosProductCard({ product, onClick }: PosProductCardProps) {
       <div className="shrink-0 pl-2 border-l border-border/50">
         {!isOutOfStock ? (
           <div className="h-10 w-10 rounded-full bg-status-yellow/10 group-hover:bg-status-yellow flex items-center justify-center transition-colors">
-            <Plus className="h-5 w-5 text-status-yellow group-hover:text-white transition-colors" />
+            <Plus className="h-5 w-5 text-status-yellow-text group-hover:text-white transition-colors" />
           </div>
         ) : (
           <div className="h-10 w-10 flex items-center justify-center">

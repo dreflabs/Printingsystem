@@ -1,4 +1,3 @@
-import { cn } from "@/lib/utils";
 import { Minus, Plus, Trash2 } from "lucide-react";
 
 export interface CartItemType {
@@ -49,7 +48,7 @@ export function PosCartItem({ item, onUpdateQty, onRemove, onUpdatePrice, onUpda
                   value={item.price === 0 ? '' : item.price}
                   onChange={(e) => onUpdatePrice && onUpdatePrice(item.id, Number(e.target.value))}
                   placeholder="0"
-                  className="w-24 bg-background border border-border rounded px-2 py-1 text-xs font-mono text-primary outline-none focus:border-status-yellow"
+                  className="w-24 bg-elevated border border-border rounded px-2 py-1 text-xs font-mono text-primary outline-none focus:border-status-yellow"
                 />
              </div>
           ) : (
@@ -61,17 +60,35 @@ export function PosCartItem({ item, onUpdateQty, onRemove, onUpdatePrice, onUpda
           <div className="font-bold text-sm text-primary font-mono">
             {formatRupiah(item.price * item.qty)}
           </div>
-          <div className="flex items-center bg-background border border-border rounded-lg overflow-hidden h-8">
+          <div className="flex items-center bg-elevated border border-border rounded-lg overflow-hidden h-8">
             <button 
+              aria-label={item.qty === 1 ? `Hapus ${item.name}` : `Kurangi jumlah ${item.name}`}
               onClick={() => item.qty > 1 ? onUpdateQty(item.id, item.qty - 1) : onRemove(item.id)}
               className="w-8 h-full flex items-center justify-center hover:bg-elevated text-muted hover:text-status-red transition-colors"
             >
               {item.qty === 1 ? <Trash2 className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
             </button>
-            <div className="w-8 h-full flex items-center justify-center font-semibold text-sm text-primary border-x border-border">
-              {item.qty}
-            </div>
+            <input
+              type="number"
+              min="1"
+              value={item.qty || ""}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val) && val > 0) {
+                  onUpdateQty(item.id, val);
+                } else if (e.target.value === "") {
+                  onUpdateQty(item.id, 0);
+                }
+              }}
+              onBlur={() => {
+                if (!item.qty || item.qty <= 0) {
+                  onUpdateQty(item.id, 1);
+                }
+              }}
+              className="w-12 h-full text-center font-semibold text-sm text-primary border-x border-border bg-transparent outline-none focus:bg-elevated transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none m-0"
+            />
             <button 
+              aria-label={`Tambah jumlah ${item.name}`}
               onClick={() => onUpdateQty(item.id, item.qty + 1)}
               className="w-8 h-full flex items-center justify-center hover:bg-elevated text-muted hover:text-status-green transition-colors"
             >
@@ -87,7 +104,7 @@ export function PosCartItem({ item, onUpdateQty, onRemove, onUpdatePrice, onUpda
           value={item.notes || ''}
           onChange={(e) => onUpdateNotes && onUpdateNotes(item.id, e.target.value)}
           placeholder="Catatan item khusus..."
-          className="w-full text-xs bg-background/50 border border-border rounded px-2 py-1.5 outline-none focus:border-status-yellow"
+          className="w-full text-xs bg-elevated/50 border border-border rounded px-2 py-1.5 outline-none focus:border-status-yellow"
         />
       )}
     </div>

@@ -203,6 +203,9 @@ export default function OwnerUsersPage() {
     return Array.from(new Set([primary, ...extra].filter(Boolean)));
   };
 
+  // Kolom "Akses Mesin" hanya berguna kalau ada operator di daftar.
+  const showMachineColumn = filteredUsers.some((u) => getUserRoles(u).includes("operator"));
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -267,7 +270,7 @@ export default function OwnerUsersPage() {
               <tr>
                 <th className="px-6 py-4">Informasi Pegawai</th>
                 <th className="px-6 py-4">Role / Peran</th>
-                <th className="px-6 py-4">Akses Mesin</th>
+                {showMachineColumn && <th className="px-6 py-4">Akses Mesin</th>}
                 <th className="px-6 py-4">Status Akun</th>
                 <th className="px-6 py-4">
                   <div className="flex items-center gap-2">
@@ -283,11 +286,11 @@ export default function OwnerUsersPage() {
             <tbody className="divide-y divide-border/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted">Memuat data pegawai...</td>
+                  <td colSpan={showMachineColumn ? 6 : 5} className="px-6 py-8 text-center text-muted">Memuat data pegawai...</td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-muted flex flex-col items-center justify-center">
+                  <td colSpan={showMachineColumn ? 6 : 5} className="px-6 py-12 text-center text-muted flex flex-col items-center justify-center">
                     <Users className="h-12 w-12 mb-3 opacity-20" />
                     Belum ada data pegawai ditemukan.
                   </td>
@@ -333,7 +336,7 @@ export default function OwnerUsersPage() {
                         );
                       })()}
                     </td>
-                    <td className="px-6 py-4">
+                    {showMachineColumn && <td className="px-6 py-4">
                       {getUserRoles(user).includes("operator") ? (() => {
                         const count = user.user_machines?.length || 0;
                         return (
@@ -359,7 +362,7 @@ export default function OwnerUsersPage() {
                       })() : (
                         <span className="text-muted/40 font-medium text-xs">-</span>
                       )}
-                    </td>
+                    </td>}
                     <td className="px-6 py-4">
                       <div className="flex flex-col items-start gap-1">
                         <div className="flex items-center gap-2">
@@ -432,7 +435,7 @@ export default function OwnerUsersPage() {
                             {hideSalary ? (
                               <span className="font-mono font-bold text-primary tabular-nums tracking-widest">Rp •••••••</span>
                             ) : (
-                              <span className="font-bold text-primary tabular-nums">
+                              <span className="font-bold text-primary tabular-nums whitespace-nowrap">
                                 {user.base_salary != null ? formatRp(user.base_salary) + " / bulan" : <span className="text-muted font-normal text-xs italic tracking-normal">Belum diset</span>}
                               </span>
                             )}
@@ -473,7 +476,7 @@ export default function OwnerUsersPage() {
                           icon={user.attendance_eligible ? <UserCheck className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
                           onSelect={() => handleToggleAttendance(user.id, !!user.attendance_eligible)}
                         >
-                          {user.attendance_eligible ? "Jadikan Opsional Absen" : "Wajibkan Absensi"}
+                          {user.attendance_eligible ? "Absen Opsional" : "Wajibkan Absensi"}
                         </DropdownMenuItem>
 
                         {user.role.name !== "owner" && (
@@ -639,7 +642,7 @@ function RoleEditModal({
         </div>
         <p className="text-xs text-muted">
           {isOwner
-            ? "Owner selalu punya akses penuh. Centang peran operasional yang Anda pegang sendiri; cabut saat sudah ada pegawainya."
+            ? "Owner selalu punya akses penuh — mencabut centang di bawah tidak mengurangi izin, hanya menentukan dashboard/antrean mana yang tampil untuk Anda. Cabut saat sudah ada pegawainya."
             : "Centang semua peran yang boleh dijalankan pegawai ini. Aksi di aplikasi menyesuaikan gabungan peran."}
         </p>
         {err && <p className="rounded-lg bg-status-red/10 border border-status-red/30 px-3 py-2 text-xs text-status-red">{err}</p>}

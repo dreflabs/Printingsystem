@@ -38,6 +38,8 @@ interface MenuPos {
 
 const MenuCtx = createContext<{ close: () => void } | null>(null);
 
+const noop = () => {};
+
 /** Perkiraan tinggi panel untuk memutuskan buka ke atas/bawah. */
 const FLIP_THRESHOLD = 320;
 
@@ -49,11 +51,18 @@ export interface DropdownMenuProps {
   children: ReactNode;
   /** Sisi panel yang disejajarkan dengan tombol. Default "end" (kanan). */
   align?: Align;
-  /** Lebar panel px. Default 208. */
-  width?: number;
+  /**
+   * Lebar panel. `"auto"` (default) = mengikuti isi terpanjang dengan batas
+   * 208–320 px, supaya label panjang tidak terpotong dan menu pendek tetap rapi.
+   * Angka px dipakai bila panel harus seragam (mis. lonceng notifikasi).
+   */
+  width?: number | "auto";
   className?: string;
   triggerClassName?: string;
   disabled?: boolean;
+  /** Mode terkendali (opsional): buka/tutup dari luar, mis. dipicu tombol lain. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function DropdownMenu({
@@ -61,32 +70,52 @@ export function DropdownMenu({
   label,
   children,
   align = "end",
-  width = 208,
+  width = "auto",
   className,
   triggerClassName,
   disabled,
+  open: openProp,
+  onOpenChange,
 }: DropdownMenuProps) {
   const [pos, setPos] = useState<MenuPos | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const open = pos !== null;
+  const open = openProp ?? pos !== null;
 
-  const close = useCallback(() => setPos(null), []);
+  const close = useCallback(() => {
+    setPos(null);
+    onOpenChange?.(false);
+  }, [onOpenChange]);
 
-  const openMenu = () => {
+  const computePos = useCallback((): MenuPos | null => {
     const el = triggerRef.current;
-    if (!el) return;
+    if (!el) return null;
     const r = el.getBoundingClientRect();
     const openUp = r.bottom > window.innerHeight - FLIP_THRESHOLD;
-    setPos({
+    return {
       align,
       openUp,
       top: openUp ? undefined : Math.round(r.bottom + 4),
       bottom: openUp ? Math.round(window.innerHeight - r.top + 4) : undefined,
       right: align === "end" ? Math.round(window.innerWidth - r.right) : undefined,
       left: align === "start" ? Math.round(r.left) : undefined,
-    });
+    };
+  }, [align]);
+
+  const openMenu = () => {
+    const next = computePos();
+    if (!next) return;
+    setPos(next);
+    onOpenChange?.(true);
   };
+
+  // Dibuka dari luar (mode terkendali): posisi panel belum dihitung.
+  useEffect(() => {
+    if (!openProp || pos) return;
+    const next = computePos();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (next) setPos(next);
+  }, [openProp, pos, computePos]);
 
   // Listener global hanya aktif saat menu terbuka.
   useEffect(() => {
@@ -141,7 +170,7 @@ export function DropdownMenu({
       '[role="menuitem"]:not([disabled])'
     );
     first?.focus();
-  }, [open]);
+  }, [open, pos]);
 
   const originCls =
     (pos?.openUp ? "origin-bottom" : "origin-top") +
@@ -172,7 +201,7 @@ export function DropdownMenu({
         {trigger}
       </button>
 
-      {open &&
+      {open && pos &&
         createPortal(
           <MenuCtx.Provider value={{ close }}>
             <div
@@ -183,15 +212,31 @@ export function DropdownMenu({
               onClick={(e) => e.stopPropagation()}
               style={{
                 position: "fixed",
-                width,
+                // "auto" = panel selebar isi terpanjang, dibatasi 208–320 px dan
+                // tidak pernah melebihi lebar layar. Dengan lebar tetap, label
+                // yang lebih panjang dari 150 px (mis. "Jadikan Opsional Absen")
+                // selalu terpotong ellipsis tanpa bisa dibaca.
+                ...(width === "auto"
+                  ? {
+                      width: "max-content",
+                      minWidth: Math.min(208, window.innerWidth - 24),
+                      maxWidth: Math.min(320, window.innerWidth - 24),
+                    }
+                  : { width }),
                 top: pos.top,
                 bottom: pos.bottom,
                 left: pos.left,
                 right: pos.right,
-                maxHeight: "calc(100vh - 16px)",
+                // Tinggi maksimum harus dihitung dari posisi panel, bukan selalu
+                // 100vh: panel yang dibuka ke bawah mulai dari `top`, jadi ruang
+                // tersisanya = 100vh - top. Sebelum ini bagian bawah panel bisa
+                // keluar layar sehingga isinya tidak bisa di-scroll sampai habis.
+                maxHeight: pos.openUp
+                  ? `calc(100vh - ${pos.bottom ?? 0}px - 12px)`
+                  : `calc(100vh - ${pos.top ?? 0}px - 12px)`,
               }}
               className={cn(
-                "z-[100] overflow-y-auto rounded-xl border border-border/60 bg-card py-1.5",
+                "z-[100] overflow-y-auto overscroll-contain rounded-xl border border-border/60 bg-card py-1.5",
                 "shadow-popover animate-in fade-in-0 zoom-in-95 duration-100",
                 originCls,
                 className
@@ -213,6 +258,8 @@ export interface DropdownMenuItemProps {
   /** Aksi destruktif (Hapus) — satu-satunya yang diberi warna merah. */
   danger?: boolean;
   disabled?: boolean;
+  /** Teks tooltip bila `children` bukan string (mis. berisi elemen). */
+  title?: string;
 }
 
 export function DropdownMenuItem({
@@ -221,14 +268,19 @@ export function DropdownMenuItem({
   icon,
   danger,
   disabled,
+  title,
 }: DropdownMenuItemProps) {
   const ctx = useContext(MenuCtx);
+  // Tooltip teks penuh: jaring pengaman kalau label tetap menyentuh batas lebar
+  // panel dan dipotong ellipsis.
+  const tooltip = title ?? (typeof children === "string" ? children : undefined);
   return (
     <button
       type="button"
       role="menuitem"
       tabIndex={-1}
       disabled={disabled}
+      title={tooltip}
       onClick={() => {
         onSelect?.();
         ctx?.close();
@@ -244,13 +296,27 @@ export function DropdownMenuItem({
       {icon && (
         <span className={cn("shrink-0", !danger && "text-muted")}>{icon}</span>
       )}
-      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {/* `grow` (basis auto), bukan `flex-1` (basis 0): panel berlebar
+          max-content mengukur lebar teks dari basisnya, jadi basis 0 membuat
+          panel selalu menciut ke lebar minimum dan label tetap terpotong.
+          `truncate` tetap ada sebagai jaring saat panel menyentuh maxWidth. */}
+      <span className="min-w-0 grow whitespace-nowrap truncate">{children}</span>
     </button>
   );
 }
 
 export function DropdownMenuDivider() {
   return <div role="separator" className="my-1.5 h-px bg-border/70" />;
+}
+
+/**
+ * Menutup dropdown dari dalam panel — untuk isi panel yang bukan
+ * `DropdownMenuItem` (mis. tautan navigasi yang harus menutup menu setelah
+ * diklik). Di luar provider, no-op.
+ */
+export function useDropdownMenuClose(): () => void {
+  const ctx = useContext(MenuCtx);
+  return ctx?.close ?? noop;
 }
 
 /** Judul seksi opsional di dalam menu. */

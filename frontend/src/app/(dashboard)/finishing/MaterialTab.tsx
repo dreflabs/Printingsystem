@@ -7,6 +7,7 @@ import { getMaterials, getMaterialMovementHistory, adjustMaterialStock, receiveM
 import { getSessionUser } from "@/actions/session";
 import { getMaterialStocktake, startMaterialStocktake, recordMaterialStocktakeCount, submitMaterialStocktake, approveMaterialStocktake } from "@/actions/stocktake";
 import { MATERIAL_STOCK_UNITS, MATERIAL_USAGE_UNITS } from "@/lib/catalog-constants";
+import { stockAlertLevel } from "@/lib/operational-alerts";
 
 type Material = {
   id: string;
@@ -424,6 +425,7 @@ export function MaterialTab() {
   useEffect(() => { getSessionUser().then((r) => { if (r.ok) setRoles(r.user.roles); }); }, []);
 
   const filtered = materials.filter(m => (!groupFilter || m.group_name === groupFilter) && (m.name.toLowerCase().includes(query.toLowerCase()) || m.material_code.toLowerCase().includes(query.toLowerCase())));
+  const withoutMin = materials.filter(m => Number(m.min_stock) <= 0).length;
 
   return (
     <div className="space-y-6">
@@ -457,6 +459,14 @@ export function MaterialTab() {
       {showStocktake && <StocktakeModal canCount={canStocktake} canApprove={canAdjust} onClose={() => setShowStocktake(false)} onDone={() => { setShowStocktake(false); loadData(); }} />}
 
       {error && <div className="rounded-xl border border-status-red/30 bg-status-red/10 px-4 py-2 text-sm text-status-red">{error}</div>}
+
+      {/* Bahan tanpa batas minimum tidak bisa memicu alert stok menipis —
+          tampilkan sebagai tugas data, bukan sebagai alert palsu. */}
+      {!loading && withoutMin > 0 && (
+        <div className="rounded-xl border border-status-yellow/30 bg-status-yellow/10 px-4 py-2 text-[11px] text-status-yellow-text">
+          <b>{withoutMin} bahan belum punya batas minimum</b> — alert &quot;stok menipis&quot; tidak dipantau untuk bahan ini. Isi lewat nama bahan → Batas Min.
+        </div>
+      )}
 
       <div className="bg-card border border-border rounded-2xl shadow-card overflow-hidden flex flex-col">
         <div className="p-4 border-b border-border bg-elevated/30 flex items-center gap-4">
@@ -496,7 +506,7 @@ export function MaterialTab() {
               </thead>
               <tbody className="divide-y divide-border/50">
                 {filtered.map(m => {
-                  const isLow = Number(m.current_stock) <= Number(m.min_stock);
+                  const isLow = stockAlertLevel(Number(m.current_stock), Number(m.min_stock)) !== null;
                   return (
                     <tr key={m.id} className="hover:bg-elevated/30 transition-colors">
                       <td className="px-4 py-3 font-mono text-muted">{m.material_code}</td>
@@ -507,9 +517,13 @@ export function MaterialTab() {
                         <StockAdjuster material={m} onDone={loadData} canAdjust={canAdjust} />
                       </td>
                       <td className="px-4 py-3">
-                        <span className={cn("px-2 py-1 rounded font-bold", isLow ? "bg-status-red/10 text-status-red" : "text-muted")}>
-                          {m.min_stock}
-                        </span>
+                        {Number(m.min_stock) > 0 ? (
+                          <span className={cn("px-2 py-1 rounded font-bold", isLow ? "bg-status-red/10 text-status-red" : "text-muted")}>
+                            {m.min_stock}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] italic text-muted">belum diatur</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right"><button onClick={() => setHistoryFor(m)} className="inline-flex items-center gap-1 rounded-lg border border-border bg-elevated px-2.5 py-1.5 text-[11px] font-semibold text-muted hover:text-primary hover:border-accent-teal"><History className="h-3.5 w-3.5" /> Riwayat</button></td>
                     </tr>

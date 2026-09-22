@@ -10,6 +10,7 @@ export {
   DropdownMenuItem,
   DropdownMenuDivider,
   DropdownMenuLabel,
+  useDropdownMenuClose,
 } from "./DropdownMenu";
 export { RoleBadge, ROLE_META, roleLabel } from "./RoleBadge";
 export { InfoTip } from "./InfoTip";

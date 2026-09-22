@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
-import { OperationalAlerts } from "@/components/dashboard/OperationalAlerts";
+import { AbsenCard } from "@/components/dashboard/AbsenCard";
+import { OperationalAlertStrip } from "@/components/dashboard/OperationalAlertStrip";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { getOrders, getOrderDetail } from "@/actions/queries";
 import { addPayment } from "@/actions/orders";
@@ -1074,6 +1075,7 @@ export default function AdminDashboardPage() {
   const [payFor, setPayFor] = useState<OrderRow | null>(null);
   const [auditFor, setAuditFor] = useState<OrderRow | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
+  const [createdToday, setCreatedToday] = useState(false);
   const [typeFilter, setTypeFilter] = useState<"" | "PRINTING" | "RETAIL">("");
   const [search, setSearch] = useState("");
   const [overdueOnly, setOverdueOnly] = useState(false);
@@ -1091,19 +1093,21 @@ export default function AdminDashboardPage() {
     const p = new URLSearchParams(window.location.search);
     const s = p.get("status");
     const t = p.get("type");
+    const created = p.get("created");
     /* eslint-disable react-hooks/set-state-in-effect */
     if (s) setStatusFilter(s);
     if (t === "PRINTING" || t === "RETAIL") setTypeFilter(t);
+    if (created === "today") setCreatedToday(true);
     if (p.get("overdue") === "1") setOverdueOnly(true);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   const load = useCallback(async () => {
-    const res = await getOrders({ limit: 200, ...(statusFilter ? { status: statusFilter } : {}), ...(typeFilter ? { type: typeFilter } : {}), ...(search ? { search } : {}) });
+    const res = await getOrders({ limit: 200, ...(statusFilter ? { status: statusFilter } : {}), ...(typeFilter ? { type: typeFilter } : {}), ...(search ? { search } : {}), ...(createdToday ? { createdToday: true } : {}) });
     if (!res.success) { setError(res.error); return; }
     setError(null);
     setOrders(res.data);
-  }, [statusFilter, typeFilter, search]);
+  }, [statusFilter, typeFilter, search, createdToday]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
@@ -1141,7 +1145,11 @@ export default function AdminDashboardPage() {
       />
 
       <RoleGuide role="admin" defaultCollapsed />
-      <OperationalAlerts />
+      {/* Kartu absen pribadi: tampil hanya bila akun ditandai wajib absen
+          (attendance_eligible) DAN paket tenant memuat `hrm`. Kalau tidak,
+          komponen mengembalikan null sehingga tidak mengganggu dashboard. */}
+      <AbsenCard />
+      <OperationalAlertStrip />
 
       {error && <ErrorState message={error} onRetry={load} />}
 
@@ -1211,8 +1219,14 @@ export default function AdminDashboardPage() {
                 Overdue saja ✕
               </button>
             )}
-            {(statusFilter || typeFilter) && (
-              <button onClick={() => { setStatusFilter(""); setTypeFilter(""); }} className="text-xs text-status-red hover:underline">✕ Hapus Filter</button>
+            {createdToday && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-accent-teal/10 px-2.5 py-1 text-[11px] font-semibold text-accent-teal">
+                Dibuat hari ini
+                <button aria-label="Hapus filter hari ini" onClick={() => setCreatedToday(false)} className="hover:text-primary">✕</button>
+              </span>
+            )}
+            {(statusFilter || typeFilter || createdToday) && (
+              <button onClick={() => { setStatusFilter(""); setTypeFilter(""); setCreatedToday(false); }} className="text-xs text-status-red hover:underline">✕ Hapus Filter</button>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">

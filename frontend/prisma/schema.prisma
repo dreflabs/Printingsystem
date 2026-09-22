@@ -1154,14 +1154,18 @@ model NotificationEvent {
   id                  String    @id @default(uuid())
   tenant_id           String
   tenant              Tenant    @relation(fields: [tenant_id], references: [id])
-  order_id            String
-  order               Order     @relation(fields: [order_id], references: [id])
-  customer_id         String
-  customer            Customer  @relation(fields: [customer_id], references: [id])
+  // order_id/customer_id boleh kosong: notifikasi non-order (mis. peringatan
+  // absensi) memakai kolom `body` yang sudah dirender, bukan template order.
+  order_id            String?
+  order               Order?    @relation(fields: [order_id], references: [id])
+  customer_id         String?
+  customer            Customer? @relation(fields: [customer_id], references: [id])
   event_type          String
   channel             String // WHATSAPP/EMAIL
   recipient           String
   template_code       String
+  /// Isi pesan siap kirim untuk notifikasi non-order (mis. absensi).
+  body                String?
   status              String // PENDING/SENT/FAILED/RETRY
   provider_message_id String?
   error_message       String?
@@ -1172,6 +1176,22 @@ model NotificationEvent {
   resender            User?     @relation(fields: [resent_by], references: [id])
   retry_count         Int       @default(0)
   created_at          DateTime  @default(now())
+}
+
+/// Riwayat eksekusi job terjadwal (cron). Tanpa ini kegagalan job bersifat
+/// senyap: absen lupa pulang tetap menggantung dan tidak ada cara mengetahui
+/// dari dalam aplikasi bahwa job-nya tidak berjalan.
+model JobRun {
+  id          String    @id @default(uuid())
+  job         String // nama job: attendance-autoclose, break-warnings, dst.
+  started_at  DateTime  @default(now())
+  finished_at DateTime?
+  ok          Boolean   @default(false)
+  duration_ms Int?
+  summary     String? // JSON ringkas hasil job
+  error       String?
+
+  @@index([job, started_at])
 }
 
 model OperationalAlert {

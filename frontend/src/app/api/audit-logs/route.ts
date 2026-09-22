@@ -52,6 +52,19 @@ export async function GET(request: Request) {
       include: { actor: { select: { name: true, username: true, role: { select: { name: true } } } } },
     });
 
+    // Perkaya entitas dengan kode yang dikenali manusia (order_code / job_code)
+    // supaya UI tidak menampilkan UUID. Satu query per jenis entitas.
+    const orderIds = [...new Set(logs.filter((l) => l.entity_type === "Order").map((l) => l.entity_id))];
+    const jobIds = [...new Set(logs.filter((l) => l.entity_type === "ProductionJob").map((l) => l.entity_id))];
+    const [orders, jobs] = await Promise.all([
+      orderIds.length ? prisma.order.findMany({ where: { tenant_id: tenant.id, id: { in: orderIds } }, select: { id: true, order_code: true } }) : [],
+      jobIds.length ? prisma.productionJob.findMany({ where: { tenant_id: tenant.id, id: { in: jobIds } }, select: { id: true, job_code: true } }) : [],
+    ]);
+    const codeById = new Map<string, string>([
+      ...orders.map((o) => [o.id, o.order_code] as const),
+      ...jobs.map((j) => [j.id, j.job_code] as const),
+    ]);
+
     return Response.json({
       count: logs.length,
       logs: logs.map((l) => ({
@@ -61,6 +74,8 @@ export async function GET(request: Request) {
         action: l.action,
         entityType: l.entity_type,
         entityId: l.entity_id,
+        /** Kode entitas yang bisa dibaca (mis. ORD-20260922-0002) bila tersedia. */
+        entityCode: codeById.get(l.entity_id) ?? null,
         oldValue: l.old_value_json,
         newValue: l.new_value_json,
         notes: l.notes,

@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { assertJobAuth, runJob } from "@/lib/jobs";
-import { sendWhatsApp } from "@/lib/wa";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +16,22 @@ export const dynamic = "force-dynamic";
 
 function hhmm(d: Date): string {
   return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+/** Antrekan pesan absensi (dikirim + dicatat + diulang oleh job dispatcher). */
+async function queueWa(tenantId: string, recipient: string, templateCode: string, body: string) {
+  if (!recipient) return;
+  await prisma.notificationEvent.create({
+    data: {
+      tenant_id: tenantId,
+      event_type: templateCode,
+      channel: "WHATSAPP",
+      recipient,
+      template_code: templateCode,
+      body,
+      status: "PENDING",
+    },
+  });
 }
 
 async function handle(): Promise<Response> {
@@ -43,10 +58,7 @@ async function handle(): Promise<Response> {
 
       if (elapsedMin >= warnAtMin && !rec.warning_sent_at) {
         if (rec.user?.phone) {
-          await sendWhatsApp({
-            to: rec.user.phone,
-            body: `Istirahat Anda berakhir dalam 15 menit (batas ${maxMin} menit). Silakan kembali ke tempat kerja.`,
-          });
+          await queueWa(rec.tenant_id, rec.user.phone, "BREAK_WARNING", `Istirahat Anda berakhir dalam 15 menit (batas ${maxMin} menit). Silakan kembali ke tempat kerja.`);
         }
         await prisma.attendanceRecord.update({
           where: { id: rec.id },
@@ -61,10 +73,7 @@ async function handle(): Promise<Response> {
           data: { break_status: "EXCEEDED" },
         });
         if (rec.user?.phone) {
-          await sendWhatsApp({
-            to: rec.user.phone,
-            body: `Istirahat Anda sudah melebihi batas ${maxMin} menit. Segera kembali.`,
-          });
+          await queueWa(rec.tenant_id, rec.user.phone, "BREAK_EXCEEDED", `Istirahat Anda sudah melebihi batas ${maxMin} menit. Segera kembali.`);
         }
         const list = exceededByTenant.get(rec.tenant_id) ?? [];
         list.push({ name, since: hhmm(rec.break_start) });
@@ -82,10 +91,7 @@ async function handle(): Promise<Response> {
       for (const e of entries) {
         for (const o of owners) {
           if (!o.phone) continue;
-          await sendWhatsApp({
-            to: o.phone,
-            body: `${e.name} sudah istirahat lebih dari ${byTenant.get(tenantId)?.break_max_min ?? 60} menit sejak ${e.since}.`,
-          });
+          await queueWa(tenantId, o.phone, "BREAK_EXCEEDED_OWNER", `${e.name} sudah istirahat lebih dari ${byTenant.get(tenantId)?.break_max_min ?? 60} menit sejak ${e.since}.`);
         }
       }
     }

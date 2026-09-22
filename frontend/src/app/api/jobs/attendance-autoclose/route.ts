@@ -42,14 +42,17 @@ async function handle(): Promise<Response> {
       const set = byTenant.get(rec.tenant_id);
       const timezone = set?.timezone ?? "Asia/Jakarta";
       const workEnd = set?.work_end ?? "17:00";
-      const closeAt = tenantDateTime(rec.date, workEnd, timezone) ?? rec.date;
+      // Pakai `attendance_day` (hari kanonik record), bukan `date` (timestamp):
+      // timestamp bisa jatuh di hari tenant berikutnya sehingga jam pulang
+      // sintetis tercatat di tanggal yang salah.
+      const closeAt = tenantDateTime(rec.attendance_day, workEnd, timezone) ?? rec.date;
       const note = "⚠ Lupa absen pulang — ditutup otomatis sistem.";
       await prisma.attendanceRecord.update({
         where: { id: rec.id },
         data: {
           check_out: closeAt,
           check_out_status: "AUTO_CLOSED",
-          check_out_method: "MANUAL",
+          check_out_method: "AUTO", // ditutup sistem, bukan oleh orang
           owner_note: rec.owner_note ? `${rec.owner_note}\n${note}` : note,
         },
       });

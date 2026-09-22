@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { RoleGuide } from "@/components/dashboard/RoleGuide";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
-import { OperationalAlerts } from "@/components/dashboard/OperationalAlerts";
+import { OperationalAlertStrip } from "@/components/dashboard/OperationalAlertStrip";
 import { getSessionUser } from "@/actions/session";
 import { QCTab } from "./QCTab";
 import { FinishingTab } from "./FinishingTab";
@@ -35,6 +35,15 @@ const OPERATOR_ALLOWED_TABS: FinishingTab[] = ["material"];
 
 export default function FinishingPage() {
   const [activeTab, setActiveTab] = useState<FinishingTab>("qc");
+
+  // Seed tab dari ?tab= (deep-link dari Dashboard Owner: qc/finishing/storage/material).
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    const allowed: FinishingTab[] = ["qc", "finishing", "storage", "material", "purchase"];
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (t && (allowed as string[]).includes(t)) setActiveTab(t as FinishingTab);
+  }, []);
+
   const [isOperatorOnly, setIsOperatorOnly] = useState(false);
 
   useEffect(() => {
@@ -45,6 +54,16 @@ export default function FinishingPage() {
       }
     });
   }, []);
+
+  // Operator hanya boleh membuka tab "material". Kalau deep-link (atau perubahan
+  // peran) meninggalkan tab yang tidak diizinkan, isi halaman jadi kosong —
+  // paksa kembali ke tab yang tersedia.
+  useEffect(() => {
+    if (isOperatorOnly && !OPERATOR_ALLOWED_TABS.includes(activeTab)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActiveTab(OPERATOR_ALLOWED_TABS[0]);
+    }
+  }, [isOperatorOnly, activeTab]);
 
   useEffect(() => {
     const syncTab = () => {
@@ -68,7 +87,7 @@ export default function FinishingPage() {
       <RoleGuide role="gudang" defaultCollapsed />
 
       <AbsenCard />
-      <OperationalAlerts />
+      <OperationalAlertStrip />
 
       {/* Tab Navigation */}
       <div className="flex gap-2 bg-elevated p-1 rounded-xl border border-border w-fit overflow-x-auto">

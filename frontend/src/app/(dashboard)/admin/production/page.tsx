@@ -101,7 +101,8 @@ export default function ProductionPage() {
     jobTableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  const jobs = (d?.jobs ?? []).filter((j) => !statusFilter || j.status === statusFilter);
+  const statusList = statusFilter.split(",").map((x) => x.trim()).filter(Boolean);
+  const jobs = (d?.jobs ?? []).filter((j) => statusList.length === 0 || statusList.includes(j.status));
 
   const kpis = d ? [
     { label: "Antri (belum diambil)", value: d.kpi.queued, color: "text-status-yellow-text", bg: "bg-status-yellow/10", icon: Clock, status: "PRODUCTION_QUEUED" },
@@ -287,6 +288,10 @@ export default function ProductionPage() {
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
                 className="h-8 rounded-lg bg-elevated border border-border text-xs text-muted px-2 outline-none focus:border-accent-teal cursor-pointer">
                 <option value="">Semua Status</option>
+                {/* Deep-link bisa membawa beberapa status (mis. dari Dashboard Owner:
+                    "PRODUCTION_STARTED,FINISHING_STARTED"). Tanpa opsi sintetis ini,
+                    select tampak "Semua Status" padahal tabel sedang difilter. */}
+                {statusList.length > 1 && <option value={statusFilter}>Beberapa status ({statusList.length})</option>}
                 <option value="PRODUCTION_QUEUED">Antri (belum diambil)</option>
                 <option value="PRODUCTION_ASSIGNED">Ditugaskan (pin)</option>
                 <option value="PRODUCTION_STARTED">Berjalan</option>

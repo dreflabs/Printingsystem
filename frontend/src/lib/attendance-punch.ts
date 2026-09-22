@@ -10,7 +10,6 @@
 import type { TenantAttendanceSetting } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/logger";
-import { sendWhatsApp } from "@/lib/wa";
 import {
   hhmmToMinutes,
   lateInfoForTenant,
@@ -226,6 +225,14 @@ export async function performClockOut(ctx: PunchContext): Promise<ClockOutResult
   return { recordId: updated.id, checkOut: now, status };
 }
 
+/**
+ * Antrekan notifikasi keterlambatan untuk Owner.
+ *
+ * Dulu dikirim langsung ke provider: hasilnya tidak diperiksa, tidak dicatat,
+ * dan tidak diulang bila gagal — peringatan bisa hilang tanpa jejak. Sekarang
+ * masuk `NotificationEvent` sehingga job dispatcher yang mengirim, mencatat
+ * status (PENDING/SENT/FAILED), dan mengulang bila provider sedang gagal.
+ */
 async function notifyOwnersLate(tenantId: string, name: string, at: Date, lateMin: number) {
   try {
     const owners = await prisma.user.findMany({
@@ -236,7 +243,18 @@ async function notifyOwnersLate(tenantId: string, name: string, at: Date, lateMi
     const jam = at.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
     const body = `${name} terlambat masuk. Jam masuk: ${jam} (telat ${lateMin} menit).`;
     for (const o of owners) {
-      if (o.phone) await sendWhatsApp({ to: o.phone, body });
+      if (!o.phone) continue;
+      await prisma.notificationEvent.create({
+        data: {
+          tenant_id: tenantId,
+          event_type: "ATTENDANCE_LATE",
+          channel: "WHATSAPP",
+          recipient: o.phone,
+          template_code: "ATTENDANCE_LATE",
+          body,
+          status: "PENDING",
+        },
+      });
     }
   } catch (e) {
     console.error("notifyOwnersLate:", e);

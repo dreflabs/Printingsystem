@@ -5,6 +5,7 @@ import { requireTenant } from "@/lib/tenant";
 import { requireUser } from "@/lib/actor";
 import { can } from "@/lib/permissions";
 import { DEADLINE_SETTLED } from "@/lib/order-status";
+import { tenantDayDate } from "@/lib/attendance";
 import { checkProductionReadiness, coveredDesignItemIds, latestDesignVersionsBySlot, type ReadinessItem } from "@/lib/production-readiness";
 import { safeError } from "@/lib/safe-error";
 import { ok, fail } from "@/types";
@@ -517,11 +518,18 @@ export async function getOwnerDashboard() {
     const dayAgo = new Date(now.getTime() - 24 * 3600 * 1000);
     const T = { tenant_id: tenant.id };
 
+    // Hari tenant (bukan hari server) untuk kartu absensi.
+    const attendanceTz = (
+      await prisma.tenantAttendanceSetting.findUnique({ where: { tenant_id: tenant.id }, select: { timezone: true } })
+    )?.timezone ?? "Asia/Jakarta";
+    const todayDay = tenantDayDate(now, attendanceTz);
+    const yesterdayDay = tenantDayDate(dayAgo, attendanceTz);
+
     const [
       ordersToday, readyPickup, produksiAktif, omsetAgg,
       pendingDiscounts, auditsPending, reworkPending, cancelRequests, overdue,
       lowStockRaw, waFailed, wasteJobs, orphanMovements, reassignLogs,
-      pipelineJobs, attendanceToday, activeUsers,
+      pipelineJobs, attendanceToday,
     ] = await Promise.all([
       prisma.order.count({ where: { ...T, created_at: { gte: startOfDay } } }),
       prisma.order.count({ where: { ...T, status: "READY_FOR_PICKUP" } }),
@@ -567,16 +575,41 @@ export async function getOwnerDashboard() {
         _count: { _all: true },
       }),
       prisma.productionJob.findMany({ where: { ...T, status: { in: IN_PROGRESS } }, select: { status: true } }),
+      // Hari tenant yang tepat, bukan `gte: startOfDay`: kolom `attendance_day`
+      // bertipe DATE sehingga pembanding bertimestamp dipotong jadi tanggal —
+      // di server WIB `startOfDay` jatuh 17:00Z hari sebelumnya, sehingga kartu
+      // "Absensi Hari Ini" menampilkan data KEMARIN.
       prisma.attendanceRecord.findMany({
-        where: { ...T, attendance_day: { gte: startOfDay }, user: { attendance_eligible: true } },
+        where: { ...T, attendance_day: todayDay, user: { attendance_eligible: true } },
         select: { check_in_status: true, user_id: true, employee_name: true, check_in: true, break_status: true, break_end: true },
       }),
-      prisma.user.count({ where: { ...T, active: true, attendance_eligible: true } }),
     ]);
 
-    const yesterdayStart = new Date(startOfDay.getTime() - 24 * 3600 * 1000);
+    // ── Tren 7 hari (termasuk hari ini) untuk grafik dashboard ──────────────
+    // Batas hari mengikuti zona server, konsisten dengan KPI "hari ini".
+    const trendStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+    const [trendOrders, trendPayments] = await Promise.all([
+      prisma.order.findMany({ where: { ...T, created_at: { gte: trendStart } }, select: { created_at: true } }),
+      prisma.payment.findMany({ where: { ...T, status: "CONFIRMED", paid_at: { gte: trendStart } }, select: { paid_at: true, amount: true } }),
+    ]);
+    const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const trendMap = new Map<string, { orders: number; revenue: number }>();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(trendStart);
+      d.setDate(d.getDate() + i);
+      trendMap.set(dayKey(d), { orders: 0, revenue: 0 });
+    }
+    for (const o of trendOrders) { const k = dayKey(o.created_at); const v = trendMap.get(k); if (v) v.orders += 1; }
+    for (const pay of trendPayments) { const k = dayKey(pay.paid_at); const v = trendMap.get(k); if (v) v.revenue += num(pay.amount); }
+    const trend = [...trendMap.entries()].map(([date, v]) => ({
+      date,
+      label: new Date(date).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }),
+      orders: v.orders,
+      revenue: v.revenue,
+    }));
+
     const autoClosedYesterday = await prisma.attendanceRecord.count({
-      where: { ...T, date: { gte: yesterdayStart, lt: startOfDay }, check_out_status: "AUTO_CLOSED" },
+      where: { ...T, attendance_day: yesterdayDay, check_out_status: "AUTO_CLOSED" },
     });
 
     const [machines, operators] = await Promise.all([
@@ -605,6 +638,21 @@ export async function getOwnerDashboard() {
 
     const attendedIds = new Set(attendanceToday.filter((a) => a.user_id).map((a) => a.user_id));
 
+    // Nama pegawai yang belum absen — supaya angka "Belum Absen" bisa
+    // ditindaklanjuti. Owner dikecualikan: pemilik bukan pegawai operasional,
+    // dan flag wajib-absen di akun owner hanya artefak pendaftaran.
+    const notCheckedInList = await prisma.user.findMany({
+      where: {
+        ...T,
+        active: true,
+        attendance_eligible: true,
+        role: { name: { not: "owner" } },
+        ...(attendedIds.size ? { id: { notIn: [...attendedIds] } } : {}),
+      },
+      select: { name: true, role: { select: { name: true } } },
+      orderBy: { name: "asc" },
+    });
+
     return ok({
       kpi: {
         ordersToday,
@@ -626,7 +674,7 @@ export async function getOwnerDashboard() {
       overdue: overdue.map((o) => ({ orderId: o.id, orderCode: o.order_code, deadline: o.deadline, status: o.status, customerName: o.customer?.name ?? "-" })),
       waFailed: waFailed.map((n) => ({
         id: n.id, eventType: n.event_type, template: n.template_code, retryCount: n.retry_count,
-        orderCode: n.order.order_code, customerName: n.customer?.name ?? "-",
+        orderCode: n.order?.order_code ?? "—", customerName: n.customer?.name ?? "-",
       })),
       lowStock: lowStockRaw
         .filter((m) => num(m.current_stock) <= num(m.min_stock))
@@ -639,7 +687,7 @@ export async function getOwnerDashboard() {
       attendance: {
         present: attendanceToday.length,
         late: attendanceToday.filter((a) => a.check_in_status === "LATE").length,
-        notCheckedIn: Math.max(0, activeUsers - attendedIds.size),
+        notCheckedIn: notCheckedInList.length,
         lateList: attendanceToday
           .filter((a) => a.check_in_status === "LATE")
           .map((a) => ({
@@ -651,8 +699,10 @@ export async function getOwnerDashboard() {
         breakExceeded: attendanceToday
           .filter((a) => a.break_status === "EXCEEDED")
           .map((a) => ({ name: a.employee_name, ongoing: !a.break_end })),
+        notCheckedInList: notCheckedInList.map((u) => ({ name: u.name, role: u.role.name })),
         autoClosedYesterday,
       },
+      trend,
       reassignOptions: { machines, operators },
     });
   } catch (e) {
@@ -875,6 +925,8 @@ export async function getOrders(params?: {
   /** deadline dalam rentang [deadlineFrom, deadlineTo] (ISO date) */
   deadlineFrom?: string;
   deadlineTo?: string;
+  /** hanya order yang DIBUAT hari ini — dipakai deep-link KPI "Total Order Hari Ini" */
+  createdToday?: boolean;
 }) {
   try {
     const tenant = await requireTenant();
@@ -894,6 +946,9 @@ export async function getOrders(params?: {
         tenant_id: tenant.id,
         ...(params?.status ? { status: params.status } : {}),
         ...(params?.type ? { order_type: params.type } : {}),
+        ...(params?.createdToday
+          ? (() => { const n = new Date(); return { created_at: { gte: new Date(n.getFullYear(), n.getMonth(), n.getDate()) } }; })()
+          : {}),
         ...(params?.overdueOnly
           ? { deadline: { lt: new Date() }, status: { notIn: DEADLINE_SETTLED } }
           : {}),

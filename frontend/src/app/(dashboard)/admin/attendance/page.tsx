@@ -329,23 +329,27 @@ export default function AttendancePage() {
               <h3 className="text-base font-bold text-primary">Ringkasan Kinerja per Pegawai</h3>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
+              {/* `min-w-*`: tanpa ini kolom terakhir dipadatkan sampai teksnya
+                  membungkus per karakter di layar sempit (kolom "Catatan Owner"
+                  pernah tampil vertikal). Kontainer sudah punya overflow-x-auto
+                  sehingga tabel lebar bisa digeser. */}
+              <table className="w-full min-w-[880px] text-sm text-left">
                 <thead className="bg-elevated/50 border-b border-border text-muted text-xs font-semibold uppercase tracking-wide">
                   <tr>
-                    <th className="px-4 py-3">Pegawai</th><th className="px-4 py-3">Role</th>
-                    <th className="px-4 py-3">Hadir</th><th className="px-4 py-3">Terlambat</th>
-                    <th className="px-4 py-3">Rata Masuk</th><th className="px-4 py-3">Istirahat Berlebih</th>
-                    <th className="px-4 py-3">Job</th><th className="px-4 py-3">Output</th><th className="px-4 py-3">Waste</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Pegawai</th><th className="px-4 py-3 whitespace-nowrap">Role</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Hadir</th><th className="px-4 py-3 whitespace-nowrap">Terlambat</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Rata Masuk</th><th className="px-4 py-3 whitespace-nowrap">Istirahat Berlebih</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Job</th><th className="px-4 py-3 whitespace-nowrap">Output</th><th className="px-4 py-3 whitespace-nowrap">Waste</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
                   {report.summary.map((s, i) => (
                     <tr key={i} className="hover:bg-elevated/30">
-                      <td className="px-4 py-3 font-medium text-primary">{s.name}</td>
-                      <td className="px-4 py-3 text-xs text-muted">{s.role ?? "—"}</td>
-                      <td className="px-4 py-3 text-muted">{s.daysPresent} hari</td>
+                      <td className="px-4 py-3 font-medium text-primary whitespace-nowrap">{s.name}</td>
+                      <td className="px-4 py-3 text-xs text-muted whitespace-nowrap">{s.role ?? "—"}</td>
+                      <td className="px-4 py-3 text-muted whitespace-nowrap">{s.daysPresent} hari</td>
                       <td className={cn("px-4 py-3 font-bold", s.lateDays > 0 ? "text-status-red" : "text-status-green")}>{s.lateDays}</td>
-                      <td className="px-4 py-3 font-mono text-muted">{s.avgCheckIn}</td>
+                      <td className="px-4 py-3 font-mono text-muted whitespace-nowrap">{s.avgCheckIn}</td>
                       <td className={cn("px-4 py-3", s.breakExceeded > 0 ? "text-status-yellow-text font-bold" : "text-muted")}>{s.breakExceeded}</td>
                       <td className="px-4 py-3 text-muted">{s.jobCount}</td>
                       <td className="px-4 py-3 text-muted">{s.totalOutput}</td>
@@ -368,14 +372,14 @@ export default function AttendancePage() {
               <span className="text-xs text-muted">({report.records.length} baris)</span>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
+              <table className="w-full min-w-[960px] text-sm text-left">
                 <thead className="bg-elevated/50 border-b border-border text-muted text-xs font-semibold uppercase tracking-wide">
                   <tr>
-                    <th className="px-4 py-3">Tanggal</th><th className="px-4 py-3">Pegawai</th>
-                    <th className="px-4 py-3">Sumber</th>
-                    <th className="px-4 py-3">Masuk</th><th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Pulang</th><th className="px-4 py-3">Istirahat</th>
-                    <th className="px-4 py-3">Catatan Owner</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Tanggal</th><th className="px-4 py-3 whitespace-nowrap">Pegawai</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Sumber</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Masuk</th><th className="px-4 py-3 whitespace-nowrap">Status</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Pulang</th><th className="px-4 py-3 whitespace-nowrap">Istirahat</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Catatan Owner</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -383,7 +387,7 @@ export default function AttendancePage() {
                     <tr key={r.recordId} className="hover:bg-elevated/30">
                       <td className="px-4 py-3 text-xs text-muted whitespace-nowrap">{fmtDate(r.date)}</td>
                       <td className="px-4 py-3">
-                        <span className="font-medium text-primary">{r.employeeName}</span>
+                        <span className="font-medium text-primary whitespace-nowrap">{r.employeeName}</span>
                         {!r.matched && (
                           <span className="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-status-yellow/10 text-status-yellow-text border border-status-yellow/30 font-bold">
                             tak cocok user
@@ -392,7 +396,7 @@ export default function AttendancePage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          <span className="px-1.5 py-0.5 text-[10px] rounded border border-border bg-elevated text-muted font-bold uppercase">
+                          <span className="px-1.5 py-0.5 text-[10px] rounded border border-border bg-elevated text-muted font-bold uppercase whitespace-nowrap">
                             {SOURCE_LABEL[r.source] ?? r.source}
                           </span>
                           {(r.geoFlag || r.ipFlag) && (
@@ -402,34 +406,36 @@ export default function AttendancePage() {
                             <span title="Lupa absen pulang — ditutup sistem" className="text-[10px] text-status-red font-bold">auto</span>
                           )}
                           {r.checkInLat != null && r.checkInLng != null && (
-                            <a href={`https://www.google.com/maps?q=${r.checkInLat},${r.checkInLng}`} target="_blank" rel="noopener noreferrer" title="Lihat lokasi absen masuk" className="text-accent-teal">
-                              <MapPin className="h-3.5 w-3.5" />
+                            <a href={`https://www.google.com/maps?q=${r.checkInLat},${r.checkInLng}`} target="_blank" rel="noopener noreferrer" title="Lihat lokasi absen masuk" aria-label="Lihat lokasi absen masuk" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-accent-teal hover:bg-elevated">
+                              <MapPin className="h-4 w-4" />
                             </a>
                           )}
                           {r.selfies.map((s) => (
-                            <a key={s.id} href={`/api/attendance/selfie/${s.id}`} target="_blank" rel="noopener noreferrer" title={`Selfie ${s.kind === "CHECK_IN" ? "masuk" : "pulang"}`}>
+                            <a key={s.id} href={`/api/attendance/selfie/${s.id}`} target="_blank" rel="noopener noreferrer" title={`Selfie ${s.kind === "CHECK_IN" ? "masuk" : "pulang"}`} aria-label={`Selfie ${s.kind === "CHECK_IN" ? "masuk" : "pulang"}`} className="inline-flex h-8 w-8 items-center justify-center">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={`/api/attendance/selfie/${s.id}`} alt="selfie" className="h-6 w-6 rounded object-cover border border-border" />
+                              <img src={`/api/attendance/selfie/${s.id}`} alt="" className="h-6 w-6 rounded object-cover border border-border" />
                             </a>
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-3 font-mono text-muted">{fmtTime(r.checkIn)}</td>
+                      <td className="px-4 py-3 font-mono text-muted whitespace-nowrap">{fmtTime(r.checkIn)}</td>
                       <td className="px-4 py-3">
                         <span className={cn(
-                          "px-2 py-0.5 text-[10px] rounded border font-bold uppercase",
+                          "inline-block px-2 py-0.5 text-[10px] rounded border font-bold uppercase whitespace-nowrap",
                           r.checkInStatus === "LATE"
                             ? "bg-status-red/10 text-status-red border-status-red/30"
                             : "bg-status-green/10 text-status-green border-status-green/30"
                         )}>
                           {r.checkInStatus === "LATE" ? `Terlambat ${r.lateMinutes}m` : "Tepat Waktu"}
                         </span>
-                        {r.offDay && <span className="ml-1 text-[10px] text-muted">luar hari kerja</span>}
+                        {r.offDay && <span className="ml-1 text-[10px] text-muted whitespace-nowrap">luar hari kerja</span>}
                       </td>
-                      <td className="px-4 py-3 font-mono text-muted">{fmtTime(r.checkOut)}</td>
+                      <td className="px-4 py-3 font-mono text-muted whitespace-nowrap">{fmtTime(r.checkOut)}</td>
                       <td className="px-4 py-3 text-xs text-muted">
-                        {r.breakStart ? `${fmtTime(r.breakStart)}–${fmtTime(r.breakEnd)} (${r.breakDurationMin}m)` : "—"}
-                        {r.breakStatus === "EXCEEDED" && <span className="ml-1 text-status-yellow-text font-bold">berlebih</span>}
+                        <span className="whitespace-nowrap">
+                          {r.breakStart ? `${fmtTime(r.breakStart)}–${fmtTime(r.breakEnd)} (${r.breakDurationMin}m)` : "—"}
+                        </span>
+                        {r.breakStatus === "EXCEEDED" && <span className="ml-1 text-status-yellow-text font-bold whitespace-nowrap">berlebih</span>}
                       </td>
                       <td className="px-4 py-3 text-xs">
                         {editNote?.id === r.recordId ? (
@@ -450,10 +456,11 @@ export default function AttendancePage() {
                             {isOwner && (
                               <button
                                 onClick={() => setEditNote({ id: r.recordId, value: "" })}
-                                className="p-1 rounded text-muted hover:text-accent-teal shrink-0"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:text-accent-teal shrink-0"
                                 title="Tambah catatan"
+                                aria-label="Tambah catatan"
                               >
-                                <Pencil className="h-3 w-3" />
+                                <Pencil className="h-4 w-4" />
                               </button>
                             )}
                           </div>

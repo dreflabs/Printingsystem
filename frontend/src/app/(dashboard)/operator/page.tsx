@@ -230,7 +230,7 @@ function QueueCard({
           triggerClassName="h-11 w-11 flex items-center justify-center rounded-xl border border-border bg-card"
         >
           <DropdownMenuItem danger icon={<FileWarning className="h-4 w-4" />} onSelect={onBounce}>
-            Lapor file bermasalah
+            Lapor masalah file
           </DropdownMenuItem>
         </DropdownMenu>
       </div>

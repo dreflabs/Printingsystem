@@ -9,7 +9,7 @@ import { ok, fail, type ActionResult } from "@/types";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { can } from "@/lib/permissions";
-import { getTenantEntitlements } from "@/lib/entitlements";
+import { getTenantEntitlements, requireEntitlement } from "@/lib/entitlements";
 import { safeError } from "@/lib/safe-error";
 
 const USER_SELECT = {
@@ -330,7 +330,11 @@ export async function createEmployee(data: {
         phone: data.phone?.trim() || null,
         password_hash,
         role_id: role.id,
-        attendance_eligible: ATTENDANCE_DEFAULT_ROLES.has(data.role_name) || (data.extra_role_names ?? []).some((r) => ATTENDANCE_DEFAULT_ROLES.has(r)),
+        // Hanya tandai wajib absen bila paket memuat `hrm` — kalau tidak, akun
+        // muncul sebagai "belum absen" padahal tidak punya cara untuk absen.
+        attendance_eligible:
+          entitlements.features.has("hrm") &&
+          (ATTENDANCE_DEFAULT_ROLES.has(data.role_name) || (data.extra_role_names ?? []).some((r) => ATTENDANCE_DEFAULT_ROLES.has(r))),
         must_change_password: true,
         // Dibuat langsung oleh Owner (bukan self-serve signup) — tidak ada alur
         // verifikasi email untuk pegawai, jadi tandai terverifikasi agar bisa
@@ -378,9 +382,14 @@ export async function setAttendanceEligibility(userId: string, eligible: boolean
   try {
     const tenant = await requireTenant();
     const actor = await requireMutableActor();
-    if (!can(actor, "user.update_role")) return fail("Hanya Owner yang boleh mengatur kewajiban absensi.");
+    if (!can(actor, "user.update_role")) return fail("Hanya Owner/Admin yang boleh mengatur kewajiban absensi.");
     const target = await prisma.user.findFirst({ where: { id: userId, tenant_id: tenant.id } });
     if (!target) return fail("Pegawai tidak ditemukan.");
+    // Menandai pegawai wajib absen hanya masuk akal kalau paket memuat fitur
+    // absensi (`hrm`). Tanpa gate ini, tenant STARTER punya pegawai wajib absen
+    // yang tidak bisa absen sama sekali — angka "Belum Absen" di dashboard
+    // Owner jadi tidak bisa ditindaklanjuti.
+    if (eligible) await requireEntitlement(tenant.id, "hrm");
     await prisma.user.update({ where: { id: target.id }, data: { attendance_eligible: !!eligible } });
     await logAction(actor.id, "ATTENDANCE_ELIGIBILITY_UPDATED", "User", target.id, { eligible: target.attendance_eligible }, { eligible: !!eligible }, impersonationNote(actor));
     revalidatePath("/owner/users");

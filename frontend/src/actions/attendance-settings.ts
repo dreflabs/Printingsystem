@@ -147,6 +147,45 @@ export async function updateAttendanceSettings(
 }
 
 /** Owner/Admin men-set PIN kiosk seorang pegawai (hanya hash disimpan). */
+export interface JobHealthRow {
+  job: string;
+  lastRunAt: Date | null;
+  ok: boolean;
+  summary: string | null;
+  error: string | null;
+}
+
+/**
+ * Kesehatan job absensi terjadwal (cron). Tanpa ini kegagalan job bersifat
+ * senyap — absen lupa pulang menggantung tanpa ada yang tahu.
+ */
+export async function getJobHealth(): Promise<ActionResult<JobHealthRow[]>> {
+  try {
+    const tenant = await requireTenant();
+    const actor = await requireUser();
+    if (!can(actor, "attendance.configure")) return fail("Hanya Owner yang boleh melihat kesehatan job absensi.");
+    void tenant;
+
+    const jobs = ["attendance-autoclose", "break-warnings"];
+    const rows = await Promise.all(
+      jobs.map(async (job) => {
+        const last = await prisma.jobRun.findFirst({ where: { job }, orderBy: { started_at: "desc" } });
+        return {
+          job,
+          lastRunAt: last?.started_at ?? null,
+          ok: last?.ok ?? false,
+          summary: last?.summary ?? null,
+          error: last?.error ?? null,
+        };
+      }),
+    );
+    return ok(rows);
+  } catch (e) {
+    console.error("getJobHealth:", e);
+    return fail(safeError(e, "Gagal memuat kesehatan job."));
+  }
+}
+
 export async function setEmployeePin(userId: string, pin: string): Promise<ActionResult<null>> {
   try {
     const tenant = await requireTenant();

@@ -68,6 +68,19 @@ export function canAny(actor: Actor, ...permissions: Permission[]): boolean {
   return permissions.some((permission) => can(actor, permission));
 }
 
+/**
+ * Cek permission dari daftar nama role saja — untuk komponen client yang hanya
+ * memegang `roles` dari sesi (tanpa Actor lengkap). Aturan role tetap satu
+ * sumber di ROLE_PERMISSIONS; ini tidak menggantikan pengecekan server.
+ */
+export function roleCan(role: string, permission: Permission): boolean {
+  return ROLE_PERMISSIONS[role]?.has(permission) ?? false;
+}
+
+export function anyRoleCan(roles: readonly string[], permission: Permission): boolean {
+  return roles.some((role) => roleCan(role, permission));
+}
+
 export function permissionsForRoles(roles: string[]): Permission[] {
   const result = new Set<Permission>();
   for (const role of roles) {

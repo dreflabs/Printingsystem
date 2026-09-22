@@ -52,21 +52,25 @@ async function handle(): Promise<Response> {
     let skipped = 0;
 
     for (const evt of events) {
-      const items = evt.order.items;
-      const productDesc =
-        items
-          .map((it) => it.description || it.product?.name)
-          .filter(Boolean)
-          .slice(0, 2)
-          .join(", ") || "Pesanan cetak";
-      const quantity = items.reduce((s, it) => s + (it.quantity ?? 0), 0) || 0;
-
-      const body = renderNotificationTemplate(evt.template_code, {
-        customerName: evt.customer?.name ?? "",
-        orderCode: evt.order.order_code,
-        productDesc,
-        quantity,
-      });
+      // Notifikasi non-order (mis. absensi) sudah membawa isi pesan siap kirim.
+      // Notifikasi order dirender dari template + data order/customer.
+      let body = evt.body ?? null;
+      if (!body && evt.order) {
+        const items = evt.order.items;
+        const productDesc =
+          items
+            .map((it) => it.description || it.product?.name)
+            .filter(Boolean)
+            .slice(0, 2)
+            .join(", ") || "Pesanan cetak";
+        const quantity = items.reduce((s, it) => s + (it.quantity ?? 0), 0) || 0;
+        body = renderNotificationTemplate(evt.template_code, {
+          customerName: evt.customer?.name ?? "",
+          orderCode: evt.order?.order_code ?? "-",
+          productDesc,
+          quantity,
+        });
+      }
 
       if (!body) {
         // Template tidak dikenal — jangan retry selamanya.
@@ -116,7 +120,7 @@ async function handle(): Promise<Response> {
         failed++;
         await emailAdminFallback(evt.tenant_id, {
           customerName: evt.customer?.name ?? "-",
-          orderCode: evt.order.order_code,
+          orderCode: evt.order?.order_code ?? "-",
           customerPhone: evt.recipient,
           error: res.error ?? "-",
           body,

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Menu, Bell, User, Settings, LogOut } from "lucide-react";
+import { Menu, User, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuItem, DropdownMenuDivider } from "@/components/ui";
 import { getUserProfileById, getMyWorkspace } from "@/actions/profile";
 import { signOutAction } from "@/actions/session";
 import { ProfileModal } from "./ProfileModal";
+import { NotificationBell } from "./NotificationBell";
 
 const ROLE_LABEL: Record<string, string> = {
   owner: "Owner",
@@ -20,13 +21,15 @@ interface HeaderProps {
   userId: string | null;
   userName: string;
   role: string;
+  /** Semua peran akun — untuk menentukan hak lihat/akui alert di lonceng. */
+  roles?: string[];
   onMenuClick: () => void;
   className?: string;
 }
 
 type DbUser = { id: string; name: string; username: string; email: string; phone: string | null; avatar_url: string | null };
 
-export function Header({ userId, userName, role, onMenuClick, className }: HeaderProps) {
+export function Header({ userId, userName, role, roles = [], onMenuClick, className }: HeaderProps) {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [dbUser, setDbUser] = useState<DbUser | null>(null);
   const [workspace, setWorkspace] = useState<{ slug: string; name: string } | null>(null);
@@ -64,12 +67,7 @@ export function Header({ userId, userName, role, onMenuClick, className }: Heade
       </div>
 
       <div className="flex items-center gap-3">
-        <button
-          className="relative p-2 rounded-lg text-muted hover:text-primary hover:bg-elevated transition-colors cursor-pointer"
-          aria-label="Notifikasi"
-        >
-          <Bell className="h-5 w-5" />
-        </button>
+        <NotificationBell roles={roles} />
 
         <div className="pl-3 border-l border-border">
           <DropdownMenu

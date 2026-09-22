@@ -42,6 +42,8 @@ interface AppToken {
   platformLoginAt?: number | null;
   pwChangedAt?: number;
   mustChangePassword?: boolean;
+  /** epoch ms penyegaran terakhir role/status tenant dari DB (lihat auth.ts) */
+  rolesRefreshedAt?: number;
 }
 
 declare module "next-auth/jwt" {

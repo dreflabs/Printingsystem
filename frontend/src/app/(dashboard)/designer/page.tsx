@@ -169,7 +169,6 @@ function DesignRowActions({
       {primary}
       <DropdownMenu
         align="end"
-        width={168}
         trigger={<MoreVertical className="h-4 w-4" />}
         label="Aksi lain"
         triggerClassName="p-1 rounded-lg text-muted hover:text-primary hover:bg-elevated"
@@ -179,7 +178,7 @@ function DesignRowActions({
         </DropdownMenuItem>
         {canUpload && (canAcc || r.method === "ONLINE") && (
           <DropdownMenuItem icon={<Upload className="h-4 w-4" />} onSelect={onUpload} disabled={busy}>
-            {r.items.length > 1 ? "Upload / ganti per item" : "Upload versi baru"}
+            {r.items.length > 1 ? "Ganti per item" : "Upload baru"}
           </DropdownMenuItem>
         )}
         {canRevisi && (

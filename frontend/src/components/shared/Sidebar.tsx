@@ -7,16 +7,22 @@ import { X, ChevronRight, ChevronDown, LogOut, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/actions/session";
 import { WORKSPACE_MODE_LABEL, type WorkspaceMode } from "@/lib/workspace-mode";
-import { SOLO_NAV, resolveNav, type UserRole, type ResolvedNav } from "@/lib/nav-config";
+import { SOLO_NAV, resolveNav, resolveActiveRole, DASHBOARD_ROLE_PATHS, type UserRole, type ResolvedNav } from "@/lib/nav-config";
 
 // Role switcher config: what dashboards each role maps to
-const ROLE_SWITCHER_CONFIG: { role: UserRole; label: string; href: string; color: string }[] = [
-  { role: "owner",          label: "Owner",            href: "/owner",    color: "text-accent-teal" },
-  { role: "admin",          label: "Admin",            href: "/admin",    color: "text-accent-teal" },
-  { role: "designer_sales", label: "Designer/Setting", href: "/designer", color: "text-status-yellow-text" },
-  { role: "operator",       label: "Operator Cetak",   href: "/operator", color: "text-status-blue" },
-  { role: "gudang",         label: "Finishing & Gudang", href: "/finishing", color: "text-status-green" },
-];
+const ROLE_COLOR: Record<UserRole, string> = {
+  owner: "text-accent-teal",
+  admin: "text-accent-teal",
+  designer_sales: "text-status-yellow-text",
+  operator: "text-status-blue",
+  gudang: "text-status-green",
+};
+export const ROLE_SWITCHER_CONFIG = DASHBOARD_ROLE_PATHS.map((p) => ({
+  role: p.role,
+  label: p.label,
+  href: p.path,
+  color: ROLE_COLOR[p.role],
+}));
 
 const EXPANDED_KEY = "pp_nav_expanded";
 
@@ -78,18 +84,10 @@ export function Sidebar({ role, roles = [role], workspaceMode = "TEAM_FULL", fea
   const roleKey = [...roles].sort().join(",");
 
   // Peran yang sedang aktif dilihat mengikuti dashboard (path) yang dibuka via
-  // "Mode Aktif" — bukan sekadar peran apa saja yang dimiliki user. Owner yang
-  // juga pegang peran lain (mode TIM) harus melihat menu peran yang sedang
-  // aktif itu, bukan selalu menu Owner hanya karena dia juga seorang Owner.
-  const activeRole: UserRole =
-    ROLE_SWITCHER_CONFIG.find((r) => {
-      if (pathname.startsWith("/owner")) return r.role === "owner";
-      if (pathname.startsWith("/admin")) return r.role === "admin";
-      if (pathname.startsWith("/designer")) return r.role === "designer_sales";
-      if (pathname.startsWith("/operator")) return r.role === "operator";
-      if (pathname.startsWith("/finishing")) return r.role === "gudang";
-      return false;
-    })?.role ?? role;
+  // "Mode Aktif" — TETAPI hanya bila akun memang memegang peran itu (lihat
+  // resolveActiveRole): Owner boleh membuka dashboard peran lain untuk
+  // pengawasan, tapi sidebar tidak boleh menyamar sebagai peran tersebut.
+  const activeRole: UserRole = resolveActiveRole(pathname, roles, role as UserRole);
 
   const teamOwnerView =
     (workspaceMode === "TEAM_SMALL" || workspaceMode === "TEAM_FULL") &&

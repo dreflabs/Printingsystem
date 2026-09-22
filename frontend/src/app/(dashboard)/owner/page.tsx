@@ -8,8 +8,10 @@ import {
   MessageSquareX, Ban, Users, Wrench, ArrowRight, PauseCircle,
 } from "lucide-react";
 import { StatusPill , ErrorState} from "@/components/ui";
+import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils";
 import { orderStatusLabel } from "@/lib/order-status";
+import { auditActionLabel, auditEntityLabel } from "@/lib/audit-labels";
 import { getOwnerDashboard } from "@/actions/queries";
 import { getSetupChecklist } from "@/actions/onboarding";
 import { getSessionUser } from "@/actions/session";
@@ -20,7 +22,7 @@ import { SoloNextSteps } from "@/components/dashboard/SoloNextSteps";
 import { WorkspaceModeNudge } from "@/components/dashboard/WorkspaceModeNudge";
 import { UnpaidBanner } from "@/components/dashboard/UnpaidBanner";
 import { AbsenCard } from "@/components/dashboard/AbsenCard";
-import { OperationalAlerts } from "@/components/dashboard/OperationalAlerts";
+import { OperationalAlertStrip } from "@/components/dashboard/OperationalAlertStrip";
 import { decideDiscount } from "@/actions/orders";
 import { approveFinalAudit } from "@/actions/audit";
 import { decideRework, reassignProductionJob } from "@/actions/production";
@@ -28,9 +30,11 @@ import { decideOrderCancellation } from "@/actions/cancel";
 import { retryNotification } from "@/actions/notifications";
 
 type Dash = Extract<Awaited<ReturnType<typeof getOwnerDashboard>>, { success: true }>["data"];
-type AuditLog = { id: string; actor: string; actorRole: string | null; action: string; entityType: string; entityId: string; createdAt: string };
+type AuditLog = { id: string; actor: string; actorRole: string | null; action: string; entityType: string; entityId: string; entityCode: string | null; createdAt: string };
 
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+/** Ringkas untuk sumbu grafik: 1.250.000 → "1,3 jt". */
+const compactRp = (n: number) => (n >= 1e6 ? `${(n / 1e6).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt` : n >= 1e3 ? `${Math.round(n / 1e3)} rb` : String(n));
 const fmtDate = (d: string | Date | null) => (d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : "—");
 
 function ApprovalModal({
@@ -145,7 +149,7 @@ export default function OwnerPage() {
     getSetupChecklist().then((r) => { if (r.success) setChecklist(r.data); });
     getSessionUser().then((r) => { if (r.ok) setWorkspaceMode(r.user.workspaceMode); });
     try {
-      const r = await fetch("/api/audit-logs?limit=10");
+      const r = await fetch("/api/audit-logs?limit=5");
       const j = await r.json();
       if (Array.isArray(j.logs)) setLogs(j.logs);
     } catch { /* optional */ }
@@ -169,28 +173,28 @@ export default function OwnerPage() {
       (d.overdue.length ? 1 : 0) + (d.waFailed.length ? 1 : 0) +
       (d.anomalies.highWaste.length || d.anomalies.orphanMovements ? 1 : 0)
     : 0;
-  const reviewCount = d ? d.pendingDiscounts.length + d.auditsPending.length + (d.lowStock.length ? 1 : 0) : 0;
+  const reviewCount = d ? d.pendingDiscounts.length + d.auditsPending.length : 0;
 
   const kpi = [
-    { icon: ShoppingBag, label: "Total Order Hari Ini", value: d?.kpi.ordersToday ?? "—", href: "/admin" },
+    { icon: ShoppingBag, label: "Total Order Hari Ini", value: d?.kpi.ordersToday ?? "—", href: "/admin?created=today" },
     { icon: Package, label: "Siap Diambil", value: d?.kpi.readyPickup ?? "—", href: "/admin?status=READY_FOR_PICKUP" },
-    { icon: Activity, label: "Produksi Aktif", value: d?.kpi.produksiAktif ?? "—", href: "/admin/production?status=PRODUCTION_STARTED" },
+    { icon: Activity, label: "Produksi Aktif", value: d?.kpi.produksiAktif ?? "—", href: "/admin/production?status=PRODUCTION_STARTED,FINISHING_STARTED" },
     { icon: TrendingUp, label: "Omset Bulan Ini", value: d ? rupiah(d.kpi.omsetBulanIni) : "—", gold: true, href: "/owner/reports" },
   ];
 
   const pipelineStages = d
     ? [
-        { label: "Produksi", n: d.pipeline.produksi, href: "/admin/production?status=PRODUCTION_STARTED" },
-        { label: "QC", n: d.pipeline.qc, href: "/finishing" },
-        { label: "Finishing", n: d.pipeline.finishing, href: "/finishing" },
-        { label: "Storage", n: d.pipeline.storage, href: "/finishing" },
-        { label: "Tersimpan", n: d.pipeline.stored, href: "/finishing" },
+        { label: "Produksi", n: d.pipeline.produksi, href: "/admin/production?status=PRODUCTION_QUEUED,PRODUCTION_ASSIGNED,PRODUCTION_STARTED" },
+        { label: "QC", n: d.pipeline.qc, href: "/finishing?tab=qc" },
+        { label: "Finishing", n: d.pipeline.finishing, href: "/finishing?tab=finishing" },
+        { label: "Storage", n: d.pipeline.storage, href: "/finishing?tab=storage" },
+        { label: "Tersimpan", n: d.pipeline.stored, href: "/finishing?tab=storage" },
         { label: "Siap Ambil", n: d.pipeline.siapAmbil, href: "/admin?status=READY_FOR_PICKUP" },
       ]
     : [];
 
   return (
-    <div className="space-y-5 bg-elevated p-6 rounded-2xl min-h-screen text-primary">
+    <div className="space-y-5">
       {modal?.kind === "discount" && (
         <ApprovalModal
           title={`Approval Diskon — ${modal.row.orderCode}`}
@@ -319,34 +323,53 @@ export default function OwnerPage() {
         </div>
       )}
       {workspaceMode === "SOLO" && selfAttendance && <AbsenCard />}
-      <OperationalAlerts />
+      <OperationalAlertStrip />
 
       {error && <ErrorState message={error} onRetry={load} />}
 
       {/* KPI (spec: 4 card) — klik untuk buka daftar terkait */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      {/* 1 kolom di HP kecil (<400 px) supaya nilai rupiah tidak meluber;
+        4 kolom sejak tablet (768 px) supaya kartu tidak kosong 62%.
+        Ukuran nilai disesuaikan: 18 px di bawah 1280 px (muat di kartu
+        172 px), 24 px di layar lebar. */}
+      <div className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-4 gap-4">
         {kpi.map((k) => (
           <Link
             key={k.label}
             href={k.href}
-            className="bg-card border border-border rounded-2xl p-5 block transition-colors hover:border-accent-teal/50"
+            className="bg-card border border-border rounded-2xl p-4 block transition-colors hover:border-accent-teal/50"
           >
-            <div className={cn("p-2.5 rounded-xl w-fit mb-3", k.gold ? "bg-status-yellow/10" : "bg-accent-teal/10")}>
+            <div className={cn("p-2 rounded-xl w-fit mb-2.5", k.gold ? "bg-status-yellow/10" : "bg-accent-teal/10")}>
               <k.icon className={cn("h-5 w-5", k.gold ? "text-status-yellow-text" : "text-accent-teal")} />
             </div>
             <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">{k.label}</p>
-            <p className={cn("text-2xl font-bold mt-1 font-mono", k.gold ? "text-status-yellow-text" : "text-primary")}>{k.value}</p>
+            {/* whitespace-nowrap: di ponsel "Rp 1.325.000" pernah pecah jadi dua baris
+                sehingga kartunya lebih tinggi dari yang lain. Ukuran mengecil di
+                layar sempit supaya tetap satu baris. */}
+            <p className={cn("text-lg xl:text-2xl font-bold mt-1 font-mono whitespace-nowrap", k.gold ? "text-status-yellow-text" : "text-primary")}>{k.value}</p>
           </Link>
         ))}
       </div>
 
-      {/* Alert panel */}
+      {/* Alert panel — saat tidak ada apa pun, cukup satu baris supaya pipeline
+          dan absensi naik ke layar pertama (dulu dua strip hijau = ±290 px). */}
       <div className="bg-card border border-border rounded-2xl p-5 space-y-6">
         <div className="flex items-center gap-2 border-b border-border pb-3">
-          <Bell className="h-5 w-5 text-accent-teal" />
+          <Bell className="h-5 w-5 shrink-0 text-accent-teal" />
           <h2 className="text-base font-bold text-primary">Alert Kritis & Antrian Approval</h2>
         </div>
 
+        {criticalCount === 0 && reviewCount === 0 && (
+          <div className="flex max-w-2xl items-center gap-2 rounded-xl border border-status-green/20 bg-status-green/10 px-4 py-3">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-status-green" />
+            <span className="text-xs font-semibold text-status-green">
+              Tidak ada yang perlu diputuskan atau ditinjau saat ini.
+            </span>
+          </div>
+        )}
+
+        {(criticalCount > 0 || reviewCount > 0) && (
+        <>
         {/* Tier 1 — butuh keputusan */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
@@ -383,7 +406,8 @@ export default function OwnerPage() {
                   d.anomalies.highWaste.length ? `${d.anomalies.highWaste.length} job waste >20% (${d.anomalies.highWaste.slice(0, 2).map((w) => `${w.jobCode} ${Math.round(w.ratio * 100)}%`).join(", ")})` : "",
                   d.anomalies.orphanMovements ? `${d.anomalies.orphanMovements} pemakaian bahan tanpa Job ID` : "",
                 ].filter(Boolean).join(" · ")}
-                tier="red" action="Audit" href="/audit-logs" />
+                tier="red" action={d.anomalies.highWaste.length > 0 ? "Periksa Job" : "Audit"}
+                href={d.anomalies.highWaste.length > 0 ? "/admin/production" : "/audit-logs"} />
             )}
             {criticalCount === 0 && <OkGreen text="Tidak ada yang butuh keputusan Anda saat ini" />}
           </div>
@@ -404,38 +428,84 @@ export default function OwnerPage() {
               <AlertRow key={a.orderId} icon={ClipboardCheck} label={`Final Audit YELLOW — ${a.orderCode}`} sub={`${a.customerName} · menunggu persetujuan`}
                 tier="orange" action="Tinjau Audit" onAction={() => setModal({ kind: "audit", row: a })} />
             ))}
-            {d && d.lowStock.length > 0 && (
-              <AlertRow icon={ShieldAlert} label={`Stok Menipis (${d.lowStock.length} bahan)`}
-                sub={d.lowStock.map((s) => `${s.name}: ${s.current} ${s.unit}`).join(" · ")} tier="orange"
-                action="Isi Stok" href="/finishing" />
-            )}
-            {reviewCount === 0 && <OkGreen text="Tidak ada diskon / audit / stok yang perlu ditinjau" />}
+            {reviewCount === 0 && <OkGreen text="Tidak ada diskon / audit yang perlu ditinjau" />}
           </div>
         </div>
+        </>
+        )}
+      </div>
+
+      {/* Tren 7 hari — order masuk vs uang masuk */}
+      <div className="bg-card border border-border rounded-2xl p-5">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-5 w-5 shrink-0 text-accent-teal" />
+          <h3 className="font-bold text-base text-primary">Tren 7 Hari</h3>
+        </div>
+        <p className="text-[11px] text-muted mt-0.5 mb-3">
+          Order masuk (batang) &amp; uang masuk (garis){d?.trend?.length ? ` — ${d.trend[0].label} s/d ${d.trend[d.trend.length - 1].label}` : ""}
+        </p>
+        {d && d.trend.some((t) => t.orders > 0 || t.revenue > 0) ? (
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={d.trend} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--color-muted)" />
+                <YAxis yAxisId="kiri" allowDecimals={false} tick={{ fontSize: 11 }} stroke="var(--color-muted)" width={26} />
+                <YAxis yAxisId="kanan" orientation="right" tick={{ fontSize: 11 }} stroke="var(--color-muted)" width={54} tickFormatter={(v: number) => compactRp(v)} />
+                <Tooltip
+                  formatter={(value, name) => (name === "Uang masuk" ? [rupiah(Number(value)), String(name)] : [String(value), String(name)])}
+                  labelStyle={{ fontSize: 11 }}
+                  contentStyle={{ fontSize: 11, borderRadius: 12 }}
+                />
+                <Legend iconSize={16} wrapperStyle={{ fontSize: 11 }} />
+                <Bar yAxisId="kiri" dataKey="orders" name="Order masuk" fill="var(--color-accent-teal)" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                <Line yAxisId="kanan" dataKey="revenue" name="Uang masuk" stroke="var(--color-status-yellow-text)" strokeWidth={2} dot={{ r: 3 }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <p className="py-8 text-center text-xs text-muted">Belum ada aktivitas dalam 7 hari terakhir.</p>
+        )}
       </div>
 
       {/* Operasional: pipeline + absensi */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-4">
-            <Activity className="h-5 w-5 text-accent-teal" />
+            <Activity className="h-5 w-5 shrink-0 text-accent-teal" />
             <h3 className="font-bold text-base text-primary">Pipeline Produksi</h3>
           </div>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-            {pipelineStages.map((s) => (
-              <Link key={s.label} href={s.href} className="text-center rounded-xl p-2 -m-2 transition-colors hover:bg-elevated/60">
-                <div className="h-1.5 rounded-full bg-accent-teal/50 mb-2" />
-                <p className="text-3xl font-bold text-primary">{s.n}</p>
-                <p className="text-[10px] text-muted font-medium uppercase tracking-wide">{s.label}</p>
-              </Link>
-            ))}
-            {pipelineStages.length === 0 && <p className="col-span-6 text-center text-xs text-muted py-4">Memuat…</p>}
-          </div>
+          {pipelineStages.length === 0 ? (
+            <p className="text-center text-xs text-muted py-4">Memuat…</p>
+          ) : pipelineStages.every((s) => s.n === 0) ? (
+            <div className="flex items-center gap-2 rounded-xl border border-border bg-elevated/40 px-4 py-3">
+              <Activity className="h-4 w-4 shrink-0 text-muted" />
+              <span className="text-xs text-muted">
+                Belum ada job berjalan — semua tahap kosong. Antrean muncul begitu order masuk produksi.
+              </span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+              {pipelineStages.map((s) => {
+                const max = Math.max(...pipelineStages.map((x) => x.n), 1);
+                return (
+                  <Link key={s.label} href={s.href} className="text-center rounded-xl p-2 -m-2 transition-colors hover:bg-elevated/60">
+                    {/* Batang mengikuti proporsi nilai; nol = tanpa batang. */}
+                    <div className="h-1.5 rounded-full bg-elevated mb-2 overflow-hidden">
+                      <div className="h-full rounded-full bg-accent-teal/60" style={{ width: `${Math.round((s.n / max) * 100)}%` }} />
+                    </div>
+                    <p className="text-3xl font-bold text-primary">{s.n}</p>
+                    <p className="text-[10px] text-muted font-medium uppercase tracking-wide">{s.label}</p>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="bg-card border border-border rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-4">
-            <Users className="h-5 w-5 text-accent-teal" />
+            <Users className="h-5 w-5 shrink-0 text-accent-teal" />
             <h3 className="font-bold text-base text-primary">Absensi Hari Ini</h3>
           </div>
           <div className="space-y-3 text-sm">
@@ -469,8 +539,23 @@ export default function OwnerPage() {
               {d.attendance.autoClosedYesterday} pegawai lupa absen pulang kemarin (ditutup otomatis).
             </p>
           )}
-          <Link href="/admin/attendance" className="inline-flex items-center gap-1 mt-3 text-[10px] font-semibold text-accent-teal hover:underline">
-            Detail di menu Absensi Pegawai <ArrowRight className="h-3 w-3" />
+          {d?.attendance.notCheckedInList && d.attendance.notCheckedInList.length > 0 && (
+            <details className="mt-3 rounded-xl border border-border bg-elevated/40 px-3 py-2">
+              <summary className="cursor-pointer text-[11px] font-semibold text-muted hover:text-primary">
+                Lihat {d.attendance.notCheckedInList.length} nama yang belum absen
+              </summary>
+              <ul className="mt-2 space-y-1">
+                {d.attendance.notCheckedInList.map((p) => (
+                  <li key={p.name} className="flex justify-between text-[11px]">
+                    <span className="text-primary">{p.name}</span>
+                    <span className="text-muted">{p.role === "designer_sales" ? "Designer" : p.role === "gudang" ? "Gudang" : p.role === "operator" ? "Operator" : "Admin"}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          <Link href="/admin/attendance" className="inline-flex items-center gap-1.5 mt-1 -mb-1 py-2 min-h-11 text-[11px] font-semibold text-accent-teal hover:underline">
+            Detail di menu Absensi Pegawai <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </div>
@@ -479,19 +564,22 @@ export default function OwnerPage() {
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
         <div className="p-5 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ClipboardList className="h-4 w-4 text-accent-teal" />
-            <h3 className="font-bold text-sm">Audit Log — 10 Aksi Terbaru</h3>
+            <ClipboardList className="h-4 w-4 shrink-0 text-accent-teal" />
+            <h3 className="font-bold text-sm">Aktivitas Terbaru</h3>
           </div>
-          <Link href="/audit-logs" className="text-xs text-accent-teal font-semibold hover:underline flex items-center gap-1">
-            Lihat Semua <ArrowRight className="h-3.5 w-3.5" />
+          <Link href="/audit-logs" className="inline-flex items-center gap-1 py-2 min-h-11 text-xs font-semibold text-accent-teal hover:underline">
+            Lihat Semua <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
-        <div className="divide-y divide-border/60 max-h-[420px] overflow-y-auto">
+        <div className="divide-y divide-border/60">
           {logs.map((l) => (
             <div key={l.id} className="px-4 py-3 hover:bg-elevated/30 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-accent-teal font-mono">{l.action}</p>
-                <p className="text-[10px] text-muted truncate">{l.entityType}:{l.entityId.slice(0, 20)}</p>
+                {/* Label manusia, bukan kode aksi mentah. */}
+                <p className="text-xs font-semibold text-primary">{auditActionLabel(l.action)}</p>
+                <p className="text-[10px] text-muted truncate">
+                  {l.entityCode ?? auditEntityLabel(l.entityType)}
+                </p>
               </div>
               <div className="text-right shrink-0">
                 <p className="text-[10px] text-primary font-medium">{l.actor}{l.actorRole ? ` · ${l.actorRole}` : ""}</p>

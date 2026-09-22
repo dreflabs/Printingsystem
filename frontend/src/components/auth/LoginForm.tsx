@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Lock, User, LogIn, Eye, EyeOff, Building2 } from "lucide-react";
 import Link from "next/link";
@@ -52,25 +52,34 @@ function noticeFromLocation(): string {
 
 export function LoginForm() {
   const [loading, setLoading] = useState(false);
-  const [workspace, setWorkspace] = useState(workspaceFromLocation);
+  // Nilai yang bergantung pada browser (subdomain / query string) SENGAJA kosong
+  // pada render pertama, lalu diisi setelah mount. Kalau diisi di initializer,
+  // HTML server (kosong) berbeda dari render pertama klien → hydration mismatch.
+  const [workspace, setWorkspace] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
-  const [notice] = useState(noticeFromLocation);
-  const [callbackUrl] = useState(() => {
-    if (typeof window === "undefined") return "/";
-    try {
-      return safeCallback(new URLSearchParams(window.location.search).get("callbackUrl"));
-    } catch {
-      return "/";
-    }
-  });
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWorkspace(workspaceFromLocation());
+    setNotice(noticeFromLocation());
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+
+    // Dibaca saat submit (selalu setelah mount), bukan disimpan di state awal.
+    let callbackUrl = "/";
+    try {
+      callbackUrl = safeCallback(new URLSearchParams(window.location.search).get("callbackUrl"));
+    } catch {
+      callbackUrl = "/";
+    }
 
     try {
       const result = await signIn("credentials", {

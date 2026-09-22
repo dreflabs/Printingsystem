@@ -146,7 +146,9 @@ export function WorkspaceModeNudge() {
           {goingToTeam ? (
             <>
               <p className="text-sm font-bold text-primary">Tim Anda bertambah</p>
-              <p className="text-xs text-muted mt-0.5">
+              {/* Di ponsel deskripsi dibatasi 2 baris agar banner tidak
+                  mendorong KPI ke bawah; versi penuh tampil sejak tablet. */}
+              <p className="text-xs text-muted mt-0.5 line-clamp-2 sm:line-clamp-none">
                 Ada {sug.staffCount} pegawai aktif. Alihkan tampilan ke{" "}
                 <b>{WORKSPACE_MODE_LABEL[sug.suggested]}</b> — menu &amp; beranda menyesuaikan.
                 Izin tidak berubah.
@@ -162,10 +164,12 @@ export function WorkspaceModeNudge() {
           )}
 
           {canShed && (
-            <div className="mt-2.5 rounded-lg border border-border bg-elevated/50 p-2.5">
-              <p className="text-[11px] font-bold text-primary mb-1.5">
-                Lepas peran ini dari akun Anda? (sudah ada pegawainya)
-              </p>
+            /* Dilipat default: daftar centang membuat banner ini setinggi 285 px
+               di layar 320 px sehingga mendorong KPI ke bawah. */
+            <details className="mt-2.5 rounded-lg border border-border bg-elevated/50 p-2.5">
+              <summary className="cursor-pointer text-[11px] font-bold text-primary">
+                Lepas peran operasional dari akun Anda? (opsional)
+              </summary>
               <div className="space-y-1">
                 {sug.sheddableRoles.map((r) => (
                   <label key={r} className="flex items-center gap-2 text-xs text-muted cursor-pointer">
@@ -181,7 +185,7 @@ export function WorkspaceModeNudge() {
               <p className="text-[10px] text-muted mt-1.5">
                 Bisa diambil lagi kapan saja di Pegawai &amp; Akses.
               </p>
-            </div>
+            </details>
           )}
 
           {sug.gatesMismatch && (

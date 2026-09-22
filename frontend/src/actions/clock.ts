@@ -235,7 +235,11 @@ export async function getMyAttendanceToday(): Promise<ActionResult<AttendanceTod
       },
     });
   } catch (e) {
-    console.error("getMyAttendanceToday:", e);
+    // "Tidak terdaftar sebagai pegawai wajib absen" adalah kondisi normal
+    // (mis. Admin yang tidak ditandai wajib absen) — kartu absen memang
+    // menyembunyikan diri. Jangan cemari log server untuk hal yang diharapkan.
+    const message = e instanceof Error ? e.message : "";
+    if (!message.includes("tidak terdaftar sebagai pegawai")) console.error("getMyAttendanceToday:", e);
     return fail(safeError(e, "Gagal memuat status absensi."));
   }
 }

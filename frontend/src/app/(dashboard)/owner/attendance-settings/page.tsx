@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Clock, MapPin, Camera, Shield, Save, Loader2, Crosshair, Tablet, Trash2, Copy, KeyRound } from "lucide-react";
+import { Clock, MapPin, Camera, Shield, Save, Loader2, Crosshair, Tablet, Trash2, Copy, KeyRound, HeartPulse } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { copyText } from "@/lib/clipboard";
 import { useToast } from "@/components/ui";
@@ -10,6 +10,7 @@ import {
   updateAttendanceSettings,
   setEmployeePin,
   type AttendanceSettings,
+  getJobHealth,
 } from "@/actions/attendance-settings";
 import {
   listKioskDevices,
@@ -214,7 +215,81 @@ export default function AttendanceSettingsPage() {
       </div>
 
       {s.kioskEnabled && <KioskPanel />}
+      <JobHealthPanel />
     </div>
+  );
+}
+
+/**
+ * Kesehatan job absensi terjadwal. Cron berjalan di luar aplikasi, jadi tanpa
+ * panel ini kegagalan job (absen lupa pulang menggantung, istirahat tidak
+ * ditutup, selfie tidak dipurge) tidak akan terlihat oleh Owner.
+ */
+function JobHealthPanel() {
+  const [rows, setRows] = useState<{ job: string; lastRunAt: string | null; ok: boolean; summary: string | null; error: string | null }[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  // Waktu acuan diambil sekali saat data dimuat — `Date.now()` saat render
+  // membuat komponen tidak murni (aturan react-hooks/purity).
+  const [now, setNow] = useState(0);
+
+  useEffect(() => {
+    getJobHealth().then((r) => {
+      if (r.success) setRows(r.data.map((x) => ({ ...x, lastRunAt: x.lastRunAt ? String(x.lastRunAt) : null })));
+      setNow(Date.now());
+      setLoaded(true);
+    });
+  }, []);
+
+  const META: Record<string, { label: string; every: string; staleMin: number }> = {
+    "attendance-autoclose": { label: "Tutup absen otomatis (lupa pulang)", every: "1× sehari", staleMin: 36 * 60 },
+    "break-warnings": { label: "Peringatan istirahat", every: "tiap 2–5 menit", staleMin: 30 },
+  };
+  const ago = (iso: string) => {
+    const min = Math.round((now - new Date(iso).getTime()) / 60000);
+    if (min < 60) return `${min} menit lalu`;
+    if (min < 60 * 24) return `${Math.round(min / 60)} jam lalu`;
+    return `${Math.round(min / (60 * 24))} hari lalu`;
+  };
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-card">
+      <h2 className="text-sm font-bold text-primary flex items-center gap-2">
+        <HeartPulse className="h-4 w-4 text-accent-teal" /> Kesehatan Job Absensi
+      </h2>
+      {!loaded ? (
+        <p className="text-xs text-muted">Memuat…</p>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((r) => {
+            const meta = META[r.job];
+            const stale = r.lastRunAt ? (now - new Date(r.lastRunAt).getTime()) / 60000 > (meta?.staleMin ?? 60) : true;
+            return (
+              <div key={r.job} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-elevated/40 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-primary">{meta?.label ?? r.job}</p>
+                  <p className="text-[11px] text-muted">
+                    {r.lastRunAt ? `Terakhir jalan ${ago(r.lastRunAt)}` : "Belum pernah tercatat berjalan"}
+                    {meta ? ` · dijadwalkan ${meta.every}` : ""}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                    !r.lastRunAt || stale || !r.ok ? "bg-status-red/10 text-status-red" : "bg-status-green/10 text-status-green"
+                  )}
+                >
+                  {!r.lastRunAt ? "Belum jalan" : !r.ok ? "Gagal" : stale ? "Terlambat" : "Sehat"}
+                </span>
+              </div>
+            );
+          })}
+          <p className="text-[11px] text-muted">
+            Job dijalankan cron di luar aplikasi (lihat JOBS.md). Bila berstatus merah, absen lupa pulang tidak akan
+            ditutup otomatis.
+          </p>
+        </div>
+      )}
+    </section>
   );
 }
 

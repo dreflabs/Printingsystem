@@ -7,7 +7,8 @@ import { requireEntitlement } from "@/lib/entitlements";
 import { can } from "@/lib/permissions";
 import { logAction } from "@/lib/logger";
 import { safeError } from "@/lib/safe-error";
-import { isWorkday } from "@/lib/attendance";
+import { isWorkday, tenantDayDate } from "@/lib/attendance";
+import { summarizeAttendance } from "@/lib/payroll-attendance";
 import { ok, fail } from "@/types";
 import { revalidatePath } from "next/cache";
 
@@ -22,7 +23,7 @@ function countWorkdays(start: Date, end: Date, workdays: string): number {
   return count;
 }
 
-function monthRangeUTC(year: number, month: number) {
+function monthRange(year: number, month: number) {
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 1); // eksklusif
   return { start, end };
@@ -41,7 +42,7 @@ export async function generatePayrollPeriod(year: number, month: number) {
     if (!can(actor, "payroll.manage")) return fail("Hanya Owner yang boleh membuat periode payroll.");
     if (month < 1 || month > 12) return fail("Bulan tidak valid.");
 
-    const { start, end } = monthRangeUTC(year, month);
+    const { start, end } = monthRange(year, month);
     const now = new Date();
     if (end > now) {
       return fail("Bulan ini belum selesai — payroll hanya bisa digenerate untuk bulan yang sudah lewat penuh.");
@@ -120,17 +121,30 @@ export async function generatePayrollPeriod(year: number, month: number) {
       const effectiveStart = emp.created_at > start ? emp.created_at : start;
       const employeeWorkingDays = effectiveStart < end ? countWorkdays(effectiveStart, end, attendanceSetting.workdays) : 0;
 
+      // Rentang & pengelompokan memakai HARI TENANT (`attendance_day`), bukan
+      // kolom `date` + potongan UTC: di zona WITA/WIT absen pagi (07:xx lokal)
+      // jatuh ke tanggal UTC sebelumnya sehingga satu hari kehadiran hilang dan
+      // gaji terpotong. `tenantDayDate` mengembalikan tengah malam UTC dari
+      // tanggal tenant — persis konvensi kolom `attendance_day`.
+      const tz = attendanceSetting.timezone;
+      const periodEndDay = tenantDayDate(new Date(end.getTime() - 1), tz); // inklusif
+      const effectiveStartDay = tenantDayDate(
+        new Date(Math.max(effectiveStart.getTime(), start.getTime())),
+        tz,
+      );
       const records = await prisma.attendanceRecord.findMany({
-        where: { tenant_id: tenant.id, user_id: emp.id, date: { gte: effectiveStart, lt: end } },
-        select: { date: true, check_in: true, late_minutes: true },
+        where: {
+          tenant_id: tenant.id,
+          user_id: emp.id,
+          attendance_day: { gte: effectiveStartDay, lte: periodEndDay },
+        },
+        select: { attendance_day: true, check_in: true, late_minutes: true, off_day: true },
       });
 
-      const presentDates = new Set(
-        records.filter((r) => r.check_in).map((r) => r.date.toISOString().slice(0, 10))
-      );
-      const presentDays = presentDates.size;
+      // Absen di hari libur tidak menambah kehadiran dan tidak menambah
+      // keterlambatan (dulu bisa menutupi satu hari bolos).
+      const { presentDays, lateMinutes } = summarizeAttendance(records);
       const absentDays = Math.max(0, employeeWorkingDays - presentDays);
-      const lateMinutes = records.reduce((sum, r) => sum + (r.late_minutes ?? 0), 0);
 
       const perDay = monthWorkingDays > 0 ? base / monthWorkingDays : 0;
       const deductionAbsent = Math.round(perDay * absentDays);

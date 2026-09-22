@@ -39,6 +39,14 @@ function resolveWorkspaceSlug(
 
 const baseJwtCallback = authConfig.callbacks?.jwt;
 
+/**
+ * Jeda minimum penyegaran role dari DB. Token menyimpan snapshot role saat
+ * login; tanpa penyegaran, perubahan role (mis. Owner mencabut peran
+ * operasionalnya) baru terasa setelah logout — sidebar masih menawarkan
+ * dashboard role lama. Dicek berkala supaya tidak menambah query di setiap aksi.
+ */
+const ROLES_REFRESH_MS = 60_000;
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {
@@ -46,18 +54,37 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt(params) {
       const token = baseJwtCallback ? await baseJwtCallback(params) : params.token;
 
-      // Segarkan status tenant dari DB. Tanpa ini, tenant UNPAID yang baru
-      // lunas tetap terjebak dialihkan ke halaman tagihan oleh middleware
-      // sampai dia logout — status di JWT hanya berubah saat login.
-      if (!params.user && token?.tenantId && token.tenantStatus === "UNPAID") {
-        try {
-          const t = await prisma.tenant.findUnique({
-            where: { id: token.tenantId as string },
-            select: { status: true },
-          });
-          if (t) token.tenantStatus = t.status;
-        } catch {
-          /* biarkan status lama kalau DB tidak bisa dihubungi */
+      if (!params.user && token?.id && !token.platform) {
+        const lastRefresh = typeof token.rolesRefreshedAt === "number" ? token.rolesRefreshedAt : 0;
+        const needsRoleRefresh = Date.now() - lastRefresh > ROLES_REFRESH_MS;
+        // Tenant UNPAID yang baru lunas tidak boleh terjebak di halaman tagihan
+        // sampai logout, jadi statusnya selalu dicek ulang.
+        const needsStatusRefresh = token.tenantStatus === "UNPAID";
+
+        if (needsRoleRefresh || needsStatusRefresh) {
+          try {
+            const u = await prisma.user.findUnique({
+              where: { id: token.id as string },
+              select: {
+                active: true,
+                role: { select: { name: true } },
+                extra_roles: { select: { role: { select: { name: true } } } },
+                tenant: { select: { status: true } },
+              },
+            });
+            // Akun nonaktif dibiarkan: `requireUser` sudah menolaknya di server,
+            // jadi tidak perlu mematikan sesi dari sini.
+            if (u?.active) {
+              token.role = u.role.name;
+              token.roles = Array.from(new Set([u.role.name, ...u.extra_roles.map((r) => r.role.name)]));
+            }
+            if (u?.tenant) token.tenantStatus = u.tenant.status;
+            // Selalu catat waktu percobaan supaya throttle tetap berlaku untuk
+            // akun nonaktif/hilang dan query tidak jalan di setiap request.
+            token.rolesRefreshedAt = Date.now();
+          } catch {
+            /* biarkan nilai lama kalau DB tidak bisa dihubungi */
+          }
         }
       }
 

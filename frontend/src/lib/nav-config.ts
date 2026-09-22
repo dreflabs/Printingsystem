@@ -44,6 +44,7 @@ export const GROUPED_NAV: NavEntry[] = [
   { type: "link", label: "Dashboard", href: "/owner", icon: LayoutDashboard, roles: ["owner"] },
   { type: "link", label: "Dashboard", href: "/admin", icon: LayoutDashboard, roles: ["admin"] },
   { type: "link", label: "Dashboard Desainer", href: "/designer", icon: Palette, roles: ["designer_sales"] },
+  { type: "link", label: "Absensi Saya", href: "/admin#absensi", icon: Clock3, roles: ["admin"], feature: "hrm" },
   { type: "link", label: "Absensi Saya", href: "/designer#absensi", icon: Clock3, roles: ["designer_sales"], feature: "hrm" },
   { type: "link", label: "Dashboard Operator", href: "/operator", icon: Factory, roles: ["operator"] },
   { type: "link", label: "Absensi Saya", href: "/operator#absensi", icon: Clock3, roles: ["operator"], feature: "hrm" },
@@ -165,6 +166,38 @@ export interface ResolvedGroup {
   children: { label: string; href: string }[];
 }
 export type ResolvedNav = ResolvedLink | ResolvedGroup;
+
+/**
+ * Dashboard utama tiap peran. Dipakai role switcher (label + href) sekaligus
+ * untuk menentukan "mode aktif" dari pathname yang sedang dibuka.
+ */
+export const DASHBOARD_ROLE_PATHS: { role: UserRole; path: string; label: string }[] = [
+  { role: "owner", path: "/owner", label: "Owner" },
+  { role: "admin", path: "/admin", label: "Admin" },
+  { role: "designer_sales", path: "/designer", label: "Designer/Setting" },
+  { role: "operator", path: "/operator", label: "Operator Cetak" },
+  { role: "gudang", path: "/finishing", label: "Finishing & Gudang" },
+];
+
+/**
+ * Peran yang sedang dilihat berdasarkan pathname — TETAPI hanya bila akun
+ * memang memegang peran itu; kalau tidak, jatuh ke peran utama.
+ *
+ * Owner (dan peran yang diizinkan middleware lain) boleh membuka dashboard
+ * peran lain untuk pengawasan. Tanpa penjagaan ini sidebar ikut "menyamar"
+ * sebagai peran tersebut dan menampilkan menunya, seolah akun masih memegang
+ * peran yang sudah dicabut.
+ */
+export function resolveActiveRole(
+  pathname: string,
+  roles: readonly string[],
+  primaryRole: UserRole,
+): UserRole {
+  const match = DASHBOARD_ROLE_PATHS.find(
+    (p) => pathname === p.path || pathname.startsWith(p.path + "/"),
+  );
+  return match && roles.includes(match.role) ? match.role : primaryRole;
+}
 
 /**
  * Saring GROUPED_NAV untuk sekumpulan peran:

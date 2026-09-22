@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "crypto";
+import { prisma } from "@/lib/prisma";
 
 /**
  * Helper untuk endpoint background job (`/api/jobs/*`).
@@ -44,13 +45,39 @@ export async function runJob<T>(name: string, fn: () => Promise<T>): Promise<Res
     const result = await fn();
     const ms = Date.now() - start;
     console.log(`[JOB:${name}] ok in ${ms}ms ${JSON.stringify(result)}`);
+    await recordJobRun(name, true, ms, result, null);
     return Response.json({ ok: true, job: name, ms, result });
   } catch (e) {
     const ms = Date.now() - start;
     console.error(`[JOB:${name}] GAGAL in ${ms}ms`, e);
+    await recordJobRun(name, false, ms, null, e instanceof Error ? e.message : String(e));
     return Response.json(
       { ok: false, job: name, ms, error: e instanceof Error ? e.message : String(e) },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Catat jejak eksekusi job. Kegagalan pencatatan TIDAK boleh menggagalkan job
+ * (itu sebabnya dibungkus try/catch terpisah).
+ */
+async function recordJobRun(name: string, ok: boolean, ms: number, result: unknown, error: string | null) {
+  try {
+    await prisma.jobRun.create({
+      data: {
+        job: name,
+        finished_at: new Date(),
+        ok,
+        duration_ms: ms,
+        summary: result == null ? null : JSON.stringify(result).slice(0, 500),
+        error: error?.slice(0, 500) ?? null,
+      },
+    });
+    // Simpan hanya 30 eksekusi terakhir per job.
+    const old = await prisma.jobRun.findMany({ where: { job: name }, orderBy: { started_at: "desc" }, skip: 30, select: { id: true } });
+    if (old.length) await prisma.jobRun.deleteMany({ where: { id: { in: old.map((r) => r.id) } } });
+  } catch (e) {
+    console.error(`[JOB:${name}] gagal mencatat riwayat:`, e);
   }
 }

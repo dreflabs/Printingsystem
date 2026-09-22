@@ -54,9 +54,18 @@ export function tenantDayDate(now: Date, timeZone: string): Date {
 export function tenantDateTime(day: Date, hhmm: string, timeZone: string): Date | null {
   const minutes = hhmmToMinutes(hhmm);
   if (minutes == null) return null;
-  const y = day.getFullYear();
-  const m = day.getMonth();
-  const d = day.getDate();
+  // Komponen tanggal WAJIB dari hari tenant, bukan waktu server. Dulu memakai
+  // getFullYear/getMonth/getDate (waktu server), sehingga untuk `day` berupa
+  // timestamp yang jatuh di hari tenant berbeda (mis. absen 00:00–07:00 WIB =
+  // 17:00–23:59Z hari sebelumnya) jam yang dibentuk meleset satu hari — dan
+  // hasilnya berbeda antara server WIB (dev) dan server UTC (produksi).
+  const parts: Record<string, string> = {};
+  for (const p of new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(day)) {
+    if (p.type !== "literal") parts[p.type] = p.value;
+  }
+  const y = Number(parts.year);
+  const m = Number(parts.month) - 1;
+  const d = Number(parts.day);
   const candidate = new Date(Date.UTC(y, m, d, Math.floor(minutes / 60), minutes % 60));
   try {
     const parts: Record<string, string> = {};
